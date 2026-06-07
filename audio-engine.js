@@ -221,6 +221,8 @@
     _offset: 0,
     _sources: [],
     _tickCbs: [],
+    _clipCounter: 0,
+    _cid() { return 'c' + (++this._clipCounter); },
 
     init() {
       if (ctx) return;
@@ -269,12 +271,12 @@
       TRACK_DEFS.forEach((def, i) => {
         const buffer = renderMono(ctx, (ch, sr) => def.synth(ch, sr));
         this._addTrack({
-          name: def.name, type: def.type, color: def.color, buffer,
+          name: def.name, type: def.type, color: def.color, buffer, isDemo: true,
         });
       });
     },
 
-    _addTrack({ name, type, color, buffer }) {
+    _addTrack({ name, type, color, buffer, isDemo = false, fileName = null, needsAudio = false }) {
       const id = "t" + (this.tracks.length + 1) + "_" + Math.random().toString(36).slice(2, 6);
       // persistent nodes
       const fader = ctx.createGain();
@@ -305,6 +307,8 @@
           autoOn: false,
           automation: defaultAutomation(type),
         },
+        clips: [{ id: this._cid(), start: 0, end: buffer.duration, offset: 0, params: null, automation: null }],
+        isDemo, fileName, needsAudio,
         _meterBuf: new Float32Array(meter.fftSize),
       };
       this.tracks.push(track);
@@ -312,16 +316,45 @@
       return track;
     },
 
+    async addFileBuffer(name, arrayBuffer) {
+      this.init();
+      const buffer = await ctx.decodeAudioData(arrayBuffer);
+      this.duration = Math.max(this.duration, buffer.duration);
+      const ph = this.tracks.find(t => t.needsAudio && (t.fileName === name || t.name === name));
+      if (ph) {
+        ph.buffer = buffer;
+        ph.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
+        ph.needsAudio = false;
+        ph.clips = [{ id: this._cid(), start: 0, end: buffer.duration, offset: 0, params: null, automation: null }];
+        this._applyMix();
+        return ph;
+      }
+      const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
+      const color = palette[this.tracks.length % palette.length];
+      const t = this._addTrack({ name, type: "audio", color, buffer, fileName: name });
+      t.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
+      return t;
+    },
+
     async addFile(file) {
       this.init();
       const arr = await file.arrayBuffer();
       const buffer = await ctx.decodeAudioData(arr);
       const name = file.name.replace(/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i, "");
+      this.duration = Math.max(this.duration, buffer.duration);
+      // link to a placeholder track from an imported project
+      const ph = this.tracks.find(t => t.needsAudio && (t.fileName === name || t.name === name));
+      if (ph) {
+        ph.buffer = buffer;
+        ph.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
+        ph.needsAudio = false;
+        ph.clips = [{ id: this._cid(), start: 0, end: buffer.duration, offset: 0, params: null, automation: null }];
+        this._applyMix();
+        return ph;
+      }
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
-      // override duration if longer
-      this.duration = Math.max(this.duration, buffer.duration);
-      const t = this._addTrack({ name, type: "audio", color, buffer });
+      const t = this._addTrack({ name, type: "audio", color, buffer, fileName: name });
       t.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
       return t;
     },
@@ -332,7 +365,7 @@
       this.init();
       TRACK_DEFS.forEach((def) => {
         const buffer = renderMono(ctx, (ch, sr) => def.synth(ch, sr));
-        this._addTrack({ name: def.name, type: def.type, color: def.color, buffer });
+        this._addTrack({ name: def.name, type: def.type, color: def.color, buffer, isDemo: true });
       });
       this._spectrum = null;
     },
@@ -389,6 +422,133 @@
       return (b[group * 3] + b[group * 3 + 1] + b[group * 3 + 2]) / 3;
     },
 
+    exportProject(projectName) {
+      return {
+        version: "0.11",
+        projectName,
+        bpm: this.bpm,
+        duration: this.duration,
+        master: { ...this.master, bands: [...this.master.bands] },
+        tracks: this.tracks.map(t => ({
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          color: t.color,
+          isDemo: !!t.isDemo,
+          fileName: t.fileName || null,
+          params: {
+            ...t.params,
+            automation: t.params.automation.map(p => ({ ...p })),
+          },
+          clips: t.clips.map(c => ({
+            id: c.id, start: c.start, end: c.end, offset: c.offset,
+            params: c.params ? { ...c.params } : null,
+            automation: c.automation ? c.automation.map(p => ({ ...p })) : null,
+          })),
+        })),
+      };
+    },
+
+    importProject(json) {
+      this.init();
+      this.stop();
+      this.tracks.length = 0;
+      this._spectrum = null;
+      this.duration = json.duration || DURATION;
+      if (json.master) {
+        Object.assign(this.master, json.master);
+        ramp(masterVol.gain, this.master.volume);
+        ramp(mRevSend.gain, this.master.reverb || 0);
+        ramp(mEchoSend.gain, this.master.echo || 0);
+        if (this.master.bands) this.master.bands.forEach((db, i) => this.setMasterBand(i, db));
+      }
+      (json.tracks || []).forEach(td => {
+        const isAudioPlaceholder = !td.isDemo && !!td.fileName;
+        let buffer;
+        if (td.isDemo) {
+          const def = TRACK_DEFS.find(d => d.type === td.type || d.name === td.name);
+          buffer = def
+            ? renderMono(ctx, (ch, sr) => def.synth(ch, sr))
+            : ctx.createBuffer(1, Math.ceil(this.duration * ctx.sampleRate), ctx.sampleRate);
+        } else {
+          buffer = ctx.createBuffer(1, Math.max(1, Math.ceil(this.duration * ctx.sampleRate)), ctx.sampleRate);
+        }
+        const track = this._addTrack({
+          name: td.name, type: td.type, color: td.color, buffer,
+          isDemo: !!td.isDemo, fileName: td.fileName || null,
+          needsAudio: isAudioPlaceholder,
+        });
+        track.id = td.id;
+        if (td.params) {
+          Object.assign(track.params, td.params);
+          if (td.params.automation) track.params.automation = td.params.automation.map(p => ({ ...p }));
+        }
+        if (td.clips) track.clips = td.clips.map(c => ({ ...c }));
+      });
+      this._applyMix();
+    },
+
+    splitClip(trackId, clipId, atSec) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return;
+      const ci = t.clips.findIndex(c => c.id === clipId); if (ci < 0) return;
+      const clip = t.clips[ci];
+      if (atSec <= clip.start + 0.01 || atSec >= clip.end - 0.01) return;
+      const left  = { id: this._cid(), start: clip.start, end: atSec,
+        offset: clip.offset, params: clip.params ? { ...clip.params } : null, automation: null };
+      const right = { id: this._cid(), start: atSec, end: clip.end,
+        offset: clip.offset + (atSec - clip.start), params: null, automation: null };
+      t.clips = [...t.clips.slice(0, ci), left, right, ...t.clips.slice(ci + 1)];
+      if (this.isPlaying) this._scheduleAutomation();
+    },
+
+    joinClips(trackId, clipIdA, clipIdB) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return;
+      const ia = t.clips.findIndex(c => c.id === clipIdA);
+      const ib = t.clips.findIndex(c => c.id === clipIdB);
+      if (ia < 0 || ib < 0 || Math.abs(ia - ib) !== 1) return;
+      const fi = Math.min(ia, ib);
+      const first = t.clips[fi], second = t.clips[fi + 1];
+      const merged = { id: this._cid(), start: first.start, end: second.end,
+        offset: first.offset, params: first.params, automation: first.automation };
+      t.clips = [...t.clips.slice(0, fi), merged, ...t.clips.slice(fi + 2)];
+      if (this.isPlaying) this._scheduleAutomation();
+    },
+
+    setClipParam(trackId, clipId, key, val) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return;
+      const clip = t.clips.find(c => c.id === clipId); if (!clip) return;
+      if (!clip.params) clip.params = {};
+      clip.params[key] = val;
+      t.clips = [...t.clips];
+      if (this.isPlaying) this._scheduleAutomation();
+    },
+
+    _buildCompositeCurve(track, n) {
+      const dur = this.duration;
+      const curve = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const pos = (i / (n - 1)) * dur;
+        const clip = track.clips.find(c => pos >= c.start && pos < c.end);
+        if (!clip) { curve[i] = 0.0001; continue; }
+        const clipDur = (clip.end - clip.start) || 1e-6;
+        const localT = (pos - clip.start) / clipDur;
+        let v = (clip.params && clip.params.volume !== undefined) ? clip.params.volume : 1;
+        const autoSrc = clip.automation || (track.params.autoOn ? track.params.automation : null);
+        if (autoSrc && autoSrc.length >= 2) {
+          const pts = [...autoSrc].sort((a, b) => a.t - b.t);
+          let pa = pts[0], pb = pts[pts.length - 1];
+          for (let k = 0; k < pts.length - 1; k++) {
+            if (localT >= pts[k].t && localT <= pts[k + 1].t) { pa = pts[k]; pb = pts[k + 1]; break; }
+          }
+          const span = (pb.t - pa.t) || 1;
+          const f = Math.min(1, Math.max(0, (localT - pa.t) / span));
+          v *= pa.v + (pb.v - pa.v) * f;
+        }
+        curve[i] = Math.max(0.0001, v);
+      }
+      return curve;
+    },
+
     // averaged magnitude spectrum of the whole song (static FFT), cached
     computeSpectrum() {
       this.init();
@@ -437,8 +597,12 @@
       this.tracks.forEach((t) => {
         const g = t.nodes.autoGain.gain;
         g.cancelScheduledValues(now);
-        if (!t.params.autoOn) { g.setValueAtTime(1, now); return; }
-        const curve = automationCurve(t.params.automation, 256);
+        const hasGaps = t.clips && (t.clips.length > 1 || (t.clips[0] && (t.clips[0].start > 0.01 || t.clips[0].end < this.duration - 0.01)));
+        const hasClipOverrides = t.clips && t.clips.some(c => c.params || c.automation);
+        if (!t.params.autoOn && !hasGaps && !hasClipOverrides) { g.setValueAtTime(1, now); return; }
+        const curve = (hasGaps || hasClipOverrides)
+          ? this._buildCompositeCurve(t, 256)
+          : automationCurve(t.params.automation, 256);
         // align to current loop position
         const pos = (this._offset + (now - this._startTime)) % dur;
         // schedule remaining of current loop then full loops
@@ -621,8 +785,12 @@
         src.connect(fd); fd.connect(ag); ag.connect(fl); fl.connect(pn);
         pn.connect(mBus); pn.connect(rs); rs.connect(conv);
         pn.connect(es); es.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(mBus);
-        if (p.autoOn) {
-          const curve = automationCurve(p.automation, 256);
+        const rHasGaps = t.clips && (t.clips.length > 1 || (t.clips[0] && (t.clips[0].start > 0.01 || t.clips[0].end < this.duration - 0.01)));
+        const rHasOverrides = t.clips && t.clips.some(c => c.params || c.automation);
+        if (p.autoOn || rHasGaps || rHasOverrides) {
+          const curve = (rHasGaps || rHasOverrides)
+            ? this._buildCompositeCurve(t, 512)
+            : automationCurve(p.automation, 512);
           ag.gain.setValueCurveAtTime(curve, 0, this.duration);
         }
         src.start(0);
@@ -698,5 +866,8 @@
 
   Engine.automationCurve = automationCurve;
   Engine.computePeaks = computePeaks;
+  Engine.splitClip = Engine.splitClip.bind(Engine);
+  Engine.joinClips = Engine.joinClips.bind(Engine);
+  Engine.setClipParam = Engine.setClipParam.bind(Engine);
   window.DAW = Engine;
 })();

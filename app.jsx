@@ -39,13 +39,16 @@ function Dropdown({ label, items, accent }) {
   );
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onSettings }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
   const commit = () => { onRename(draft.trim() || "Untitled Project"); setEditing(false); };
   const projectItems = [
     { label: "New Project", icon: "plus", hint: "\u2318N", onClick: onNew },
+    { sep: true },
+    { label: "Open Project\u2026", icon: "folder", hint: "\u2318O", onClick: onOpenProject },
+    { label: "Save Project", icon: "download", hint: "\u2318S", onClick: onSave },
     { sep: true },
     { label: "Import Stem Folder\u2026", icon: "folder", onClick: onImportFolder },
     { label: "Import Audio Files\u2026", icon: "wave", onClick: onImport },
@@ -58,6 +61,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
       <div style={{ display: "flex", alignItems: "center", paddingRight: 6 }}><Logo size={17} /></div>
       <Dropdown label="Project" items={projectItems} accent />
       {MENUS.map((m) => <div key={m} className="menu-item">{m}</div>)}
+      <div className="menu-item" onClick={onSettings} style={{ cursor: "pointer" }}>Settings</div>
       <div style={{ flex: 1 }} />
       {/* project name, right-aligned, inline-editable */}
       {editing ? (
@@ -125,6 +129,47 @@ function ZoomBar({ pxPerSec, setPx, ampZoom, setAmp }) {
     </div>
   );
 }
+
+/* ---------- edit tool selector ---------- */
+const TOOL_ICONS = { select: "cursor", scissors: "scissors", join: "join" };
+const TOOL_TIPS  = { select: "Select / Seek (S)", scissors: "Split clip (C)", join: "Join clips (J)" };
+function ToolBar({ tool, setTool }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 6px",
+      background: "var(--bg)", borderRadius: 9, border: "1px solid var(--line)" }}>
+      {["select", "scissors", "join"].map((t) => (
+        <button key={t} title={TOOL_TIPS[t]}
+          onClick={() => setTool(t)}
+          style={{ width: 30, height: 28, borderRadius: 6, display: "grid", placeItems: "center",
+            background: tool === t ? "var(--amber-soft)" : "transparent",
+            color: tool === t ? "var(--amber)" : "var(--muted)",
+            border: "none", cursor: "pointer", transition: ".12s" }}>
+          <ToolIcon name={t} size={15} />
+        </button>
+      ))}
+    </div>
+  );
+}
+/* inline SVG icons for tools */
+function ToolIcon({ name, size }) {
+  if (name === "select") return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 2l10 5.5-5 1.5-1.5 5z" />
+    </svg>
+  );
+  if (name === "scissors") return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <circle cx="4.5" cy="5" r="2" /><circle cx="4.5" cy="11" r="2" />
+      <line x1="6.3" y1="6.3" x2="13" y2="3" /><line x1="6.3" y1="9.7" x2="13" y2="13" />
+    </svg>
+  );
+  if (name === "join") return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M2 8h5M9 8h5" /><path d="M7 5l-2 3 2 3M9 5l2 3-2 3" />
+    </svg>
+  );
+  return null;
+}
 function ActionBar({ onAddFiles, onMixer, mixerOpen, onExport }) {
   const fileRef = useRef(null);
   return (
@@ -166,7 +211,7 @@ function EmptyState({ onPick, onPickFolder, onDemo, dragOver }) {
 }
 
 /* ---------- studio (arrange) ---------- */
-function Studio({ projectName, registerHandlers }) {
+function Studio({ projectName, registerHandlers, onRenameProject }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
   const [ampZoom, setAmp] = useState(1);
@@ -175,34 +220,100 @@ function Studio({ projectName, registerHandlers }) {
   const [showExport, setShowExport] = useState(false);
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
+  const [tool, setTool] = useState("select");
   const [, force] = useState(0);
   const fileRef = useRef(null);
   const folderRef = useRef(null);
+  const focusRef = useRef(null);
   const playing = DAW.isPlaying;
   const playhead = DAW.getPlayhead();
 
   const playPause = useCallback(() => { DAW.isPlaying ? DAW.pause() : DAW.play(); }, []);
   useEffect(() => {
-    const k = (e) => { if (e.code === "Space" && e.target.tagName !== "INPUT") { e.preventDefault(); playPause(); } };
+    const k = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "s") { e.preventDefault(); saveProject(); return; }
+      if (mod && e.key === "o") { e.preventDefault(); focusRef.current && focusRef.current.click(); return; }
+      if (e.target.tagName === "INPUT") return;
+      if (e.code === "Space") { e.preventDefault(); playPause(); }
+      if (!mod && (e.key === "s" || e.key === "S")) setTool("select");
+      if (!mod && (e.key === "c" || e.key === "C")) setTool("scissors");
+      if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
+    };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
-  }, [playPause]);
+  }, [playPause, saveProject]);
+
+  const handleSplit = useCallback((trackId, clipId, atSec) => {
+    DAW.splitClip(trackId, clipId, atSec); force((n) => n + 1);
+  }, []);
+  const handleJoin = useCallback((trackId, clipIdA, clipIdB) => {
+    DAW.joinClips(trackId, clipIdA, clipIdB); force((n) => n + 1);
+  }, []);
+
+  const saveProject = useCallback(async () => {
+    const json = DAW.exportProject(projectName);
+    if (window.electronAPI) {
+      await window.electronAPI.saveProject(json, projectName);
+    } else {
+      const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = projectName.replace(/[^\w\-]+/g, "_") + ".focus";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }, [projectName]);
+
+  const openProjectFile = useCallback(async (file) => {
+    let text;
+    if (window.electronAPI) {
+      text = await window.electronAPI.openProject();
+      if (!text) return;
+    } else if (file) {
+      text = await file.text();
+    } else { return; }
+    try {
+      const json = JSON.parse(text);
+      DAW.importProject(json);
+      if (json.projectName && onRenameProject) onRenameProject(json.projectName);
+      force((n) => n + 1);
+    } catch (err) { console.error("Failed to open project:", err); }
+  }, [onRenameProject]);
 
   const addFiles = async (files) => {
     for (const f of files) { if (/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(f.name)) { try { await DAW.addFile(f); } catch (e) {} } }
     force((n) => n + 1);
   };
+  const addElectronFiles = useCallback(async (items) => {
+    for (const item of items) {
+      try {
+        const ab = await window.electronAPI.readAudioFile(item.path);
+        await DAW.addFileBuffer(item.name, ab);
+      } catch (e) { console.error("Failed to add", item.name, e); }
+    }
+    force((n) => n + 1);
+  }, []);
   const newProject = () => { DAW.clearTracks(); force((n) => n + 1); };
   const loadDemo = () => { DAW.addDemoTracks(); force((n) => n + 1); };
   // expose menu actions to parent
   useEffect(() => {
     registerHandlers({
       onNew: newProject,
-      onImport: () => fileRef.current.click(),
-      onImportFolder: () => folderRef.current.click(),
+      onImport: window.electronAPI
+        ? async () => { const items = await window.electronAPI.selectFiles(); if (items.length) addElectronFiles(items); }
+        : () => fileRef.current.click(),
+      onImportFolder: window.electronAPI
+        ? async () => { const items = await window.electronAPI.openFolder(); if (items.length) addElectronFiles(items); }
+        : () => folderRef.current.click(),
       onLoadDemo: loadDemo,
       onExport: () => setShowExport(true),
+      onSave: saveProject,
+      onOpenProject: window.electronAPI
+        ? () => openProjectFile(null)
+        : () => focusRef.current && focusRef.current.click(),
     });
-  }, [registerHandlers]);
+  }, [registerHandlers, saveProject, openProjectFile, addElectronFiles, loadDemo, newProject]);
 
   const param = (id) => (k, v) => { DAW.setTrackParam(id, k, v); force((n) => n + 1); };
   const removeTrack = (id) => { const i = DAW.tracks.findIndex((t) => t.id === id); if (i >= 0) DAW.tracks.splice(i, 1); DAW._spectrum = null; force((n) => n + 1); };
@@ -218,13 +329,17 @@ function Studio({ projectName, registerHandlers }) {
         onChange={(e) => { addFiles([...e.target.files]); e.target.value = ""; }} />
       <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple style={{ display: "none" }}
         onChange={(e) => { addFiles([...e.target.files]); e.target.value = ""; }} />
+      <input ref={focusRef} type="file" accept=".focus,application/json" style={{ display: "none" }}
+        onChange={(e) => { if (e.target.files[0]) { openProjectFile(e.target.files[0]); e.target.value = ""; } }} />
 
       {/* control bar */}
       <div style={{ height: 60, flex: "0 0 60px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "0 16px",
         background: "linear-gradient(180deg,var(--surface),var(--bg2))", borderBottom: "1px solid var(--line-strong)", position: "relative" }}>
-        {/* left cluster: zoom + row height */}
+        {/* left cluster: zoom + tools + row height */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <ZoomBar pxPerSec={pxPerSec} setPx={setPx} ampZoom={ampZoom} setAmp={setAmp} />
+          <div style={{ width: 1, height: 30, background: "var(--line)" }} />
+          <ToolBar tool={tool} setTool={setTool} />
           <div style={{ width: 1, height: 30, background: "var(--line)" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, letterSpacing: ".06em" }}>ROW H</span>
@@ -252,7 +367,8 @@ function Studio({ projectName, registerHandlers }) {
             {DAW.tracks.map((t, i) => (
               <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                 playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
-                onSeek={(time) => { DAW.seek(time); force((n) => n + 1); }} />
+                onSeek={(time) => { DAW.seek(time); force((n) => n + 1); }}
+                tool={tool} onSplit={handleSplit} onJoin={handleJoin} />
             ))}
             <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(96, laneH * 0.9)} playhead={playhead}
               onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} />
@@ -272,16 +388,31 @@ function App() {
   const [projectName, setProjectName] = useState("Midnight Drive \u2014 Stems");
   const handlersRef = useRef({});
   const [, force] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
   const registerHandlers = useCallback((h) => { handlersRef.current = h; }, []);
+
   useEffect(() => { DAW.init(); force((n) => n + 1); }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "default") root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", theme);
+    localStorage.setItem("focusdaw-theme", theme);
+  }, [theme]);
+
   const H = handlersRef.current;
   return (
     <div className="app">
       <MenuBar projectName={projectName} onRename={setProjectName}
         onNew={() => H.onNew && H.onNew()} onImport={() => H.onImport && H.onImport()}
         onImportFolder={() => H.onImportFolder && H.onImportFolder()} onLoadDemo={() => H.onLoadDemo && H.onLoadDemo()}
-        onExport={() => H.onExport && H.onExport()} />
-      <Studio projectName={projectName} registerHandlers={registerHandlers} />
+        onExport={() => H.onExport && H.onExport()}
+        onSave={() => H.onSave && H.onSave()}
+        onOpenProject={() => H.onOpenProject && H.onOpenProject()}
+        onSettings={() => setShowSettings(true)} />
+      <Studio projectName={projectName} registerHandlers={registerHandlers} onRenameProject={setProjectName} />
+      {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme} onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

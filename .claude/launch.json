@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "focusdaw-studio",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-p", "5173", "-s", "."],
+      "port": 5173
+    },
+    {
+      "name": "focusdaw-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-p", "5174", "."],
+      "port": 5174
+    }
+  ]
+}

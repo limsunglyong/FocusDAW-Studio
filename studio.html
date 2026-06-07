@@ -18,6 +18,31 @@
   --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace;
   --r:10px;
 }
+/* ── Classical Ivory theme ── */
+:root[data-theme="ivory"]{
+  --bg:#efe7d6; --bg2:#e7ddc8; --surface:#f8f3e8; --surface2:#ede5d0; --surface3:#e0d7bf;
+  --line:rgba(95,75,42,.14); --line-strong:rgba(95,75,42,.24);
+  --cream:#3b3327; --cream-2:#6e6149; --dim:#8a7d62; --muted:#9a8c6e; --faint:#c8bb9a;
+  --amber:#bf7f2e; --amber-deep:#9e6620; --amber-soft:rgba(191,127,46,.14);
+  --green:#7c9a4f; --green-deep:#5e7a38; --red:#c2593b; --blue:#5f86a6; --violet:#a0668a;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.22);
+}
+:root[data-theme="ivory"] html,
+:root[data-theme="ivory"] body{ background:#ddd5c2; }
+:root[data-theme="ivory"] ::-webkit-scrollbar-thumb{ background:#c9bfa8; border-color:var(--bg); }
+:root[data-theme="ivory"] ::-webkit-scrollbar-thumb:hover{ background:#b8ae97; }
+:root[data-theme="ivory"] button.btn.primary{ color:#f8f3e8; }
+
+/* ── Modern Blue theme ── */
+:root[data-theme="blue"]{
+  --bg:#0e1b30; --bg2:#13243d; --surface:#1c3050; --surface2:#253d5f; --surface3:#2e4d72;
+  --line:rgba(180,205,235,.12); --line-strong:rgba(180,205,235,.22);
+  --cream:#eaf1fb; --cream-2:#a7b8d0; --dim:#8fa5bf; --muted:#6f82a0; --faint:#4d6680;
+  --amber:#5b9bd5; --amber-deep:#3a7bbf; --amber-soft:rgba(91,155,213,.16);
+  --green:#3fb985; --green-deep:#2a9068; --red:#e8654a; --blue:#7fb9e8; --violet:#c085c8;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.8);
+}
+
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#0d0b09;overflow:hidden}
 body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;
@@ -99,9 +124,33 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 <body>
 <div id="root"></div>
 
+<!-- lamejs: pure-JS MP3 encoder (browser fallback when ffmpeg not available) -->
+<script src="https://unpkg.com/lamejs@1.2.1/lame.min.js"></script>
+
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+/* Electron shell tweaks — runs before any JSX, window.electronAPI already set by preload */
+(function () {
+  if (!window.electronAPI) return;
+  const api = window.electronAPI;
+  const style = document.createElement('style');
+  const lines = [
+    /* make menubar draggable (moves the window) */
+    '.menubar { -webkit-app-region: drag; }',
+    /* interactive elements inside must opt out */
+    '.menubar button, .menubar input, .menubar [role=button], .menubar .menu-item { -webkit-app-region: no-drag; }',
+  ];
+  if (api.platform === 'darwin') {
+    /* hiddenInset: traffic lights sit inside the window at top-left */
+    lines.push('.menubar { padding-left: 80px !important; }');
+  }
+  style.textContent = lines.join('\n');
+  document.head.appendChild(style);
+})();
+</script>
 
 <script src="audio-engine.js"></script>
 <script type="text/babel" src="ui-kit.jsx"></script>

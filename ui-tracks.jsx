@@ -2,7 +2,7 @@
 const HEADER_W = 244;
 
 /* ---------- waveform canvas ---------- */
-function Waveform({ track, pxPerSec, ampZoom, height }) {
+function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
   const ref = useRef(null);
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   useEffect(() => {
@@ -10,33 +10,48 @@ function Waveform({ track, pxPerSec, ampZoom, height }) {
     const dpr = window.devicePixelRatio || 1;
     cv.width = laneW * dpr; cv.height = height * dpr;
     cv.style.width = laneW + "px"; cv.style.height = height + "px";
-    const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, laneW, height);
+    const c2d = cv.getContext("2d"); c2d.scale(dpr, dpr);
+    c2d.clearRect(0, 0, laneW, height);
     const peaks = track.peaks; const nb = peaks.length / 2;
     const bufDur = track.buffer.duration;
     const mid = height / 2;
-    // baseline
-    ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(laneW, mid); ctx.stroke();
-    // body fill
-    ctx.fillStyle = track.color + "33";
-    ctx.strokeStyle = track.color;
-    ctx.lineWidth = 1;
-    const drawSpan = Math.min(laneW, bufDur * pxPerSec);
-    ctx.beginPath();
-    for (let x = 0; x <= drawSpan; x++) {
-      const b = Math.floor((x / (bufDur * pxPerSec)) * nb);
-      const max = peaks[Math.min(nb - 1, b) * 2 + 1] || 0;
-      ctx.lineTo(x, mid - max * mid * 0.92 * ampZoom);
-    }
-    for (let x = drawSpan; x >= 0; x--) {
-      const b = Math.floor((x / (bufDur * pxPerSec)) * nb);
-      const min = peaks[Math.min(nb - 1, b) * 2] || 0;
-      ctx.lineTo(x, mid - min * mid * 0.92 * ampZoom);
-    }
-    ctx.closePath(); ctx.fill();
-    ctx.globalAlpha = .85; ctx.stroke(); ctx.globalAlpha = 1;
-  }, [pxPerSec, ampZoom, height, laneW, track]);
+    const clipArr = clips || [{ start: 0, end: bufDur, offset: 0, params: null }];
+
+    clipArr.forEach((clip) => {
+      const clipW = (clip.end - clip.start) * pxPerSec;
+      const clipX = clip.start * pxPerSec;
+      if (clipW <= 0) return;
+
+      // baseline
+      c2d.strokeStyle = "rgba(255,255,255,.05)"; c2d.lineWidth = 1;
+      c2d.beginPath(); c2d.moveTo(clipX, mid); c2d.lineTo(clipX + clipW, mid); c2d.stroke();
+
+      // waveform body
+      c2d.fillStyle = track.color + "33";
+      c2d.strokeStyle = track.color;
+      c2d.lineWidth = 1;
+      c2d.beginPath();
+      for (let px = 0; px <= clipW; px++) {
+        const bufPos = clip.offset + (px / clipW) * (clip.end - clip.start);
+        const bIdx = Math.floor((bufPos / bufDur) * nb);
+        const max = peaks[Math.min(nb - 1, bIdx) * 2 + 1] || 0;
+        c2d.lineTo(clipX + px, mid - max * mid * 0.92 * ampZoom);
+      }
+      for (let px = clipW; px >= 0; px--) {
+        const bufPos = clip.offset + (px / clipW) * (clip.end - clip.start);
+        const bIdx = Math.floor((bufPos / bufDur) * nb);
+        const min = peaks[Math.min(nb - 1, bIdx) * 2] || 0;
+        c2d.lineTo(clipX + px, mid - min * mid * 0.92 * ampZoom);
+      }
+      c2d.closePath(); c2d.fill();
+      c2d.globalAlpha = .85; c2d.stroke(); c2d.globalAlpha = 1;
+
+      // clip boundary lines
+      c2d.strokeStyle = "rgba(232,212,170,.30)"; c2d.lineWidth = 1.5;
+      c2d.beginPath(); c2d.moveTo(clipX, 0); c2d.lineTo(clipX, height); c2d.stroke();
+      c2d.beginPath(); c2d.moveTo(clipX + clipW, 0); c2d.lineTo(clipX + clipW, height); c2d.stroke();
+    });
+  }, [pxPerSec, ampZoom, height, laneW, track, clips]);
   return <canvas ref={ref} style={{ position: "absolute", inset: 0, display: "block" }} />;
 }
 
@@ -129,7 +144,12 @@ function TrackHeader({ track, idx, level, onParam, onRemove, automationView }) {
         </button>
         <span style={{ fontSize: 10, color: p.autoOn ? "var(--amber)" : "var(--faint)", fontWeight: 600, letterSpacing: ".04em" }}>VOL AUTO</span>
         <div style={{ flex: 1 }} />
-        <span className="chip" style={{ fontSize: 9, padding: "2px 5px" }}>{track.type}</span>
+        {track.needsAudio
+          ? <span title="Drop the audio file here to re-link" style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4,
+              fontWeight: 700, letterSpacing: ".04em", background: "rgba(217,106,78,.18)",
+              color: "var(--red)", border: "1px solid rgba(217,106,78,.28)" }}>NO AUDIO</span>
+          : <span className="chip" style={{ fontSize: 9, padding: "2px 5px" }}>{track.type}</span>
+        }
         {onRemove && <button className="iconbtn" style={{ width: 22, height: 22 }} title="Remove track" onClick={onRemove}><Icon name="trash" size={13} /></button>}
       </div>
     </div>
@@ -137,24 +157,76 @@ function TrackHeader({ track, idx, level, onParam, onRemove, automationView }) {
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
+  const [hoveredClipId, setHoveredClipId] = useState(null);
+
+  const laneMouseMove = (e) => {
+    if (tool !== 'scissors' && tool !== 'join') { setHoveredClipId(null); return; }
+    const r = e.currentTarget.getBoundingClientRect();
+    const sec = ((e.clientX - r.left) / laneW) * DAW.duration;
+    const clip = track.clips && track.clips.find(c => sec >= c.start && sec < c.end);
+    setHoveredClipId(clip ? clip.id : null);
+  };
+
   const laneClick = (e) => {
     if (e.target.closest("svg")) return;
     const r = e.currentTarget.getBoundingClientRect();
-    onSeek(((e.clientX - r.left) / laneW) * DAW.duration);
+    const sec = ((e.clientX - r.left) / laneW) * DAW.duration;
+
+    if (tool === 'scissors') {
+      const clip = track.clips && track.clips.find(c => sec >= c.start && sec < c.end);
+      if (clip) onSplit(track.id, clip.id, sec);
+      return;
+    }
+    if (tool === 'join') {
+      if (!track.clips) return;
+      const ci = track.clips.findIndex(c => sec >= c.start && sec < c.end);
+      if (ci >= 0 && ci < track.clips.length - 1)
+        onJoin(track.id, track.clips[ci].id, track.clips[ci + 1].id);
+      else if (ci > 0)
+        onJoin(track.id, track.clips[ci - 1].id, track.clips[ci].id);
+      return;
+    }
+    onSeek(sec);
   };
+
+  const toolCursor = tool === 'scissors' ? 'crosshair' : tool === 'join' ? 'cell' : 'text';
+
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
       <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} />
-      <div onMouseDown={laneClick} style={{ position: "relative", width: laneW, height: laneH,
-        background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
-        borderBottom: "1px solid var(--line)", overflow: "hidden", cursor: "text" }}>
+      <div onMouseDown={laneClick} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
+        style={{ position: "relative", width: laneW, height: laneH,
+          background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
+          borderBottom: "1px solid var(--line)", overflow: "hidden", cursor: toolCursor }}>
         <BarGrid pxPerSec={pxPerSec} height={laneH} />
-        <Waveform track={track} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} />
+        <Waveform track={track} clips={track.clips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} />
         {p.autoOn && <AutomationOverlay track={track} pxPerSec={pxPerSec} height={laneH} />}
+        {/* scissors hover highlight */}
+        {hoveredClipId && tool === 'scissors' && (() => {
+          const clip = track.clips.find(c => c.id === hoveredClipId);
+          if (!clip) return null;
+          return <div style={{ position: "absolute", top: 0, bottom: 0,
+            left: clip.start * pxPerSec, width: (clip.end - clip.start) * pxPerSec,
+            background: "rgba(232,176,75,.07)", border: "1px solid rgba(232,176,75,.3)",
+            pointerEvents: "none" }} />;
+        })()}
+        {/* join hover highlight */}
+        {hoveredClipId && tool === 'join' && (() => {
+          const ci = track.clips ? track.clips.findIndex(c => c.id === hoveredClipId) : -1;
+          if (ci < 0 || !track.clips) return null;
+          const clipA = track.clips[ci], clipB = track.clips[ci + 1] || track.clips[ci - 1];
+          if (!clipA || !clipB) return null;
+          const x1 = Math.min(clipA.start, clipB.start) * pxPerSec;
+          const x2 = Math.max(clipA.end, clipB.end) * pxPerSec;
+          return <div style={{ position: "absolute", top: 0, bottom: 0,
+            left: x1, width: x2 - x1,
+            background: "rgba(159,191,122,.07)", border: "1px solid rgba(159,191,122,.3)",
+            pointerEvents: "none" }} />;
+        })()}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none" }} />
       </div>
     </div>

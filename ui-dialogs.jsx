@@ -115,6 +115,35 @@ function LoaderScreen({ onOpen }) {
   );
 }
 
+/* ---------- MP3 encoder (browser / lamejs fallback) ---------- */
+async function audioBufferToMp3(audioBuf, bitrate, onProgress) {
+  const lame = window.lamejs;
+  if (!lame) throw new Error("lamejs not loaded");
+  const numCh = Math.min(2, audioBuf.numberOfChannels);
+  const sr    = audioBuf.sampleRate;
+  const enc   = new lame.Mp3Encoder(numCh, sr, bitrate);
+  const toI16 = (f32) => {
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++)
+      i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32767 | 0));
+    return i16;
+  };
+  const L = toI16(audioBuf.getChannelData(0));
+  const R = numCh > 1 ? toI16(audioBuf.getChannelData(1)) : L;
+  const block = 1152;
+  const chunks = [];
+  for (let i = 0; i < L.length; i += block) {
+    const mp3 = enc.encodeBuffer(L.subarray(i, i + block), R.subarray(i, i + block));
+    if (mp3.length) chunks.push(new Uint8Array(mp3));
+    if (onProgress) onProgress(Math.min(0.98, i / L.length));
+    if (i % (block * 64) === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  const end = enc.flush();
+  if (end.length) chunks.push(new Uint8Array(end));
+  if (onProgress) onProgress(1);
+  return new Blob(chunks, { type: "audio/mpeg" });
+}
+
 /* ---------- WAV encoder ---------- */
 function audioBufferToWav(buf) {
   const numCh = buf.numberOfChannels, sr = buf.sampleRate, len = buf.length * numCh * 2;
@@ -134,21 +163,52 @@ function audioBufferToWav(buf) {
 
 /* ---------- export dialog ---------- */
 function ExportDialog({ projectName, onClose }) {
-  const [bitrate, setBitrate] = useState(320);
-  const [sr, setSr] = useState(44100);
+  const [format, setFormat]     = useState("mp3");
+  const [bitrate, setBitrate]   = useState(320);
+  const [sr, setSr]             = useState(44100);
   const [normalize, setNormalize] = useState(true);
-  const [stage, setStage] = useState("settings"); // settings | rendering | done
-  const [prog, setProg] = useState(0);
-  const [url, setUrl] = useState(null);
+  const [stage, setStage]       = useState("settings"); // settings | rendering | done
+  const [prog, setProg]         = useState(0);
+  const [stepLabel, setLabel]   = useState("Rendering mix…");
+  const [url, setUrl]           = useState(null);
+  const [ext, setExt]           = useState("mp3");
 
   const render = async () => {
-    setStage("rendering"); setProg(0);
-    const rendered = await DAW.renderMix((p) => setProg(p));
-    const blob = audioBufferToWav(rendered);
+    setStage("rendering"); setProg(0); setLabel("Rendering mix…");
+    const ratio = format === "mp3" ? 0.75 : 1;
+    const rendered = await DAW.renderMix((p) => setProg(p * ratio));
+
+    let blob;
+    if (format === "mp3") {
+      if (window.electronAPI && window.electronAPI.encodeMp3) {
+        // Electron path: ffmpeg
+        setLabel("Encoding MP3 via ffmpeg…"); setProg(0.78);
+        const wavBlob = audioBufferToWav(rendered);
+        const wavAb   = await wavBlob.arrayBuffer();
+        const mp3Ab   = await window.electronAPI.encodeMp3(wavAb, { bitrate, sampleRate: sr });
+        blob = new Blob([mp3Ab], { type: "audio/mpeg" });
+        setProg(1);
+      } else if (window.lamejs) {
+        // Browser path: lamejs
+        setLabel("Encoding MP3…");
+        blob = await audioBufferToMp3(rendered, bitrate, (p) => setProg(0.75 + p * 0.25));
+      } else {
+        // lamejs not loaded: fall back to WAV
+        setLabel("lamejs unavailable — saving WAV…");
+        blob = audioBufferToWav(rendered);
+        setExt("wav");
+      }
+    } else {
+      blob = audioBufferToWav(rendered);
+      setExt("wav");
+    }
+
     setUrl(URL.createObjectURL(blob));
     setStage("done");
   };
-  const fileName = projectName.replace(/[^\w\-]+/g, "_") + ".mp3";
+
+  const baseName = projectName.replace(/[^\w\-]+/g, "_");
+  const fileName = baseName + (format === "mp3" ? ".mp3" : ".wav");
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }} onMouseDown={onClose}>
@@ -163,7 +223,7 @@ function ExportDialog({ projectName, onClose }) {
         {stage === "settings" && (
           <div style={{ padding: 20 }}>
             <Row label="File name"><span className="mono" style={{ fontSize: 12.5, color: "var(--cream-2)" }}>{fileName}</span></Row>
-            <Row label="Format"><Seg small value="mp3" onChange={() => {}} options={[{ v: "mp3", l: "MP3" }, { v: "wav", l: "WAV" }]} /></Row>
+            <Row label="Format"><Seg small value={format} onChange={setFormat} options={[{ v: "mp3", l: "MP3" }, { v: "wav", l: "WAV" }]} /></Row>
             <Row label="Bitrate"><Seg small value={bitrate} onChange={setBitrate} options={[{ v: 192, l: "192" }, { v: 256, l: "256" }, { v: 320, l: "320 kbps" }]} /></Row>
             <Row label="Sample rate"><Seg small value={sr} onChange={setSr} options={[{ v: 44100, l: "44.1k" }, { v: 48000, l: "48k" }]} /></Row>
             <Row label="Normalize"><button onClick={() => setNormalize(!normalize)} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s" }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
@@ -179,11 +239,15 @@ function ExportDialog({ projectName, onClose }) {
 
         {stage === "rendering" && (
           <div style={{ padding: "34px 24px", textAlign: "center" }}>
-            <div style={{ fontSize: 13, color: "var(--cream-2)", marginBottom: 16 }}>Rendering mix… <span className="mono" style={{ color: "var(--amber)" }}>{Math.round(prog * 100)}%</span></div>
+            <div style={{ fontSize: 13, color: "var(--cream-2)", marginBottom: 16 }}>
+              {stepLabel} <span className="mono" style={{ color: "var(--amber)" }}>{Math.round(prog * 100)}%</span>
+            </div>
             <div style={{ height: 8, background: "var(--surface)", borderRadius: 5, overflow: "hidden" }}>
               <div style={{ height: "100%", width: prog * 100 + "%", background: "linear-gradient(90deg,var(--amber-deep),var(--amber))", borderRadius: 5, transition: "width .12s" }} />
             </div>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 14 }}>offline render · {sr / 1000}kHz · {bitrate}kbps</div>
+            <div className="mono" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 14 }}>
+              offline render · {sr / 1000}kHz{format === "mp3" ? ` · ${bitrate}kbps MP3` : " · WAV"}
+            </div>
           </div>
         )}
 
@@ -191,9 +255,11 @@ function ExportDialog({ projectName, onClose }) {
           <div style={{ padding: "30px 24px", textAlign: "center" }}>
             <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" }}><Icon name="check" size={26} /></div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Mixdown ready</div>
-            <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(DAW.duration)} · {sr / 1000}kHz</div>
-            <a className="btn primary" href={url} download={fileName.replace(/\.mp3$/, ".wav")} style={{ textDecoration: "none", justifyContent: "center" }}><Icon name="download" size={15} /> Save file</a>
-            <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 12, lineHeight: 1.5 }}>Browser preview renders WAV — the native build pipes through ffmpeg for true MP3 encode.</div>
+            <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(DAW.duration)} · {sr / 1000}kHz · {ext.toUpperCase()}</div>
+            <a className="btn primary" href={url} download={fileName} style={{ textDecoration: "none", justifyContent: "center" }}><Icon name="download" size={15} /> Save file</a>
+            {format === "mp3" && !window.electronAPI && (
+              <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 12, lineHeight: 1.5 }}>Browser preview renders WAV — the native build pipes through ffmpeg for true MP3 encode.</div>
+            )}
             <button className="btn ghost" onClick={onClose} style={{ marginTop: 8 }}>Done</button>
           </div>
         )}
@@ -206,4 +272,99 @@ function Row({ label, children }) {
     <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{label}</span>{children}</div>;
 }
 
-Object.assign(window, { LoaderScreen, ExportDialog, Logo, audioBufferToWav });
+/* ---------- settings dialog ---------- */
+const THEMES = [
+  {
+    id: "default",
+    name: "Warm Analog",
+    desc: "espresso + amber · vintage console",
+    bg: "#1b1712", bg2: "#221d17", surface: "#2a2520",
+    accent: "#e8b04b", text: "#efe6d4", text2: "#b0a690",
+    green: "#94c06a", red: "#d96a4e", blue: "#7fb0c4",
+  },
+  {
+    id: "ivory",
+    name: "Classical Ivory",
+    desc: "warm paper · deep amber · bright & calm",
+    bg: "#efe7d6", bg2: "#e7ddc8", surface: "#f8f3e8",
+    accent: "#bf7f2e", text: "#3b3327", text2: "#6e6149",
+    green: "#7c9a4f", red: "#c2593b", blue: "#5f86a6",
+  },
+  {
+    id: "blue",
+    name: "Modern Blue",
+    desc: "deep navy · cool accent · bold & focused",
+    bg: "#0e1b30", bg2: "#13243d", surface: "#1c3050",
+    accent: "#5b9bd5", text: "#eaf1fb", text2: "#a7b8d0",
+    green: "#3fb985", red: "#e8654a", blue: "#7fb9e8",
+  },
+];
+
+function ThemeSwatch({ theme, active, onClick }) {
+  const t = theme;
+  return (
+    <div onClick={onClick} style={{
+      width: 190, borderRadius: 10, overflow: "hidden", cursor: "pointer",
+      border: `2px solid ${active ? t.accent : "transparent"}`,
+      boxShadow: active ? `0 0 0 3px ${t.accent}44` : "0 2px 10px rgba(0,0,0,.35)",
+      transition: ".15s", background: t.bg,
+    }}>
+      {/* mini menubar */}
+      <div style={{ height: 22, background: t.bg2, display: "flex", alignItems: "center", gap: 6, padding: "0 8px", borderBottom: `1px solid ${t.text}18` }}>
+        <div style={{ width: 7, height: 7, borderRadius: "50%", border: `1.5px solid ${t.accent}` }} />
+        <span style={{ fontSize: 9, fontWeight: 700, color: t.accent, letterSpacing: ".08em" }}>PROJECT</span>
+        <span style={{ fontSize: 9, color: t.text2 }}>Edit · View</span>
+      </div>
+      {/* mini tracks */}
+      {[["Drums", t.accent, "62%"], ["Bass", t.blue, "44%"], ["Lead", t.green, "55%"]].map(([name, col, fill]) => (
+        <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderBottom: `1px solid ${t.text}10` }}>
+          <div style={{ width: 3, height: 18, borderRadius: 2, background: col }} />
+          <span style={{ fontSize: 10, fontWeight: 600, color: t.text, width: 32 }}>{name}</span>
+          <div style={{ flex: 1, height: 3, background: t.surface, borderRadius: 2, position: "relative" }}>
+            <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: fill, background: t.accent, borderRadius: 2 }} />
+          </div>
+        </div>
+      ))}
+      {/* palette bar */}
+      <div style={{ display: "flex", height: 8 }}>
+        {[t.bg, t.surface, t.text, t.accent, t.green, t.red, t.blue].map((c, i) => (
+          <div key={i} style={{ flex: 1, background: c }} />
+        ))}
+      </div>
+      {/* label */}
+      <div style={{ padding: "7px 10px", background: t.bg2 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: t.text }}>{t.name}</div>
+        <div style={{ fontSize: 10, color: t.text2, marginTop: 2 }}>{t.desc}</div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 680, maxWidth: "95vw", boxShadow: "var(--shadow)" }}>
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Settings</div>
+          <button className="iconbtn" onClick={onClose} style={{ fontSize: 18, lineHeight: 1 }}>×</button>
+        </div>
+        {/* body */}
+        <div style={{ padding: "20px 22px 24px" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 14 }}>Color Theme</div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {THEMES.map(t => (
+              <ThemeSwatch key={t.id} theme={t} active={currentTheme === t.id} onClick={() => onThemeChange(t.id)} />
+            ))}
+          </div>
+        </div>
+        <div style={{ padding: "12px 22px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "flex-end" }}>
+          <button className="btn primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { LoaderScreen, ExportDialog, SettingsDialog, Logo, audioBufferToWav });
