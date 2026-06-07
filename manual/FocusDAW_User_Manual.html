@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusDAW Studio - 사용자 메뉴얼</title>
+    <style>
+        body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; padding: 0; background: #1b1712; color: #efe6d4; line-height: 1.6; }
+        header { background: linear-gradient(#2a2520, #1b1712); padding: 2rem; text-align: center; border-bottom: 3px solid #e8b04b; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+        h1, h2, h3 { color: #e8b04b; }
+        h1 { font-size: 2.4rem; margin: 0; }
+        .toc { background: #2a2520; padding: 1.5rem; border-radius: 12px; margin: 2rem 0; }
+        .toc ul { list-style: none; padding: 0; }
+        .toc a { color: #d8cdb6; text-decoration: none; }
+        .toc a:hover { color: #e8b04b; }
+        img { max-width: 100%; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); margin: 1.5rem 0; border: 1px solid #3d362d; }
+        section { margin-bottom: 4rem; }
+        .card { background: #2a2520; padding: 1.5rem; border-radius: 10px; border: 1px solid #3d362d; margin: 1rem 0; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        th, td { padding: 12px; border: 1px solid #3d362d; text-align: left; }
+        th { background: #332e27; color: #e8b04b; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>FocusDAW Studio</h1>
+        <p style="font-size: 1.3rem; margin-top: 0.5rem;">Stem 기반 경량 DAW 사용자 메뉴얼 (v0.15.20)</p>
+    </header>
+
+    <div class="container">
+        <div class="toc">
+            <h2>목차</h2>
+            <ul>
+                <li><a href="#intro">1. 소개</a></li>
+                <li><a href="#top-menu">2. 상단 메뉴 & 컨트롤바</a></li>
+                <li><a href="#minimap">3. Timeline Minimap</a></li>
+                <li><a href="#tracks">4. 트랙 기능 상세</a></li>
+                <li><a href="#mixer">5. Mixer 창</a></li>
+                <li><a href="#output">6. Output Effect Track</a></li>
+                <li><a href="#export">7. Export MP3</a></li>
+                <li><a href="#shortcuts">8. 단축키</a></li>
+            </ul>
+        </div>
+
+        <section id="intro">
+            <h2>1. 소개</h2>
+            <p>FocusDAW는 Stem(드럼, 베이스, 키보드, 보컬 등) 파일들을 불러와 구간 편집, 볼륨 오토메이션, 이펙트 적용 후 MP3/WAV로 믹스다운하는 경량 DAW입니다.</p>
+            <img src="screens/arrange.png" alt="Arrange 화면">
+        </section>
+
+        <section id="top-menu">
+            <h2>2. 상단 메뉴 & 컨트롤바</h2>
+            <div class="card">
+                <h3>Project 드롭다운</h3>
+                <ul>
+                    <li><strong>New Project</strong> — 새 프로젝트 시작</li>
+                    <li><strong>Open Project</strong> — .focus 파일 열기</li>
+                    <li><strong>Save Project</strong> — 현재 프로젝트 저장</li>
+                    <li><strong>Import Stem Folder</strong> — 폴더에서 오디오 파일 일괄 불러오기</li>
+                    <li><strong>Import Audio Files</strong> — 개별 파일 선택</li>
+                    <li><strong>Load Demo Session</strong> — 데모 4 Stem 로드</li>
+                    <li><strong>Export MP3</strong> — 최종 믹스다운</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>Zoom & Tool</h3>
+                <p><strong>TIME 줌</strong>: 슬라이더 또는 +/- 버튼, Minimap 휠</p>
+                <p><strong>AMP 줌</strong>: 파형 진폭 확대/축소</p>
+                <p><strong>Tool</strong>: Select (S), Scissors (C), Join (J)</p>
+                <img src="screens/zoomslider.png" alt="Zoom 슬라이더">
+            </div>
+        </section>
+
+        <section id="minimap">
+            <h2>3. Timeline Minimap 사용법</h2>
+            <p>전체 곡을 한눈에 볼 수 있는 미니맵입니다.</p>
+            <ul>
+                <li>클릭/드래그 → 해당 위치로 빠르게 이동</li>
+                <li>휠 스크롤 → TIME 줌 In/Out</li>
+                <li>노란색 브라켓 → 현재 화면에 보이는 영역 표시</li>
+                <li>세로 플레이바 → 현재 재생 위치</li>
+            </ul>
+            <img src="screens/arrange2.png" alt="Minimap 포함 화면">
+        </section>
+
+        <section id="tracks">
+            <h2>4. 각 Track 기능 상세</h2>
+            <img src="screens/tracks.png" alt="Track 예시">
+
+            <div class="card">
+                <h3>Track Header (좌측)</h3>
+                <ul>
+                    <li><strong>Solo (S)</strong> — 해당 트랙만 듣기</li>
+                    <li><strong>Mute (M)</strong> — 해당 트랙 음소거</li>
+                    <li><strong>Volume Fader</strong> — 트랙 볼륨 조절</li>
+                    <li><strong>Pan Knob</strong> — 좌우 팬닝</li>
+                    <del><li><strong>VU Meter</strong> — 실시간 레벨 표시</li></del>
+                    <li><strong>VOL AUTO</strong> — Volume Automation On/Off</li>
+                    <li><strong>Trash</strong> — 트랙 삭제</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>Track Lane (타임라인)</h3>
+                <ul>
+                    <li>Scissors (C) — 클릭으로 클립 분할</li>
+                    <li>Join (J) — 인접 클립 병합</li>
+                    <li>Automation — 파형 위에서 포인트 드래그, 클릭 추가, 우클릭 삭제</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="mixer">
+            <h2>5. Mixer 창</h2>
+            <img src="screens/mixer.png" alt="Mixer 화면">
+            <img src="screens/mixer-master.png" alt="Master Mixer">
+            <p>Mixer 버튼 클릭 → 드래그 가능한 별도 창이 열립니다.</p>
+            <img src="screens/mixer-button.png" alt="Mixer Button">
+        </section>
+
+        <section id="output">
+            <h2>6. Output Effect Track</h2>
+            <p>하단 전용 트랙에서 Master EQ, Fade In/Out을 조절할 수 있습니다.</p>
+        </section>
+
+        <section id="export">
+            <h2>7. Export MP3</h2>
+            <p>Export 버튼 → 파일명, MP3/WAV, Bitrate 등을 선택 후 렌더링</p>
+        </section>
+
+        <section id="shortcuts">
+            <h2>8. 단축키</h2>
+            <table>
+                <tr><th>키</th><th>기능</th></tr>
+                <tr><td>Space</td><td>Play / Pause</td></tr>
+                <tr><td>S / C / J</td><td>Select / Scissors / Join</td></tr>
+                <tr><td>⌘S</td><td>Save Project</td></tr>
+                <tr><td>⌘O</td><td>Open Project</td></tr>
+                <tr><td>⌘E</td><td>Export MP3</td></tr>
+            </table>
+        </section>
+
+        <footer style="text-align:center; margin-top:4rem; color:#857c6b; font-size:0.9rem;">
+            FocusDAW Studio User Manual © 2026
+        </footer>
+    </div>
+</body>
+</html>
