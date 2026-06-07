@@ -205,15 +205,17 @@
 
   let ctx = null;
   let convolver = null;
-  let masterBus, eqLow, eqMid, eqHigh, masterFade, masterVol, masterAnalyser;
+  let masterBus, eqNodes = [], masterFade, masterVol, masterMix, masterAnalyser, mRevSend, mEchoSend, mDelay, mFb, mConv;
+  const EQ_FREQS = [60, 150, 320, 640, 1200, 2400, 4800, 9000, 15000]; // 3 low / 3 mid / 3 high
   const Engine = {
     ctx: null,
     duration: DURATION,
     bpm: BPM,
     bars: BARS,
     secPerBar: SECPERBAR,
+    EQ_FREQS,
     tracks: [],
-    master: { volume: 0.9, eqLow: 0, eqMid: 0, eqHigh: 0, fadeIn: 0.6, fadeOut: 1.4 },
+    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.6, fadeOut: 1.4 },
     isPlaying: false,
     _startTime: 0,
     _offset: 0,
@@ -229,21 +231,36 @@
 
       // master chain
       masterBus = ctx.createGain();
-      eqLow = ctx.createBiquadFilter(); eqLow.type = "lowshelf"; eqLow.frequency.value = 160;
-      eqMid = ctx.createBiquadFilter(); eqMid.type = "peaking"; eqMid.frequency.value = 1000; eqMid.Q.value = 0.9;
-      eqHigh = ctx.createBiquadFilter(); eqHigh.type = "highshelf"; eqHigh.frequency.value = 6500;
+      // 9-band graphic EQ (3 low / 3 mid / 3 high)
+      eqNodes = EQ_FREQS.map((f, i) => {
+        const b = ctx.createBiquadFilter();
+        b.type = "peaking"; b.frequency.value = f; b.Q.value = 1.1; b.gain.value = this.master.bands[i] || 0;
+        return b;
+      });
       masterFade = ctx.createGain();
       masterVol = ctx.createGain(); masterVol.gain.value = this.master.volume;
+      // master FX (reverb + echo) inserted post-volume
+      mConv = ctx.createConvolver(); mConv.buffer = makeIR(ctx, 2.8, 3.0);
+      mRevSend = ctx.createGain(); mRevSend.gain.value = this.master.reverb;
+      mDelay = ctx.createDelay(1.2); mDelay.delayTime.value = 0.3;
+      mFb = ctx.createGain(); mFb.gain.value = 0.36;
+      mEchoSend = ctx.createGain(); mEchoSend.gain.value = this.master.echo;
+      masterMix = ctx.createGain();
       const masterComp = ctx.createDynamicsCompressor();
       masterComp.threshold.value = -2; masterComp.knee.value = 4; masterComp.ratio.value = 12;
       masterComp.attack.value = 0.003; masterComp.release.value = 0.18;
       masterAnalyser = ctx.createAnalyser(); masterAnalyser.fftSize = 1024;
 
-      masterBus.connect(eqLow); eqLow.connect(eqMid); eqMid.connect(eqHigh);
-      eqHigh.connect(masterFade); masterFade.connect(masterVol);
-      masterVol.connect(masterComp); masterComp.connect(masterAnalyser); masterAnalyser.connect(ctx.destination);
+      // chain EQ bands in series
+      let node = masterBus;
+      eqNodes.forEach((b) => { node.connect(b); node = b; });
+      node.connect(masterFade); masterFade.connect(masterVol);
+      masterVol.connect(masterMix);                                                            // dry
+      masterVol.connect(mRevSend); mRevSend.connect(mConv); mConv.connect(masterMix);          // master reverb
+      masterVol.connect(mEchoSend); mEchoSend.connect(mDelay); mDelay.connect(mFb); mFb.connect(mDelay); mDelay.connect(masterMix); // master echo
+      masterMix.connect(masterComp); masterComp.connect(masterAnalyser); masterAnalyser.connect(ctx.destination);
 
-      // reverb return
+      // per-track reverb return (pre-EQ bus)
       const revReturn = ctx.createGain(); revReturn.gain.value = 0.9;
       convolver.connect(revReturn); revReturn.connect(masterBus);
       this._revReturn = revReturn;
@@ -311,6 +328,21 @@
 
     _anySolo() { return this.tracks.some((t) => t.params.solo); },
 
+    addDemoTracks() {
+      this.init();
+      TRACK_DEFS.forEach((def) => {
+        const buffer = renderMono(ctx, (ch, sr) => def.synth(ch, sr));
+        this._addTrack({ name: def.name, type: def.type, color: def.color, buffer });
+      });
+      this._spectrum = null;
+    },
+    clearTracks() {
+      this.stop();
+      this.tracks.length = 0;
+      this.duration = DURATION;
+      this._spectrum = null;
+    },
+
     _applyMix() {
       const anySolo = this._anySolo();
       this.tracks.forEach((t) => {
@@ -340,10 +372,62 @@
       this.master[key] = val;
       if (!ctx) return;
       if (key === "volume") ramp(masterVol.gain, val);
-      if (key === "eqLow") ramp(eqLow.gain, val);
-      if (key === "eqMid") ramp(eqMid.gain, val);
-      if (key === "eqHigh") ramp(eqHigh.gain, val);
+      if (key === "reverb") ramp(mRevSend.gain, val);
+      if (key === "echo") ramp(mEchoSend.gain, val);
       if ((key === "fadeIn" || key === "fadeOut") && this.isPlaying) this._scheduleFade();
+    },
+
+    setMasterBand(i, db) {
+      this.master.bands[i] = db;
+      if (eqNodes[i]) ramp(eqNodes[i].gain, db);
+    },
+    setMasterGroup(group, db) { // 0=low 1=mid 2=high
+      for (let i = group * 3; i < group * 3 + 3; i++) this.setMasterBand(i, db);
+    },
+    getMasterGroup(group) {
+      const b = this.master.bands;
+      return (b[group * 3] + b[group * 3 + 1] + b[group * 3 + 2]) / 3;
+    },
+
+    // averaged magnitude spectrum of the whole song (static FFT), cached
+    computeSpectrum() {
+      this.init();
+      const key = this.tracks.length + ":" + this.duration.toFixed(2);
+      if (this._spectrum && this._specKey === key) return this._spectrum;
+      const sr = ctx.sampleRate, N = 2048;
+      const total = Math.floor(this.duration * sr);
+      const mono = new Float32Array(total);
+      this.tracks.forEach((t) => {
+        const ch = t.buffer.getChannelData(0);
+        const m = Math.min(total, ch.length);
+        for (let i = 0; i < m; i++) mono[i] += ch[i];
+      });
+      const win = new Float32Array(N);
+      for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
+      const mag = new Float32Array(N / 2);
+      const totalFrames = Math.max(1, Math.floor((total - N) / N));
+      const stride = Math.max(1, Math.floor(totalFrames / 200));
+      let count = 0;
+      for (let f = 0; f + N <= total; f += N * stride) {
+        const re = new Float32Array(N), im = new Float32Array(N);
+        for (let i = 0; i < N; i++) re[i] = mono[f + i] * win[i];
+        fft(re, im);
+        for (let i = 0; i < N / 2; i++) mag[i] += Math.hypot(re[i], im[i]);
+        count++;
+      }
+      for (let i = 0; i < N / 2; i++) mag[i] /= Math.max(1, count);
+      const fmin = 30, fmax = Math.min(20000, sr / 2), P = 150, pts = [];
+      let mn = Infinity, mx = -Infinity;
+      for (let p = 0; p < P; p++) {
+        const fr = fmin * Math.pow(fmax / fmin, p / (P - 1));
+        const bin = Math.min(N / 2 - 1, Math.max(1, Math.round(fr / (sr / N))));
+        const db = 20 * Math.log10(mag[bin] + 1e-6);
+        pts.push({ f: fr, db });
+        mn = Math.min(mn, db); mx = Math.max(mx, db);
+      }
+      pts.forEach((p) => (p.n = (p.db - mn) / Math.max(1e-6, mx - mn)));
+      this._spectrum = pts; this._specKey = key;
+      return pts;
     },
 
     _scheduleAutomation() {
@@ -491,14 +575,28 @@
       // rebuild graph in offline ctx
       const conv = off.createConvolver(); conv.buffer = makeIR(off, 2.4, 2.6);
       const mBus = off.createGain();
-      const lo = off.createBiquadFilter(); lo.type = "lowshelf"; lo.frequency.value = 160; lo.gain.value = this.master.eqLow;
-      const mid = off.createBiquadFilter(); mid.type = "peaking"; mid.frequency.value = 1000; mid.Q.value = 0.9; mid.gain.value = this.master.eqMid;
-      const hi = off.createBiquadFilter(); hi.type = "highshelf"; hi.frequency.value = 6500; hi.gain.value = this.master.eqHigh;
+      // 9-band master EQ
+      let node = mBus;
+      EQ_FREQS.forEach((f, i) => {
+        const b = off.createBiquadFilter(); b.type = "peaking"; b.frequency.value = f; b.Q.value = 1.1; b.gain.value = this.master.bands[i] || 0;
+        node.connect(b); node = b;
+      });
       const fade = off.createGain();
       const mv = off.createGain(); mv.gain.value = this.master.volume;
+      // master FX
+      const mConvO = off.createConvolver(); mConvO.buffer = makeIR(off, 2.8, 3.0);
+      const mRev = off.createGain(); mRev.gain.value = this.master.reverb;
+      const mDel = off.createDelay(1.2); mDel.delayTime.value = 0.3;
+      const mFbO = off.createGain(); mFbO.gain.value = 0.36;
+      const mEch = off.createGain(); mEch.gain.value = this.master.echo;
+      const mMix = off.createGain();
       const comp = off.createDynamicsCompressor();
       comp.threshold.value = -2; comp.knee.value = 4; comp.ratio.value = 12; comp.attack.value = 0.003; comp.release.value = 0.18;
-      mBus.connect(lo); lo.connect(mid); mid.connect(hi); hi.connect(fade); fade.connect(mv); mv.connect(comp); comp.connect(off.destination);
+      node.connect(fade); fade.connect(mv);
+      mv.connect(mMix);
+      mv.connect(mRev); mRev.connect(mConvO); mConvO.connect(mMix);
+      mv.connect(mEch); mEch.connect(mDel); mDel.connect(mFbO); mFbO.connect(mDel); mDel.connect(mMix);
+      mMix.connect(comp); comp.connect(off.destination);
       const rr = off.createGain(); rr.gain.value = 0.9; conv.connect(rr); rr.connect(mBus);
       // fade automation
       const fi = Math.min(this.master.fadeIn, this.duration / 2);
@@ -541,6 +639,29 @@
   };
 
   // ---------- helpers exposed ----------------------------------
+  function fft(re, im) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { const tr = re[i]; re[i] = re[j]; re[j] = tr; const ti = im[i]; im[i] = im[j]; im[j] = ti; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let cr = 1, ci = 0;
+        for (let k = 0; k < len / 2; k++) {
+          const ur = re[i + k], ui = im[i + k];
+          const vr = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci;
+          const vi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+          re[i + k] = ur + vr; im[i + k] = ui + vi;
+          re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+          const ncr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = ncr;
+        }
+      }
+    }
+  }
   function ramp(param, val) {
     if (!param || !ctx) return;
     try {

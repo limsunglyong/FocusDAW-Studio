@@ -60,6 +60,10 @@ h1.page{font-size:30px;font-weight:700;color:#3a342c;letter-spacing:-.02em;margi
 <div class="sec-h"><h2>Mixer channel strip</h2><span class="note">vertical strip in the Mixer window</span></div>
 <div class="grid" id="strips"></div>
 
+<!-- ============ COLOR SCHEMES ============ -->
+<div class="sec-h"><h2>App color schemes</h2><span class="note">whole-app palette directions — shown as a mini studio + swatches</span></div>
+<div class="grid" id="schemes"></div>
+
 <script>
 const W=244;
 // mini meter
@@ -144,6 +148,59 @@ function frame(v,inner){return `<div class="frame"><div class="flabel"><b>${v.na
 document.getElementById('headers').innerHTML=headerVariants.map(v=>frame(v,v.html)).join('');
 document.getElementById('autos').innerHTML=autoVariants.map(v=>frame(v,`<div style="width:300px;height:80px;position:relative;background:var(--bg2)"><svg width="300" height="80" style="display:block">${v.svg}</svg></div>`)).join('');
 document.getElementById('strips').innerHTML=stripVariants.map(v=>frame(v,v.html)).join('');
+
+/* ---------- COLOR SCHEMES ---------- */
+const schemes=[
+ {tag:'shipped',name:'Warm Analog',desc:'espresso + amber · vintage console (current)',
+  c:{bg:'#1b1712',bg2:'#221d17',surface:'#2a2520',line:'rgba(232,212,170,.14)',text:'#efe6d4',text2:'#b0a690',muted:'#857c6b',
+     accent:'#e8b04b',green:'#94c06a',amber:'#e8b04b',red:'#d96a4e',blue:'#7fb0c4',wave:'#e8b04b',panel:'#1b1712'}},
+ {tag:'proposed',name:'Classical Ivory',desc:'warm ivory & paper, deep amber — bright, calm, classic',
+  c:{bg:'#efe7d6',bg2:'#e7ddc8',surface:'#f8f3e8',line:'rgba(95,75,42,.18)',text:'#3b3327',text2:'#6e6149',muted:'#9a8c6e',
+     accent:'#bf7f2e',green:'#7c9a4f',amber:'#caa53f',red:'#c2593b',blue:'#5f86a6',wave:'#bf7f2e',panel:'#f8f3e8'}},
+ {tag:'proposed',name:'Modern Blue',desc:'deep navy background, white accent — bold, focused, pro',
+  c:{bg:'#0e1b30',bg2:'#13243d',surface:'#1c3050',line:'rgba(180,205,235,.16)',text:'#eaf1fb',text2:'#a7b8d0',muted:'#6f82a0',
+     accent:'#ffffff',green:'#3fb985',amber:'#e7b13e',red:'#e8654a',blue:'#5b9bd5',wave:'#5b9bd5',panel:'#0e1b30'}},
+];
+function schemeMock(s){
+  const c=s.c;
+  const meterMini=(h,lvl)=>{let o='';const segs=Math.round(h/5);for(let i=0;i<segs;i++){const f=i/segs;const on=f<lvl;const col=f>.82?c.red:f>.6?c.amber:c.green;o+=`<i style="flex:1;width:6px;background:${on?col:c.line};opacity:${on?1:.5};border-radius:1px"></i>`;}return `<div style="display:flex;flex-direction:column-reverse;gap:1.5px;height:${h}px">${o}</div>`;};
+  const row=(name,col,lvl,fill)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid ${c.line}">
+     <div style="width:3px;height:24px;border-radius:2px;background:${col}"></div>
+     <span style="font-size:11.5px;font-weight:600;color:${c.text};width:46px">${name}</span>
+     <div style="flex:1;height:4px;background:${c.line};border-radius:2px;position:relative"><div style="position:absolute;left:0;top:0;height:100%;width:${fill}%;background:${c.accent};border-radius:2px"></div><div style="position:absolute;left:${fill}%;top:50%;width:11px;height:11px;border-radius:50%;background:${c.accent};transform:translate(-50%,-50%);box-shadow:0 1px 2px rgba(0,0,0,.3)"></div></div>
+     <div style="width:18px;height:18px;border-radius:5px;background:${c.accent};color:${c.panel};font-size:10px;font-weight:700;display:grid;place-items:center">S</div>
+     <div style="width:18px;height:18px;border-radius:5px;background:${c.surface};border:1px solid ${c.line};color:${c.muted};font-size:10px;font-weight:700;display:grid;place-items:center">M</div>
+     ${meterMini(18,lvl)}
+   </div>`;
+  const wave=`<svg width="100%" height="44" viewBox="0 0 300 44" preserveAspectRatio="none" style="display:block;background:${c.panel}"><path d="${wavePath(300,44,5)}" fill="${c.wave}33" stroke="${c.wave}" stroke-width="1"/></svg>`;
+  const eq=`<svg width="100%" height="68" viewBox="0 0 300 68" preserveAspectRatio="none" style="display:block;border-radius:6px;background:${c.bg2}">
+    <path d="M0 68 ${[...Array(31)].map((_,i)=>{const x=i*10;const y=46-Math.abs(Math.sin(i/2.6))*26-(i<10?8:0);return `L${x} ${y.toFixed(0)}`}).join(' ')} L300 68 Z" fill="${c.text2}22" stroke="${c.text2}55"/>
+    <line x1="0" y1="34" x2="300" y2="34" stroke="${c.line}"/>
+    <path d="M0 30 C70 18 115 12 150 20 C200 32 245 40 300 28" fill="none" stroke="${c.accent}" stroke-width="2"/>
+    ${[[50,20,c.red],[150,20,c.amber],[250,30,c.blue]].map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="5" fill="${p[2]}" stroke="${c.bg2}" stroke-width="1.5"/>`).join('')}
+  </svg>`;
+  return `<div style="width:332px;border-radius:12px;overflow:hidden;border:1px solid ${c.line};box-shadow:0 16px 36px -18px rgba(0,0,0,.45)">
+    <div style="height:30px;display:flex;align-items:center;gap:8px;padding:0 11px;background:${c.bg2};border-bottom:1px solid ${c.line}">
+      <div style="width:11px;height:11px;border-radius:50%;border:2px solid ${c.accent}"></div>
+      <span style="font-size:11px;font-weight:700;color:${c.accent}">Project</span>
+      <span style="font-size:11px;color:${c.muted}">Edit · View</span>
+      <span style="margin-left:auto;font-size:10.5px;color:${c.text2};font-weight:600;white-space:nowrap">Midnight Drive</span>
+    </div>
+    <div>${row('Drums',c.accent,.7,62)}${row('Bass',c.blue,.5,44)}</div>
+    ${wave}
+    <div style="padding:9px 10px;background:${c.bg};display:flex;flex-direction:column;gap:7px;border-top:1px solid ${c.line}">
+      <div style="display:flex;align-items:center;gap:6px"><span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:${c.accent}">MASTER</span><span style="font-size:8.5px;color:${c.muted}">graphic EQ · FFT</span></div>
+      ${eq}
+    </div>
+  </div>`;
+}
+function palette(c){const keys=[['bg',c.bg],['surface',c.surface],['text',c.text],['accent',c.accent],['green',c.green],['amber',c.amber],['red',c.red],['blue',c.blue]];
+  return `<div style="display:flex;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,.18);width:332px;margin-top:11px">${keys.map(k=>`<div title="${k[0]} ${k[1]}" style="flex:1;height:28px;background:${k[1]}"></div>`).join('')}</div>`;}
+function schemeFrame(s){
+  const badge = s.tag==='shipped' ? '<span class="pill">shipped</span>' : '<span class="pill" style="color:#2a6fb0;background:rgba(42,111,219,.16)">proposed</span>';
+  return `<div class="frame"><div class="flabel"><b>${s.name}</b>${badge}<span>${s.desc}</span></div>${schemeMock(s)}${palette(s.c)}</div>`;
+}
+document.getElementById('schemes').innerHTML=schemes.map(schemeFrame).join('');
 </script>
 </body>
 </html>
