@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FocusDAW Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
+  --line:rgba(232,212,170,.10); --line-strong:rgba(232,212,170,.18);
+  --cream:#efe6d4; --cream-2:#d8cdb6; --dim:#b0a690; --muted:#857c6b; --faint:#5f574a;
+  --amber:#e8b04b; --amber-deep:#c8893a; --amber-soft:rgba(232,176,75,.16);
+  --green:#94c06a; --green-deep:#6e9a48; --red:#d96a4e; --blue:#7fb0c4; --violet:#c98fb0;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.7);
+  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0d0b09;overflow:hidden}
+body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;
+  font-size:13px;line-height:1.35;}
+#root{height:100vh;width:100vw}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+::selection{background:var(--amber-soft)}
+.mono{font-family:var(--mono);font-feature-settings:"tnum"1}
+/* scrollbars */
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#3a342c;border-radius:6px;border:3px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:#4a4338}
+
+/* ---- app window shell ---- */
+.app{height:100vh;display:flex;flex-direction:column;background:var(--bg);
+  border-radius:0;overflow:hidden}
+.titlebar{height:38px;flex:0 0 38px;display:flex;align-items:center;gap:14px;
+  padding:0 14px;background:linear-gradient(#262019,#1f1a14);
+  border-bottom:1px solid var(--line);user-select:none}
+.lights{display:flex;gap:8px}
+.light{width:12px;height:12px;border-radius:50%}
+.l-r{background:#e0604d} .l-y{background:#e3b341} .l-g{background:#71b56a}
+.title-c{flex:1;text-align:center;font-size:12.5px;color:var(--dim);letter-spacing:.02em}
+.title-c b{color:var(--cream-2);font-weight:600}
+.title-badge{font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--amber);
+  border:1px solid var(--amber-deep);padding:2px 7px;border-radius:5px;text-transform:uppercase}
+.menubar{height:30px;flex:0 0 30px;display:flex;align-items:stretch;gap:1px;
+  padding:0 8px;background:var(--bg2);border-bottom:1px solid var(--line);user-select:none}
+.menu-item{display:flex;align-items:center;padding:0 11px;font-size:12.5px;color:var(--cream-2);
+  border-radius:6px;margin:4px 0;cursor:default}
+.menu-item:hover{background:var(--surface)}
+
+button.btn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 14px;
+  border-radius:8px;background:var(--surface2);color:var(--cream);font-weight:500;font-size:13px;
+  border:1px solid var(--line-strong);transition:.12s}
+button.btn:hover{background:var(--surface3);border-color:var(--amber-deep)}
+button.btn.primary{background:var(--amber);color:#241a0a;border-color:var(--amber);font-weight:600}
+button.btn.primary:hover{background:#f2bd5c}
+button.btn.ghost{background:transparent;border-color:transparent}
+button.btn.ghost:hover{background:var(--surface)}
+
+.iconbtn{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:8px;color:var(--cream-2);transition:.12s}
+.iconbtn:hover{background:var(--surface2);color:var(--cream)}
+.iconbtn.on{background:var(--amber-soft);color:var(--amber)}
+
+.chip{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  padding:3px 7px;border-radius:5px;background:var(--surface2);color:var(--dim)}
+
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:#3a342c;border-radius:3px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--amber);margin-top:-4.5px;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+
+.tooltip{position:fixed;z-index:9999;background:#0e0c09;color:var(--cream);font-size:11px;
+  padding:4px 8px;border-radius:6px;border:1px solid var(--line-strong);pointer-events:none;
+  font-family:var(--mono)}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.rec-dot{animation:pulse 1.1s ease-in-out infinite}
+
+/* ---- sleek slider ---- */
+.sleek{position:relative;height:15px;cursor:pointer;display:flex;align-items:center}
+.sleek .strack{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:4px;
+  background:#171309;border-radius:3px;box-shadow:inset 0 1px 2px rgba(0,0,0,.7),inset 0 0 0 1px rgba(0,0,0,.4)}
+.sleek .sfill{position:absolute;left:0;top:50%;transform:translateY(-50%);height:4px;border-radius:3px;
+  background:linear-gradient(90deg,var(--amber-deep),var(--amber));box-shadow:0 0 7px rgba(232,176,75,.55)}
+.sleek .stick{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(232,212,170,.20);top:50%;transform:translate(-50%,-50%)}
+.sleek .sthumb{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#ffe0a0,var(--amber) 70%);
+  border:1px solid rgba(0,0,0,.55);box-shadow:0 1px 4px rgba(0,0,0,.6),0 0 0 0 rgba(232,176,75,.4);
+  transform:translate(-50%,-50%);transition:width .12s,height .12s,box-shadow .12s}
+.sleek:hover .sthumb{width:14px;height:14px;box-shadow:0 1px 5px rgba(0,0,0,.6),0 0 0 4px rgba(232,176,75,.16)}
+.sleek:active .sthumb{box-shadow:0 1px 5px rgba(0,0,0,.6),0 0 0 5px rgba(232,176,75,.22)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="audio-engine.js"></script>
+<script type="text/babel" src="ui-kit.jsx"></script>
+<script type="text/babel" src="ui-tracks.jsx"></script>
+<script type="text/babel" src="ui-mixer.jsx"></script>
+<script type="text/babel" src="ui-dialogs.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
