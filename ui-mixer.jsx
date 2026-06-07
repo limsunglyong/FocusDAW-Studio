@@ -121,6 +121,99 @@ function MasterEQ({ width = 320, height = 156 }) {
   );
 }
 
+function MasterViewTab({ active, children, onClick }) {
+  return (
+    <button onClick={onClick} className="chip" style={{
+      fontSize: 9, textTransform: "uppercase", border: "1px solid " + (active ? "rgba(232,176,75,.5)" : "transparent"),
+      color: active ? "var(--amber)" : "var(--dim)", background: active ? "rgba(232,176,75,.12)" : "rgba(255,255,255,.05)",
+      cursor: "pointer",
+    }}>
+      {children}
+    </button>
+  );
+}
+
+function MasterEQOverlay({ width = 300, height = 156 }) {
+  const [, force] = useState(0);
+  const ref = useRef(null);
+  const fmin = 30, fmax = 18000, pad = 14;
+  const freqToX = (f) => (Math.log(f / fmin) / Math.log(fmax / fmin)) * width;
+  const gainToY = (g) => height / 2 - (g / 12) * (height / 2 - pad);
+  const yToGain = (y) => Math.max(-12, Math.min(12, ((height / 2 - y) / (height / 2 - pad)) * 12));
+  const bands = DAW.master.bands;
+  const FQ = DAW.EQ_FREQS;
+  const zoneCol = ["var(--red)", "var(--amber)", "var(--blue)"];
+  const zoneOf = (i) => (i < 3 ? 0 : i < 6 ? 1 : 2);
+  const pts = FQ.map((f, i) => [freqToX(f), gainToY(bands[i])]);
+  const curveP = [[0, gainToY(bands[0])], ...pts, [width, gainToY(bands[8])]];
+  const eqLine = smoothPath(curveP);
+
+  const onPtDown = (i) => (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const move = (ev) => {
+      const r = ref.current.getBoundingClientRect();
+      DAW.setMasterBand(i, Math.round(yToGain(ev.clientY - r.top) * 10) / 10);
+      force((n) => n + 1);
+    };
+    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+  };
+  const resetBand = (i) => (e) => { e.preventDefault(); e.stopPropagation(); DAW.setMasterBand(i, 0); force((n) => n + 1); };
+
+  return (
+    <svg ref={ref} width={width} height={height} style={{ position: "absolute", inset: 0, display: "block", cursor: "ns-resize" }}>
+      {[-12, -6, 0, 6, 12].map((g) => (
+        <line key={g} x1="0" y1={gainToY(g)} x2={width} y2={gainToY(g)}
+          stroke={g === 0 ? "rgba(232,212,170,.24)" : "rgba(232,212,170,.07)"} strokeWidth={g === 0 ? 1 : 0.75} />
+      ))}
+      <path d={`${eqLine} L${width} ${gainToY(0)} L0 ${gainToY(0)} Z`} fill="rgba(232,176,75,.08)" />
+      <path d={eqLine} fill="none" stroke="var(--amber)" strokeWidth="2.2" />
+      {pts.map((p, i) => (
+        <g key={i}>
+          <line x1={p[0]} y1={gainToY(0)} x2={p[0]} y2={p[1]} stroke={zoneCol[zoneOf(i)]} strokeWidth="1" opacity=".45" />
+          <circle cx={p[0]} cy={p[1]} r="6" fill={zoneCol[zoneOf(i)]} stroke="#15110b" strokeWidth="1.6"
+            style={{ cursor: "ns-resize" }} onMouseDown={onPtDown(i)} onDoubleClick={resetBand(i)} />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function MasterLevelMeter({ width = 300, height = 156 }) {
+  useTick();
+  const labels = ["60", "150", "320", "640", "1.2k", "2.4k", "4.8k", "9k", "15k"];
+  const colors = ["var(--red)", "var(--red)", "var(--red)", "var(--amber)", "var(--amber)", "var(--amber)", "var(--blue)", "var(--blue)", "var(--blue)"];
+  const steps = 15;
+  const levels = DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel());
+  return (
+    <div style={{ width, height, position: "relative", borderRadius: 8, background: "#15110b", border: "1px solid rgba(232,212,170,.06)",
+      overflow: "hidden", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.015)" }}>
+      <div style={{ position: "absolute", inset: 0, padding: "11px 12px 16px", display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 8, opacity: .82 }}>
+        {levels.map((lv, i) => {
+          const active = Math.round(Math.max(0, Math.min(1, lv)) * steps);
+          return (
+            <div key={labels[i]} style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{ flex: 1, width: "100%", display: "flex", flexDirection: "column-reverse", gap: 3 }}>
+                {Array.from({ length: steps }).map((_, s) => {
+                  const on = s < active;
+                  const hot = s > steps * 0.78;
+                  return (
+                    <span key={s} style={{ height: 5, borderRadius: 2, background: on ? (hot ? "var(--amber)" : colors[i]) : "rgba(232,212,170,.05)",
+                      boxShadow: on ? `0 0 ${hot ? 10 : 7}px ${hot ? "var(--amber)" : colors[i]}` : "none",
+                      opacity: on ? 0.9 : 1 }} />
+                  );
+                })}
+              </div>
+              <span className="mono" style={{ fontSize: 7.5, color: "var(--faint)" }}>{labels[i]}</span>
+            </div>
+          );
+        })}
+      </div>
+      <MasterEQOverlay width={width} height={height} />
+    </div>
+  );
+}
+
 /* ---------- master effect card ---------- */
 function FxCard({ icon, name, value, color, onChange }) {
   const on = value > 0.001;
@@ -142,20 +235,24 @@ function FxCard({ icon, name, value, color, onChange }) {
 
 /* ---------- master panel (wide) ---------- */
 function MasterPanel({ level, master, onMaster }) {
+  const [view, setView] = useState("eq");
   const grpDb = (g) => master.bands.slice(g * 3, g * 3 + 3).reduce((a, b) => a + b, 0) / 3;
   return (
     <div style={{ width: 392, flex: "0 0 392px", display: "flex", flexDirection: "column", padding: "12px 14px", gap: 11,
       background: "linear-gradient(180deg,rgba(232,176,75,.06),transparent 40%)", borderLeft: "1px solid var(--line-strong)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: "var(--amber)" }}>MASTER</span>
-        <span className="chip" style={{ fontSize: 9 }}>graphic EQ · FFT</span>
+        <MasterViewTab active={view === "eq"} onClick={() => setView("eq")}>Graphic EQ · FFT</MasterViewTab>
+        <MasterViewTab active={view === "meter"} onClick={() => setView("meter")}>Level meter</MasterViewTab>
         <div style={{ flex: 1 }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--cream-2)" }}>{fmtDb(master.volume)} dB</span>
       </div>
 
       {/* EQ + fader row */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-        <div style={{ paddingBottom: 14 }}><MasterEQ width={300} height={156} /></div>
+        <div style={{ paddingBottom: 14 }}>
+          {view === "eq" ? <MasterEQ width={300} height={156} /> : <MasterLevelMeter width={300} height={156} />}
+        </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
           <span style={{ fontSize: 9, color: "var(--muted)", fontWeight: 600, letterSpacing: ".08em" }}>VOL</span>
           <div style={{ display: "flex", gap: 5, alignItems: "flex-end" }}>
@@ -196,7 +293,11 @@ function MasterPanel({ level, master, onMaster }) {
 /* ---------- mixer window (floating, OS-style) ---------- */
 function MixerWindow({ onClose }) {
   useTick();
-  const [pos, setPos] = useState({ x: Math.max(40, window.innerWidth - 760), y: 96 });
+  const channelW = 92;
+  const masterW = 392;
+  const bodyW = DAW.tracks.length * channelW + masterW;
+  const windowW = Math.min(window.innerWidth - 56, bodyW + 2);
+  const [pos, setPos] = useState({ x: Math.max(28, window.innerWidth - windowW - 52), y: 96 });
   const dragRef = useRef(null);
   const onTitleDown = (e) => {
     dragRef.current = { mx: e.clientX, my: e.clientY, x: pos.x, y: pos.y };
@@ -206,19 +307,24 @@ function MixerWindow({ onClose }) {
   };
   const param = (id) => (k, v) => DAW.setTrackParam(id, k, v);
   return (
-    <div style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 1000, width: "min(960px,96vw)",
+    <div style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 1000, width: windowW,
       background: "var(--bg)", borderRadius: 12, border: "1px solid var(--line-strong)", boxShadow: "var(--shadow)", overflow: "hidden" }}>
       <div onMouseDown={onTitleDown} style={{ height: 36, display: "flex", alignItems: "center", gap: 10, padding: "0 12px",
         background: "linear-gradient(#2a2520,#221d17)", borderBottom: "1px solid var(--line)", cursor: "grab" }}>
-        <div className="lights"><span className="light l-r" onClick={onClose} style={{ cursor: "pointer" }} /><span className="light l-y" /><span className="light l-g" /></div>
         <Icon name="mixer" size={15} style={{ color: "var(--amber)", marginLeft: 4 }} />
         <span style={{ fontSize: 12.5, fontWeight: 600 }}>Mixer</span>
-        <span className="chip" style={{ fontSize: 9 }}>separate window</span>
         <div style={{ flex: 1 }} />
-        <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>synced · BroadcastChannel</span>
+        <button onMouseDown={(e) => e.stopPropagation()} onClick={onClose} title="Close mixer"
+          style={{ width: 28, height: 24, borderRadius: 7, display: "grid", placeItems: "center",
+            background: "var(--surface2)", color: "var(--cream-2)", border: "1px solid var(--line-strong)",
+            fontSize: 14, fontWeight: 700, lineHeight: 1 }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--red)"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = "var(--red)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface2)"; e.currentTarget.style.color = "var(--cream-2)"; e.currentTarget.style.borderColor = "var(--line-strong)"; }}>
+          ×
+        </button>
       </div>
-      <div style={{ display: "flex", overflowX: "auto", maxWidth: "100%", background: "repeating-linear-gradient(90deg,transparent,transparent 91px,var(--line) 91px,var(--line) 92px)" }}>
-        <div style={{ display: "flex" }}>
+      <div style={{ display: "flex", overflowX: "auto", maxWidth: "100%", background: "var(--bg)" }}>
+        <div style={{ display: "flex", flex: "0 0 auto" }}>
           {DAW.tracks.map((t) => <ChannelStrip key={t.id} track={t} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} />)}
         </div>
         <MasterPanel level={DAW.getMasterLevel()} master={DAW.master} onMaster={(k, v) => DAW.setMaster(k, v)} />
@@ -269,7 +375,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek }) {
       {/* lane with fade overlay */}
       <div className="outlane" onMouseDown={(e) => { if (e.target.closest(".fadeh")) return; const r = e.currentTarget.getBoundingClientRect(); onSeek(((e.clientX - r.left) / laneW) * DAW.duration); }}
         style={{ position: "relative", width: laneW, height: laneH, background: "rgba(232,176,75,.04)", cursor: "text", overflow: "hidden" }}>
-        <BarGrid pxPerSec={pxPerSec} height={laneH} />
+        <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         {/* EQ band overlay text */}
         <div style={{ position: "absolute", left: 10, top: 6, display: "flex", gap: 10, fontSize: 10, color: "var(--muted)" }} className="mono">
           <span>EQ L{DAW.getMasterGroup(0) >= 0 ? "+" : ""}{DAW.getMasterGroup(0).toFixed(0)}</span>
@@ -291,4 +397,4 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek }) {
   );
 }
 
-Object.assign(window, { ChannelStrip, MasterPanel, MasterEQ, FxCard, MixerWindow, OutputTrack });
+Object.assign(window, { ChannelStrip, MasterPanel, MasterEQ, MasterEQOverlay, MasterViewTab, MasterLevelMeter, FxCard, MixerWindow, OutputTrack });

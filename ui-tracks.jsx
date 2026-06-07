@@ -7,52 +7,97 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   useEffect(() => {
     const cv = ref.current; if (!cv) return;
+    const scrollHost = cv.closest("[data-arrange-scroll]");
     const dpr = window.devicePixelRatio || 1;
-    cv.width = laneW * dpr; cv.height = height * dpr;
-    cv.style.width = laneW + "px"; cv.style.height = height + "px";
-    const c2d = cv.getContext("2d"); c2d.scale(dpr, dpr);
-    c2d.clearRect(0, 0, laneW, height);
-    const peaks = track.peaks; const nb = peaks.length / 2;
+    const peaks = track.peaks || []; const nb = peaks.length / 2;
     const bufDur = track.buffer.duration;
-    const mid = height / 2;
     const clipArr = clips || [{ start: 0, end: bufDur, offset: 0, params: null }];
+    let raf = null;
 
-    clipArr.forEach((clip) => {
-      const clipW = (clip.end - clip.start) * pxPerSec;
-      const clipX = clip.start * pxPerSec;
-      if (clipW <= 0) return;
+    const draw = () => {
+      const hostW = scrollHost ? scrollHost.clientWidth : window.innerWidth;
+      const scrollLeft = scrollHost ? scrollHost.scrollLeft : 0;
+      const overscan = 600;
+      const drawStart = Math.max(0, scrollLeft - overscan);
+      const drawW = Math.max(1, Math.min(laneW - drawStart, hostW + overscan * 2));
+      const bitmapW = Math.max(1, Math.ceil(drawW * dpr));
+      const bitmapH = Math.max(1, Math.ceil(height * dpr));
+      if (cv.width !== bitmapW) cv.width = bitmapW;
+      if (cv.height !== bitmapH) cv.height = bitmapH;
+      cv.style.left = drawStart + "px";
+      cv.style.width = drawW + "px";
+      cv.style.height = height + "px";
 
-      // baseline
-      c2d.strokeStyle = "rgba(255,255,255,.05)"; c2d.lineWidth = 1;
-      c2d.beginPath(); c2d.moveTo(clipX, mid); c2d.lineTo(clipX + clipW, mid); c2d.stroke();
+      const c2d = cv.getContext("2d");
+      c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c2d.clearRect(0, 0, drawW, height);
+      if (!nb || !bufDur) return;
 
-      // waveform body
-      c2d.fillStyle = track.color + "33";
-      c2d.strokeStyle = track.color;
-      c2d.lineWidth = 1;
-      c2d.beginPath();
-      for (let px = 0; px <= clipW; px++) {
-        const bufPos = clip.offset + (px / clipW) * (clip.end - clip.start);
-        const bIdx = Math.floor((bufPos / bufDur) * nb);
-        const max = peaks[Math.min(nb - 1, bIdx) * 2 + 1] || 0;
-        c2d.lineTo(clipX + px, mid - max * mid * 0.92 * ampZoom);
-      }
-      for (let px = clipW; px >= 0; px--) {
-        const bufPos = clip.offset + (px / clipW) * (clip.end - clip.start);
-        const bIdx = Math.floor((bufPos / bufDur) * nb);
-        const min = peaks[Math.min(nb - 1, bIdx) * 2] || 0;
-        c2d.lineTo(clipX + px, mid - min * mid * 0.92 * ampZoom);
-      }
-      c2d.closePath(); c2d.fill();
-      c2d.globalAlpha = .85; c2d.stroke(); c2d.globalAlpha = 1;
+      const mid = height / 2;
+      clipArr.forEach((clip) => {
+        const clipStartX = clip.start * pxPerSec;
+        const clipEndX = clip.end * pxPerSec;
+        const clipW = clipEndX - clipStartX;
+        if (clipW <= 0 || clipEndX < drawStart || clipStartX > drawStart + drawW) return;
 
-      // clip boundary lines
-      c2d.strokeStyle = "rgba(232,212,170,.30)"; c2d.lineWidth = 1.5;
-      c2d.beginPath(); c2d.moveTo(clipX, 0); c2d.lineTo(clipX, height); c2d.stroke();
-      c2d.beginPath(); c2d.moveTo(clipX + clipW, 0); c2d.lineTo(clipX + clipW, height); c2d.stroke();
-    });
+        const x0 = Math.max(0, Math.floor(clipStartX - drawStart));
+        const x1 = Math.min(drawW, Math.ceil(clipEndX - drawStart));
+
+        // baseline
+        c2d.strokeStyle = "rgba(255,255,255,.05)"; c2d.lineWidth = 1;
+        c2d.beginPath(); c2d.moveTo(x0, mid); c2d.lineTo(x1, mid); c2d.stroke();
+
+        // waveform body
+        c2d.fillStyle = track.color + "33";
+        c2d.strokeStyle = track.color;
+        c2d.lineWidth = 1;
+        c2d.beginPath();
+        for (let x = x0; x <= x1; x++) {
+          const timelinePx = drawStart + x;
+          const clipPx = timelinePx - clipStartX;
+          const bufPos = clip.offset + (clipPx / clipW) * (clip.end - clip.start);
+          const bIdx = Math.floor((bufPos / bufDur) * nb);
+          const max = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2 + 1] || 0;
+          c2d.lineTo(x, mid - max * mid * 0.92 * ampZoom);
+        }
+        for (let x = x1; x >= x0; x--) {
+          const timelinePx = drawStart + x;
+          const clipPx = timelinePx - clipStartX;
+          const bufPos = clip.offset + (clipPx / clipW) * (clip.end - clip.start);
+          const bIdx = Math.floor((bufPos / bufDur) * nb);
+          const min = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2] || 0;
+          c2d.lineTo(x, mid - min * mid * 0.92 * ampZoom);
+        }
+        c2d.closePath(); c2d.fill();
+        c2d.globalAlpha = .85; c2d.stroke(); c2d.globalAlpha = 1;
+
+        // clip boundary lines
+        c2d.strokeStyle = "rgba(232,212,170,.30)"; c2d.lineWidth = 1.5;
+        const leftEdge = clipStartX - drawStart;
+        const rightEdge = clipEndX - drawStart;
+        if (leftEdge >= 0 && leftEdge <= drawW) {
+          c2d.beginPath(); c2d.moveTo(leftEdge, 0); c2d.lineTo(leftEdge, height); c2d.stroke();
+        }
+        if (rightEdge >= 0 && rightEdge <= drawW) {
+          c2d.beginPath(); c2d.moveTo(rightEdge, 0); c2d.lineTo(rightEdge, height); c2d.stroke();
+        }
+      });
+    };
+
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    scrollHost && scrollHost.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      scrollHost && scrollHost.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
   }, [pxPerSec, ampZoom, height, laneW, track, clips]);
-  return <canvas ref={ref} style={{ position: "absolute", inset: 0, display: "block" }} />;
+  return <canvas ref={ref} style={{ position: "absolute", top: 0, height, display: "block" }} />;
 }
 
 /* ---------- volume automation overlay (editable) ---------- */
@@ -111,38 +156,46 @@ function AutomationOverlay({ track, pxPerSec, height }) {
 }
 
 /* ---------- track header ---------- */
-function TrackHeader({ track, idx, level, onParam, onRemove, automationView }) {
+function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
   const p = track.params;
+  const compact = laneH <= 76;
+  const medium = laneH <= 104 && !compact;
+  const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
+  const gap = compact ? 5 : medium ? 6 : 8;
+  const buttonSize = compact ? 22 : 24;
+  const knobSize = compact ? 24 : 28;
+  const meterH = compact ? 22 : medium ? 24 : 28;
   return (
     <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 6,
       background: "linear-gradient(180deg,var(--surface),var(--bg2))", borderRight: "1px solid var(--line-strong)",
-      borderBottom: "1px solid var(--line)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      borderBottom: "1px solid var(--line)", padding: pad, height: laneH, minHeight: laneH,
+      overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: compact ? "space-between" : "flex-start", gap }}>
+      <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 }}>
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
-        <span style={{ fontWeight: 600, fontSize: 13.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.name}</span>
-        <SoloBtn on={p.solo} onClick={() => onParam("solo", !p.solo)} />
-        <MuteBtn on={p.mute} onClick={() => onParam("mute", !p.mute)} />
+        <span style={{ fontWeight: 600, fontSize: compact ? 12.5 : 13.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.name}</span>
+        <SoloBtn size={buttonSize} on={p.solo} onClick={() => onParam("solo", !p.solo)} />
+        <MuteBtn size={buttonSize} on={p.mute} onClick={() => onParam("mute", !p.mute)} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 }}>
         {/* horizontal volume fader */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-          <Icon name="wave" size={13} style={{ color: "var(--muted)", flex: "0 0 auto" }} />
+          <Icon name="wave" size={compact ? 12 : 13} style={{ color: "var(--muted)", flex: "0 0 auto" }} />
           <input type="range" min="0" max="1" step="0.005" value={p.volume}
             onChange={(e) => onParam("volume", +e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)", width: 28, textAlign: "right", flex: "0 0 auto" }}>{fmtDb(p.volume)}</span>
+          {!compact && <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)", width: 28, textAlign: "right", flex: "0 0 auto" }}>{fmtDb(p.volume)}</span>}
         </div>
-        <Knob value={p.pan} min={-1} max={1} size={28} color="var(--blue)"
+        <Knob value={p.pan} min={-1} max={1} size={knobSize} color="var(--blue)"
           onChange={(v) => onParam("pan", v)} />
-        <Meter level={level} height={28} width={6} />
+        <Meter level={level} height={meterH} width={6} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {!compact && <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22 }}>
         <button className="iconbtn" style={{ width: 26, height: 22, borderRadius: 5,
           background: p.autoOn ? "var(--amber-soft)" : "transparent", color: p.autoOn ? "var(--amber)" : "var(--muted)" }}
           title="Volume automation" onClick={() => onParam("autoOn", !p.autoOn)}>
           <Icon name="auto" size={15} />
         </button>
-        <span style={{ fontSize: 10, color: p.autoOn ? "var(--amber)" : "var(--faint)", fontWeight: 600, letterSpacing: ".04em" }}>VOL AUTO</span>
+        {!medium && <span style={{ fontSize: 10, color: p.autoOn ? "var(--amber)" : "var(--faint)", fontWeight: 600, letterSpacing: ".04em" }}>VOL AUTO</span>}
         <div style={{ flex: 1 }} />
         {track.needsAudio
           ? <span title="Drop the audio file here to re-link" style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4,
@@ -151,7 +204,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, automationView }) {
           : <span className="chip" style={{ fontSize: 9, padding: "2px 5px" }}>{track.type}</span>
         }
         {onRemove && <button className="iconbtn" style={{ width: 22, height: 22 }} title="Remove track" onClick={onRemove}><Icon name="trash" size={13} /></button>}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -197,12 +250,12 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
 
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
-      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} />
+      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} laneH={laneH} />
       <div onMouseDown={laneClick} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
           background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
           borderBottom: "1px solid var(--line)", overflow: "hidden", cursor: toolCursor }}>
-        <BarGrid pxPerSec={pxPerSec} height={laneH} />
+        <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         <Waveform track={track} clips={track.clips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} />
         {p.autoOn && <AutomationOverlay track={track} pxPerSec={pxPerSec} height={laneH} />}
         {/* scissors hover highlight */}
@@ -233,16 +286,18 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
   );
 }
 
-/* ---------- bar grid lines ---------- */
-function BarGrid({ pxPerSec, height }) {
-  const bars = DAW.bars; const beatsPerBar = 4;
+/* ---------- time grid lines ---------- */
+function TimeGrid({ pxPerSec, height }) {
+  const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
+  const majorStep = steps.find((s) => s * pxPerSec >= 96) || steps[steps.length - 1];
+  const minorStep = majorStep / 2;
   const lines = [];
-  const totalBeats = bars * beatsPerBar;
-  for (let b = 0; b <= totalBeats; b++) {
-    const x = (b * (DAW.secPerBar / beatsPerBar)) * pxPerSec;
-    const isBar = b % beatsPerBar === 0;
-    lines.push(<div key={b} style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1,
-      background: isBar ? "rgba(232,212,170,.10)" : "rgba(232,212,170,.04)" }} />);
+  for (let i = 0; i * minorStep <= DAW.duration + 1e-6; i++) {
+    const t = i * minorStep;
+    const x = t * pxPerSec;
+    const isMajor = i % 2 === 0;
+    lines.push(<div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1,
+      background: isMajor ? "rgba(232,212,170,.10)" : "rgba(232,212,170,.04)" }} />);
   }
   return <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>{lines}</div>;
 }
@@ -255,8 +310,8 @@ function rulerLabel(t, step) {
 }
 function Ruler({ pxPerSec, playhead, onSeek }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
-  const STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
-  const step = STEPS.find((s) => s * pxPerSec >= 76) || 60;
+  const STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
+  const step = STEPS.find((s) => s * pxPerSec >= 76) || STEPS[STEPS.length - 1];
   const marks = [];
   for (let i = 0; i * step <= DAW.duration + 1e-6; i++) {
     const t = i * step;
@@ -292,4 +347,4 @@ function Ruler({ pxPerSec, playhead, onSeek }) {
   );
 }
 
-Object.assign(window, { Waveform, AutomationOverlay, TrackHeader, TrackRow, Ruler, BarGrid, HEADER_W });
+Object.assign(window, { Waveform, AutomationOverlay, TrackHeader, TrackRow, Ruler, TimeGrid, HEADER_W });

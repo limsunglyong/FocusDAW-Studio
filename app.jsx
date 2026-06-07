@@ -1,6 +1,33 @@
 /* ================= FocusDAW — main app ================= */
 
-const MENUS = ["Edit", "View", "Track", "Transport", "Window", "Help"];
+const RECENT_PROJECT_KEY = "focusdaw-recent-project";
+
+function saveRecentProject(projectName) {
+  try {
+    localStorage.setItem(RECENT_PROJECT_KEY, JSON.stringify(DAW.exportProject(projectName)));
+  } catch (err) {
+    console.warn("Failed to save recent project:", err);
+  }
+}
+
+function loadRecentProject(onRename) {
+  const raw = localStorage.getItem(RECENT_PROJECT_KEY);
+  if (!raw) {
+    DAW.clearTracks();
+    return false;
+  }
+  try {
+    const json = JSON.parse(raw);
+    DAW.importProject(json);
+    if (json.projectName && onRename) onRename(json.projectName);
+    return true;
+  } catch (err) {
+    console.warn("Failed to load recent project:", err);
+    localStorage.removeItem(RECENT_PROJECT_KEY);
+    DAW.clearTracks();
+    return false;
+  }
+}
 
 /* ---------- dropdown menu ---------- */
 function Dropdown({ label, items, accent }) {
@@ -13,7 +40,7 @@ function Dropdown({ label, items, accent }) {
     return () => window.removeEventListener("mousedown", h);
   }, [open]);
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
       <div className="menu-item" onClick={() => setOpen((o) => !o)}
         style={{ background: open ? "var(--surface)" : "transparent", color: accent ? "var(--amber)" : "var(--cream-2)", fontWeight: accent ? 600 : 400 }}>
         {label}
@@ -60,8 +87,10 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     <div className="menubar">
       <div style={{ display: "flex", alignItems: "center", paddingRight: 6 }}><Logo size={17} /></div>
       <Dropdown label="Project" items={projectItems} accent />
-      {MENUS.map((m) => <div key={m} className="menu-item">{m}</div>)}
       <div className="menu-item" onClick={onSettings} style={{ cursor: "pointer" }}>Settings</div>
+      <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 }}>
+        <MenuTransport />
+      </div>
       <div style={{ flex: 1 }} />
       {/* project name, right-aligned, inline-editable */}
       {editing ? (
@@ -76,7 +105,6 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
           <Icon name="disc" size={13} style={{ color: "var(--faint)", flex: "0 0 auto" }} />
           <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--cream-2)", whiteSpace: "nowrap" }}>{projectName || "Untitled Project"}</span>
-          <span className="mono" style={{ fontSize: 10, color: "var(--faint)", flex: "0 0 auto" }}>120 BPM</span>
         </div>
       )}
     </div>
@@ -84,6 +112,60 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
 }
 
 /* ---------- transport ---------- */
+function MenuTransportButton({ title, active, children, onClick, wide }) {
+  return (
+    <button onClick={onClick} title={title}
+      style={{ width: wide ? 34 : 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+        color: active ? "#241a0a" : "var(--cream-2)",
+        background: active
+          ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
+          : "linear-gradient(180deg,var(--surface3),var(--surface2))",
+        border: "1px solid " + (active ? "var(--amber)" : "var(--line-strong)"),
+        boxShadow: active ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)",
+        transition: "background .14s ease, color .14s ease, box-shadow .14s ease, transform .08s ease" }}
+      onMouseDown={(e) => (e.currentTarget.style.transform = "translateY(1px)")}
+      onMouseUp={(e) => (e.currentTarget.style.transform = "translateY(0)")}
+      onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}>
+      {children}
+    </button>
+  );
+}
+
+function MenuTransport() {
+  useTick();
+  const [, force] = useState(0);
+  const [loop, setLoop] = useState(true);
+  const playing = DAW.isPlaying;
+  const playhead = DAW.getPlayhead();
+  const playPause = () => { DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, height: 36 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32, padding: "2px 4px",
+        borderRadius: 999, background: "linear-gradient(180deg,var(--bg2),var(--bg))",
+        border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04), 0 8px 18px -14px rgba(0,0,0,.8)" }}>
+        <MenuTransportButton title="Return to start" onClick={() => { DAW.seek(0); force((n) => n + 1); }}>
+          <Icon name="toStart" size={13} />
+        </MenuTransportButton>
+        <MenuTransportButton title="Stop" onClick={() => { DAW.stop(); force((n) => n + 1); }}>
+          <Icon name="stop" size={11} fill />
+        </MenuTransportButton>
+        <MenuTransportButton title="Play / Pause" active={playing} wide onClick={playPause}>
+          <Icon name={playing ? "pause" : "play"} size={14} fill />
+        </MenuTransportButton>
+        <MenuTransportButton title="Loop" active={loop} onClick={() => setLoop((l) => !l)}>
+          <Icon name="loop" size={13} />
+        </MenuTransportButton>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 15px",
+        background: "linear-gradient(180deg,var(--surface2),var(--bg))", borderRadius: 999,
+        border: "1px solid var(--line-strong)", minWidth: 124, height: 32,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+        <span className="mono" style={{ fontSize: 18, fontWeight: 400, color: "var(--amber)", lineHeight: 1 }}>{fmtTime(playhead)}</span>
+      </div>
+    </div>
+  );
+}
+
 function Transport({ playing, onPlay, onStop, onToStart, loop, onLoop, playhead }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -96,15 +178,30 @@ function Transport({ playing, onPlay, onStop, onToStart, loop, onLoop, playhead 
         </button>
         <button className={"iconbtn" + (loop ? " on" : "")} onClick={onLoop} title="Loop"><Icon name="loop" size={16} /></button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "3px 14px", background: "var(--bg)", borderRadius: 9, border: "1px solid var(--line)", minWidth: 110 }}>
-        <span className="mono" style={{ fontSize: 19, fontWeight: 700, color: "var(--amber)", letterSpacing: ".02em" }}>{fmtTime(playhead)}</span>
-        <span className="mono" style={{ fontSize: 9, color: "var(--faint)", letterSpacing: ".1em" }}>BAR {Math.floor(playhead / DAW.secPerBar) + 1} · 120 BPM</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "3px 14px", background: "var(--bg)", borderRadius: 9, border: "1px solid var(--line)", minWidth: 118, height: 36 }}>
+        <span className="mono" style={{ fontSize: 21, fontWeight: 400, color: "var(--amber)", letterSpacing: ".02em" }}>{fmtTime(playhead)}</span>
       </div>
     </div>
   );
 }
 
 /* ---------- toolbar (zoom / tools / actions) ---------- */
+const TIME_ZOOM_BASE_MIN = 28;
+const TIME_ZOOM_MAX = 420;
+
+function timelineMinPx(containerWidth) {
+  const width = containerWidth || window.innerWidth || 1980;
+  const visibleLaneW = Math.max(320, width - HEADER_W - 16);
+  const dur = Math.max(1, DAW.duration || 1);
+  return Math.max(0.05, Math.min(TIME_ZOOM_BASE_MIN, visibleLaneW / dur));
+}
+
+function timelineStep(minPx) {
+  if (minPx < 1) return 0.01;
+  if (minPx < 10) return 0.1;
+  return 1;
+}
+
 function ZoomGroup({ label, onMinus, onPlus, sliderProps }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "5px 9px", background: "var(--bg)", borderRadius: 10, border: "1px solid var(--line)" }}>
@@ -117,12 +214,13 @@ function ZoomGroup({ label, onMinus, onPlus, sliderProps }) {
     </div>
   );
 }
-function ZoomBar({ pxPerSec, setPx, ampZoom, setAmp }) {
+function ZoomBar({ pxPerSec, setPx, ampZoom, setAmp, timeMin }) {
+  const timeStep = timelineStep(timeMin);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <ZoomGroup label="TIME"
-        onMinus={() => setPx(Math.max(28, pxPerSec / 1.4))} onPlus={() => setPx(Math.min(420, pxPerSec * 1.4))}
-        sliderProps={{ value: pxPerSec, min: 28, max: 420, step: 1, onChange: setPx, width: 108 }} />
+        onMinus={() => setPx(Math.max(timeMin, pxPerSec / 1.4))} onPlus={() => setPx(Math.min(TIME_ZOOM_MAX, pxPerSec * 1.4))}
+        sliderProps={{ value: Math.max(timeMin, pxPerSec), min: timeMin, max: TIME_ZOOM_MAX, step: timeStep, onChange: setPx, width: 108 }} />
       <ZoomGroup label="AMP"
         onMinus={() => setAmp(Math.max(0.4, ampZoom - 0.3))} onPlus={() => setAmp(Math.min(3, ampZoom + 0.3))}
         sliderProps={{ value: ampZoom, min: 0.4, max: 3, step: 0.05, onChange: setAmp, width: 96 }} />
@@ -182,6 +280,76 @@ function ActionBar({ onAddFiles, onMixer, mixerOpen, onExport }) {
     </div>
   );
 }
+
+function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, timeMin }) {
+  const ref = useRef(null);
+  const duration = Math.max(0.001, DAW.duration || 0.001);
+  const laneW = Math.max(1, duration * pxPerSec);
+  const viewLeft = Math.max(0, Math.min(1, (viewState.scrollLeft || 0) / laneW));
+  const viewWidth = Math.max(0.012, Math.min(1, (viewState.clientWidth || laneW) / laneW));
+  const playPct = Math.max(0, Math.min(1, playhead / duration));
+  const ticks = [];
+  for (let t = 0; t <= duration + 0.001; t += 10) ticks.push(t);
+  if (ticks[ticks.length - 1] < duration) ticks.push(duration);
+
+  const moveViewFromClientX = (clientX) => {
+    const host = ref.current;
+    const scrollHost = arrangeRef.current;
+    if (!host || !scrollHost) return;
+    const r = host.getBoundingClientRect();
+    const innerLeft = r.left + 10;
+    const innerW = Math.max(1, r.width - 20);
+    const pct = Math.max(0, Math.min(1, (clientX - innerLeft) / innerW));
+    const t = pct * duration;
+    const visibleW = Math.max(1, scrollHost.clientWidth - HEADER_W);
+    scrollHost.scrollLeft = Math.max(0, Math.min(laneW - visibleW, t * pxPerSec - visibleW / 2));
+  };
+  const onDown = (e) => {
+    e.preventDefault();
+    moveViewFromClientX(e.clientX);
+    const move = (ev) => moveViewFromClientX(ev.clientX);
+    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  const onWheel = (e) => {
+    e.preventDefault();
+    const next = e.deltaY < 0 ? pxPerSec * 1.18 : pxPerSec / 1.18;
+    setPx(Math.max(timeMin, Math.min(TIME_ZOOM_MAX, next)));
+  };
+
+  return (
+    <div ref={ref} onMouseDown={onDown} onWheel={onWheel} title="Timeline minimap"
+      style={{ flex: "1 1 420px", minWidth: 220, height: 40, position: "relative", overflow: "hidden",
+        borderRadius: 10, border: "1px solid var(--line)", background: "linear-gradient(180deg,var(--bg),var(--bg2))",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,.035)", cursor: "pointer" }}>
+      <div style={{ position: "absolute", inset: "6px 10px 7px", borderRadius: 7, overflow: "hidden", background: "rgba(255,255,255,.018)" }}>
+        <span style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "rgba(232,212,170,.045)" }} />
+        {ticks.map((t) => {
+          const isMajor = Math.round(t) % 30 === 0;
+          return (
+            <span key={t} style={{ position: "absolute", left: `${(t / duration) * 100}%`, top: isMajor ? 3 : 7, bottom: isMajor ? 3 : 7, width: 1,
+              background: isMajor ? "rgba(232,212,170,.14)" : "rgba(232,212,170,.075)" }} />
+          );
+        })}
+        {DAW.tracks.length === 0 && (
+          <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 10, color: "var(--faint)", letterSpacing: ".08em" }}>TIMELINE</span>
+        )}
+
+        <div style={{ position: "absolute", left: `${viewLeft * 100}%`, top: 0, width: `${viewWidth * 100}%`, minWidth: 18, height: "100%",
+          borderRadius: 7, border: "1px solid rgba(232,176,75,.65)", background: "rgba(232,176,75,.08)",
+          boxShadow: "0 0 12px rgba(232,176,75,.16)" }}>
+          <span style={{ position: "absolute", left: "50%", top: 4, bottom: 4, width: 1, background: "rgba(232,176,75,.55)", transform: "translateX(-50%)" }} />
+          <span style={{ position: "absolute", left: 5, right: 5, top: "50%", height: 1, background: "rgba(232,176,75,.45)", transform: "translateY(-50%)" }} />
+        </div>
+        <span style={{ position: "absolute", left: `${playPct * 100}%`, top: -2, bottom: -2, width: 2,
+          borderRadius: 2, background: "var(--amber)", boxShadow: "0 0 10px rgba(232,176,75,.65)", transform: "translateX(-1px)",
+          pointerEvents: "none" }} />
+      </div>
+    </div>
+  );
+}
+
 function ToolGroup({ children }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", background: "var(--bg)", borderRadius: 9, border: "1px solid var(--line)" }}>{children}</div>;
 }
@@ -210,23 +378,139 @@ function EmptyState({ onPick, onPickFolder, onDemo, dragOver }) {
   );
 }
 
+function LoadingOverlay({ state }) {
+  if (!state || !state.active) return null;
+  const total = Math.max(1, state.total || 1);
+  const done = Math.max(0, Math.min(total, state.done || 0));
+  const pct = Math.round((done / total) * 100);
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 120, display: "grid", placeItems: "center",
+      background: "rgba(12,10,8,.58)", backdropFilter: "blur(6px)", pointerEvents: "auto" }}>
+      <div style={{ width: 340, maxWidth: "calc(100vw - 40px)", borderRadius: 14,
+        background: "linear-gradient(180deg,var(--surface),var(--bg2))",
+        border: "1px solid var(--line-strong)", boxShadow: "var(--shadow)",
+        padding: "24px 26px", textAlign: "center" }}>
+        <div style={{ width: 58, height: 58, margin: "0 auto 16px", borderRadius: "50%",
+          border: "1px solid var(--line-strong)", display: "grid", placeItems: "center",
+          background: "radial-gradient(circle at 50% 50%, var(--amber-soft), transparent 62%)" }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%",
+            border: "3px solid var(--line-strong)", borderTopColor: "var(--amber)",
+            animation: "spin .9s linear infinite", boxShadow: "0 0 18px var(--amber-soft)" }} />
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--cream)", marginBottom: 5 }}>Loading audio</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)", minHeight: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {state.label || "Preparing files..."}
+        </div>
+        <div style={{ marginTop: 17, height: 6, borderRadius: 999, background: "var(--bg)",
+          border: "1px solid var(--line)", overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, borderRadius: 999,
+            background: "linear-gradient(90deg,var(--amber-deep),var(--amber))",
+            boxShadow: "0 0 10px var(--amber-soft)", transition: "width .18s ease" }} />
+        </div>
+        <div className="mono" style={{ marginTop: 9, fontSize: 10.5, color: "var(--faint)" }}>
+          {done}/{total} files
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- studio (arrange) ---------- */
 function Studio({ projectName, registerHandlers, onRenameProject }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
+  const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
   const [ampZoom, setAmp] = useState(1);
-  const [loop, setLoop] = useState(true);
   const [showMixer, setShowMixer] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
+  const [loading, setLoading] = useState(null);
   const [tool, setTool] = useState("select");
+  const [timelineView, setTimelineView] = useState({ scrollLeft: 0, clientWidth: 1 });
   const [, force] = useState(0);
   const fileRef = useRef(null);
   const folderRef = useRef(null);
   const focusRef = useRef(null);
-  const playing = DAW.isPlaying;
+  const arrangeRef = useRef(null);
+  const fitTimelineRef = useRef(true);
   const playhead = DAW.getPlayhead();
+  const sessionDuration = DAW.duration;
+
+  const updateTimelineView = useCallback(() => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    setTimelineView({ scrollLeft: el.scrollLeft, clientWidth: Math.max(1, el.clientWidth - HEADER_W) });
+  }, []);
+
+  const updateTimeMin = useCallback(() => {
+    const next = timelineMinPx(arrangeRef.current && arrangeRef.current.clientWidth);
+    setTimeMinPx(next);
+    return next;
+  }, []);
+
+  const fitTimelineToProject = useCallback(() => {
+    const next = updateTimeMin();
+    fitTimelineRef.current = true;
+    setPx(next);
+  }, [updateTimeMin]);
+
+  const setPxFromUser = useCallback((value) => {
+    const nextMin = timelineMinPx(arrangeRef.current && arrangeRef.current.clientWidth);
+    const snappedToMin = value <= nextMin + timelineStep(nextMin) * 0.5;
+    fitTimelineRef.current = snappedToMin;
+    setPx(snappedToMin ? nextMin : value);
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => {
+      const next = updateTimeMin();
+      setPx((px) => fitTimelineRef.current
+        ? next
+        : Math.max(next, Math.min(TIME_ZOOM_MAX, px)));
+      updateTimelineView();
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [updateTimeMin, updateTimelineView]);
+
+  useEffect(() => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(updateTimelineView);
+    };
+    updateTimelineView();
+    el.addEventListener("scroll", onScroll);
+    return () => { cancelAnimationFrame(raf); el.removeEventListener("scroll", onScroll); };
+  }, [updateTimelineView, pxPerSec, sessionDuration]);
+
+  useEffect(() => {
+    const next = updateTimeMin();
+    setPx((px) => fitTimelineRef.current
+      ? next
+      : Math.max(next, Math.min(TIME_ZOOM_MAX, px)));
+    requestAnimationFrame(updateTimelineView);
+  }, [sessionDuration, updateTimeMin, updateTimelineView]);
+
+  const saveProject = useCallback(async () => {
+    const json = DAW.exportProject(projectName);
+    if (window.electronAPI) {
+      await window.electronAPI.saveProject(json, projectName);
+    } else {
+      const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = projectName.replace(/[^\w\-]+/g, "_") + ".focus";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    saveRecentProject(projectName);
+  }, [projectName]);
 
   const playPause = useCallback(() => { DAW.isPlaying ? DAW.pause() : DAW.play(); }, []);
   useEffect(() => {
@@ -243,27 +527,17 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   }, [playPause, saveProject]);
 
+  useEffect(() => {
+    const id = setInterval(() => saveRecentProject(projectName), 1500);
+    return () => clearInterval(id);
+  }, [projectName]);
+
   const handleSplit = useCallback((trackId, clipId, atSec) => {
     DAW.splitClip(trackId, clipId, atSec); force((n) => n + 1);
   }, []);
   const handleJoin = useCallback((trackId, clipIdA, clipIdB) => {
     DAW.joinClips(trackId, clipIdA, clipIdB); force((n) => n + 1);
   }, []);
-
-  const saveProject = useCallback(async () => {
-    const json = DAW.exportProject(projectName);
-    if (window.electronAPI) {
-      await window.electronAPI.saveProject(json, projectName);
-    } else {
-      const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = projectName.replace(/[^\w\-]+/g, "_") + ".focus";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-  }, [projectName]);
 
   const openProjectFile = useCallback(async (file) => {
     let text;
@@ -277,25 +551,50 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
       const json = JSON.parse(text);
       DAW.importProject(json);
       if (json.projectName && onRenameProject) onRenameProject(json.projectName);
+      fitTimelineToProject();
+      saveRecentProject(json.projectName || projectName);
       force((n) => n + 1);
     } catch (err) { console.error("Failed to open project:", err); }
-  }, [onRenameProject]);
+  }, [onRenameProject, fitTimelineToProject, projectName]);
 
-  const addFiles = async (files) => {
-    for (const f of files) { if (/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(f.name)) { try { await DAW.addFile(f); } catch (e) {} } }
+  const addFiles = async (files, rootOnly = false) => {
+    const audioFiles = files.filter((f) => {
+      const rel = f.webkitRelativePath || "";
+      const isNested = rel && rel.split("/").filter(Boolean).length > 2;
+      return !(rootOnly && isNested) && /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(f.name);
+    });
+    if (!audioFiles.length) return;
+    setLoading({ active: true, total: audioFiles.length, done: 0, label: "Preparing files..." });
+    for (let i = 0; i < audioFiles.length; i++) {
+      const f = audioFiles[i];
+      setLoading({ active: true, total: audioFiles.length, done: i, label: f.name });
+      try { await DAW.addFile(f); } catch (e) { console.error("Failed to add", f.name, e); }
+    }
+    fitTimelineToProject();
+    saveRecentProject(projectName);
+    setLoading({ active: true, total: audioFiles.length, done: audioFiles.length, label: "Finalizing..." });
+    setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
   };
   const addElectronFiles = useCallback(async (items) => {
-    for (const item of items) {
+    if (!items.length) return;
+    setLoading({ active: true, total: items.length, done: 0, label: "Preparing files..." });
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      setLoading({ active: true, total: items.length, done: i, label: item.name });
       try {
         const ab = await window.electronAPI.readAudioFile(item.path);
         await DAW.addFileBuffer(item.name, ab);
       } catch (e) { console.error("Failed to add", item.name, e); }
     }
+    fitTimelineToProject();
+    saveRecentProject(projectName);
+    setLoading({ active: true, total: items.length, done: items.length, label: "Finalizing..." });
+    setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
-  }, []);
-  const newProject = () => { DAW.clearTracks(); force((n) => n + 1); };
-  const loadDemo = () => { DAW.addDemoTracks(); force((n) => n + 1); };
+  }, [fitTimelineToProject, projectName]);
+  const newProject = () => { DAW.clearTracks(); fitTimelineRef.current = true; updateTimeMin(); saveRecentProject(projectName); force((n) => n + 1); };
+  const loadDemo = () => { DAW.addDemoTracks(); fitTimelineRef.current = false; updateTimeMin(); setPx(96); saveRecentProject(projectName); force((n) => n + 1); };
   // expose menu actions to parent
   useEffect(() => {
     registerHandlers({
@@ -315,8 +614,14 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
     });
   }, [registerHandlers, saveProject, openProjectFile, addElectronFiles, loadDemo, newProject]);
 
-  const param = (id) => (k, v) => { DAW.setTrackParam(id, k, v); force((n) => n + 1); };
-  const removeTrack = (id) => { const i = DAW.tracks.findIndex((t) => t.id === id); if (i >= 0) DAW.tracks.splice(i, 1); DAW._spectrum = null; force((n) => n + 1); };
+  const param = (id) => (k, v) => { DAW.setTrackParam(id, k, v); saveRecentProject(projectName); force((n) => n + 1); };
+  const removeTrack = (id) => {
+    const i = DAW.tracks.findIndex((t) => t.id === id);
+    if (i >= 0) DAW.tracks.splice(i, 1);
+    DAW._spectrum = null;
+    saveRecentProject(projectName);
+    force((n) => n + 1);
+  };
 
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); addFiles([...e.dataTransfer.files]); };
   const onDragOver = (e) => { e.preventDefault(); if (!dragOver) setDragOver(true); };
@@ -324,11 +629,11 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
   const empty = DAW.tracks.length === 0;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
       <input ref={fileRef} type="file" multiple accept=".mp3,.wav,.aiff,.m4a,.ogg,.flac" style={{ display: "none" }}
         onChange={(e) => { addFiles([...e.target.files]); e.target.value = ""; }} />
       <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple style={{ display: "none" }}
-        onChange={(e) => { addFiles([...e.target.files]); e.target.value = ""; }} />
+        onChange={(e) => { addFiles([...e.target.files], true); e.target.value = ""; }} />
       <input ref={focusRef} type="file" accept=".focus,application/json" style={{ display: "none" }}
         onChange={(e) => { if (e.target.files[0]) { openProjectFile(e.target.files[0]); e.target.value = ""; } }} />
 
@@ -337,27 +642,22 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
         background: "linear-gradient(180deg,var(--surface),var(--bg2))", borderBottom: "1px solid var(--line-strong)", position: "relative" }}>
         {/* left cluster: zoom + tools + row height */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <ZoomBar pxPerSec={pxPerSec} setPx={setPx} ampZoom={ampZoom} setAmp={setAmp} />
+          <ZoomBar pxPerSec={pxPerSec} setPx={setPxFromUser} ampZoom={ampZoom} setAmp={setAmp} timeMin={timeMinPx} />
           <div style={{ width: 1, height: 30, background: "var(--line)" }} />
           <ToolBar tool={tool} setTool={setTool} />
           <div style={{ width: 1, height: 30, background: "var(--line)" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, letterSpacing: ".06em" }}>ROW H</span>
+            <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, letterSpacing: ".06em" }}>TRACK SIZE</span>
             <Seg small value={laneH} onChange={setLaneH} options={[{ v: 68, l: "S" }, { v: 96, l: "M" }, { v: 132, l: "L" }]} />
           </div>
         </div>
-        {/* centered transport */}
-        <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 5 }}>
-          <Transport playing={playing} playhead={playhead} loop={loop}
-            onPlay={playPause} onStop={() => { DAW.stop(); force((n) => n + 1); }} onToStart={() => { DAW.seek(0); force((n) => n + 1); }}
-            onLoop={() => setLoop((l) => !l)} />
-        </div>
+        <TimelineMinimap arrangeRef={arrangeRef} pxPerSec={pxPerSec} playhead={playhead} viewState={timelineView} setPx={setPxFromUser} timeMin={timeMinPx} />
         {/* right cluster: actions */}
         <ActionBar onAddFiles={addFiles} onMixer={() => setShowMixer((s) => !s)} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
       </div>
 
       {/* arrange scroll area (whole area is a dropzone) */}
-      <div onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
+      <div ref={arrangeRef} data-arrange-scroll="true" onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
         style={{ flex: 1, overflow: "auto", position: "relative", outline: dragOver && !empty ? "2px dashed var(--amber)" : "none", outlineOffset: -4 }}>
         {empty ? (
           <EmptyState dragOver={dragOver} onPick={() => fileRef.current.click()} onPickFolder={() => folderRef.current.click()} onDemo={loadDemo} />
@@ -379,6 +679,7 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
 
       {showMixer && <MixerWindow onClose={() => setShowMixer(false)} />}
       {showExport && <ExportDialog projectName={projectName} onClose={() => setShowExport(false)} />}
+      <LoadingOverlay state={loading} />
     </div>
   );
 }
@@ -392,7 +693,11 @@ function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
   const registerHandlers = useCallback((h) => { handlersRef.current = h; }, []);
 
-  useEffect(() => { DAW.init(); force((n) => n + 1); }, []);
+  useEffect(() => {
+    DAW.init();
+    loadRecentProject(setProjectName);
+    force((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;

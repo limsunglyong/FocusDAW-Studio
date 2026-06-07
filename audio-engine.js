@@ -7,10 +7,10 @@
 (function () {
   "use strict";
 
-  const BPM = 120;
-  const BARS = 4;
-  const SECPERBAR = (60 / BPM) * 4; // 2s
-  const DURATION = BARS * SECPERBAR; // 8s loop
+  const DEMO_STEP = 0.5;
+  const DEMO_SECTION = 2;
+  const DEMO_SECTIONS = 4;
+  const DURATION = DEMO_SECTIONS * DEMO_SECTION; // 8s loop
 
   function makeCtx() {
     const C = window.AudioContext || window.webkitAudioContext;
@@ -76,15 +76,15 @@
   }
 
   function synthDrums(ch, sr) {
-    const beat = 60 / BPM; // 0.5s
-    for (let bar = 0; bar < BARS; bar++) {
-      const b0 = bar * SECPERBAR;
-      // kick on 1 and 3
-      [0, 2].forEach((bt) => kick(ch, sr, b0 + bt * beat));
-      // snare on 2 and 4
-      [1, 3].forEach((bt) => snare(ch, sr, b0 + bt * beat));
-      // hats on 8ths
-      for (let h = 0; h < 8; h++) hat(ch, sr, b0 + h * (beat / 2));
+    const step = DEMO_STEP;
+    for (let section = 0; section < DEMO_SECTIONS; section++) {
+      const b0 = section * DEMO_SECTION;
+      // kick on first and third pulses
+      [0, 2].forEach((bt) => kick(ch, sr, b0 + bt * step));
+      // snare on second and fourth pulses
+      [1, 3].forEach((bt) => snare(ch, sr, b0 + bt * step));
+      // hats on half-step pulses
+      for (let h = 0; h < 8; h++) hat(ch, sr, b0 + h * (step / 2));
     }
   }
   function kick(ch, sr, at) {
@@ -128,36 +128,36 @@
   ];
 
   function synthBass(ch, sr) {
-    const beat = 60 / BPM;
-    PROG.forEach((p, bar) => {
-      const b0 = bar * SECPERBAR;
-      // root note pulses on every beat
+    const step = DEMO_STEP;
+    PROG.forEach((p, section) => {
+      const b0 = section * DEMO_SECTION;
+      // root note pulses on every step
       for (let bt = 0; bt < 4; bt++) {
-        addNote(ch, sr, b0 + bt * beat, beat * 0.9, p.bass, "saw", 0.5);
+        addNote(ch, sr, b0 + bt * step, step * 0.9, p.bass, "saw", 0.5);
       }
     });
   }
   function synthKeys(ch, sr) {
-    PROG.forEach((p, bar) => {
-      const b0 = bar * SECPERBAR;
+    PROG.forEach((p, section) => {
+      const b0 = section * DEMO_SECTION;
       p.chord.forEach((f) =>
-        addNote(ch, sr, b0, SECPERBAR * 0.98, f, "tri", 0.22)
+        addNote(ch, sr, b0, DEMO_SECTION * 0.98, f, "tri", 0.22)
       );
     });
   }
   function synthLead(ch, sr) {
-    const beat = 60 / BPM;
-    // simple melodic line per bar (scale tones over the chord)
+    const step = DEMO_STEP;
+    // simple melodic line per section
     const mel = [
       [659.25, 587.33, 523.25, 587.33],
       [523.25, 440.0, 349.23, 440.0],
       [523.25, 587.33, 659.25, 783.99],
       [587.33, 493.88, 392.0, 493.88],
     ];
-    mel.forEach((bar, bi) => {
-      const b0 = bi * SECPERBAR;
-      bar.forEach((f, ni) =>
-        addNote(ch, sr, b0 + ni * beat, beat * 0.85, f, "square", 0.16)
+    mel.forEach((section, si) => {
+      const b0 = si * DEMO_SECTION;
+      section.forEach((f, ni) =>
+        addNote(ch, sr, b0 + ni * step, step * 0.85, f, "square", 0.16)
       );
     });
   }
@@ -210,9 +210,6 @@
   const Engine = {
     ctx: null,
     duration: DURATION,
-    bpm: BPM,
-    bars: BARS,
-    secPerBar: SECPERBAR,
     EQ_FREQS,
     tracks: [],
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.6, fadeOut: 1.4 },
@@ -426,7 +423,6 @@
       return {
         version: "0.11",
         projectName,
-        bpm: this.bpm,
         duration: this.duration,
         master: { ...this.master, bands: [...this.master.bands] },
         tracks: this.tracks.map(t => ({
@@ -717,6 +713,26 @@
       let sum = 0;
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
       return Math.min(1, Math.sqrt(sum / buf.length) * 2.0);
+    },
+
+    getMasterBandLevels() {
+      if (!ctx || !masterAnalyser) return EQ_FREQS.map(() => 0);
+      const bins = new Uint8Array(masterAnalyser.frequencyBinCount);
+      masterAnalyser.getByteFrequencyData(bins);
+      const nyquist = ctx.sampleRate / 2;
+      const bounds = EQ_FREQS.map((f, i) => {
+        const lo = i === 0 ? 30 : Math.sqrt(EQ_FREQS[i - 1] * f);
+        const hi = i === EQ_FREQS.length - 1 ? nyquist : Math.sqrt(f * EQ_FREQS[i + 1]);
+        return [lo, hi];
+      });
+      return bounds.map(([lo, hi], i) => {
+        const a = Math.max(0, Math.floor((lo / nyquist) * bins.length));
+        const b = Math.min(bins.length - 1, Math.ceil((hi / nyquist) * bins.length));
+        let sum = 0, count = 0;
+        for (let k = a; k <= b; k++) { sum += bins[k]; count++; }
+        const shaped = Math.pow((sum / Math.max(1, count)) / 255, 0.72);
+        return Math.max(0, Math.min(1, shaped + (this.master.bands[i] || 0) / 42));
+      });
     },
 
     onTick(cb) { this._tickCbs.push(cb); },
