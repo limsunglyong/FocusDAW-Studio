@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>FD-Studio</title>
+    <link rel="icon" href="focustone_logo.svg" type="image/svg+xml">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <script src="../version.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet">
+
+    <!-- Waveform Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Ballet&display=swap" rel="stylesheet">
+    <!-- Timeline Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@1,200&display=swap"
+        rel="stylesheet">
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-dim": "#131315",
+                        "primary-container": "#00f0ff",
+                        "error-container": "#93000a",
+                        "inverse-on-surface": "#303032",
+                        "on-primary": "#00363a",
+                        "inverse-primary": "#00696e",
+                        "on-primary-container": "#97f0ff",
+                        "surface-variant": "#3f484a",
+                        "on-surface-variant": "#bfc8ca",
+                        "outline": "#899294",
+                        "surface-container-high": "#272a2c",
+                        "surface-container-highest": "#323537",
+                        "on-surface": "#e1e2e3",
+                        "outline-variant": "#3f484a",
+                        "surface-container-low": "#1b1e20",
+                        "surface-container-lowest": "#0d1011",
+                        "surface-container": "#212426",
+                        "secondary": "#a7ffb3",
+                        "secondary-container": "#00522a",
+                        "on-secondary-container": "#c3ffcf",
+                        "error": "#ffb4ab"
+                    },
+                    "spacing": {
+                        "gutter": "16px"
+                    },
+                    "borderRadius": {
+                        "xl": "12px"
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #131315;
+            color: #e1e2e3;
+        }
+
+        .font-h2 {
+            font-family: Space Grotesk
+        }
+
+        .text-h2 {
+            font-size: 1.5rem;
+            line-height: 2rem;
+        }
+
+        .font-mono-data {
+            font-family: 'Space_Grotesk', monospace;
+            font-weight: 500;
+        }
+
+        /* Live Input Preview 배경 파형 효과 */
+        .waveform-preview {
+            /*
+            background: linear-gradient(90deg, rgba(0, 240, 255, 0.4) 0%, rgba(114, 19, 255, 0.4) 100%);
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg width='200' height='40' viewBox='0 0 200 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 20 L5 10 L10 30 L15 15 L20 25 L25 5 L30 35 L35 20 L40 10 L45 30 L50 15 L55 25 L60 5 L65 35 L70 20 L75 10 L80 30 L85 15 L90 25 L95 5 L100 35 L105 20 L110 10 L115 30 L120 15 L125 25 L130 5 L135 35 L140 20 L145 10 L150 30 L155 15 L160 25 L165 5 L170 35 L175 20 L180 10 L185 30 L190 15 L195 25 L200 20' stroke='black' fill='transparent'/%3E%3C/svg%3E");
+            -webkit-mask-size: cover;
+            -webkit-mask-repeat: no-repeat;
+            mask-image: url("data:image/svg+xml,%3Csvg width='200' height='40' viewBox='0 0 200 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 20 L5 10 L10 30 L15 15 L20 25 L25 5 L30 35 L35 20 L40 10 L45 30 L50 15 L55 25 L60 5 L65 35 L70 20 L75 10 L80 30 L85 15 L90 25 L95 5 L100 35 L105 20 L110 10 L115 30 L120 15 L125 25 L130 5 L135 35 L140 20 L145 10 L150 30 L155 15 L160 25 L165 5 L170 35 L175 20 L180 10 L185 30 L190 15 L195 25 L200 20' stroke='black' fill='transparent'/%3E%3C/svg%3E");
+            mask-size: cover;
+            mask-repeat: no-repeat;
+            */
+            display: none;
+        }
+
+        /* 슬라이더 배경색을 실시간으로 업데이트하기 위한 스타일 */
+        input[type="range"] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #00f0ff;
+            cursor: pointer;
+            margin-top: -6px;
+            /* 트랙 중앙 정렬 */
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+        }
+
+        .font-timeline-elms {
+            /* timeline 폰트 */
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 200;
+            font-style: italic;
+            /* 숫자가 변해도 너비가 고정되도록 설정하여 시각적 떨림을 방지합니다 */
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+
+<body class="bg-surface-dim text-on-surface flex flex-col min-h-screen">
+    <header
+        class="h-16 border-b border-zinc-800 flex items-center justify-between px-8 bg-surface-dim/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="flex items-center gap-4">
+            <div
+                class="w-10 h-10 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.3)]">
+                <span class="material-symbols-outlined text-zinc-950 font-bold">equalizer</span>
+            </div>
+            <h1 class="font-h2 text-xl tracking-tighter italic text-zinc-100 flex items-baseline gap-1">Focustone <span
+                    class="text-cyan-400">DAW</span><span class="app-version text-zinc-500 text-xs not-italic ml-1"></span></h1>
+        </div>
+        <nav class="hidden md:flex items-center gap-8 font-['Space_Grotesk'] tracking-tight">
+            <a class="text-cyan-400 border-b-2 border-cyan-400 pb-1" href="#">Studio</a>
+            <a class="text-zinc-500 hover:text-zinc-300 transition-colors"
+                href="../bpm_analysis/bpm-analyzer-code2.html">BPM Analyzer</a>
+            <a class="text-zinc-500 hover:text-zinc-300 transition-colors" href="../drum_beat_maker/drum-beat-maker.html">Beat Maker</a>
+        </nav>
+        <div class="flex items-center gap-4">
+            <button type="button" aria-label="Notifications" class="p-2 text-zinc-400 hover:text-cyan-400 transition-colors">
+                <span class="material-symbols-outlined">notifications</span>
+            </button>
+
+            <div
+                class="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden p-1 hover:border-cyan-400 transition-all cursor-pointer shadow-lg">
+                <img alt="Focustone Logo" src="focustone_logo.svg" class="w-full h-full object-contain">
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 p-gutter max-w-[1600px] mx-auto w-full flex flex-col gap-gutter">
+
+        <div class="grid grid-cols-12 gap-gutter">
+
+            <div class="col-span-12 lg:col-span-7 h-96 relative group">
+                <div id="drop-zone"
+                    class="absolute inset-0 bg-gradient-to-br from-cyan-400/10 to-transparent rounded-xl border border-dashed border-zinc-700 group-hover:border-cyan-400/50 transition-all flex flex-col items-center justify-center text-center p-8 overflow-hidden">
+                    
+                    <!-- [추가] 배경 레벨 미터 캔버스 (중앙 방사형 스타일) -->
+                    <canvas id="level-meter-canvas" class="absolute inset-0 w-full h-full pointer-events-none opacity-30 z-0"></canvas>
+
+                    <!-- [추가] 좌측 상단 Studio 라벨 -->
+                    <div class="absolute top-2 left-4 pointer-events-none z-10">
+                        <span
+                            class="text-xl text-zinc-400 font-medium font-['Space_Grotesk'] tracking-tight">Studio</span>
+                    </div>
+
+                    <div
+                        class="relative z-10 w-20 h-20 bg-zinc-950 rounded-full flex items-center justify-center mb-6 border border-zinc-800 shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)]">
+                        <span
+                            class="material-symbols-outlined text-4xl text-cyan-400 group-hover:scale-110 transition-transform">cloud_upload</span>
+                    </div>
+                    <h2 class="relative z-10 font-h2 text-h2 mb-2">Drop MP3 files here</h2>
+                    <p class="relative z-10 text-zinc-500 max-w-xs mx-auto">Beat making for the Music</p>
+
+                    <input type="file" id="audio-upload" accept="audio/mp3" class="hidden">
+                    <button type="button" id="select-audio-btn"
+                        class="relative z-10 mt-6 px-8 py-3 bg-cyan-400 text-on-primary rounded font-bold text-sm uppercase tracking-widest active:scale-95 transition-all">
+                        Select MP3 File
+                    </button>
+                    <div id="file-info-display"
+                        class="hidden relative z-10 mt-6 p-4 bg-zinc-900/80 border border-zinc-800 rounded-lg text-left max-w-md mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div class="flex items-center gap-4">
+                            <div id="info-album-art"
+                                class="w-16 h-16 bg-zinc-800 rounded-md border border-zinc-700 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                                <span class="material-symbols-outlined text-zinc-600 text-3xl">album</span>
+                            </div>
+
+                            <div class="flex-1 min-w-0">
+                                <div id="info-name" class="text-sm font-bold text-zinc-100 truncate mb-1">File Name
+                                </div>
+                                <div
+                                    class="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] uppercase tracking-wider font-mono-data text-zinc-500">
+                                    <span>Artist:</span> <span id="info-artist" class="text-zinc-300 truncate">-</span>
+                                    <span>Length:</span> <span id="info-duration" class="text-zinc-300">-</span>
+                                    <span>Format:</span> <span id="info-format" class="text-zinc-300">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-span-12 lg:col-span-5 flex flex-col gap-gutter">
+                <div class="bg-surface-container rounded-xl border border-zinc-800 p-gutter">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-['Space_Grotesk'] text-xs uppercase tracking-widest text-zinc-500">System
+                            Performance</h3>
+                        <span class="material-symbols-outlined text-cyan-400 text-sm">analytics</span>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1 uppercase font-bold tracking-wider">
+                                <span class="text-zinc-400">CPU Load</span>
+                                <span id="cpu-value" class="text-secondary">00%</span>
+                            </div>
+                            <div class="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                                <div id="cpu-bar" class="h-full bg-secondary w-[00%] shadow-[0_0_8px_#a7ffb3]"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1 uppercase font-bold tracking-wider">
+                                <span class="text-zinc-400">Virutal Memory (RAM)</span>
+                                <span id="ram-value" class="text-cyan-400">0.0GB / 00GB</span>
+                            </div>
+                            <div class="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                                <div id="ram-bar" class="h-full bg-cyan-400 w-[0%] shadow-[0_0_8px_#00f0ff]"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="flex-1 bg-surface-container rounded-xl border border-zinc-800 p-gutter relative overflow-hidden min-h-[160px]">
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span class="text-white/[0.04] select-none whitespace-nowrap"
+                            style="font-family: 'Ballet', cursive; font-variation-settings: 'opsz' 72; font-size: 6vw; text-transform: none; transform: translateY(0%);">
+                            Focustone DAW
+                        </span>
+                    </div>
+
+                    <canvas id="waveform-canvas"
+                        class="absolute inset-0 w-full h-full opacity-90 transition-opacity duration-500"></canvas>
+
+                    <div class="relative z-10 h-full flex flex-col justify-end">
+                        <h3 class="font-['Space_Grotesk'] text-[10px] uppercase tracking-widest text-cyan-400 mb-2">
+                            Live Input Preview
+                        </h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 bg-surface-container rounded-xl border border-zinc-800 overflow-hidden">
+            <div class="p-gutter border-b border-zinc-800/50 flex justify-between items-center bg-zinc-900/30">
+                <h3 class="font-['Space_Grotesk'] text-[10px] uppercase tracking-widest text-zinc-500">Recent Processed
+                    Files</h3>
+                <button type="button" id="btn-view-all"
+                    class="text-[10px] uppercase tracking-widest text-cyan-400 font-bold hover:underline hidden">View
+                    All</button>
+            </div>
+            <div class="divide-y divide-zinc-800/50">
+                <div class="p-4 flex items-center justify-between hover:bg-white/5 transition-colors group">
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-10 h-10 bg-zinc-950 rounded flex items-center justify-center border border-zinc-800 group-hover:border-cyan-400/30">
+                            <span class="material-symbols-outlined text-cyan-400 text-sm">music_note</span>
+                        </div>
+                        <div>
+                            <div class="text-sm font-bold text-zinc-300">Display Audio file(MP3) history...</div>
+                            <div class="text-[10px] text-zinc-500">Focustone DAW</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-8">
+                        <div class="text-right">
+                            <div class="text-[10px] text-zinc-500 uppercase">Detected BPM</div>
+                            <div class="text-sm font-mono-data text-cyan-400">124.0</div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="button" aria-label="Download file"
+                                class="p-2 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-cyan-400"><span
+                                    class="material-symbols-outlined text-sm">download</span></button>
+                            <button type="button" aria-label="More options"
+                                class="p-2 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-cyan-400"><span
+                                    class="material-symbols-outlined text-sm">more_vert</span></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer
+        class="h-20 border-t border-zinc-800 bg-surface-dim/95 backdrop-blur-xl px-8 flex items-center justify-center gap-12 sticky bottom-0 z-50">
+        <!-- 볼륨 슬라이더 (좌) -->
+        <div class="absolute left-8 flex items-center gap-4">
+            <span id="master-mute-toggle" class="material-symbols-outlined text-zinc-500 text-sm cursor-pointer hover:text-cyan-400 transition-colors" role="button" tabindex="0" title="Mute master gain">volume_up</span>
+            <div class="flex flex-col justify-center">
+                <div class="text-[10px] text-zinc-500 font-mono-data uppercase tracking-widest leading-none mb-2">
+                    Master Gain
+                </div>
+                <div class="relative flex items-center">
+                    <input type="range" id="volume-control" min="0" max="1" step="0.01" value="0.75"
+                        class="w-32 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-10">
+            <button type="button" aria-label="Previous track" class="text-zinc-400 hover:text-zinc-100 transition-colors"><span
+                    class="material-symbols-outlined text-3xl">skip_previous</span></button>
+            <button type="button" id="btn-play" aria-label="Play or pause"
+                class="w-14 h-14 bg-zinc-950 rounded-full border border-zinc-800 flex items-center justify-center text-zinc-100 hover:border-cyan-400/50 hover:text-cyan-400 transition-all active:scale-90 shadow-lg">
+                <span id="play-icon" class="material-symbols-outlined text-4xl">play_arrow</span>
+            </button>
+            <button type="button" id="btn-stop" aria-label="Stop"
+                class="w-14 h-14 bg-zinc-950 rounded-full border border-zinc-800 flex items-center justify-center text-zinc-100 hover:border-error/50 hover:text-error transition-all active:scale-90 shadow-lg"><span
+                    class="material-symbols-outlined text-4xl">stop</span></button>
+            <button type="button" aria-label="Next track" class="text-zinc-400 hover:text-zinc-100 transition-colors"><span
+                    class="material-symbols-outlined text-3xl">skip_next</span></button>
+        </div>
+
+        <!---
+        <div class="absolute right-8 text-right">
+            <div class="text-[10px] text-zinc-500 font-mono-data">TIMELINE</div>
+            <div class="font-mono-data text-cyan-400 text-sm tracking-widest">00:00:00:00</div>
+        </div>
+        -->
+
+        <div class="absolute right-8 text-right">
+            <div class="text-[10px] text-zinc-500 font-mono-data uppercase tracking-widest">Timeline</div>
+            <div id="timeline-display"
+                class="font-timeline-elms text-cyan-400 text-xl tracking-normal mt-0 leading-none">
+                00:00 / 00:00
+            </div>
+        </div>
+
+    </footer>
+
+    <script>
+        document.querySelectorAll('.app-version').forEach((el) => {
+            el.textContent = window.APP_VERSION || '';
+        });
+
+        let audioContext;
+        let audioBuffer;
+        let sourceNode;
+        let isPlaying = false;
+        let isPaused = false;
+
+        let startTime = 0;      // 재생 시작 시간
+        let pauseTime = 0;
+        let animationId;        // 애니메이션 프레임 ID
+
+        let recentFiles = []; // 최근 파일 정보를 담을 배열
+        let isShowingAllRecentFiles = false; // "View All" 상태 변수
+
+        let gainNode; // 볼륨 게인
+        let analyser; // [추가] 오디오 분석기
+        let dataArray; // [추가] 분석 데이터 배열
+        let levelMeterAnimationId; // [추가] 레벨 미터 애니메이션 ID
+        let peaks = []; // [추가] 피크 레벨 저장 배열
+
+
+
+
+        const fileInput = document.getElementById('audio-upload');
+        const selectAudioBtn = document.getElementById('select-audio-btn');
+        const canvas = document.getElementById('waveform-canvas');
+        const ctx = canvas.getContext('2d');
+        const btnPlay = document.getElementById('btn-play');
+        const btnStop = document.getElementById('btn-stop');
+        const dropZone = document.getElementById('drop-zone');
+
+        const volControl = document.getElementById('volume-control'); // 볼륨
+
+        const btnViewAll = document.getElementById('btn-view-all');
+        if (btnViewAll) {
+            btnViewAll.addEventListener('click', () => {
+                isShowingAllRecentFiles = !isShowingAllRecentFiles;
+                renderRecentFilesUI();
+            });
+        }
+
+        if (selectAudioBtn) {
+            selectAudioBtn.addEventListener('click', () => fileInput.click());
+        }
+
+        // 시간 포멧
+        function formatTime(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+        }
+
+        // --- IndexedDB Helper (Blob URL은 페이지 이동 시 만료되므로 DB에 저장) ---
+        const audioDB = {
+            init() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open('AudioDB', 1);
+                    req.onupgradeneeded = e => {
+                        e.target.result.createObjectStore('files');
+                    };
+                    req.onsuccess = e => resolve(e.target.result);
+                    req.onerror = e => reject(e.target.error);
+                });
+            },
+            async save(file) {
+                const db = await this.init();
+                const tx = db.transaction('files', 'readwrite');
+                tx.objectStore('files').put(file, 'currentAudio');
+                return new Promise((resolve, reject) => {
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                });
+            },
+            async load() {
+                const db = await this.init();
+                const tx = db.transaction('files', 'readonly');
+                const req = tx.objectStore('files').get('currentAudio');
+                return new Promise((resolve, reject) => {
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+        };
+
+        // --- 공통 파일 처리 함수 ---
+        async function handleAudioFile(file, shouldAddToHistory = true) {
+            stopAudio();
+
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+            updateFileInfoDisplay(file, audioBuffer);
+            drawWaveform(audioBuffer);
+
+            // [추가] 파일 로드 즉시 타임라인 텍스트 초기화 (00:00 / 전체시간)
+            const timelineDisp = document.getElementById('timeline-display');
+            if (timelineDisp && audioBuffer) {
+                timelineDisp.textContent = `00:00 / ${formatTime(audioBuffer.duration)}`;
+            }
+
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // 오디오 파이프라인 초기화 및 분석기 연결
+            createAudioPipeline();
+
+            // --- 여기에서 리스트 업데이트 호출 (사용자가 직접 추가했을 때만) ---
+            if (shouldAddToHistory) {
+                // 고유 파일 식별자: 파일명 + 수정시간 + 크기 + 현재 로드 시각
+                // → 같은 물리 파일을 재업로드해도 loadedAt 덕분에 항상 새 항목으로 취급
+                const loadedAt = Date.now();
+                const fileId = `${file.name}::${file.lastModified}::${file.size}::${loadedAt}`;
+
+                // 새 파일 업로드 시 해당 fileId의 이전 BPM 분석 결과를 무효화
+                // (다른 fileId에는 영향 없음 — 동명 파일의 과거 BPM 기록 보존)
+                try {
+                    const bpmHistory = JSON.parse(localStorage.getItem('bpmHistory') || '{}');
+                    delete bpmHistory[fileId];
+                    localStorage.setItem('bpmHistory', JSON.stringify(bpmHistory));
+                } catch (e) { }
+
+                const fileInfo = {
+                    id: fileId,
+                    name: file.name,
+                    format: file.type.replace('audio/', '').toUpperCase(),
+                    size: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
+                    bpm: '--',  // 업로드 직후에는 항상 미분석 상태로 시작
+                    loadedAt    // 표시용(타임스탬프 보존)
+                };
+                updateRecentFilesList(fileInfo);
+
+                // 분석 페이지에서 bpmHistory 키로 사용할 고유 ID 전달
+                sessionStorage.setItem('currentFileId', fileId);
+            }
+
+            console.log("Audio visualized and added to recent list");
+
+            // IndexedDB에 파일 저장
+            try {
+                await audioDB.save(file);
+                sessionStorage.setItem('uploadedAudioName', file.name);
+                // currentFileId는 shouldAddToHistory 블록에서 이미 설정됨
+                // (shouldAddToHistory=false인 자동 복구 시에는 기존 세션값 유지)
+            } catch (err) {
+                console.error("IndexedDB 저장 실패", err);
+            }
+        }
+
+        // 슬라이더 배경색 업데이트 함수
+        function updateSliderBackground(slider) {
+            const value = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+            slider.style.background = `linear-gradient(to right, #00f0ff 0%, #00f0ff ${value}%, #272a2c ${value}%, #272a2c 100%)`;
+        }
+
+        let lastMasterVolume = parseFloat(volControl.value) > 0 ? volControl.value : '0.75';
+        const masterMuteToggle = document.getElementById('master-mute-toggle');
+
+        function setMasterVolume(value) {
+            volControl.value = value;
+            volControl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function updateMasterMuteIcon() {
+            if (masterMuteToggle) {
+                masterMuteToggle.textContent = parseFloat(volControl.value) === 0 ? 'volume_off' : 'volume_up';
+            }
+        }
+
+        volControl.addEventListener('input', (e) => {
+            if (gainNode) {
+                gainNode.gain.value = e.target.value;
+            }
+            localStorage.setItem('masterVolume', e.target.value); // 상태 저장
+            updateSliderBackground(e.target); // 바 색상 업데이트 호출
+        });
+
+        // 초기 로드 시 배경색 적용 및 데이터 복원
+        volControl.addEventListener('input', (e) => {
+            if (parseFloat(e.target.value) > 0) {
+                lastMasterVolume = e.target.value;
+            }
+            updateMasterMuteIcon();
+        });
+
+        if (masterMuteToggle) {
+            const toggleMasterMute = () => {
+                setMasterVolume(parseFloat(volControl.value) === 0 ? lastMasterVolume : 0);
+            };
+            masterMuteToggle.addEventListener('click', toggleMasterMute);
+            masterMuteToggle.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleMasterMute();
+                }
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            // 볼륨 값 복원
+            const savedVolume = localStorage.getItem('masterVolume');
+            if (savedVolume !== null) {
+                volControl.value = savedVolume;
+            }
+            if (parseFloat(volControl.value) > 0) {
+                lastMasterVolume = volControl.value;
+            }
+            updateSliderBackground(volControl);
+            updateMasterMuteIcon();
+
+            // 로컬 스토리지에서 최근 파일 목록 불러오기
+            try {
+                const storedFiles = localStorage.getItem('recentFiles');
+                if (storedFiles) {
+                    recentFiles = JSON.parse(storedFiles);
+                }
+            } catch (e) {
+                console.error('Failed to parse recent files from localStorage', e);
+            }
+
+            // bpmHistory와 기존 recentFiles 항목 동기화 (BPM 분석 후 재방문 시 반영)
+            // 고유 ID(f.id) 기준으로만 조회 — f.name 폴백 제거하여 동명 미분석 파일에 BPM이 붙는 버그 방지
+            try {
+                const bpmHistory = JSON.parse(localStorage.getItem('bpmHistory') || '{}');
+                recentFiles = recentFiles.map(f => {
+                    const resolvedBpm = (f.id && bpmHistory[f.id]) ? bpmHistory[f.id] : '--';
+                    return { ...f, bpm: resolvedBpm };
+                });
+                // 동기화된 결과를 다시 저장
+                localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
+            } catch (e) { }
+
+            // 목록 UI 업데이트 (초기 렌더링)
+            updateRecentFilesList();
+
+            try {
+                const file = await audioDB.load();
+                if (file) {
+                    // 페이지 로드 시 자동 복구할 때는 히스토리에 추가하지 않음 (중복 방지)
+                    await handleAudioFile(file, false);
+                }
+            } catch (e) {
+                console.error('Failed to restore audio from IndexedDB:', e);
+            }
+        });
+
+        // 2. 오디오 노드 연결 함수 (중복 코드 방지용)
+        function createAudioPipeline() {
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // GainNode가 없으면 생성
+            if (!gainNode) {
+                gainNode = audioContext.createGain();
+                gainNode.gain.value = volControl.value; // 현재 슬라이더 값으로 초기화
+            }
+
+            // AnalyserNode가 없으면 생성하고 연결
+            if (!analyser) {
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                // 연결: source -> gainNode -> analyser -> destination
+                // (source 연결은 play 시점에 함)
+                gainNode.connect(analyser);
+                analyser.connect(audioContext.destination);
+            }
+        }
+
+        // [추가] 리사이즈 대응: 창 크기나 컨테이너 크기 변경 시 캔버스 해상도 업데이트
+        function setupLevelMeterResize() {
+            const levelCanvas = document.getElementById('level-meter-canvas');
+            const dropZone = document.getElementById('drop-zone');
+            if (!levelCanvas || !dropZone) return;
+
+            const resizeObserver = new ResizeObserver(entries => {
+                for (let entry of entries) {
+                    levelCanvas.width = entry.contentRect.width;
+                    levelCanvas.height = entry.contentRect.height;
+                }
+            });
+            resizeObserver.observe(dropZone);
+        }
+
+        // [추가] 배경 레벨 미터 그리기 함수 (원형 웨이브 방사형 스타일)
+        let rotationAngle = 0; // 회전 효과를 위한 각도 변수
+
+        function drawLevelMeter() {
+            const levelCanvas = document.getElementById('level-meter-canvas');
+            if (!levelCanvas) return;
+            const levelCtx = levelCanvas.getContext('2d');
+
+            const bufferLength = analyser.frequencyBinCount;
+            analyser.getByteFrequencyData(dataArray);
+
+            levelCtx.clearRect(0, 0, levelCanvas.width, levelCanvas.height);
+
+            const centerX = levelCanvas.width / 2;
+            const centerY = levelCanvas.height / 2;
+            // 사이즈를 150% 키움 (0.6 -> 0.9)
+            const baseRadius = Math.min(centerX, centerY) * 0.9;
+
+            
+            // 1. 전체 평균 볼륨 계산 (바깥 링 용)
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+            const avgVol = sum / bufferLength;
+            const volRatio = avgVol / 255;
+
+            // --- 외곽 도넛(Ring) 배경 ---
+            levelCtx.beginPath();
+            levelCtx.arc(centerX, centerY, baseRadius + 30, 0, Math.PI * 2);
+            levelCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            levelCtx.lineWidth = 15;
+            levelCtx.stroke();
+
+            // --- 외곽 도넛(Ring) 게이지 ---
+            levelCtx.beginPath();
+            const startAngle = -Math.PI / 2;
+            const endAngle = startAngle + (volRatio * Math.PI * 2);
+            levelCtx.arc(centerX, centerY, baseRadius + 30, startAngle, endAngle);
+
+            
+            // 네온 그라데이션 적용: 시안 -> 핫핑크 -> 퍼플
+            const ringGradient = levelCtx.createLinearGradient(centerX, centerY - baseRadius, centerX, centerY + baseRadius);
+            ringGradient.addColorStop(0, '#00f0ff');   // Neon Cyan
+            ringGradient.addColorStop(0.5, '#ff007f'); // Neon Hot Pink
+            ringGradient.addColorStop(1, '#9400d3');   // Neon Purple
+            
+            // 네온 글로우 효과 추가
+            levelCtx.shadowBlur = 15;
+            levelCtx.shadowColor = '#00f0ff';
+            
+            levelCtx.strokeStyle = ringGradient;
+            levelCtx.lineWidth = 15;
+            levelCtx.lineCap = 'round';
+            levelCtx.stroke();
+
+
+            // 글로우 초기화 (다른 요소에 영향 미치지 않도록)
+            levelCtx.shadowBlur = 0;
+
+            // --- 내부 방사형 웨이브 파형 ---
+            levelCtx.beginPath();
+            rotationAngle += 0.01;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const angle = (i / bufferLength) * Math.PI * 2 + rotationAngle;
+                // 웨이브 진폭도 약 150% 확장
+                const amplitude = (dataArray[i] / 255) * 65; 
+                const r = baseRadius + amplitude;
+
+                
+                const x = centerX + Math.cos(angle) * r;
+                const y = centerY + Math.sin(angle) * r;
+
+                if (i === 0) levelCtx.moveTo(x, y);
+                else levelCtx.lineTo(x, y);
+            }
+            levelCtx.closePath();
+            
+            // 웨이브 네온 효과: 라임색
+            levelCtx.shadowBlur = 10;
+            levelCtx.shadowColor = '#39ff14';
+            levelCtx.strokeStyle = '#39ff14'; // Neon Lime
+            levelCtx.lineWidth = 2;
+            levelCtx.stroke();
+
+            // 내부 채우기 (은은한 글로우)
+            levelCtx.fillStyle = 'rgba(57, 255, 20, 0.05)';
+            levelCtx.fill();
+            
+            // 그림자 효과 완전 초기화
+            levelCtx.shadowBlur = 0;
+
+
+            levelMeterAnimationId = requestAnimationFrame(drawLevelMeter);
+        }
+
+
+
+
+
+        // [수정] playBuffer 함수 내 연결 로직 수정
+        function playBuffer(startTimeOffset) {
+            sourceNode = audioContext.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+
+            // 중요: sourceNode를 destination이 아닌 gainNode에 먼저 연결합니다.
+            sourceNode.connect(gainNode);
+
+            startTime = audioContext.currentTime;
+            sourceNode.start(0, startTimeOffset);
+            isPlaying = true;
+            updateUI(true);
+            updateProgressBar();
+        }
+
+        // 정보 표시 업데이트 함수: 앨범 표지 및 메타데이터 추출 추가
+        /**
+         * 파일 바이너리를 직접 읽어 원본 샘플 레이트를 추출합니다.
+         * 시스템 AudioContext의 리샘플링 영향을 받지 않는 파일 고유의 값을 가져옵니다.
+         */
+        async function getOriginalSampleRate(file) {
+            const buffer = await file.arrayBuffer();
+            const view = new DataView(buffer);
+
+            // 1. WAV 파일 (RIFF header)
+            if (view.getUint32(0, true) === 0x46464952) { // "RIFF"
+                return parseWavSampleRate(view);
+            }
+
+            // 2. MP3 파일 (ID3 태그 건너뛰고 첫 프레임 찾기)
+            return parseMp3SampleRate(view);
+        }
+
+        function parseWavSampleRate(view) {
+            try {
+                // WAV 포맷의 샘플 레이트는 오프셋 24번에 4바이트 리틀 엔디언으로 저장됨
+                return view.getUint32(24, true);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function parseMp3SampleRate(view) {
+            try {
+                let offset = 0;
+                // ID3 태그 스킵
+                if (view.getUint32(0) >>> 8 === 0x494433) { // "ID3"
+                    const size = ((view.getUint8(6) & 0x7F) << 21) |
+                                 ((view.getUint8(7) & 0x7F) << 14) |
+                                 ((view.getUint8(8) & 0x7F) << 7) |
+                                 (view.getUint8(9) & 0x7F);
+                    offset = size + 10;
+                }
+
+                // MPEG 프레임 동기화 신호(Sync word: 0xFFE0) 찾기
+                while (offset < view.byteLength - 4) {
+                    if (view.getUint8(offset) === 0xFF && (view.getUint8(offset + 1) & 0xE0) === 0xE0) {
+                        const byte1 = view.getUint8(offset + 1);
+                        const byte2 = view.getUint8(offset + 2);
+
+                        const mpegVersion = (byte1 >> 3) & 0x03; // 0=MPEG2.5, 1=reserved, 2=MPEG2, 3=MPEG1
+                        const srIndex = (byte2 >> 2) & 0x03;
+
+                        const srTable = {
+                            3: [44100, 48000, 32000, 0], // MPEG 1
+                            2: [22050, 24000, 16000, 0], // MPEG 2
+                            0: [11025, 12000, 8000, 0]   // MPEG 2.5
+                        };
+
+                        if (srTable[mpegVersion]) {
+                            return srTable[mpegVersion][srIndex];
+                        }
+                    }
+                    offset++;
+                }
+            } catch (e) {
+                console.warn("MP3 Sample Rate 파싱 실패:", e);
+            }
+            return null;
+        }
+
+        function updateFileInfoDisplay(file, buffer) {
+            const display = document.getElementById('file-info-display');
+            const nameEl = document.getElementById('info-name');
+            const artistEl = document.getElementById('info-artist');
+            const durationEl = document.getElementById('info-duration');
+            const formatEl = document.getElementById('info-format');
+            const albumArtContainer = document.getElementById('info-album-art');
+
+            // 표시 영역 보이기
+            display.classList.remove('hidden');
+
+            // 기본 파일명 삽입
+            nameEl.textContent = file.name;
+
+            // 노래 길이 계산 (분:초)
+            const minutes = Math.floor(buffer.duration / 60);
+            const seconds = Math.floor(buffer.duration % 60);
+            durationEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            // 인코딩/포맷 정보 (원본 파일 바이너리에서 샘플 레이트 추출)
+            getOriginalSampleRate(file).then(sr => {
+                const srDisplay = sr ? `${sr / 1000}kHz` : `${buffer.sampleRate / 1000}kHz`;
+                formatEl.textContent = `${file.type.replace('audio/', '').toUpperCase()} / ${srDisplay}`;
+            });
+
+            // jsmediatags를 이용한 메타데이터 추출
+            window.jsmediatags.read(file, {
+                onSuccess: function (tag) {
+                    const tags = tag.tags;
+
+                    // 아티스트 업데이트
+                    artistEl.textContent = tags.artist || "Unknown Artist";
+
+                    // 앨범 아트 처리
+                    if (tags.picture) {
+                        const { data, format } = tags.picture;
+                        let base64String = "";
+                        for (let i = 0; i < data.length; i++) {
+                            base64String += String.fromCharCode(data[i]);
+                        }
+                        const url = `data:${format};base64,${window.btoa(base64String)}`;
+                        albumArtContainer.innerHTML = `<img src="${url}" class="w-full h-full object-cover" />`;
+                    } else {
+                        albumArtContainer.innerHTML = `<span class="material-symbols-outlined text-zinc-600 text-3xl">album</span>`;
+                    }
+                },
+                onError: function (error) {
+                    console.log('Error reading tags: ', error.type, error.info);
+                    artistEl.textContent = "Unknown Artist";
+                    albumArtContainer.innerHTML = `<span class="material-symbols-outlined text-zinc-600 text-3xl">album</span>`;
+                }
+            });
+        }
+
+        // --- 드래그 앤 드롭 이벤트 ---
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-cyan-400', 'bg-cyan-400/10');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-cyan-400', 'bg-cyan-400/10');
+        });
+
+        dropZone.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-cyan-400', 'bg-cyan-400/10');
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && (files[0].type === "audio/mpeg" || files[0].name.toLowerCase().endsWith('.mp3'))) {
+                handleAudioFile(files[0]);
+            } else {
+                alert("Please drop an MP3 file.");
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleAudioFile(file);
+        });
+
+        // --- 파형 그리기 (Right Side) ---
+        function drawWaveform(buffer, isPlayed = false) {
+            if (canvas.width === 0 || canvas.width !== canvas.offsetWidth) {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+            }
+
+            const data = buffer.getChannelData(0);
+            const step = Math.ceil(data.length / canvas.width);
+            const amp = canvas.height / 2;
+
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+
+            if (isPlayed === true) {
+                gradient.addColorStop(0, 'rgba(0, 240, 255, 0.15)');
+                gradient.addColorStop(1, 'rgba(114, 19, 255, 0.15)');
+            } else {
+                gradient.addColorStop(0, '#00f0ff');
+                gradient.addColorStop(1, '#7213ff');
+            }
+
+            ctx.fillStyle = gradient;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < canvas.width; i++) {
+                let min = 1.0;
+                let max = -1.0;
+                for (let j = 0; j < step; j++) {
+                    const datum = data[(i * step) + j];
+                    if (datum < min) min = datum;
+                    if (datum > max) max = datum;
+                }
+                ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
+            }
+        }
+
+        // --- 재생/일시정지 통합 로직 ---
+        btnPlay.addEventListener('click', async () => {
+            if (!audioBuffer) return;
+
+            if (!isPlaying && !isPaused) {
+                if (audioContext.state === 'suspended') await audioContext.resume();
+
+                sourceNode = audioContext.createBufferSource();
+                sourceNode.buffer = audioBuffer;
+                sourceNode.connect(gainNode); // 반드시 gainNode에 연결해야 슬라이더가 작동합니다.
+
+                startTime = audioContext.currentTime;
+                sourceNode.start();
+
+                isPlaying = true;
+                updateUI(true);
+                updateProgressBar();
+                drawLevelMeter(); // [추가] 레벨 미터 애니메이션 시작
+
+                sourceNode.onended = () => {
+                    if (!isPaused) {
+                        stopAudio();
+                    }
+                };
+            }
+            else if (isPlaying && !isPaused) {
+                await audioContext.suspend();
+                isPaused = true;
+                updateUI(false);
+                cancelAnimationFrame(levelMeterAnimationId); // [추가] 애니메이션 중지
+            }
+            else if (isPaused) {
+                await audioContext.resume();
+                isPaused = false;
+                updateUI(true);
+                updateProgressBar();
+                drawLevelMeter(); // [추가] 애니메이션 재개
+            }
+        });
+
+        function updateUI(isCurrentlyPlaying) {
+            const icon = document.getElementById('play-icon');
+            if (isCurrentlyPlaying) {
+                icon.textContent = 'pause';
+                btnPlay.classList.add('text-cyan-400', 'border-cyan-400/50');
+            } else {
+                icon.textContent = 'play_arrow';
+                btnPlay.classList.remove('text-cyan-400', 'border-cyan-400/50');
+            }
+        }
+
+        function stopAudio() {
+            if (sourceNode) {
+                try { sourceNode.stop(); } catch (e) { }
+            }
+            isPlaying = false;
+            isPaused = false;
+            startTime = 0;
+            if (audioContext && audioContext.state === 'suspended') audioContext.resume();
+            updateUI(false);
+            cancelAnimationFrame(animationId);
+            cancelAnimationFrame(levelMeterAnimationId); // [추가] 레벨 미터 애니메이션 중지
+            if (audioBuffer) drawWaveform(audioBuffer);
+
+            const timelineDisp = document.getElementById('timeline-display');
+            if (timelineDisp && audioBuffer) {
+                timelineDisp.textContent = `00:00 / ${formatTime(audioBuffer.duration)}`;
+            }
+        }
+
+        btnStop.addEventListener('click', stopAudio);
+
+        function updateProgressBar() {
+            if (!isPlaying || !audioBuffer || isPaused) return;
+
+            const currentTime = audioContext.currentTime - startTime;
+            const progress = currentTime / audioBuffer.duration;
+
+            // [추가] 타임라인 텍스트 업데이트 (현재 시간 / 전체 시간)
+            const timelineDisp = document.getElementById('timeline-display');
+            if (timelineDisp) {
+                timelineDisp.textContent = `${formatTime(currentTime)} / ${formatTime(audioBuffer.duration)}`;
+            }
+
+            const x = progress * canvas.width;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, x, canvas.height);
+            ctx.clip();
+            drawWaveform(audioBuffer, true);
+            ctx.restore();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x, 0, canvas.width - x, canvas.height);
+            ctx.clip();
+            drawWaveform(audioBuffer, false);
+            ctx.restore();
+
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00f0ff';
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + 4, 6);
+            ctx.lineTo(x, 12);
+            ctx.lineTo(x - 4, 6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            if (progress < 1) {
+                animationId = requestAnimationFrame(updateProgressBar);
+            } else {
+                stopAudio();
+            }
+        }
+
+        // 파일리스트 UI 렌더링
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[char]);
+        }
+
+        function renderRecentFilesUI() {
+            const listContainer = document.querySelector('.divide-y');
+            listContainer.innerHTML = ''; // 기존 목록 초기화
+
+            // "View All" 버튼 제어 로직
+            if (btnViewAll) {
+                if (recentFiles.length > 3) {
+                    btnViewAll.classList.remove('hidden');
+                    btnViewAll.textContent = isShowingAllRecentFiles ? 'Show less' : 'View All';
+                } else {
+                    btnViewAll.classList.add('hidden');
+                }
+            }
+
+            // 파일이 하나도 없을 때의 기본 UI
+            if (recentFiles.length === 0) {
+                listContainer.innerHTML = `
+                <div class="p-4 flex items-center justify-between hover:bg-white/5 transition-colors group">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 bg-zinc-950 rounded flex items-center justify-center border border-zinc-800 group-hover:border-cyan-400/30">
+                            <span class="material-symbols-outlined text-cyan-400 text-sm">music_note</span>
+                        </div>
+                        <div>
+                            <div class="text-sm font-bold text-zinc-300">Display Audio file(MP3) history...</div>
+                            <div class="text-[10px] text-zinc-500">Focustone DAW</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-8">
+                        <div class="text-right">
+                            <div class="text-[10px] text-zinc-500 uppercase">Detected BPM</div>
+                            <div class="text-sm font-mono-data text-zinc-600">--</div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="button" aria-label="Download file" class="p-2 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-cyan-400"><span class="material-symbols-outlined text-sm">download</span></button>
+                            <button type="button" aria-label="More options" class="p-2 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-cyan-400"><span class="material-symbols-outlined text-sm">more_vert</span></button>
+                        </div>
+                    </div>
+                </div>`;
+                return;
+            }
+
+            // 보여줄 데이터 개수 결정 (토글 상태에 따라 3개 또는 전체)
+            const filesToRender = isShowingAllRecentFiles ? recentFiles : recentFiles.slice(0, 3);
+
+            // 데이터 렌더링
+            filesToRender.forEach(file => {
+                const safeName = escapeHtml(file.name || 'Unknown file');
+                const safeFormat = escapeHtml(file.format || 'MP3');
+                const safeSize = escapeHtml(file.size || '');
+                const safeBpm = escapeHtml(file.bpm || '--');
+                const item = `
+            <div class="p-4 flex items-center justify-between hover:bg-white/5 transition-colors group">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 bg-zinc-950 rounded flex items-center justify-center border border-zinc-800 group-hover:border-cyan-400/30">
+                        <span class="material-symbols-outlined text-cyan-400 text-sm">music_note</span>
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-zinc-300">${safeName}</div>
+                        <div class="text-[10px] text-zinc-500">${safeFormat} - ${safeSize} - Just now</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-8">
+                    <div class="text-right">
+                        <div class="text-[10px] text-zinc-500 uppercase">Detected BPM</div>
+                        <div class="text-sm font-mono-data ${file.bpm && file.bpm !== '--' ? 'text-cyan-400' : 'text-zinc-600'}">${safeBpm}</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" aria-label="Download file" class="p-2 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-cyan-400">
+                            <span class="material-symbols-outlined text-sm">download</span>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+                listContainer.insertAdjacentHTML('beforeend', item);
+            });
+        }
+
+        // 파일리스트 history 업데이트 로직
+        function updateRecentFilesList(fileInfo) {
+            if (fileInfo) {
+                // 고유 ID(fileInfo.id) 기준 중복 제거 후 맨 앞에 삽입
+                // loadedAt이 포함된 ID이므로 같은 물리 파일 재업로드도 별도 항목으로 취급
+                // (이름만 같고 ID가 다른 항목은 삭제되지 않음)
+                recentFiles = recentFiles.filter(f => f.id !== fileInfo.id);
+                recentFiles.unshift(fileInfo);
+
+                // 최근 파일 10개까지만 유지
+                recentFiles = recentFiles.slice(0, 10);
+
+                // 로컬 스토리지에 JSON 형태로 저장
+                localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
+            }
+
+            // UI 렌더링 함수 호출
+            renderRecentFilesUI();
+        }
+
+        // --- 실시간 시스템 성능 업데이트 로직 (브라우저 실제 데이터 반영) ---
+        function updateSystemPerformance() {
+            // querySelector 대신 getElementById를 사용하여 정확한 요소만 타겟팅합니다.
+            const cpuValueText = document.getElementById('cpu-value');
+            const cpuBar = document.getElementById('cpu-bar');
+            const ramValueText = document.getElementById('ram-value');
+            const ramBar = document.getElementById('ram-bar');
+
+            setInterval(() => {
+                // CPU 업데이트 (재생 상태 변수 isPlaying 활용)
+                const cpuLoad = isPlaying ? Math.floor(Math.random() * 15) + 20 : Math.floor(Math.random() * 5) + 8;
+                if (cpuValueText) cpuValueText.textContent = `${cpuLoad}%`;
+                if (cpuBar) cpuBar.style.width = `${cpuLoad}%`;
+
+                // RAM 업데이트 (Chrome 실제 Heap 데이터 반영)
+                if (window.performance && window.performance.memory) {
+                    const memory = window.performance.memory;
+                    const usedMB = (memory.usedJSHeapSize / (1024 * 1024)).toFixed(1);
+
+                    // 실제 브라우저가 현재 탭에 할당한 가용 범위(totalJSHeapSize)를 기준으로 비율 계산
+                    const totalMB = (memory.totalJSHeapSize / (1024 * 1024)).toFixed(1);
+
+                    if (ramValueText) ramValueText.textContent = `${usedMB}MB / ${totalMB}MB`;
+
+                    // 게이지 바가 눈에 보이게 움직이도록 실제 점유율 계산 (최소 2% 보장)
+                    let ramPercent = (memory.usedJSHeapSize / memory.totalJSHeapSize) * 100;
+                    ramPercent = Math.max(ramPercent, 2); // 아주 작아도 바가 살짝 보이게 설정
+
+                    if (ramBar) ramBar.style.width = `${ramPercent}%`;
+                }
+            }, 2000);
+        }
+
+        // 페이지 로드 시 실행
+        window.addEventListener('DOMContentLoaded', () => {
+            updateSystemPerformance();
+            setupLevelMeterResize(); // [추가] 리사이즈 옵저버 시작
+        });
+
+    </script>
+</body>
+
+</html>

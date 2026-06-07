@@ -75,6 +75,20 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .menu-item{display:flex;align-items:center;padding:0 11px;font-size:12.5px;color:var(--cream-2);
   border-radius:6px;margin:5px 0;cursor:pointer}
 .menu-item:hover{background:var(--surface)}
+.project-name-edit{position:relative;z-index:4;-webkit-app-region:no-drag}
+.window-controls{height:100%;display:flex;align-items:stretch;flex:0 0 auto;margin-right:-10px;
+  -webkit-app-region:no-drag}
+.window-control{width:46px;height:100%;display:grid;place-items:center;color:var(--cream-2);
+  border-radius:0;font-size:16px;line-height:1;background:transparent}
+.window-control:hover{background:var(--surface2);color:var(--cream)}
+.window-control.close:hover{background:#b94a3a;color:#fff}
+.bottombar{height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:0 12px;background:linear-gradient(180deg,var(--bg2),var(--bg));
+  border-top:1px solid var(--line-strong);color:var(--muted);user-select:none}
+.bottom-project{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:10.5px;color:var(--dim)}
+.version-badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;color:var(--dim);
+  flex:0 0 auto;border:1px solid var(--line);border-radius:5px;padding:2px 7px;background:rgba(255,255,255,.018)}
 
 button.btn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 14px;
   border-radius:8px;background:var(--surface2);color:var(--cream);font-weight:500;font-size:13px;
@@ -141,11 +155,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
     /* make menubar draggable (moves the window) */
     '.menubar { -webkit-app-region: drag; }',
     /* interactive elements inside must opt out */
-    '.menubar button, .menubar input, .menubar [role=button], .menubar .menu-item { -webkit-app-region: no-drag; }',
+    '.menubar button, .menubar input, .menubar [role=button], .menubar .menu-item, .menubar .project-name-edit, .menubar .window-controls { -webkit-app-region: no-drag; }',
   ];
   if (api.platform === 'darwin') {
     /* hiddenInset: traffic lights sit inside the window at top-left */
     lines.push('.menubar { padding-left: 80px !important; }');
+  } else {
+    lines.push('.menubar { height:40px !important; flex-basis:40px !important; padding-right:10px !important; }');
   }
   style.textContent = lines.join('\n');
   document.head.appendChild(style);

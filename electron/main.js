@@ -13,6 +13,23 @@ try { ffmpegPath = require('ffmpeg-static'); } catch (e) {
 
 const AUDIO_EXT = /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i;
 
+function audioItem(filePath) {
+  const fileName = path.basename(filePath);
+  return {
+    name: fileName,
+    displayName: fileName.replace(AUDIO_EXT, ''),
+    path: filePath,
+  };
+}
+
+function safeFileBase(name) {
+  const cleaned = String(name || 'untitled')
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .replace(/[.\s]+$/g, '');
+  return cleaned || 'untitled';
+}
+
 function createWindow() {
   const isMac = process.platform === 'darwin';
   const win = new BrowserWindow({
@@ -20,9 +37,7 @@ function createWindow() {
     height: 900,
     minWidth: 960,
     minHeight: 600,
-    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    // On Windows/Linux use a custom overlay title bar
-    ...(isMac ? {} : { titleBarOverlay: { color: '#221d17', symbolColor: '#d8cdb6', height: 36 } }),
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -62,7 +77,7 @@ ipcMain.handle('open-folder', async () => {
   const dir = filePaths[0];
   return fs.readdirSync(dir)
     .filter(f => AUDIO_EXT.test(f))
-    .map(f => ({ name: f.replace(AUDIO_EXT, ''), path: path.join(dir, f) }));
+    .map(f => audioItem(path.join(dir, f)));
 });
 
 // Select individual audio files
@@ -73,7 +88,7 @@ ipcMain.handle('select-files', async () => {
     title: 'Import Audio Files',
   });
   if (canceled) return [];
-  return filePaths.map(p => ({ name: path.basename(p).replace(AUDIO_EXT, ''), path: p }));
+  return filePaths.map(p => audioItem(p));
 });
 
 // Read an audio file and return its raw bytes as ArrayBuffer
@@ -83,15 +98,19 @@ ipcMain.handle('read-audio-file', async (_, filePath) => {
 });
 
 // Save project via native Save dialog
-ipcMain.handle('save-project', async (_, json, defaultName) => {
+ipcMain.handle('save-project', async (_, json, defaultName, targetPath) => {
+  if (targetPath) {
+    fs.writeFileSync(targetPath, JSON.stringify(json, null, 2), 'utf8');
+    return { saved: true, path: targetPath, dir: path.dirname(targetPath) };
+  }
   const { canceled, filePath } = await dialog.showSaveDialog({
-    defaultPath: (defaultName || 'project').replace(/[^\w\-]+/g, '_') + '.focus',
+    defaultPath: safeFileBase(defaultName) + '.focus',
     filters: [{ name: 'FocusDAW Project', extensions: ['focus'] }],
     title: 'Save Project',
   });
-  if (canceled || !filePath) return false;
+  if (canceled || !filePath) return { saved: false };
   fs.writeFileSync(filePath, JSON.stringify(json, null, 2), 'utf8');
-  return true;
+  return { saved: true, path: filePath, dir: path.dirname(filePath) };
 });
 
 // Open project via native Open dialog
@@ -102,7 +121,12 @@ ipcMain.handle('open-project', async () => {
     title: 'Open Project',
   });
   if (canceled || !filePaths[0]) return null;
-  return fs.readFileSync(filePaths[0], 'utf8');
+  const filePath = filePaths[0];
+  return {
+    text: fs.readFileSync(filePath, 'utf8'),
+    path: filePath,
+    dir: path.dirname(filePath),
+  };
 });
 
 // Encode WAV → MP3 via ffmpeg

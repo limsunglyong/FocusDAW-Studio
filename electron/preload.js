@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readAudioFile:  (filePath)      => ipcRenderer.invoke('read-audio-file', filePath),
 
   // Project persistence
-  saveProject:    (json, name)    => ipcRenderer.invoke('save-project', json, name),
+  saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),
   openProject:    ()              => ipcRenderer.invoke('open-project'),
 
   // MP3 encoding via ffmpeg

@@ -220,6 +220,9 @@
     _tickCbs: [],
     _clipCounter: 0,
     _cid() { return 'c' + (++this._clipCounter); },
+    _displayName(fileName) {
+      return (fileName || "").replace(/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i, "");
+    },
 
     init() {
       if (ctx) return;
@@ -273,7 +276,7 @@
       });
     },
 
-    _addTrack({ name, type, color, buffer, isDemo = false, fileName = null, needsAudio = false }) {
+    _addTrack({ name, type, color, buffer, isDemo = false, fileName = null, filePath = null, needsAudio = false }) {
       const id = "t" + (this.tracks.length + 1) + "_" + Math.random().toString(36).slice(2, 6);
       // persistent nodes
       const fader = ctx.createGain();
@@ -305,7 +308,7 @@
           automation: defaultAutomation(type),
         },
         clips: [{ id: this._cid(), start: 0, end: buffer.duration, offset: 0, params: null, automation: null }],
-        isDemo, fileName, needsAudio,
+        isDemo, fileName, filePath, needsAudio, audioRev: 0,
         _meterBuf: new Float32Array(meter.fftSize),
       };
       this.tracks.push(track);
@@ -313,22 +316,28 @@
       return track;
     },
 
-    async addFileBuffer(name, arrayBuffer) {
+    async addFileBuffer(name, arrayBuffer, options = {}) {
       this.init();
       const buffer = await ctx.decodeAudioData(arrayBuffer);
       this.duration = Math.max(this.duration, buffer.duration);
-      const ph = this.tracks.find(t => t.needsAudio && (t.fileName === name || t.name === name));
+      const filePath = options.filePath || null;
+      const displayName = options.displayName || this._displayName(name);
+      const ph = this.tracks.find(t => t.needsAudio && (
+        (filePath && t.filePath === filePath) || t.fileName === name || t.name === name || t.name === displayName
+      ));
       if (ph) {
         ph.buffer = buffer;
         ph.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
         ph.needsAudio = false;
-        ph.clips = [{ id: this._cid(), start: 0, end: buffer.duration, offset: 0, params: null, automation: null }];
+        ph.fileName = ph.fileName || name;
+        ph.filePath = filePath || ph.filePath || null;
+        ph.audioRev = (ph.audioRev || 0) + 1;
         this._applyMix();
         return ph;
       }
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
-      const t = this._addTrack({ name, type: "audio", color, buffer, fileName: name });
+      const t = this._addTrack({ name: displayName, type: "audio", color, buffer, fileName: name, filePath });
       t.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
       return t;
     },
@@ -337,21 +346,23 @@
       this.init();
       const arr = await file.arrayBuffer();
       const buffer = await ctx.decodeAudioData(arr);
-      const name = file.name.replace(/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i, "");
+      const fileName = file.name;
+      const name = this._displayName(fileName);
       this.duration = Math.max(this.duration, buffer.duration);
       // link to a placeholder track from an imported project
-      const ph = this.tracks.find(t => t.needsAudio && (t.fileName === name || t.name === name));
+      const ph = this.tracks.find(t => t.needsAudio && (t.fileName === fileName || t.fileName === name || t.name === name));
       if (ph) {
         ph.buffer = buffer;
         ph.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
         ph.needsAudio = false;
-        ph.clips = [{ id: this._cid(), start: 0, end: buffer.duration, offset: 0, params: null, automation: null }];
+        ph.fileName = ph.fileName || fileName;
+        ph.audioRev = (ph.audioRev || 0) + 1;
         this._applyMix();
         return ph;
       }
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
-      const t = this._addTrack({ name, type: "audio", color, buffer, fileName: name });
+      const t = this._addTrack({ name, type: "audio", color, buffer, fileName });
       t.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
       return t;
     },
@@ -432,6 +443,7 @@
           color: t.color,
           isDemo: !!t.isDemo,
           fileName: t.fileName || null,
+          filePath: t.filePath || null,
           params: {
             ...t.params,
             automation: t.params.automation.map(p => ({ ...p })),
@@ -459,7 +471,7 @@
         if (this.master.bands) this.master.bands.forEach((db, i) => this.setMasterBand(i, db));
       }
       (json.tracks || []).forEach(td => {
-        const isAudioPlaceholder = !td.isDemo && !!td.fileName;
+        const isAudioPlaceholder = !td.isDemo && (!!td.fileName || !!td.filePath);
         let buffer;
         if (td.isDemo) {
           const def = TRACK_DEFS.find(d => d.type === td.type || d.name === td.name);
@@ -471,7 +483,7 @@
         }
         const track = this._addTrack({
           name: td.name, type: td.type, color: td.color, buffer,
-          isDemo: !!td.isDemo, fileName: td.fileName || null,
+          isDemo: !!td.isDemo, fileName: td.fileName || null, filePath: td.filePath || null,
           needsAudio: isAudioPlaceholder,
         });
         track.id = td.id;

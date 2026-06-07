@@ -162,6 +162,14 @@ function audioBufferToWav(buf) {
 }
 
 /* ---------- export dialog ---------- */
+function safeExportFileBase(name) {
+  const cleaned = String(name || "untitled")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .replace(/[.\s]+$/g, "");
+  return cleaned || "untitled";
+}
+
 function ExportDialog({ projectName, onClose }) {
   const [format, setFormat]     = useState("mp3");
   const [bitrate, setBitrate]   = useState(320);
@@ -207,7 +215,7 @@ function ExportDialog({ projectName, onClose }) {
     setStage("done");
   };
 
-  const baseName = projectName.replace(/[^\w\-]+/g, "_");
+  const baseName = safeExportFileBase(projectName);
   const fileName = baseName + (format === "mp3" ? ".mp3" : ".wav");
 
   return (

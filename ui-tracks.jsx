@@ -96,7 +96,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
       scrollHost && scrollHost.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
-  }, [pxPerSec, ampZoom, height, laneW, track, clips]);
+  }, [pxPerSec, ampZoom, height, laneW, track, clips, track.audioRev]);
   return <canvas ref={ref} style={{ position: "absolute", top: 0, height, display: "block" }} />;
 }
 

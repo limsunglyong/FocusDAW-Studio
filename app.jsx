@@ -1,6 +1,24 @@
 /* ================= FocusDAW — main app ================= */
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
+const DEFAULT_PROJECT_NAME = "untitled";
+const APP_VERSION = "v0.15.30";
+
+function safeFileBase(name) {
+  const cleaned = String(name || DEFAULT_PROJECT_NAME)
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .replace(/[.\s]+$/g, "");
+  return cleaned || DEFAULT_PROJECT_NAME;
+}
+
+function basenameFromPath(filePath) {
+  return (filePath || "").split(/[\\/]/).pop() || "";
+}
+
+function projectNameFromPath(filePath) {
+  return basenameFromPath(filePath).replace(/\.focus$/i, "") || DEFAULT_PROJECT_NAME;
+}
 
 function saveRecentProject(projectName) {
   try {
@@ -66,11 +84,33 @@ function Dropdown({ label, items, accent }) {
   );
 }
 
+function WindowControls() {
+  if (!window.electronAPI || window.electronAPI.platform === "darwin") return null;
+  const act = (name) => window.electronAPI.winAction(name);
+  return (
+    <div className="window-controls" aria-label="Window controls">
+      <button className="window-control" onClick={() => act("minimize")} title="Minimize" aria-label="Minimize">
+        <span aria-hidden="true">-</span>
+      </button>
+      <button className="window-control" onClick={() => act("maximize")} title="Maximize" aria-label="Maximize">
+        <span aria-hidden="true">□</span>
+      </button>
+      <button className="window-control close" onClick={() => act("close")} title="Close" aria-label="Close">
+        <span aria-hidden="true">×</span>
+      </button>
+    </div>
+  );
+}
+
 function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onSettings }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
-  const commit = () => { onRename(draft.trim() || "Untitled Project"); setEditing(false); };
+  const commit = () => { onRename(draft.trim() || DEFAULT_PROJECT_NAME); setEditing(false); };
+  const updateDraft = (value) => {
+    setDraft(value);
+    if (value.trim()) onRename(value.trim());
+  };
   const projectItems = [
     { label: "New Project", icon: "plus", hint: "\u2318N", onClick: onNew },
     { sep: true },
@@ -94,19 +134,20 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
       <div style={{ flex: 1 }} />
       {/* project name, right-aligned, inline-editable */}
       {editing ? (
-        <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        <input className="project-name-edit" autoFocus value={draft} onChange={(e) => updateDraft(e.target.value)} onBlur={commit}
           onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
           style={{ background: "var(--bg)", border: "1px solid var(--amber-deep)", borderRadius: 6, color: "var(--cream)",
-            fontFamily: "var(--ui)", fontSize: 12.5, padding: "3px 8px", outline: "none", width: 240, textAlign: "right" }} />
+            fontFamily: "var(--ui)", fontSize: 12.5, height: 28, lineHeight: "20px", padding: "3px 8px", outline: "none", width: 240, textAlign: "right" }} />
       ) : (
-        <div onClick={() => setEditing(true)} title="Rename project"
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 10px", borderRadius: 7, cursor: "text", whiteSpace: "nowrap", flex: "0 0 auto" }}
+        <div className="project-name-edit" onClick={() => setEditing(true)} title="Rename project"
+          style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "3px 10px", borderRadius: 7, cursor: "text", whiteSpace: "nowrap", flex: "0 0 auto", alignSelf: "center" }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
           <Icon name="disc" size={13} style={{ color: "var(--faint)", flex: "0 0 auto" }} />
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--cream-2)", whiteSpace: "nowrap" }}>{projectName || "Untitled Project"}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--cream-2)", whiteSpace: "nowrap" }}>{projectName || DEFAULT_PROJECT_NAME}</span>
         </div>
       )}
+      <WindowControls />
     </div>
   );
 }
@@ -268,13 +309,10 @@ function ToolIcon({ name, size }) {
   );
   return null;
 }
-function ActionBar({ onAddFiles, onMixer, mixerOpen, onExport }) {
-  const fileRef = useRef(null);
+function ActionBar({ onAddTrack, onMixer, mixerOpen, onExport }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" }}>
-      <input ref={fileRef} type="file" multiple accept=".mp3,.wav,.aiff,.m4a,.ogg,.flac" style={{ display: "none" }}
-        onChange={(e) => { onAddFiles([...e.target.files]); e.target.value = ""; }} />
-      <button className="btn" onClick={() => fileRef.current.click()}><Icon name="plus" size={15} /> Track</button>
+      <button className="btn" onClick={onAddTrack}><Icon name="plus" size={15} /> Track</button>
       <button className={"btn" + (mixerOpen ? " primary" : "")} onClick={onMixer}><Icon name="mixer" size={15} /> Mixer</button>
       <button className="btn" onClick={onExport}><Icon name="download" size={15} /> Export MP3</button>
     </div>
@@ -416,7 +454,7 @@ function LoadingOverlay({ state }) {
 }
 
 /* ---------- studio (arrange) ---------- */
-function Studio({ projectName, registerHandlers, onRenameProject }) {
+function Studio({ projectName, projectNameRef, projectPath, registerHandlers, onRenameProject, onProjectPathChange }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
@@ -497,35 +535,28 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
   }, [sessionDuration, updateTimeMin, updateTimelineView]);
 
   const saveProject = useCallback(async () => {
-    const json = DAW.exportProject(projectName);
+    const currentName = (projectNameRef && projectNameRef.current) || projectName || DEFAULT_PROJECT_NAME;
+    const json = DAW.exportProject(currentName);
     if (window.electronAPI) {
-      await window.electronAPI.saveProject(json, projectName);
+      const currentBase = safeFileBase(currentName);
+      const pathBase = projectPath ? safeFileBase(projectNameFromPath(projectPath)) : null;
+      const targetPath = currentBase === pathBase ? projectPath : null;
+      const result = await window.electronAPI.saveProject(json, currentName, targetPath);
+      if (!result || result.saved === false) return;
+      if (result.path && onProjectPathChange) onProjectPathChange(result.path);
     } else {
       const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = projectName.replace(/[^\w\-]+/g, "_") + ".focus";
+      a.download = safeFileBase(currentName) + ".focus";
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
-    saveRecentProject(projectName);
-  }, [projectName]);
+    saveRecentProject(currentName);
+  }, [projectName, projectNameRef, projectPath, onProjectPathChange]);
 
   const playPause = useCallback(() => { DAW.isPlaying ? DAW.pause() : DAW.play(); }, []);
-  useEffect(() => {
-    const k = (e) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key === "s") { e.preventDefault(); saveProject(); return; }
-      if (mod && e.key === "o") { e.preventDefault(); focusRef.current && focusRef.current.click(); return; }
-      if (e.target.tagName === "INPUT") return;
-      if (e.code === "Space") { e.preventDefault(); playPause(); }
-      if (!mod && (e.key === "s" || e.key === "S")) setTool("select");
-      if (!mod && (e.key === "c" || e.key === "C")) setTool("scissors");
-      if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
-    };
-    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
-  }, [playPause, saveProject]);
 
   useEffect(() => {
     const id = setInterval(() => saveRecentProject(projectName), 1500);
@@ -539,23 +570,75 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
     DAW.joinClips(trackId, clipIdA, clipIdB); force((n) => n + 1);
   }, []);
 
+  const reconnectProjectAudio = useCallback(async () => {
+    if (!window.electronAPI) return;
+    const missing = DAW.tracks.filter((t) => t.needsAudio && t.filePath);
+    if (!missing.length) return;
+    setLoading({ active: true, total: missing.length, done: 0, label: "Reconnecting audio..." });
+    for (let i = 0; i < missing.length; i++) {
+      const track = missing[i];
+      setLoading({ active: true, total: missing.length, done: i, label: basenameFromPath(track.filePath) || track.name });
+      try {
+        const ab = await window.electronAPI.readAudioFile(track.filePath);
+        await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath });
+      } catch (err) {
+        console.warn("Failed to reconnect audio:", track.filePath, err);
+      }
+    }
+    setLoading({ active: true, total: missing.length, done: missing.length, label: "Finalizing..." });
+    setTimeout(() => setLoading(null), 220);
+  }, []);
+
   const openProjectFile = useCallback(async (file) => {
     let text;
+    let openedPath = null;
     if (window.electronAPI) {
-      text = await window.electronAPI.openProject();
-      if (!text) return;
+      const opened = await window.electronAPI.openProject();
+      if (!opened) return;
+      text = typeof opened === "string" ? opened : opened.text;
+      openedPath = typeof opened === "string" ? null : opened.path;
     } else if (file) {
       text = await file.text();
+      openedPath = file.name;
     } else { return; }
     try {
       const json = JSON.parse(text);
       DAW.importProject(json);
-      if (json.projectName && onRenameProject) onRenameProject(json.projectName);
+      const nextName = json.projectName || projectNameFromPath(openedPath);
+      if (onRenameProject) onRenameProject(nextName);
+      if (openedPath && onProjectPathChange) onProjectPathChange(openedPath);
+      await reconnectProjectAudio();
       fitTimelineToProject();
-      saveRecentProject(json.projectName || projectName);
+      saveRecentProject(nextName);
       force((n) => n + 1);
     } catch (err) { console.error("Failed to open project:", err); }
-  }, [onRenameProject, fitTimelineToProject, projectName]);
+  }, [onRenameProject, onProjectPathChange, fitTimelineToProject, reconnectProjectAudio]);
+
+  useEffect(() => {
+    const k = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "s") { e.preventDefault(); saveProject(); return; }
+      if (mod && e.key === "o") {
+        e.preventDefault();
+        if (window.electronAPI) openProjectFile(null);
+        else focusRef.current && focusRef.current.click();
+        return;
+      }
+      if (e.target.tagName === "INPUT") return;
+      if (e.code === "Space") { e.preventDefault(); playPause(); }
+      if (!mod && (e.key === "s" || e.key === "S")) setTool("select");
+      if (!mod && (e.key === "c" || e.key === "C")) setTool("scissors");
+      if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
+    };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  }, [playPause, saveProject, openProjectFile]);
+
+  useEffect(() => {
+    reconnectProjectAudio().then(() => {
+      fitTimelineToProject();
+      force((n) => n + 1);
+    });
+  }, [reconnectProjectAudio, fitTimelineToProject]);
 
   const addFiles = async (files, rootOnly = false) => {
     const audioFiles = files.filter((f) => {
@@ -584,7 +667,7 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
       setLoading({ active: true, total: items.length, done: i, label: item.name });
       try {
         const ab = await window.electronAPI.readAudioFile(item.path);
-        await DAW.addFileBuffer(item.name, ab);
+        await DAW.addFileBuffer(item.name, ab, { filePath: item.path, displayName: item.displayName });
       } catch (e) { console.error("Failed to add", item.name, e); }
     }
     fitTimelineToProject();
@@ -593,18 +676,52 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
     setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
   }, [fitTimelineToProject, projectName]);
-  const newProject = () => { DAW.clearTracks(); fitTimelineRef.current = true; updateTimeMin(); saveRecentProject(projectName); force((n) => n + 1); };
-  const loadDemo = () => { DAW.addDemoTracks(); fitTimelineRef.current = false; updateTimeMin(); setPx(96); saveRecentProject(projectName); force((n) => n + 1); };
+
+  const pickAudioFiles = useCallback(async () => {
+    if (window.electronAPI) {
+      const items = await window.electronAPI.selectFiles();
+      if (items.length) addElectronFiles(items);
+    } else {
+      fileRef.current && fileRef.current.click();
+    }
+  }, [addElectronFiles]);
+
+  const pickAudioFolder = useCallback(async () => {
+    if (window.electronAPI) {
+      const items = await window.electronAPI.openFolder();
+      if (items.length) addElectronFiles(items);
+    } else {
+      folderRef.current && folderRef.current.click();
+    }
+  }, [addElectronFiles]);
+
+  const newProject = () => {
+    const nextName = DEFAULT_PROJECT_NAME;
+    DAW.clearTracks();
+    if (onRenameProject) onRenameProject(nextName);
+    if (onProjectPathChange) onProjectPathChange(null);
+    fitTimelineRef.current = true;
+    updateTimeMin();
+    saveRecentProject(nextName);
+    force((n) => n + 1);
+  };
+  const loadDemo = () => {
+    const nextName = projectName || "Demo Session";
+    DAW.addDemoTracks();
+    if (onRenameProject) onRenameProject(nextName);
+    if (onProjectPathChange) onProjectPathChange(null);
+    fitTimelineRef.current = false;
+    updateTimeMin();
+    setPx(96);
+    saveRecentProject(nextName);
+    force((n) => n + 1);
+  };
   // expose menu actions to parent
   useEffect(() => {
     registerHandlers({
       onNew: newProject,
-      onImport: window.electronAPI
-        ? async () => { const items = await window.electronAPI.selectFiles(); if (items.length) addElectronFiles(items); }
-        : () => fileRef.current.click(),
-      onImportFolder: window.electronAPI
-        ? async () => { const items = await window.electronAPI.openFolder(); if (items.length) addElectronFiles(items); }
-        : () => folderRef.current.click(),
+      onImport: pickAudioFiles,
+      onImportFolder: pickAudioFolder,
       onLoadDemo: loadDemo,
       onExport: () => setShowExport(true),
       onSave: saveProject,
@@ -612,7 +729,7 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
         ? () => openProjectFile(null)
         : () => focusRef.current && focusRef.current.click(),
     });
-  }, [registerHandlers, saveProject, openProjectFile, addElectronFiles, loadDemo, newProject]);
+  }, [registerHandlers, saveProject, openProjectFile, pickAudioFiles, pickAudioFolder, loadDemo, newProject]);
 
   const param = (id) => (k, v) => { DAW.setTrackParam(id, k, v); saveRecentProject(projectName); force((n) => n + 1); };
   const removeTrack = (id) => {
@@ -623,7 +740,18 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
     force((n) => n + 1);
   };
 
-  const onDrop = (e) => { e.preventDefault(); setDragOver(false); addFiles([...e.dataTransfer.files]); };
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = [...e.dataTransfer.files];
+    if (window.electronAPI) {
+      const items = files
+        .filter((f) => /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(f.name) && f.path)
+        .map((f) => ({ name: f.name, displayName: f.name.replace(/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i, ""), path: f.path }));
+      if (items.length) { addElectronFiles(items); return; }
+    }
+    addFiles(files);
+  };
   const onDragOver = (e) => { e.preventDefault(); if (!dragOver) setDragOver(true); };
   const onDragLeave = (e) => { if (e.currentTarget === e.target) setDragOver(false); };
   const empty = DAW.tracks.length === 0;
@@ -653,14 +781,14 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
         </div>
         <TimelineMinimap arrangeRef={arrangeRef} pxPerSec={pxPerSec} playhead={playhead} viewState={timelineView} setPx={setPxFromUser} timeMin={timeMinPx} />
         {/* right cluster: actions */}
-        <ActionBar onAddFiles={addFiles} onMixer={() => setShowMixer((s) => !s)} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
+        <ActionBar onAddTrack={pickAudioFiles} onMixer={() => setShowMixer((s) => !s)} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
       </div>
 
       {/* arrange scroll area (whole area is a dropzone) */}
       <div ref={arrangeRef} data-arrange-scroll="true" onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
         style={{ flex: 1, overflow: "auto", position: "relative", outline: dragOver && !empty ? "2px dashed var(--amber)" : "none", outlineOffset: -4 }}>
         {empty ? (
-          <EmptyState dragOver={dragOver} onPick={() => fileRef.current.click()} onPickFolder={() => folderRef.current.click()} onDemo={loadDemo} />
+          <EmptyState dragOver={dragOver} onPick={pickAudioFiles} onPickFolder={pickAudioFolder} onDemo={loadDemo} />
         ) : (
           <React.Fragment>
             <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} />
@@ -686,16 +814,27 @@ function Studio({ projectName, registerHandlers, onRenameProject }) {
 
 /* ---------- root ---------- */
 function App() {
-  const [projectName, setProjectName] = useState("Midnight Drive \u2014 Stems");
+  const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);
+  const projectNameRef = useRef(DEFAULT_PROJECT_NAME);
+  const [projectPath, setProjectPath] = useState(null);
   const handlersRef = useRef({});
   const [, force] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
   const registerHandlers = useCallback((h) => { handlersRef.current = h; }, []);
+  const renameProject = useCallback((name) => {
+    const nextName = name || DEFAULT_PROJECT_NAME;
+    projectNameRef.current = nextName;
+    setProjectName(nextName);
+    setProjectPath(null);
+  }, []);
 
   useEffect(() => {
     DAW.init();
-    loadRecentProject(setProjectName);
+    loadRecentProject((name) => {
+      projectNameRef.current = name || DEFAULT_PROJECT_NAME;
+      setProjectName(projectNameRef.current);
+    });
     force((n) => n + 1);
   }, []);
 
@@ -706,18 +845,29 @@ function App() {
     localStorage.setItem("focusdaw-theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    document.title = `${projectName || DEFAULT_PROJECT_NAME}-FocusDAW Studio`;
+  }, [projectName]);
+
   const H = handlersRef.current;
   return (
     <div className="app">
-      <MenuBar projectName={projectName} onRename={setProjectName}
+      <MenuBar projectName={projectName} onRename={renameProject}
         onNew={() => H.onNew && H.onNew()} onImport={() => H.onImport && H.onImport()}
         onImportFolder={() => H.onImportFolder && H.onImportFolder()} onLoadDemo={() => H.onLoadDemo && H.onLoadDemo()}
         onExport={() => H.onExport && H.onExport()}
         onSave={() => H.onSave && H.onSave()}
         onOpenProject={() => H.onOpenProject && H.onOpenProject()}
         onSettings={() => setShowSettings(true)} />
-      <Studio projectName={projectName} registerHandlers={registerHandlers} onRenameProject={setProjectName} />
+      <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath}
+        registerHandlers={registerHandlers}
+        onRenameProject={renameProject}
+        onProjectPathChange={setProjectPath} />
       {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme} onClose={() => setShowSettings(false)} />}
+      <div className="bottombar">
+        <span className="bottom-project mono">{projectName || DEFAULT_PROJECT_NAME}</span>
+        <span className="version-badge">{APP_VERSION}</span>
+      </div>
     </div>
   );
 }
