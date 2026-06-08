@@ -553,6 +553,16 @@
     _buildCompositeCurve(track, n) {
       const dur = this.duration;
       const curve = new Float32Array(n);
+      const curved = !!track.params.autoCurve;
+      // one sampler per clip (linear or monotone-cubic), built lazily and reused
+      const samplerCache = new Map();
+      const samplerFor = (clip) => {
+        if (samplerCache.has(clip)) return samplerCache.get(clip);
+        const autoSrc = clip.automation || (track.params.autoOn ? track.params.automation : null);
+        const s = (autoSrc && autoSrc.length >= 2) ? makeAutoSampler(autoSrc, curved) : null;
+        samplerCache.set(clip, s);
+        return s;
+      };
       for (let i = 0; i < n; i++) {
         const pos = (i / (n - 1)) * dur;
         const clip = track.clips.find(c => pos >= c.start && pos < c.end);
@@ -560,17 +570,8 @@
         const clipDur = (clip.end - clip.start) || 1e-6;
         const localT = (pos - clip.start) / clipDur;
         let v = (clip.params && clip.params.volume !== undefined) ? clip.params.volume : 1;
-        const autoSrc = clip.automation || (track.params.autoOn ? track.params.automation : null);
-        if (autoSrc && autoSrc.length >= 2) {
-          const pts = [...autoSrc].sort((a, b) => a.t - b.t);
-          let pa = pts[0], pb = pts[pts.length - 1];
-          for (let k = 0; k < pts.length - 1; k++) {
-            if (localT >= pts[k].t && localT <= pts[k + 1].t) { pa = pts[k]; pb = pts[k + 1]; break; }
-          }
-          const span = (pb.t - pa.t) || 1;
-          const f = Math.min(1, Math.max(0, (localT - pa.t) / span));
-          v *= pa.v + (pb.v - pa.v) * f;
-        }
+        const sampler = samplerFor(clip);
+        if (sampler) v *= sampler(localT);
         curve[i] = Math.max(0.0001, v);
       }
       return curve;
@@ -955,6 +956,45 @@
     return track.params.autoCurve
       ? monotoneCubicCurve(track.params.automation, n)
       : automationCurve(track.params.automation, n);
+  }
+
+  // Point-evaluable automation sampler: returns f(t) -> gain in [0.0001, 1].
+  // `curved` picks monotone cubic (Fritsch–Carlson) vs linear interpolation.
+  // Tangents are precomputed once, so it is cheap to call per output sample —
+  // used by _buildCompositeCurve (clip path) to honour the curve-fitting toggle.
+  function makeAutoSampler(bps, curved) {
+    const pts = [...bps].sort((a, b) => a.t - b.t);
+    const m = pts.length;
+    if (m === 0) return () => 1;
+    if (m === 1) { const v = Math.max(0.0001, Math.min(1, pts[0].v)); return () => v; }
+    let tan = null;
+    if (curved) {
+      const slope = new Array(m - 1);
+      for (let i = 0; i < m - 1; i++) slope[i] = (pts[i + 1].v - pts[i].v) / ((pts[i + 1].t - pts[i].t) || 1e-6);
+      tan = new Array(m);
+      tan[0] = slope[0]; tan[m - 1] = slope[m - 2];
+      for (let i = 1; i < m - 1; i++) tan[i] = (slope[i - 1] * slope[i] <= 0) ? 0 : (slope[i - 1] + slope[i]) / 2;
+      for (let i = 0; i < m - 1; i++) {
+        if (slope[i] === 0) { tan[i] = 0; tan[i + 1] = 0; continue; }
+        const a = tan[i] / slope[i], b = tan[i + 1] / slope[i], s = a * a + b * b;
+        if (s > 9) { const k = 3 / Math.sqrt(s); tan[i] = k * a * slope[i]; tan[i + 1] = k * b * slope[i]; }
+      }
+    }
+    return (t) => {
+      let seg = 0;
+      while (seg < m - 2 && t > pts[seg + 1].t) seg++;
+      const x0 = pts[seg].t, h = (pts[seg + 1].t - x0) || 1e-6;
+      const u = Math.min(1, Math.max(0, (t - x0) / h));
+      let v;
+      if (curved) {
+        const u2 = u * u, u3 = u2 * u;
+        v = (2 * u3 - 3 * u2 + 1) * pts[seg].v + (u3 - 2 * u2 + u) * h * tan[seg]
+          + (-2 * u3 + 3 * u2) * pts[seg + 1].v + (u3 - u2) * h * tan[seg + 1];
+      } else {
+        v = pts[seg].v + (pts[seg + 1].v - pts[seg].v) * u;
+      }
+      return Math.max(0.0001, Math.min(1, v));
+    };
   }
 
   // return the tail of a sampled curve starting at fraction `frac` of its length,
