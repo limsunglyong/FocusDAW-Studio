@@ -125,7 +125,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
   ];
   return (
     <div className="menubar">
-      <div style={{ display: "flex", alignItems: "center", paddingRight: 6 }}><Logo size={17} /></div>
+      <div style={{ display: "flex", alignItems: "center", paddingRight: 6 }}><Logo size={30} /></div>
       <Dropdown label="Project" items={projectItems} accent />
       <div className="menu-item" onClick={onSettings} style={{ cursor: "pointer" }}>Settings</div>
       <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 }}>
@@ -399,7 +399,7 @@ function EmptyState({ onPick, onPickFolder, onDemo, dragOver }) {
       <div style={{ textAlign: "center", maxWidth: 460, padding: "40px 44px", borderRadius: 16, pointerEvents: "auto",
         border: `1.5px dashed ${dragOver ? "var(--amber)" : "var(--line-strong)"}`,
         background: dragOver ? "var(--amber-soft)" : "rgba(255,255,255,.015)", transition: ".15s" }}>
-        <Logo size={42} />
+        <Logo size={42} style={{ margin: "0 auto" }} />
         <div style={{ fontSize: 19, fontWeight: 700, marginTop: 14, letterSpacing: "-.01em" }}>Drop your stems to begin</div>
         <div style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.6 }}>
           Drag a stem folder or audio files anywhere here.<br />One track is created per file, named from the filename.

@@ -311,7 +311,7 @@
         id, name, type, color, buffer, peaks,
         nodes: { fader, autoGain, filter, panner, meter, reverbSend, echoSend, delay, fb },
         params: {
-          volume: 0.8, pan: 0, mute: false, solo: false,
+          volume: 1.0, pan: 0, mute: false, solo: false,
           filterFreq: 20000, reverb: 0, echo: 0,
           autoOn: false,
           autoCurve: false,

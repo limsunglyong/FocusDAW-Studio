@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // MP3 encoding via ffmpeg
   encodeMp3:      (wavBuf, opts)  => ipcRenderer.invoke('encode-mp3', wavBuf, opts),
 
+  // Save rendered audio via native OS dialog (with overwrite confirmation)
+  saveAudio:      (buf, name)     => ipcRenderer.invoke('save-audio', buf, name),
+
   // Window controls (Windows / Linux custom title bar)
   winAction:      (action)        => ipcRenderer.invoke('win-action', action),
   onWinState:     (cb)            => ipcRenderer.on('win-state', (_, s) => cb(s)),

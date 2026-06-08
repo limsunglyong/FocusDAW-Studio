@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FocusDAW Studio</title>
+<link rel="icon" type="image/png" href="assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
@@ -129,21 +130,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 
 /* ---- prominent SAVE button (Mixdown ready) ---- */
 @keyframes saveGlow{
-  0%,100%{ box-shadow:0 0 14px 1px rgba(232,176,75,.40); }
-  50%{ box-shadow:0 0 28px 7px rgba(232,176,75,.75); }
+  0%,100%{ box-shadow:0 0 14px 1px color-mix(in srgb,var(--amber) 40%,transparent); }
+  50%{ box-shadow:0 0 28px 7px color-mix(in srgb,var(--amber) 75%,transparent); }
 }
 .btn-save{
   display:inline-flex; align-items:center; justify-content:center; gap:9px;
   width:100%; height:48px; padding:0 18px; border-radius:12px;
   font-size:15px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
   cursor:pointer; text-decoration:none;
-  background:linear-gradient(180deg,#f2bd5c,var(--amber-deep));
-  color:#241a0a; border:1px solid var(--amber);
+  background:linear-gradient(180deg,var(--amber),var(--amber-deep));
+  color:#fff; border:1px solid var(--amber);
   animation:saveGlow 1.5s ease-in-out infinite;
   transition:transform .12s, filter .12s;
 }
-.btn-save:hover{ transform:translateY(-1px); filter:brightness(1.07); }
-.btn-save:active{ transform:translateY(0) scale(.99); }
+.btn-save:disabled{ opacity:.6; cursor:default; animation:none; }
+.btn-save:hover:not(:disabled){ transform:translateY(-1px); filter:brightness(1.07); }
+.btn-save:active:not(:disabled){ transform:translateY(0) scale(.99); }
 
 /* ---- sleek slider ---- */
 .sleek{position:relative;height:15px;cursor:pointer;display:flex;align-items:center}

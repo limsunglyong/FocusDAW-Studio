@@ -1,13 +1,10 @@
 /* ================= FocusDAW — loader screen + export dialog ================= */
 
-function Logo({ size = 30 }) {
+function Logo({ size = 30, style }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40">
-      <circle cx="20" cy="20" r="18" fill="none" stroke="var(--amber)" strokeWidth="2" />
-      <circle cx="20" cy="20" r="11" fill="none" stroke="var(--amber-deep)" strokeWidth="1.5" />
-      <circle cx="20" cy="20" r="4" fill="var(--amber)" />
-      <line x1="20" y1="2" x2="20" y2="8" stroke="var(--amber)" strokeWidth="2" strokeLinecap="round" />
-    </svg>
+    <img src="assets/logo.png" width={size} height={size}
+      style={{ borderRadius: Math.round(size * 0.22), display: "block", objectFit: "cover", ...style }}
+      alt="FocusDAW Studio" />
   );
 }
 
@@ -43,9 +40,9 @@ function LoaderScreen({ onOpen }) {
       {/* brand panel */}
       <div style={{ width: 320, flex: "0 0 320px", borderRight: "1px solid var(--line)", padding: "44px 36px",
         display: "flex", flexDirection: "column", background: "linear-gradient(180deg,rgba(255,255,255,.015),transparent)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Logo size={36} />
-          <div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+          <Logo size={72} />
+          <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.01em" }}>FocusDAW</div>
             <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: ".12em" }}>STEM STUDIO</div>
           </div>
@@ -180,6 +177,8 @@ function ExportDialog({ projectName, onClose }) {
   const [stepLabel, setLabel]   = useState("Rendering mix…");
   const [url, setUrl]           = useState(null);
   const [ext, setExt]           = useState("mp3");
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [saving, setSaving]     = useState(false);
 
   const render = async () => {
     setStage("rendering"); setProg(0); setLabel("Rendering mix…");
@@ -212,6 +211,7 @@ function ExportDialog({ projectName, onClose }) {
     }
 
     setUrl(URL.createObjectURL(blob));
+    setAudioBlob(blob);
     setStage("done");
   };
 
@@ -264,9 +264,21 @@ function ExportDialog({ projectName, onClose }) {
             <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" }}><Icon name="check" size={26} /></div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Mixdown ready</div>
             <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(DAW.duration)} · {sr / 1000}kHz · {ext.toUpperCase()}</div>
-            <a className="btn-save" href={url} download={fileName}><Icon name="download" size={18} /> Save file</a>
-            {format === "mp3" && !window.electronAPI && (
-              <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 12, lineHeight: 1.5 }}>Browser preview renders WAV — the native build pipes through ffmpeg for true MP3 encode.</div>
+            {window.electronAPI ? (
+              <button className="btn-save" disabled={saving} onClick={async () => {
+                setSaving(true);
+                const ab = await audioBlob.arrayBuffer();
+                const result = await window.electronAPI.saveAudio(ab, fileName);
+                setSaving(false);
+                if (result && result.saved) onClose();
+              }}><Icon name="download" size={18} /> {saving ? "Saving…" : "Save file"}</button>
+            ) : (
+              <>
+                <a className="btn-save" href={url} download={fileName}><Icon name="download" size={18} /> Save file</a>
+                {format === "mp3" && (
+                  <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 12, lineHeight: 1.5 }}>Browser preview renders WAV — the native build pipes through ffmpeg for true MP3 encode.</div>
+                )}
+              </>
             )}
             <button className="btn ghost" onClick={onClose} style={{ marginTop: 8 }}>Done</button>
           </div>

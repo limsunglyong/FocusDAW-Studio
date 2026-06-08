@@ -37,6 +37,7 @@ function createWindow() {
     height: 900,
     minWidth: 960,
     minHeight: 600,
+    icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -155,6 +156,19 @@ ipcMain.handle('encode-mp3', async (_, wavBuffer, options) => {
   const mp3Buf = fs.readFileSync(tmpMp3);
   try { fs.unlinkSync(tmpWav); fs.unlinkSync(tmpMp3); } catch (e) {}
   return mp3Buf.buffer.slice(mp3Buf.byteOffset, mp3Buf.byteOffset + mp3Buf.byteLength);
+});
+
+// Save rendered audio via native Save dialog (handles overwrite confirmation)
+ipcMain.handle('save-audio', async (_, buffer, defaultName) => {
+  const ext = path.extname(defaultName).replace('.', '') || 'mp3';
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    defaultPath: defaultName,
+    filters: [{ name: ext.toUpperCase() + ' Audio', extensions: [ext] }],
+    title: 'Save Audio File',
+  });
+  if (canceled || !filePath) return { saved: false };
+  fs.writeFileSync(filePath, Buffer.from(buffer));
+  return { saved: true };
 });
 
 // Window control actions (for custom title bar on Windows/Linux)
