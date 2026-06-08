@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.16.1";
+const APP_VERSION = "v0.16.2";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -863,7 +863,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
               <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                 playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                 onSeek={(time) => { DAW.seek(time); force((n) => n + 1); }}
-                tool={tool} onSplit={handleSplit} onJoin={handleJoin} />
+                tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />
             ))}
             <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
               onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} />

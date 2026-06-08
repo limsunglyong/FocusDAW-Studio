@@ -101,7 +101,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
 }
 
 /* ---------- volume automation overlay (editable) ---------- */
-function AutomationOverlay({ track, pxPerSec, height }) {
+function AutomationOverlay({ track, pxPerSec, height, onBeforeChange }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const auto = track.params.automation;
   const drag = useRef(null);
@@ -110,9 +110,9 @@ function AutomationOverlay({ track, pxPerSec, height }) {
 
   const onPtDown = (i) => (e) => {
     e.stopPropagation(); e.preventDefault();
+    onBeforeChange && onBeforeChange();
     drag.current = i;
     const move = (ev) => {
-      const svg = ev.currentTarget;
       const host = document.getElementById("auto-" + track.id);
       const r = host.getBoundingClientRect();
       let t = (ev.clientX - r.left) / laneW;
@@ -130,9 +130,11 @@ function AutomationOverlay({ track, pxPerSec, height }) {
   const onPtRemove = (i) => (e) => {
     e.preventDefault(); e.stopPropagation();
     if (i === 0 || i === auto.length - 1) return;
+    onBeforeChange && onBeforeChange();
     update(auto.filter((_, k) => k !== i));
   };
   const onLineDown = (e) => {
+    onBeforeChange && onBeforeChange();
     const host = document.getElementById("auto-" + track.id);
     const r = host.getBoundingClientRect();
     const t = (e.clientX - r.left) / laneW;
@@ -295,7 +297,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -342,7 +344,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
           borderBottom: "1px solid var(--line)", overflow: "hidden", cursor: toolCursor }}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         <Waveform track={track} clips={track.clips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} />
-        {p.autoOn && <AutomationOverlay track={track} pxPerSec={pxPerSec} height={laneH} />}
+        {p.autoOn && <AutomationOverlay track={track} pxPerSec={pxPerSec} height={laneH} onBeforeChange={onBeforeChange} />}
         {/* scissors hover highlight */}
         {hoveredClipId && tool === 'scissors' && (() => {
           const clip = track.clips.find(c => c.id === hoveredClipId);

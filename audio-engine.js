@@ -481,7 +481,6 @@
 
     getSnapshot() {
       return {
-        master: { ...this.master, bands: [...this.master.bands] },
         tracks: this.tracks.map(t => ({
           id: t.id,
           params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })) },
@@ -495,13 +494,6 @@
     },
 
     applySnapshot(snap) {
-      Object.assign(this.master, snap.master);
-      if (ctx) {
-        ramp(masterVol.gain, this.master.volume);
-        ramp(mRevSend.gain, this.master.reverb || 0);
-        ramp(mEchoSend.gain, this.master.echo || 0);
-        if (this.master.bands) this.master.bands.forEach((db, i) => this.setMasterBand(i, db));
-      }
       for (const st of snap.tracks) {
         const t = this.tracks.find(x => x.id === st.id);
         if (!t) continue;
