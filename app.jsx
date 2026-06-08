@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.15.36";
+const APP_VERSION = "v0.15.37";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -359,7 +359,7 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
   return (
     <div ref={ref} onMouseDown={onDown} onWheel={onWheel} title="Timeline minimap"
       style={{ flex: "1 1 420px", minWidth: 220, height: 40, position: "relative", overflow: "hidden",
-        borderRadius: 10, border: "1px solid var(--line)", background: "linear-gradient(180deg,var(--bg),var(--bg2))",
+        borderRadius: 10, border: "1px solid var(--line)", background: "#0b0b0d",
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.035)", cursor: "pointer" }}>
       <div style={{ position: "absolute", inset: "6px 10px 7px", borderRadius: 7, overflow: "hidden", background: "rgba(255,255,255,.018)" }}>
         <span style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "rgba(232,212,170,.045)" }} />
@@ -772,8 +772,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <ZoomBar pxPerSec={pxPerSec} setPx={setPxFromUser} ampZoom={ampZoom} setAmp={setAmp} timeMin={timeMinPx} />
           <div style={{ width: 1, height: 30, background: "var(--line)" }} />
-          <ToolBar tool={tool} setTool={setTool} />
-          <div style={{ width: 1, height: 30, background: "var(--line)" }} />
+          {/* Select/Seek · Split · Join tools hidden on screen (code kept) — re-enable: <ToolBar tool={tool} setTool={setTool} /> + a divider */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, letterSpacing: ".06em" }}>TRACK SIZE</span>
             <Seg small value={laneH} onChange={setLaneH} options={[{ v: 68, l: "S" }, { v: 96, l: "M" }, { v: 132, l: "L" }]} />

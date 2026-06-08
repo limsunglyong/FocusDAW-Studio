@@ -322,9 +322,9 @@ function MixerWindow({ onClose }) {
     <div style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 1000, width: windowW,
       background: "var(--bg)", borderRadius: 12, border: "1px solid var(--line-strong)", boxShadow: "var(--shadow)", overflow: "hidden" }}>
       <div onMouseDown={onTitleDown} style={{ height: 36, display: "flex", alignItems: "center", gap: 10, padding: "0 12px",
-        background: "linear-gradient(#2a2520,#221d17)", borderBottom: "1px solid var(--line)", cursor: "grab" }}>
-        <Icon name="mixer" size={15} style={{ color: "var(--amber)", marginLeft: 4 }} />
-        <span style={{ fontSize: 12.5, fontWeight: 600 }}>Mixer</span>
+        background: "var(--mixer-bar-bg)", borderBottom: "1px solid var(--line)", cursor: "grab" }}>
+        <Icon name="mixer" size={15} style={{ color: "var(--mixer-bar-fg)", marginLeft: 4 }} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--mixer-bar-fg)" }}>Mixer</span>
         <div style={{ flex: 1 }} />
         <button onMouseDown={(e) => e.stopPropagation()} onClick={onClose} title="Close mixer"
           style={{ width: 28, height: 24, borderRadius: 7, display: "grid", placeItems: "center",
@@ -369,11 +369,11 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek }) {
     <div style={{ display: "flex", minWidth: "min-content", borderTop: "2px solid var(--amber-deep)" }}>
       {/* header */}
       <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 6,
-        background: "linear-gradient(180deg,#2c2418,#221d14)", borderRight: "1px solid var(--line-strong)", padding: "10px 12px",
+        background: "var(--outfx-bg)", borderRight: "1px solid var(--line-strong)", padding: "10px 12px",
         display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
-          <Icon name="eq" size={15} style={{ color: "var(--amber)", flex: "0 0 auto" }} />
-          <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: ".05em", color: "var(--amber)" }}>OUTPUT&nbsp;FX</span>
+          <Icon name="eq" size={15} style={{ color: "var(--outfx-fg)", flex: "0 0 auto" }} />
+          <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: ".05em", color: "var(--outfx-fg)" }}>OUTPUT&nbsp;FX</span>
           <span className="chip" style={{ fontSize: 9, marginLeft: "auto" }}>master</span>
         </div>
         <div style={{ display: "flex", gap: 6 }}>

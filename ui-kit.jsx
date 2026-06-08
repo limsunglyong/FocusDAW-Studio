@@ -118,18 +118,22 @@ function Fader({ value, onChange, height = 120, color = "var(--amber)", showVal 
 
 /* ---------- VU meter (vertical, reads engine level) ---------- */
 function Meter({ level, height = 120, width = 8, stereo = false }) {
-  const segs = 22;
-  const lit = Math.round(level * segs);
+  const gap = 1.5;
+  // Scale segment count to the meter height. With a fixed 22 segments the inter-cell
+  // gaps alone (21 × 1.5 ≈ 31.5px) exceed a short meter's height, collapsing every
+  // cell to 0px — which made the small track-header meters invisible.
+  const segs = Math.max(6, Math.min(22, Math.round((height - gap) / 3.5)));
+  const lit = Math.round((level || 0) * segs);
   const cells = [];
   for (let i = 0; i < segs; i++) {
     const frac = i / segs;
     const on = i < lit;
     let col = "var(--green)";
     if (frac > 0.82) col = "var(--red)"; else if (frac > 0.62) col = "var(--amber)";
-    cells.push(<div key={i} style={{ flex: 1, background: on ? col : "#2a251f", borderRadius: 1, opacity: on ? 1 : .5, boxShadow: on ? `0 0 4px ${col}` : "none", transition: "opacity .05s" }} />);
+    cells.push(<div key={i} style={{ flex: 1, minHeight: 1, background: on ? col : "rgba(0,0,0,.32)", borderRadius: 1, opacity: on ? 1 : .85, boxShadow: on ? `0 0 4px ${col}` : "none", transition: "opacity .05s" }} />);
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column-reverse", gap: 1.5, width, height }}>{cells}</div>
+    <div style={{ display: "flex", flexDirection: "column-reverse", gap, width, height }}>{cells}</div>
   );
 }
 
