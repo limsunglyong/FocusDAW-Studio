@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node node_modules/electron/install.js)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "PowerShell(\"Process: [$env:ELECTRON_SKIP_BINARY_DOWNLOAD]\"; \"User: [\" + [Environment]::GetEnvironmentVariable\\('ELECTRON_SKIP_BINARY_DOWNLOAD','User'\\) + \"]\"; \"Machine: [\" + [Environment]::GetEnvironmentVariable\\('ELECTRON_SKIP_BINARY_DOWNLOAD','Machine'\\) + \"]\")",
+      "Bash(echo \"=== electron dir ===\"; ls node_modules/electron/; echo \"=== dist? ===\"; ls node_modules/electron/dist/ 2>&1 | head; echo \"=== .npmrc \\(project\\) ===\"; cat .npmrc 2>&1; echo \"=== .npmrc \\(home\\) ===\"; cat ~/.npmrc 2>&1)",
+      "Read(//c/Users/INNO-A-1223/**)",
+      "Bash(rm -f node_modules/electron/path.txt)",
+      "Bash(rm -rf node_modules/electron/dist)",
+      "Bash(force_no_cache=true node node_modules/electron/install.js)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(unset ELECTRON_RUN_AS_NODE)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(require.resolve\\('@electron/get',{paths:['node_modules/electron']}\\)\\)\")",
+      "Bash(git -C \"d:/roseWorks/programming/FocusDAW-Studio\" status --short)",
+      "Bash(git -C \"d:/roseWorks/programming/FocusDAW-Studio\" branch --show-current)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
