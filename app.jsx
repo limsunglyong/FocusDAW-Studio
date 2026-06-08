@@ -937,7 +937,10 @@ function App() {
       {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme} onClose={() => setShowSettings(false)} />}
       <div className="bottombar">
         <span className="bottom-project mono">{projectName || DEFAULT_PROJECT_NAME}</span>
-        <span className="version-badge">{APP_VERSION}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 10.5, color: "var(--dim)", fontWeight: 600, letterSpacing: ".03em" }}>FocusDAW Studio</span>
+          <span className="version-badge">{APP_VERSION}</span>
+        </div>
       </div>
     </div>
   );
