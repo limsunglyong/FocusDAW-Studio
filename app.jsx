@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.15.32";
+const APP_VERSION = "v0.15.33";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -136,7 +136,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
       {editing ? (
         <input className="project-name-edit" autoFocus value={draft} onChange={(e) => updateDraft(e.target.value)} onBlur={commit}
           onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-          style={{ background: "var(--bg)", border: "1px solid var(--amber-deep)", borderRadius: 6, color: "var(--cream)",
+          style={{ alignSelf: "center", background: "var(--bg)", border: "1px solid var(--amber-deep)", borderRadius: 6, color: "var(--cream)",
             fontFamily: "var(--ui)", fontSize: 12.5, height: 28, lineHeight: "20px", padding: "3px 8px", outline: "none", width: 240, textAlign: "right" }} />
       ) : (
         <div className="project-name-edit" onClick={() => setEditing(true)} title="Rename project"
