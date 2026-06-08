@@ -313,6 +313,7 @@
           volume: 0.8, pan: 0, mute: false, solo: false,
           filterFreq: 20000, reverb: 0, echo: 0,
           autoOn: false,
+          autoCurve: false,
           automation: defaultAutomation(type),
         },
         clips: [{ id: this._cid(), start: 0, end: buffer.duration, offset: 0, params: null, automation: null }],
@@ -628,21 +629,22 @@
         if (!t.params.autoOn && !hasGaps && !hasClipOverrides) { g.setValueAtTime(1, now); return; }
         const curve = (hasGaps || hasClipOverrides)
           ? this._buildCompositeCurve(t, 256)
-          : automationCurve(t.params.automation, 256);
-        // align to current loop position
+          : buildAutoCurve(t, 256);
+        // current playhead position within the loop
         const pos = (this._offset + (now - this._startTime)) % dur;
-        // schedule remaining of current loop then full loops
-        const startAt = now;
-        // first partial: approximate by scheduling full curve from loop start in the past
-        let base = now - pos;
-        for (let l = 0; l < loops; l++) {
-          const tstart = base + l * dur;
-          if (tstart + dur < now) continue;
-          try { g.setValueCurveAtTime(curve, Math.max(tstart, now + 0.001), dur - Math.max(0, now - tstart)); }
-          catch (e) { try { g.setValueCurveAtTime(curve, now + 0.001, dur); } catch (e2) {} }
-          break; // schedule current loop; ticker re-arms each loop
+        const base = now - pos;               // audio time of loop start (pos = 0)
+        const startT = now + 0.001;
+        // current (partial) loop: slice the curve from `pos` so it stays aligned 1:1
+        // with the audio (instead of cramming the whole loop into the remaining time).
+        const partial = sliceCurveFrom(curve, pos / dur);
+        const remain = (base + dur) - startT; // ends exactly at the next loop boundary
+        try {
+          if (remain > 0.002 && partial.length >= 2) g.setValueCurveAtTime(partial, startT, remain);
+          else g.setValueAtTime(curve[curve.length - 1], startT);
+        } catch (e) {
+          try { g.setValueAtTime(partial[0], startT); } catch (e2) {}
         }
-        // schedule subsequent loops cleanly
+        // subsequent full loops, back-to-back and aligned to audio loop boundaries
         for (let l = 1; l <= loops; l++) {
           const tstart = base + l * dur;
           if (tstart < now) continue;
@@ -836,7 +838,7 @@
         if (p.autoOn || rHasGaps || rHasOverrides) {
           const curve = (rHasGaps || rHasOverrides)
             ? this._buildCompositeCurve(t, 512)
-            : automationCurve(p.automation, 512);
+            : buildAutoCurve(t, 512);
           ag.gain.setValueCurveAtTime(curve, 0, this.duration);
         }
         src.start(0);
@@ -910,7 +912,68 @@
     return c;
   }
 
+  // Smooth volume envelope: piecewise cubic Hermite with monotone (Fritsch–Carlson)
+  // tangents. Each segment is a cubic; passes through every control point and never
+  // overshoots the neighbouring values, so gain stays within [0,1].
+  function monotoneCubicCurve(bps, n) {
+    const pts = [...bps].sort((a, b) => a.t - b.t);
+    const c = new Float32Array(n);
+    const m = pts.length;
+    if (m === 0) { c.fill(1); return c; }
+    if (m === 1) { c.fill(Math.max(0.0001, Math.min(1, pts[0].v))); return c; }
+    const dx = new Array(m - 1), slope = new Array(m - 1);
+    for (let i = 0; i < m - 1; i++) {
+      dx[i] = (pts[i + 1].t - pts[i].t) || 1e-6;
+      slope[i] = (pts[i + 1].v - pts[i].v) / dx[i];
+    }
+    const tan = new Array(m);
+    tan[0] = slope[0];
+    tan[m - 1] = slope[m - 2];
+    for (let i = 1; i < m - 1; i++) {
+      tan[i] = (slope[i - 1] * slope[i] <= 0) ? 0 : (slope[i - 1] + slope[i]) / 2;
+    }
+    for (let i = 0; i < m - 1; i++) {
+      if (slope[i] === 0) { tan[i] = 0; tan[i + 1] = 0; continue; }
+      const a = tan[i] / slope[i], b = tan[i + 1] / slope[i], s = a * a + b * b;
+      if (s > 9) { const k = 3 / Math.sqrt(s); tan[i] = k * a * slope[i]; tan[i + 1] = k * b * slope[i]; }
+    }
+    let seg = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      while (seg < m - 2 && t > pts[seg + 1].t) seg++;
+      const x0 = pts[seg].t, h = dx[seg];
+      const u = Math.min(1, Math.max(0, (t - x0) / h)), u2 = u * u, u3 = u2 * u;
+      const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+      const v = h00 * pts[seg].v + h10 * h * tan[seg] + h01 * pts[seg + 1].v + h11 * h * tan[seg + 1];
+      c[i] = Math.max(0.0001, Math.min(1, v));
+    }
+    return c;
+  }
+
+  // dispatch: smooth curve when the track has curve-fitting enabled, else linear
+  function buildAutoCurve(track, n) {
+    return track.params.autoCurve
+      ? monotoneCubicCurve(track.params.automation, n)
+      : automationCurve(track.params.automation, n);
+  }
+
+  // return the tail of a sampled curve starting at fraction `frac` of its length,
+  // with the first sample interpolated at exactly `frac` (≥2 samples for 0<frac<1).
+  function sliceCurveFrom(curve, frac) {
+    const n = curve.length;
+    if (!(frac > 0)) return curve;
+    if (frac >= 1) return curve.slice(n - 1);
+    const fi = frac * (n - 1), i0 = Math.floor(fi), fr = fi - i0;
+    const next = (curve[i0 + 1] !== undefined) ? curve[i0 + 1] : curve[i0];
+    const out = new Float32Array(n - i0);
+    out[0] = curve[i0] + (next - curve[i0]) * fr;
+    for (let k = i0 + 1, j = 1; k < n; k++, j++) out[j] = curve[k];
+    return out;
+  }
+
   Engine.automationCurve = automationCurve;
+  Engine.monotoneCubicCurve = monotoneCubicCurve;
+  Engine.buildAutoCurve = buildAutoCurve;
   Engine.computePeaks = computePeaks;
   Engine.splitClip = Engine.splitClip.bind(Engine);
   Engine.joinClips = Engine.joinClips.bind(Engine);

@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.15.34";
+const APP_VERSION = "v0.15.35";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -194,7 +194,7 @@ function MenuTransport() {
           <Icon name={playing ? "pause" : "play"} size={14} fill />
         </MenuTransportButton>
         <MenuTransportButton title="Loop" active={loop} onClick={() => setLoop((l) => !l)}>
-          <Icon name="loop" size={13} />
+          <Icon name="repeat" size={13} />
         </MenuTransportButton>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 15px",
@@ -217,7 +217,7 @@ function Transport({ playing, onPlay, onStop, onToStart, loop, onLoop, playhead 
           background: playing ? "var(--amber)" : "var(--surface2)", color: playing ? "#241a0a" : "var(--cream)", border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"), boxShadow: playing ? "0 0 12px rgba(232,176,75,.45)" : "none" }}>
           <Icon name={playing ? "pause" : "play"} size={18} fill />
         </button>
-        <button className={"iconbtn" + (loop ? " on" : "")} onClick={onLoop} title="Loop"><Icon name="loop" size={16} /></button>
+        <button className={"iconbtn" + (loop ? " on" : "")} onClick={onLoop} title="Loop"><Icon name="repeat" size={16} /></button>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "3px 14px", background: "var(--bg)", borderRadius: 9, border: "1px solid var(--line)", minWidth: 118, height: 36 }}>
         <span className="mono" style={{ fontSize: 21, fontWeight: 400, color: "var(--amber)", letterSpacing: ".02em" }}>{fmtTime(playhead)}</span>

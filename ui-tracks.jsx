@@ -140,13 +140,27 @@ function AutomationOverlay({ track, pxPerSec, height }) {
     const arr = [...auto, { t, v }].sort((a, b) => a.t - b.t);
     update(arr);
   };
+  const curveFit = track.params.autoCurve;
   const pathD = auto.map((p, i) => { const [x, y] = toXY(p); return (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); }).join(" ");
-  const areaD = pathD + ` L${laneW} ${height} L0 ${height} Z`;
+  // applied curve (smooth) — sampled from the SAME engine sampler that feeds the audio,
+  // so the drawn curve matches what is heard.
+  let appliedD = pathD;
+  if (curveFit && DAW.monotoneCubicCurve && auto.length >= 2) {
+    const N = Math.max(64, Math.min(512, Math.round(laneW / 3)));
+    const c = DAW.monotoneCubicCurve(auto, N);
+    let d = "";
+    for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * laneW; const y = (1 - c[i]) * height; d += (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); }
+    appliedD = d;
+  }
+  const areaD = appliedD + ` L${laneW} ${height} L0 ${height} Z`;
   return (
     <svg id={"auto-" + track.id} width={laneW} height={height} onMouseDown={onLineDown}
       style={{ position: "absolute", inset: 0, cursor: "crosshair" }}>
       <path d={areaD} fill="rgba(232,176,75,.10)" />
-      <path d={pathD} fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" />
+      {/* edit graph (control-point polyline): faint dashed when curve fitting is on */}
+      {curveFit && <path d={pathD} fill="none" stroke="var(--amber)" strokeWidth="1.4" strokeLinejoin="round" opacity="0.35" strokeDasharray="4 3" />}
+      {/* applied graph (what the audio actually uses) */}
+      <path d={appliedD} fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" />
       {auto.map((p, i) => { const [x, y] = toXY(p); return (
         <circle key={i} cx={x} cy={y} r={5.5} fill="var(--amber)" stroke="#241a0a" strokeWidth="1.5"
           style={{ cursor: "grab" }} onMouseDown={onPtDown(i)} onContextMenu={onPtRemove(i)} />
@@ -158,14 +172,17 @@ function AutomationOverlay({ track, pxPerSec, height }) {
 /* ---------- track header ---------- */
 function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
   const p = track.params;
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const compact = laneH <= 76;
   const medium = laneH <= 104 && !compact;
   const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
-  const gap = compact ? 5 : medium ? 6 : 8;
+  const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
   const knobSize = compact ? 24 : 28;
   const meterH = compact ? 22 : medium ? 24 : 28;
   return (
+    <React.Fragment>
     <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 6,
       background: "linear-gradient(180deg,var(--surface),var(--bg2))", borderRight: "1px solid var(--line-strong)",
       borderBottom: "1px solid var(--line)", padding: pad, height: laneH, minHeight: laneH,
@@ -190,12 +207,15 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         <Meter level={level} height={meterH} width={6} />
       </div>
       {!compact && <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22 }}>
-        <button className="iconbtn" style={{ width: 26, height: 22, borderRadius: 5,
-          background: p.autoOn ? "var(--amber-soft)" : "transparent", color: p.autoOn ? "var(--amber)" : "var(--muted)" }}
-          title="Volume automation" onClick={() => onParam("autoOn", !p.autoOn)}>
-          <Icon name="auto" size={15} />
+        {/* VOL AUTO — rounded toggle (replaces the old icon button) */}
+        <button title="Volume automation on/off" onClick={() => onParam("autoOn", !p.autoOn)}
+          style={{ display: "flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 6,
+            fontSize: 10, fontWeight: 700, letterSpacing: ".04em", cursor: "pointer",
+            background: p.autoOn ? "var(--amber-soft)" : "transparent",
+            color: p.autoOn ? "var(--amber)" : "var(--muted)",
+            border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)") }}>
+          <Icon name="auto" size={13} /> VOL AUTO
         </button>
-        {!medium && <span style={{ fontSize: 10, color: p.autoOn ? "var(--amber)" : "var(--faint)", fontWeight: 600, letterSpacing: ".04em" }}>VOL AUTO</span>}
         <div style={{ flex: 1 }} />
         {track.needsAudio
           ? <span title="Drop the audio file here to re-link" style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4,
@@ -203,9 +223,74 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
               color: "var(--red)", border: "1px solid rgba(217,106,78,.28)" }}>NO AUDIO</span>
           : <span className="chip" style={{ fontSize: 9, padding: "2px 5px" }}>{track.type}</span>
         }
-        {onRemove && <button className="iconbtn" style={{ width: 22, height: 22 }} title="Remove track" onClick={onRemove}><Icon name="trash" size={13} /></button>}
+        {onRemove && <button title="Remove track" onClick={() => setConfirmRemove(true)}
+          style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center",
+            background: "var(--surface2)", color: "var(--cream-2)", border: "1px solid var(--line-strong)",
+            fontSize: 14, fontWeight: 700, lineHeight: 1, cursor: "pointer", transition: ".12s" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--red)"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = "var(--red)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface2)"; e.currentTarget.style.color = "var(--cream-2)"; e.currentTarget.style.borderColor = "var(--line-strong)"; }}>−</button>}
+      </div>}
+      {/* L size only: Reset + Curve fitting controls under the VOL AUTO button */}
+      {!compact && !medium && <div style={{ display: "flex", gap: 6, minHeight: 18 }}>
+        <button title="Reset automation graph" onClick={() => setConfirmReset(true)}
+          style={{ flex: 1, height: 20, borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+            background: "transparent", color: "var(--muted)", border: "1px solid var(--line-strong)" }}>
+          <Icon name="loop" size={12} /> Reset
+        </button>
+        <button title="Curve fitting on/off" onClick={() => onParam("autoCurve", !p.autoCurve)}
+          style={{ flex: 1, height: 20, borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+            background: p.autoCurve ? "var(--amber-soft)" : "transparent",
+            color: p.autoCurve ? "var(--amber)" : "var(--muted)",
+            border: "1px solid " + (p.autoCurve ? "var(--amber-deep)" : "var(--line-strong)") }}>
+          <Icon name="auto" size={12} /> Curve
+        </button>
       </div>}
     </div>
+    {confirmReset && (
+      <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+        onMouseDown={() => setConfirmReset(false)}>
+        <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 340, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon name="auto" size={17} style={{ color: "var(--amber)" }} />
+            <span style={{ fontWeight: 600, fontSize: 14 }}>Automation 초기화</span>
+          </div>
+          <div style={{ padding: "18px 20px" }}>
+            <div style={{ fontSize: 12.5, color: "var(--cream-2)", lineHeight: 1.6 }}>
+              '{track.name}' 트랙의 편집된 볼륨 automation을 모두 초기화할까요? 되돌릴 수 없습니다.
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button className="btn" style={{ flex: 1 }} onClick={() => setConfirmReset(false)}>취소</button>
+              <button className="btn primary" style={{ flex: 1 }}
+                onClick={() => { onParam("automation", [{ t: 0, v: 1 }, { t: 1, v: 1 }]); setConfirmReset(false); }}>초기화</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    {confirmRemove && (
+      <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+        onMouseDown={() => setConfirmRemove(false)}>
+        <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 340, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center", background: "var(--red)", color: "#fff", fontSize: 14, fontWeight: 700, lineHeight: 1 }}>−</span>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>트랙 삭제</span>
+          </div>
+          <div style={{ padding: "18px 20px" }}>
+            <div style={{ fontSize: 12.5, color: "var(--cream-2)", lineHeight: 1.6 }}>
+              '{track.name}' 트랙을 삭제할까요? 되돌릴 수 없습니다.
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button className="btn" style={{ flex: 1 }} onClick={() => setConfirmRemove(false)}>취소</button>
+              <button className="btn primary" style={{ flex: 1 }}
+                onClick={() => { setConfirmRemove(false); onRemove(); }}>삭제</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </React.Fragment>
   );
 }
 
