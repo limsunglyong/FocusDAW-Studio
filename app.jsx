@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.15.39";
+const APP_VERSION = "v0.16.1";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -69,9 +69,9 @@ function Dropdown({ label, items, accent }) {
           {items.map((it, i) => it.sep ? (
             <div key={i} style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
           ) : (
-            <div key={i} onClick={() => { setOpen(false); it.onClick && it.onClick(); }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, cursor: "pointer", fontSize: 12.5 }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface3)")}
+            <div key={i} onClick={() => { if (it.disabled) return; setOpen(false); it.onClick && it.onClick(); }}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, cursor: it.disabled ? "default" : "pointer", fontSize: 12.5, opacity: it.disabled ? 0.38 : 1 }}
+              onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = "var(--surface3)"; }}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
               {it.icon && <Icon name={it.icon} size={15} style={{ color: "var(--amber)", flex: "0 0 auto" }} />}
               <span style={{ flex: 1 }}>{it.label}</span>
@@ -102,7 +102,7 @@ function WindowControls() {
   );
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onSettings }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onSettings, onUndo, onRedo, canUndo, canRedo }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -123,10 +123,15 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { sep: true },
     { label: "Export MP3\u2026", icon: "download", hint: "\u2318E", onClick: onExport },
   ];
+  const editItems = [
+    { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
+    { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo },
+  ];
   return (
     <div className="menubar">
       <div style={{ display: "flex", alignItems: "center", paddingRight: 6 }}><Logo size={30} /></div>
       <Dropdown label="Project" items={projectItems} accent />
+      <Dropdown label="Edit" items={editItems} />
       <div className="menu-item" onClick={onSettings} style={{ cursor: "pointer" }}>Settings</div>
       <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 }}>
         <MenuTransport />
@@ -454,7 +459,7 @@ function LoadingOverlay({ state }) {
 }
 
 /* ---------- studio (arrange) ---------- */
-function Studio({ projectName, projectNameRef, projectPath, registerHandlers, onRenameProject, onProjectPathChange }) {
+function Studio({ projectName, projectNameRef, projectPath, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
@@ -472,6 +477,10 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
   const focusRef = useRef(null);
   const arrangeRef = useRef(null);
   const fitTimelineRef = useRef(true);
+  const undoStack = useRef([]);
+  const redoStack = useRef([]);
+  const lastUndoKey = useRef(null);
+  const MAX_UNDO = 50;
   const playhead = DAW.getPlayhead();
   const sessionDuration = DAW.duration;
 
@@ -492,6 +501,33 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     fitTimelineRef.current = true;
     setPx(next);
   }, [updateTimeMin]);
+
+  const pushUndo = useCallback(() => {
+    undoStack.current.push(DAW.getSnapshot());
+    if (undoStack.current.length > MAX_UNDO) undoStack.current.shift();
+    redoStack.current = [];
+    if (onUndoStateChange) onUndoStateChange({ canUndo: true, canRedo: false });
+  }, [onUndoStateChange]);
+
+  const undo = useCallback(() => {
+    if (!undoStack.current.length) return;
+    redoStack.current.push(DAW.getSnapshot());
+    DAW.applySnapshot(undoStack.current.pop());
+    lastUndoKey.current = null;
+    if (onUndoStateChange) onUndoStateChange({ canUndo: undoStack.current.length > 0, canRedo: true });
+    saveRecentProject(projectName);
+    force(n => n + 1);
+  }, [onUndoStateChange, projectName]);
+
+  const redo = useCallback(() => {
+    if (!redoStack.current.length) return;
+    undoStack.current.push(DAW.getSnapshot());
+    DAW.applySnapshot(redoStack.current.pop());
+    lastUndoKey.current = null;
+    if (onUndoStateChange) onUndoStateChange({ canUndo: true, canRedo: redoStack.current.length > 0 });
+    saveRecentProject(projectName);
+    force(n => n + 1);
+  }, [onUndoStateChange, projectName]);
 
   const setPxFromUser = useCallback((value) => {
     const nextMin = timelineMinPx(arrangeRef.current && arrangeRef.current.clientWidth);
@@ -534,6 +570,12 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     requestAnimationFrame(updateTimelineView);
   }, [sessionDuration, updateTimeMin, updateTimelineView]);
 
+  useEffect(() => {
+    const reset = () => { lastUndoKey.current = null; };
+    window.addEventListener("mouseup", reset);
+    return () => window.removeEventListener("mouseup", reset);
+  }, []);
+
   const saveProject = useCallback(async () => {
     const currentName = (projectNameRef && projectNameRef.current) || projectName || DEFAULT_PROJECT_NAME;
     const json = DAW.exportProject(currentName);
@@ -564,11 +606,11 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
   }, [projectName]);
 
   const handleSplit = useCallback((trackId, clipId, atSec) => {
-    DAW.splitClip(trackId, clipId, atSec); force((n) => n + 1);
-  }, []);
+    pushUndo(); DAW.splitClip(trackId, clipId, atSec); force((n) => n + 1);
+  }, [pushUndo]);
   const handleJoin = useCallback((trackId, clipIdA, clipIdB) => {
-    DAW.joinClips(trackId, clipIdA, clipIdB); force((n) => n + 1);
-  }, []);
+    pushUndo(); DAW.joinClips(trackId, clipIdA, clipIdB); force((n) => n + 1);
+  }, [pushUndo]);
 
   const reconnectProjectAudio = useCallback(async () => {
     if (!window.electronAPI) return;
@@ -624,6 +666,8 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
         else focusRef.current && focusRef.current.click();
         return;
       }
+      if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
       if (e.target.tagName === "INPUT") return;
       if (e.code === "Space") { e.preventDefault(); playPause(); }
       if (!mod && (e.key === "s" || e.key === "S")) setTool("select");
@@ -631,7 +675,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
     };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
-  }, [playPause, saveProject, openProjectFile]);
+  }, [playPause, saveProject, openProjectFile, undo, redo]);
 
   useEffect(() => {
     reconnectProjectAudio().then(() => {
@@ -728,11 +772,20 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       onOpenProject: window.electronAPI
         ? () => openProjectFile(null)
         : () => focusRef.current && focusRef.current.click(),
+      onUndo: undo,
+      onRedo: redo,
     });
-  }, [registerHandlers, saveProject, openProjectFile, pickAudioFiles, pickAudioFolder, loadDemo, newProject]);
+  }, [registerHandlers, saveProject, openProjectFile, pickAudioFiles, pickAudioFolder, loadDemo, newProject, undo, redo]);
 
-  const param = (id) => (k, v) => { DAW.setTrackParam(id, k, v); saveRecentProject(projectName); force((n) => n + 1); };
+  const param = (id) => (k, v) => {
+    const undoKey = `${id}-${k}`;
+    if (lastUndoKey.current !== undoKey) { pushUndo(); lastUndoKey.current = undoKey; }
+    DAW.setTrackParam(id, k, v);
+    saveRecentProject(projectName);
+    force((n) => n + 1);
+  };
   const removeTrack = (id) => {
+    pushUndo();
     const i = DAW.tracks.findIndex((t) => t.id === id);
     if (i >= 0) DAW.tracks.splice(i, 1);
     DAW._spectrum = null;
@@ -768,8 +821,23 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       {/* control bar */}
       <div style={{ height: 60, flex: "0 0 60px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "0 16px",
         background: "linear-gradient(180deg,var(--surface),var(--bg2))", borderBottom: "1px solid var(--line-strong)", position: "relative" }}>
-        {/* left cluster: zoom + tools + row height */}
+        {/* left cluster: undo/redo + zoom + tools + row height */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", gap: 2 }}>
+            <button className="iconbtn" style={{ width: 30, height: 30, opacity: undoStack.current.length ? 1 : 0.32 }}
+              onClick={undo} title="Undo (Ctrl+Z)" disabled={!undoStack.current.length}>
+              <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 7H10.5a3.5 3.5 0 010 7H7" /><path d="M5.5 4.5L3 7l2.5 2.5" />
+              </svg>
+            </button>
+            <button className="iconbtn" style={{ width: 30, height: 30, opacity: redoStack.current.length ? 1 : 0.32 }}
+              onClick={redo} title="Redo (Ctrl+Y / Ctrl+Shift+Z)" disabled={!redoStack.current.length}>
+              <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13 7H5.5a3.5 3.5 0 000 7H9" /><path d="M10.5 4.5L13 7l-2.5 2.5" />
+              </svg>
+            </button>
+          </div>
+          <div style={{ width: 1, height: 30, background: "var(--line)" }} />
           <ZoomBar pxPerSec={pxPerSec} setPx={setPxFromUser} ampZoom={ampZoom} setAmp={setAmp} timeMin={timeMinPx} />
           <div style={{ width: 1, height: 30, background: "var(--line)" }} />
           {/* Select/Seek · Split · Join tools hidden on screen (code kept) — re-enable: <ToolBar tool={tool} setTool={setTool} /> + a divider */}
@@ -820,6 +888,7 @@ function App() {
   const [, force] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
+  const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const registerHandlers = useCallback((h) => { handlersRef.current = h; }, []);
   const renameProject = useCallback((name) => {
     const nextName = name || DEFAULT_PROJECT_NAME;
@@ -857,11 +926,14 @@ function App() {
         onExport={() => H.onExport && H.onExport()}
         onSave={() => H.onSave && H.onSave()}
         onOpenProject={() => H.onOpenProject && H.onOpenProject()}
-        onSettings={() => setShowSettings(true)} />
+        onSettings={() => setShowSettings(true)}
+        onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
+        canUndo={undoState.canUndo} canRedo={undoState.canRedo} />
       <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath}
         registerHandlers={registerHandlers}
         onRenameProject={renameProject}
-        onProjectPathChange={setProjectPath} />
+        onProjectPathChange={setProjectPath}
+        onUndoStateChange={setUndoState} />
       {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme} onClose={() => setShowSettings(false)} />}
       <div className="bottombar">
         <span className="bottom-project mono">{projectName || DEFAULT_PROJECT_NAME}</span>

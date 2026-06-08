@@ -25,6 +25,8 @@ const IC = {
   chevron: "M9 6l6 6-6 6",
   trash: "M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13",
   disc: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  undo: "M4 9h11a5 5 0 0 1 0 10H8M7 6L4 9l3 3",
+  redo: "M20 9H9a5 5 0 0 0 0 10h7M17 6l3 3-3 3",
 };
 function Icon({ name, size = 18, stroke = 1.7, fill = false, style }) {
   const d = IC[name];
