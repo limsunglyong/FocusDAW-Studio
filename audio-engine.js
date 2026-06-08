@@ -481,6 +481,7 @@
 
     getSnapshot() {
       return {
+        eqBands: [...this.master.bands],
         tracks: this.tracks.map(t => ({
           id: t.id,
           params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })) },
@@ -494,6 +495,7 @@
     },
 
     applySnapshot(snap) {
+      if (snap.eqBands) this.setMasterBands(snap.eqBands);
       for (const st of snap.tracks) {
         const t = this.tracks.find(x => x.id === st.id);
         if (!t) continue;

@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.16.2";
+const APP_VERSION = "v0.16.3";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -872,7 +872,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
         )}
       </div>
 
-      {showMixer && <MixerWindow onClose={() => setShowMixer(false)} />}
+      {showMixer && <MixerWindow onClose={() => setShowMixer(false)} onBeforeChange={pushUndo} />}
       {showExport && <ExportDialog projectName={projectName} onClose={() => setShowExport(false)} />}
       <LoadingOverlay state={loading} />
     </div>
