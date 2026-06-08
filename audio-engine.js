@@ -226,6 +226,7 @@
     _offset: 0,
     _sources: [],
     _tickCbs: [],
+    _autoSchedTimer: null,
     _clipCounter: 0,
     _cid() { return 'c' + (++this._clipCounter); },
     _displayName(fileName) {
@@ -417,7 +418,9 @@
       else if (key === "mute" && val) t.params.solo = false;
       this._applyMix();
       if (key === "autoOn" || key === "automation") {
-        if (this.isPlaying) this._scheduleAutomation();
+        // Coalesce rapid edits (e.g. dragging an automation point) so we don't
+        // re-schedule every track × every loop on each mousemove.
+        if (this.isPlaying) this._scheduleAutomationSoon();
       }
     },
 
@@ -618,7 +621,17 @@
       return pts;
     },
 
+    // debounced reschedule for high-frequency edits (drag); ~50ms coalescing window
+    _scheduleAutomationSoon() {
+      clearTimeout(this._autoSchedTimer);
+      this._autoSchedTimer = setTimeout(() => {
+        this._autoSchedTimer = null;
+        if (this.isPlaying) this._scheduleAutomation();
+      }, 50);
+    },
+
     _scheduleAutomation() {
+      clearTimeout(this._autoSchedTimer); this._autoSchedTimer = null; // supersede any pending debounce
       const now = ctx.currentTime;
       const dur = this.duration;
       const loops = 64;
@@ -713,6 +726,7 @@
     },
 
     _stopSources() {
+      clearTimeout(this._autoSchedTimer); this._autoSchedTimer = null;
       this._sources.forEach((s) => { try { s.stop(); } catch (e) {} });
       this._sources = [];
     },
