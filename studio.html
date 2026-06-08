@@ -120,6 +120,24 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 .rec-dot{animation:pulse 1.1s ease-in-out infinite}
 
+/* ---- prominent SAVE button (Mixdown ready) ---- */
+@keyframes saveGlow{
+  0%,100%{ box-shadow:0 0 14px 1px rgba(232,176,75,.40); }
+  50%{ box-shadow:0 0 28px 7px rgba(232,176,75,.75); }
+}
+.btn-save{
+  display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  width:100%; height:48px; padding:0 18px; border-radius:12px;
+  font-size:15px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  cursor:pointer; text-decoration:none;
+  background:linear-gradient(180deg,#f2bd5c,var(--amber-deep));
+  color:#241a0a; border:1px solid var(--amber);
+  animation:saveGlow 1.5s ease-in-out infinite;
+  transition:transform .12s, filter .12s;
+}
+.btn-save:hover{ transform:translateY(-1px); filter:brightness(1.07); }
+.btn-save:active{ transform:translateY(0) scale(.99); }
+
 /* ---- sleek slider ---- */
 .sleek{position:relative;height:15px;cursor:pointer;display:flex;align-items:center}
 .sleek .strack{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:4px;

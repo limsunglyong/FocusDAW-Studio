@@ -264,7 +264,7 @@ function ExportDialog({ projectName, onClose }) {
             <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" }}><Icon name="check" size={26} /></div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Mixdown ready</div>
             <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(DAW.duration)} · {sr / 1000}kHz · {ext.toUpperCase()}</div>
-            <a className="btn primary" href={url} download={fileName} style={{ textDecoration: "none", justifyContent: "center" }}><Icon name="download" size={15} /> Save file</a>
+            <a className="btn-save" href={url} download={fileName}><Icon name="download" size={18} /> Save file</a>
             {format === "mp3" && !window.electronAPI && (
               <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 12, lineHeight: 1.5 }}>Browser preview renders WAV — the native build pipes through ffmpeg for true MP3 encode.</div>
             )}
