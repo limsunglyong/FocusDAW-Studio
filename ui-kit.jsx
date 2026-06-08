@@ -138,10 +138,15 @@ function SoloBtn({ on, onClick, size = 24 }) {
     background: on ? "var(--amber)" : "var(--surface2)", color: on ? "#241a0a" : "var(--dim)",
     border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"), boxShadow: on ? "0 0 10px rgba(232,176,75,.5)" : "none" }}>S</button>;
 }
-function MuteBtn({ on, onClick, size = 24 }) {
-  return <button onClick={onClick} title="Mute" style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
-    background: on ? "var(--red)" : "var(--surface2)", color: on ? "#fff" : "var(--dim)",
-    border: "1px solid " + (on ? "var(--red)" : "var(--line-strong)") }}>M</button>;
+function MuteBtn({ on, auto, onClick, size = 24 }) {
+  // `auto` = implicitly muted because another track is soloed (display only)
+  const active = on || auto;
+  return <button onClick={onClick} title={!on && auto ? "Muted (Solo active elsewhere)" : "Mute"}
+    style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
+    background: on ? "var(--red)" : (auto ? "rgba(217,106,78,.22)" : "var(--surface2)"),
+    color: on ? "#fff" : (auto ? "var(--red)" : "var(--dim)"),
+    border: "1px solid " + (active ? "var(--red)" : "var(--line-strong)"),
+    opacity: !on && auto ? 0.9 : 1 }}>M</button>;
 }
 
 /* ---------- segmented toggle ---------- */

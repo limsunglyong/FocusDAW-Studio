@@ -207,10 +207,18 @@
   let convolver = null;
   let masterBus, eqNodes = [], masterFade, masterVol, masterMix, masterAnalyser, mRevSend, mEchoSend, mDelay, mFb, mConv;
   const EQ_FREQS = [60, 150, 320, 640, 1200, 2400, 4800, 9000, 15000]; // 3 low / 3 mid / 3 high
+  // recommended 9-band EQ presets (dB per band, range -12..+12), aligned to EQ_FREQS
+  const EQ_PRESETS = {
+    Flat:    [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    Pop:     [3, 1.5, 0, -1, -1.5, -1, 0.5, 2.5, 3.5],
+    Classic: [3, 2, 1, 0, 0, -1, -0.5, 2, 3],
+    HipHop:  [6, 4, 2, 0.5, -0.5, 0, 0.5, 1.5, 2.5],
+  };
   const Engine = {
     ctx: null,
     duration: DURATION,
     EQ_FREQS,
+    EQ_PRESETS,
     tracks: [],
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.6, fadeOut: 1.4 },
     isPlaying: false,
@@ -403,6 +411,9 @@
       const t = this.tracks.find((x) => x.id === id);
       if (!t) return;
       t.params[key] = val;
+      // Solo/Mute are mutually exclusive on the same track
+      if (key === "solo" && val) t.params.mute = false;
+      else if (key === "mute" && val) t.params.solo = false;
       this._applyMix();
       if (key === "autoOn" || key === "automation") {
         if (this.isPlaying) this._scheduleAutomation();
@@ -424,6 +435,13 @@
     },
     setMasterGroup(group, db) { // 0=low 1=mid 2=high
       for (let i = group * 3; i < group * 3 + 3; i++) this.setMasterBand(i, db);
+    },
+    setMasterBands(arr) { // apply all 9 bands at once (e.g. a preset)
+      for (let i = 0; i < EQ_FREQS.length; i++) this.setMasterBand(i, arr[i] || 0);
+    },
+    applyEQPreset(name) {
+      const p = EQ_PRESETS[name];
+      if (p) this.setMasterBands(p);
     },
     getMasterGroup(group) {
       const b = this.master.bands;

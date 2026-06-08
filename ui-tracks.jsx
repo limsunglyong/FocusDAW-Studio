@@ -175,7 +175,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
         <span style={{ fontWeight: 600, fontSize: compact ? 12.5 : 13.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.name}</span>
         <SoloBtn size={buttonSize} on={p.solo} onClick={() => onParam("solo", !p.solo)} />
-        <MuteBtn size={buttonSize} on={p.mute} onClick={() => onParam("mute", !p.mute)} />
+        <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} onClick={() => onParam("mute", !p.mute)} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 }}>
         {/* horizontal volume fader */}

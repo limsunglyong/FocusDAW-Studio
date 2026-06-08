@@ -17,7 +17,7 @@ function ChannelStrip({ track, level, onParam }) {
         onChange={(v) => onParam("filterFreq", v)} format={(v) => (v >= 19000 ? "OFF" : (v / 1000).toFixed(1) + "k")} />
       <div style={{ display: "flex", gap: 5 }}>
         <SoloBtn on={p.solo} size={22} onClick={() => onParam("solo", !p.solo)} />
-        <MuteBtn on={p.mute} size={22} onClick={() => onParam("mute", !p.mute)} />
+        <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} size={22} onClick={() => onParam("mute", !p.mute)} />
       </div>
       <Knob value={p.pan} min={-1} max={1} size={26} color="var(--cream-2)" label="PAN"
         onChange={(v) => onParam("pan", v)} format={(v) => (Math.abs(v) < 0.02 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100))} />
@@ -234,9 +234,16 @@ function FxCard({ icon, name, value, color, onChange }) {
 }
 
 /* ---------- master panel (wide) ---------- */
+const EQ_PRESET_BTNS = [
+  ["Reset", "Flat", "var(--dim)"],
+  ["POP", "Pop", "var(--amber)"],
+  ["Classic", "Classic", "var(--blue)"],
+  ["HIP HOP", "HipHop", "var(--violet)"],
+];
 function MasterPanel({ level, master, onMaster }) {
   const [view, setView] = useState("eq");
-  const grpDb = (g) => master.bands.slice(g * 3, g * 3 + 3).reduce((a, b) => a + b, 0) / 3;
+  const [, force] = useState(0);
+  const applyPreset = (name) => { DAW.applyEQPreset(name); force((n) => n + 1); };
   return (
     <div style={{ width: 392, flex: "0 0 392px", display: "flex", flexDirection: "column", padding: "12px 14px", gap: 11,
       background: "linear-gradient(180deg,rgba(232,176,75,.06),transparent 40%)", borderLeft: "1px solid var(--line-strong)" }}>
@@ -263,14 +270,19 @@ function MasterPanel({ level, master, onMaster }) {
         </div>
       </div>
 
-      {/* zone summary */}
-      <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-        {[["LOW", "var(--red)", 0], ["MID", "var(--amber)", 1], ["HIGH", "var(--blue)", 2]].map(([lbl, col, g]) => (
-          <div key={lbl} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "5px 0", borderRadius: 7, background: "rgba(255,255,255,.02)", border: "1px solid var(--line)" }}>
-            <span style={{ width: 7, height: 7, borderRadius: 2, background: col }} />
-            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--dim)", letterSpacing: ".06em" }}>{lbl}</span>
-            <span className="mono" style={{ fontSize: 10, color: "var(--cream-2)" }}>{grpDb(g) >= 0 ? "+" : ""}{grpDb(g).toFixed(1)}</span>
-          </div>
+      {/* EQ presets */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>EQ&nbsp;PRESET</span>
+        {EQ_PRESET_BTNS.map(([lbl, name, col]) => (
+          <button key={name} onClick={() => applyPreset(name)} title={`Apply ${lbl} EQ`}
+            style={{ flex: 1, padding: "5px 0", borderRadius: 7, background: "rgba(255,255,255,.02)",
+              border: "1px solid var(--line)", color: "var(--dim)", fontSize: 10, fontWeight: 600,
+              letterSpacing: ".04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = col; e.currentTarget.style.color = "var(--cream)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--dim)"; }}>
+            <span style={{ width: 6, height: 6, borderRadius: 2, background: col }} />
+            {lbl}
+          </button>
         ))}
       </div>
 
