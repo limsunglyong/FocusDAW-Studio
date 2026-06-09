@@ -3,8 +3,16 @@
 /* ---------- channel strip ---------- */
 function ChannelStrip({ track, level, onParam }) {
   const p = track.params;
+  const faderAreaRef = useRef(null);
+  const [faderH, setFaderH] = useState(120);
+  useEffect(() => {
+    const el = faderAreaRef.current; if (!el) return;
+    const obs = new ResizeObserver(([e]) => setFaderH(Math.max(40, Math.floor(e.contentRect.height))));
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   return (
-    <div style={{ width: 92, flex: "0 0 92px", display: "flex", flexDirection: "column", alignItems: "center",
+    <div style={{ width: 92, flex: "0 0 92px", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center",
       padding: "10px 6px", borderRight: "1px solid var(--line)", gap: 8, background: p.solo ? "rgba(232,176,75,.05)" : "transparent" }}>
       <div style={{ height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` }} />
       <div style={{ fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 }}>{track.name}</div>
@@ -19,10 +27,10 @@ function ChannelStrip({ track, level, onParam }) {
       </div>
       <Knob value={p.pan} min={-1} max={1} size={26} color="var(--cream-2)" label="PAN"
         onChange={(v) => onParam("pan", v)} format={(v) => (Math.abs(v) < 0.02 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100))} />
-      {/* fader + meter */}
-      <div style={{ display: "flex", gap: 6, alignItems: "flex-end", marginTop: 2 }}>
-        <Fader value={p.volume} height={120} max={1.5} onChange={(v) => onParam("volume", v)} />
-        <Meter level={level} height={120} width={7} />
+      {/* fader + meter — flex:1 fills remaining height */}
+      <div ref={faderAreaRef} style={{ display: "flex", gap: 6, alignItems: "flex-end", flex: 1, minHeight: 0, justifyContent: "center" }}>
+        <Fader value={p.volume} height={faderH} max={1.5} onChange={(v) => onParam("volume", v)} />
+        <Meter level={level} height={faderH} width={7} />
       </div>
       <div className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)" }}>{fmtDb(p.volume)} dB</div>
     </div>
