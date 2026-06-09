@@ -262,12 +262,15 @@ function ZoomGroup({ label, onMinus, onPlus, sliderProps }) {
   );
 }
 function ZoomBar({ pxPerSec, setPx, ampZoom, setAmp, timeMin }) {
-  const timeStep = timelineStep(timeMin);
+  // Use log scale so equal slider movements = equal zoom ratio changes (same feel at all zoom levels).
+  const logMin = Math.log(Math.max(0.1, timeMin));
+  const logMax = Math.log(TIME_ZOOM_MAX);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <ZoomGroup label="TIME"
         onMinus={() => setPx(Math.max(timeMin, pxPerSec / 1.4))} onPlus={() => setPx(Math.min(TIME_ZOOM_MAX, pxPerSec * 1.4))}
-        sliderProps={{ value: Math.max(timeMin, pxPerSec), min: timeMin, max: TIME_ZOOM_MAX, step: timeStep, onChange: setPx, width: 108 }} />
+        sliderProps={{ value: Math.log(Math.max(0.1, pxPerSec)), min: logMin, max: logMax, step: 0.005,
+          onChange: (v) => setPx(Math.exp(v)), width: 108 }} />
       <ZoomGroup label="AMP"
         onMinus={() => setAmp(Math.max(0.4, ampZoom - 0.3))} onPlus={() => setAmp(Math.min(3, ampZoom + 0.3))}
         sliderProps={{ value: ampZoom, min: 0.4, max: 3, step: 0.05, onChange: setAmp, width: 96 }} />
