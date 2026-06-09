@@ -13,8 +13,6 @@ function ChannelStrip({ track, level, onParam }) {
         <Knob value={p.reverb} size={28} color="var(--violet)" label="VRB" onChange={(v) => onParam("reverb", v)} />
         <Knob value={p.echo} size={28} color="var(--blue)" label="ECHO" onChange={(v) => onParam("echo", v)} />
       </div>
-      <Knob value={p.filterFreq} min={200} max={20000} curve={3} size={30} color="var(--green)" label="FILTER"
-        onChange={(v) => onParam("filterFreq", v)} format={(v) => (v >= 19000 ? "OFF" : (v / 1000).toFixed(1) + "k")} />
       <div style={{ display: "flex", gap: 5 }}>
         <SoloBtn on={p.solo} size={22} onClick={() => onParam("solo", !p.solo)} />
         <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} size={22} onClick={() => onParam("mute", !p.mute)} />

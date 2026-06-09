@@ -302,7 +302,6 @@
       // persistent nodes
       const fader = ctx.createGain();
       const autoGain = ctx.createGain();
-      const filter = ctx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 20000; filter.Q.value = 0.7;
       const panner = ctx.createStereoPanner();
       const meter = ctx.createAnalyser(); meter.fftSize = 512;
       const reverbSend = ctx.createGain(); reverbSend.gain.value = 0;
@@ -310,8 +309,8 @@
       const delay = ctx.createDelay(1.0); delay.delayTime.value = 0.25;
       const fb = ctx.createGain(); fb.gain.value = 0.34;
 
-      // graph: (source) -> fader -> autoGain -> filter -> panner -> meter & bus
-      fader.connect(autoGain); autoGain.connect(filter); filter.connect(panner);
+      // graph: (source) -> fader -> autoGain -> panner -> meter & bus
+      fader.connect(autoGain); autoGain.connect(panner);
       panner.connect(meter);
       panner.connect(masterBus);             // dry
       panner.connect(reverbSend); reverbSend.connect(convolver); // reverb send
@@ -322,10 +321,10 @@
       const track = {
         id, name, type, color, buffer,
         peaks: fine, peaksMedium: medium, peaksCoarse: coarse,
-        nodes: { fader, autoGain, filter, panner, meter, reverbSend, echoSend, delay, fb },
+        nodes: { fader, autoGain, panner, meter, reverbSend, echoSend, delay, fb },
         params: {
           volume: 1.0, pan: 0, mute: false, solo: false,
-          filterFreq: 20000, reverb: 0, echo: 0,
+          reverb: 0, echo: 0,
           autoOn: false,
           autoCurve: false,
           automation: defaultAutomation(type),
@@ -421,7 +420,6 @@
         ramp(t.nodes.fader.gain, g);
         ramp(t.nodes.panner.pan ? null : null, 0); // noop guard
         try { t.nodes.panner.pan.value = p.pan; } catch (e) {}
-        ramp(t.nodes.filter.frequency, p.filterFreq);
         ramp(t.nodes.reverbSend.gain, p.reverb);
         ramp(t.nodes.echoSend.gain, p.echo);
       });
