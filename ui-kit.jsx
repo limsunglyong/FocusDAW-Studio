@@ -94,12 +94,13 @@ function Knob({ value, min = 0, max = 1, onChange, size = 38, label, unit, forma
 }
 
 /* ---------- vertical fader ---------- */
-function Fader({ value, onChange, height = 120, color = "var(--amber)", showVal }) {
+function Fader({ value, onChange, height = 120, color = "var(--amber)", showVal, max = 1 }) {
   const ref = useRef(null);
+  const norm = Math.max(0, Math.min(1, value / max));
   const set = (clientY) => {
     const el = ref.current; const r = el.getBoundingClientRect();
     let n = 1 - (clientY - r.top) / r.height;
-    onChange(Math.max(0, Math.min(1, n)));
+    onChange(Math.max(0, Math.min(max, n * max)));
   };
   const onDown = (e) => {
     e.preventDefault(); set(e.clientY);
@@ -107,11 +108,14 @@ function Fader({ value, onChange, height = 120, color = "var(--amber)", showVal 
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
+  const trackH = height - 8;
   return (
     <div ref={ref} onMouseDown={onDown} style={{ width: 26, height, position: "relative", cursor: "ns-resize" }}>
       <div style={{ position: "absolute", left: "50%", top: 4, bottom: 4, width: 4, transform: "translateX(-50%)", background: "#1a1611", borderRadius: 3, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.5)" }} />
-      <div style={{ position: "absolute", left: "50%", bottom: `calc(${value * 100}% - 8px)`, width: 4, transform: "translateX(-50%)", height: 4, background: color, borderRadius: 3, top: 4 }} />
-      <div style={{ position: "absolute", left: "50%", bottom: `calc(${value * (height - 8)}px)`, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "linear-gradient(#4a4338,#2c2720)", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" }}>
+      <div style={{ position: "absolute", left: "50%", bottom: `calc(${norm * 100}% - 8px)`, width: 4, transform: "translateX(-50%)", height: 4, background: color, borderRadius: 3, top: 4 }} />
+      {/* 0dB marker — shown when max > 1 */}
+      {max > 1 && <div style={{ position: "absolute", left: "50%", bottom: trackH / max, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" }} />}
+      <div style={{ position: "absolute", left: "50%", bottom: norm * trackH, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "linear-gradient(#4a4338,#2c2720)", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" }}>
         <div style={{ position: "absolute", top: "50%", left: 3, right: 3, height: 1.5, transform: "translateY(-50%)", background: color, opacity: .8 }} />
       </div>
     </div>
@@ -150,10 +154,10 @@ function MuteBtn({ on, auto, onClick, size = 24 }) {
   const active = on || auto;
   return <button onClick={onClick} title={!on && auto ? "Muted (Solo active elsewhere)" : "Mute"}
     style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
-    background: on ? "var(--red)" : (auto ? "rgba(217,106,78,.22)" : "var(--surface2)"),
-    color: on ? "#fff" : (auto ? "var(--red)" : "var(--dim)"),
+    background: active ? "var(--red)" : "var(--surface2)",
+    color: active ? "#fff" : "var(--dim)",
     border: "1px solid " + (active ? "var(--red)" : "var(--line-strong)"),
-    opacity: !on && auto ? 0.9 : 1 }}>M</button>;
+    boxShadow: active ? "0 0 10px rgba(217,106,78,.5)" : "none" }}>M</button>;
 }
 
 /* ---------- segmented toggle ---------- */

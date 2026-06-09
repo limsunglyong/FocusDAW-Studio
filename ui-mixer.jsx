@@ -23,7 +23,7 @@ function ChannelStrip({ track, level, onParam }) {
         onChange={(v) => onParam("pan", v)} format={(v) => (Math.abs(v) < 0.02 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100))} />
       {/* fader + meter */}
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end", marginTop: 2 }}>
-        <Fader value={p.volume} height={120} onChange={(v) => onParam("volume", v)} />
+        <Fader value={p.volume} height={120} max={1.5} onChange={(v) => onParam("volume", v)} />
         <Meter level={level} height={120} width={7} />
       </div>
       <div className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)" }}>{fmtDb(p.volume)} dB</div>

@@ -2,7 +2,7 @@
 const HEADER_W = 244;
 
 /* ---------- waveform canvas ---------- */
-function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
+function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
   const ref = useRef(null);
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   useEffect(() => {
@@ -47,7 +47,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
         c2d.strokeStyle = "rgba(255,255,255,.05)"; c2d.lineWidth = 1;
         c2d.beginPath(); c2d.moveTo(x0, mid); c2d.lineTo(x1, mid); c2d.stroke();
 
-        // waveform body
+        // waveform body (volume-scaled)
         c2d.fillStyle = track.color + "33";
         c2d.strokeStyle = track.color;
         c2d.lineWidth = 1;
@@ -58,7 +58,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
           const bufPos = clip.offset + (clipPx / clipW) * (clip.end - clip.start);
           const bIdx = Math.floor((bufPos / bufDur) * nb);
           const max = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2 + 1] || 0;
-          c2d.lineTo(x, mid - max * mid * 0.92 * ampZoom);
+          c2d.lineTo(x, mid - max * volume * mid * 0.92 * ampZoom);
         }
         for (let x = x1; x >= x0; x--) {
           const timelinePx = drawStart + x;
@@ -66,10 +66,30 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
           const bufPos = clip.offset + (clipPx / clipW) * (clip.end - clip.start);
           const bIdx = Math.floor((bufPos / bufDur) * nb);
           const min = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2] || 0;
-          c2d.lineTo(x, mid - min * mid * 0.92 * ampZoom);
+          c2d.lineTo(x, mid - min * volume * mid * 0.92 * ampZoom);
         }
         c2d.closePath(); c2d.fill();
         c2d.globalAlpha = .85; c2d.stroke(); c2d.globalAlpha = 1;
+
+        // clipping indicator: peak × volume > 1.0 (ampZoom 무관, 신호 레벨만 판정)
+        if (volume > 1.0) {
+          c2d.fillStyle = "rgba(220,70,60,.70)";
+          c2d.beginPath();
+          for (let x = x0; x <= x1; x++) {
+            const timelinePx = drawStart + x;
+            const clipPx = timelinePx - clipStartX;
+            const bufPos = clip.offset + (clipPx / clipW) * (clip.end - clip.start);
+            const bIdx = Math.floor((bufPos / bufDur) * nb);
+            const maxPk = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2 + 1] || 0;
+            const minPk = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2] || 0;
+            if (maxPk * volume > 1.0 || Math.abs(minPk) * volume > 1.0) {
+              const yTop = Math.max(0, mid - maxPk * volume * mid * 0.92 * ampZoom);
+              const yBot = Math.min(height, mid - minPk * volume * mid * 0.92 * ampZoom);
+              c2d.rect(x, yTop, 1, Math.max(1, yBot - yTop));
+            }
+          }
+          c2d.fill();
+        }
 
         // clip boundary lines
         c2d.strokeStyle = "rgba(232,212,170,.30)"; c2d.lineWidth = 1.5;
@@ -96,7 +116,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height }) {
       scrollHost && scrollHost.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
-  }, [pxPerSec, ampZoom, height, laneW, track, clips, track.audioRev]);
+  }, [pxPerSec, ampZoom, height, laneW, track, clips, track.audioRev, volume]);
   return <canvas ref={ref} style={{ position: "absolute", top: 0, height, display: "block" }} />;
 }
 
@@ -200,8 +220,12 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         {/* horizontal volume fader */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <Icon name="wave" size={compact ? 12 : 13} style={{ color: "var(--muted)", flex: "0 0 auto" }} />
-          <input type="range" min="0" max="1" step="0.005" value={p.volume}
-            onChange={(e) => onParam("volume", +e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
+            <input type="range" min="0" max="1.5" step="0.005" value={p.volume}
+              onChange={(e) => onParam("volume", +e.target.value)} style={{ width: "100%", display: "block" }} />
+            {/* 0dB tick: value=1.0 is at 1.0/1.5 = 66.67% of slider */}
+            <div style={{ position: "absolute", left: "66.67%", bottom: 0, transform: "translateX(-50%)", width: 1.5, height: 4, background: "var(--muted)", borderRadius: 1, pointerEvents: "none" }} />
+          </div>
           {!compact && <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)", width: 28, textAlign: "right", flex: "0 0 auto" }}>{fmtDb(p.volume)}</span>}
         </div>
         <Knob value={p.pan} min={-1} max={1} size={knobSize} color="var(--blue)"
@@ -343,7 +367,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
           background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
           borderBottom: "1px solid var(--line)", overflow: "hidden", cursor: toolCursor }}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
-        <Waveform track={track} clips={track.clips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} />
+        <Waveform track={track} clips={track.clips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} volume={track.params.volume} />
         {p.autoOn && <AutomationOverlay track={track} pxPerSec={pxPerSec} height={laneH} onBeforeChange={onBeforeChange} />}
         {/* scissors hover highlight */}
         {hoveredClipId && tool === 'scissors' && (() => {

@@ -318,6 +318,14 @@ const THEMES = [
     accent: "#5b9bd5", text: "#eaf1fb", text2: "#a7b8d0",
     green: "#3fb985", red: "#e8654a", blue: "#7fb9e8",
   },
+  {
+    id: "forest",
+    name: "Forest Green",
+    desc: "dark forest · vivid green · natural & deep",
+    bg: "#0f1a13", bg2: "#162319", surface: "#1d3022",
+    accent: "#5de87a", text: "#d8f0d0", text2: "#9ec49a",
+    green: "#aae060", red: "#e06058", blue: "#60b8c8",
+  },
 ];
 
 function ThemeSwatch({ theme, active, onClick }) {

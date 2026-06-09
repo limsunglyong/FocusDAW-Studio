@@ -51,6 +51,18 @@
   --mixer-bar-bg:linear-gradient(#9cccf2,#6fb0e6); --mixer-bar-fg:#0f2640;
 }
 
+/* ── Forest Green theme ── */
+:root[data-theme="forest"]{
+  --bg:#0f1a13; --bg2:#162319; --surface:#1d3022; --surface2:#253d2b; --surface3:#2e4d35;
+  --line:rgba(120,200,100,.12); --line-strong:rgba(120,200,100,.22);
+  --cream:#d8f0d0; --cream-2:#9ec49a; --dim:#7aaa74; --muted:#5a8656; --faint:#3a5e3a;
+  --amber:#5de87a; --amber-deep:#3dc85a; --amber-soft:rgba(93,232,122,.16);
+  --green:#aae060; --green-deep:#82b83e; --red:#e06058; --blue:#60b8c8; --violet:#a880c0;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.85);
+  --mixer-bar-bg:linear-gradient(#a8e0a0,#7cca74); --mixer-bar-fg:#0c1e0f;
+  --outfx-bg:linear-gradient(rgba(0,0,0,.32),rgba(0,0,0,.32)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+}
+
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#0d0b09;overflow:hidden}
 body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;
