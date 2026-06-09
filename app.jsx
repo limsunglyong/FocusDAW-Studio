@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.16.6";
+const APP_VERSION = "v0.16.8";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -180,10 +180,11 @@ function MenuTransportButton({ title, active, children, onClick, wide }) {
 function MenuTransport() {
   useTick();
   const [, force] = useState(0);
-  const [loop, setLoop] = useState(true);
+  const [loop, setLoop] = useState(DAW.loopEnabled);
   const playing = DAW.isPlaying;
   const playhead = DAW.getPlayhead();
   const playPause = () => { DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
+  const toggleLoop = () => { const next = !loop; setLoop(next); DAW.setLoop(next); };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 7, height: 36 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32, padding: "2px 4px",
@@ -198,7 +199,7 @@ function MenuTransport() {
         <MenuTransportButton title="Play / Pause" active={playing} wide onClick={playPause}>
           <Icon name={playing ? "pause" : "play"} size={14} fill />
         </MenuTransportButton>
-        <MenuTransportButton title="Loop" active={loop} onClick={() => setLoop((l) => !l)}>
+        <MenuTransportButton title="Loop" active={loop} onClick={toggleLoop}>
           <Icon name="repeat" size={13} />
         </MenuTransportButton>
       </div>
@@ -324,12 +325,13 @@ function ActionBar({ onAddTrack, onMixer, mixerOpen, onExport }) {
   );
 }
 
-function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, timeMin }) {
+function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, timeMin, onScroll }) {
   const ref = useRef(null);
   const duration = Math.max(0.001, DAW.duration || 0.001);
   const laneW = Math.max(1, duration * pxPerSec);
-  const viewLeft = Math.max(0, Math.min(1, (viewState.scrollLeft || 0) / laneW));
+  // Clamp viewLeft so the box never overflows the right edge of the minimap.
   const viewWidth = Math.max(0.012, Math.min(1, (viewState.clientWidth || laneW) / laneW));
+  const viewLeft = Math.max(0, Math.min(1 - viewWidth, (viewState.scrollLeft || 0) / laneW));
   const playPct = Math.max(0, Math.min(1, playhead / duration));
   const ticks = [];
   for (let t = 0; t <= duration + 0.001; t += 10) ticks.push(t);
@@ -345,7 +347,9 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
     const pct = Math.max(0, Math.min(1, (clientX - innerLeft) / innerW));
     const t = pct * duration;
     const visibleW = Math.max(1, scrollHost.clientWidth - HEADER_W);
-    scrollHost.scrollLeft = Math.max(0, Math.min(laneW - visibleW, t * pxPerSec - visibleW / 2));
+    const newSL = Math.max(0, Math.min(laneW - visibleW, t * pxPerSec - visibleW / 2));
+    // Use callback to update DOM scroll + React state in the same frame (no rAF lag).
+    onScroll ? onScroll(newSL) : (scrollHost.scrollLeft = newSL);
   };
   const onDown = (e) => {
     e.preventDefault();
@@ -355,14 +359,22 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   };
-  const onWheel = (e) => {
+  const onWheel = useCallback((e) => {
     e.preventDefault();
     const next = e.deltaY < 0 ? pxPerSec * 1.18 : pxPerSec / 1.18;
     setPx(Math.max(timeMin, Math.min(TIME_ZOOM_MAX, next)));
-  };
+  }, [pxPerSec, setPx, timeMin]);
+
+  // React 17+ delegates wheel as passive at the document root, so e.preventDefault()
+  // inside an onWheel prop is blocked. Register directly with {passive:false} instead.
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [onWheel]);
 
   return (
-    <div ref={ref} onMouseDown={onDown} onWheel={onWheel} title="Timeline minimap"
+    <div ref={ref} onMouseDown={onDown} title="Timeline minimap"
       style={{ flex: "1 1 420px", minWidth: 220, height: 40, position: "relative", overflow: "hidden",
         borderRadius: 10, border: "1px solid var(--line)", background: "#0b0b0d",
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.035)", cursor: "pointer" }}>
@@ -529,11 +541,28 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     force(n => n + 1);
   }, [onUndoStateChange, projectName]);
 
+  // Scroll the arrange area AND update timelineView in the same React render — no rAF lag.
+  const scrollArrangeTo = useCallback((sl) => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    el.scrollLeft = sl;
+    setTimelineView({ scrollLeft: sl, clientWidth: Math.max(1, el.clientWidth - HEADER_W) });
+  }, []);
+
   const setPxFromUser = useCallback((value) => {
     const nextMin = timelineMinPx(arrangeRef.current && arrangeRef.current.clientWidth);
     const snappedToMin = value <= nextMin + timelineStep(nextMin) * 0.5;
     fitTimelineRef.current = snappedToMin;
-    setPx(snappedToMin ? nextMin : value);
+    const nextPx = snappedToMin ? nextMin : value;
+    // Clamp scrollLeft synchronously so the minimap box stays in bounds in the same render.
+    const el = arrangeRef.current;
+    if (el) {
+      const newLaneW = Math.max(1, DAW.duration * nextPx);
+      const visibleW = Math.max(1, el.clientWidth - HEADER_W);
+      el.scrollLeft = Math.min(el.scrollLeft, Math.max(0, newLaneW - visibleW));
+      setTimelineView({ scrollLeft: el.scrollLeft, clientWidth: visibleW });
+    }
+    setPx(nextPx);
   }, []);
 
   useEffect(() => {
@@ -846,7 +875,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
             <Seg small value={laneH} onChange={setLaneH} options={[{ v: 68, l: "S" }, { v: 96, l: "M" }, { v: 132, l: "L" }]} />
           </div>
         </div>
-        <TimelineMinimap arrangeRef={arrangeRef} pxPerSec={pxPerSec} playhead={playhead} viewState={timelineView} setPx={setPxFromUser} timeMin={timeMinPx} />
+        <TimelineMinimap arrangeRef={arrangeRef} pxPerSec={pxPerSec} playhead={playhead} viewState={timelineView} setPx={setPxFromUser} timeMin={timeMinPx} onScroll={scrollArrangeTo} />
         {/* right cluster: actions */}
         <ActionBar onAddTrack={pickAudioFiles} onMixer={() => setShowMixer((s) => !s)} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
       </div>

@@ -1,20 +1,52 @@
 /* ================= FocusDAW — track lanes, waveforms, automation ================= */
 const HEADER_W = 244;
 
+// Select the coarsest peak level that still provides ≥1 bucket per pixel.
+// Falls back to fine (highest resolution) when needed.
+function choosePeaks(track, pxPerSec) {
+  const bufDur = track.buffer ? track.buffer.duration : 0;
+  if (!bufDur || !track.peaksCoarse) return track.peaks || [];
+  const bucketsNeeded = pxPerSec * bufDur;
+  if (bucketsNeeded <= 512) return track.peaksCoarse;
+  if (bucketsNeeded <= 2048) return track.peaksMedium || track.peaks || [];
+  return track.peaks || [];
+}
+
 /* ---------- waveform canvas ---------- */
 function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
   const ref = useRef(null);
+  const isVisibleRef = useRef(true);   // shared between observer and draw effects
+  const scheduleRef  = useRef(null);   // latest schedule fn, for observer to trigger redraw
   const laneW = Math.max(1, DAW.duration * pxPerSec);
+
+  // IntersectionObserver — created once on mount, never recreated on zoom/data changes.
+  useEffect(() => {
+    const cv = ref.current; if (!cv) return;
+    const obsEl = cv.parentElement || cv;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        isVisibleRef.current = entry.isIntersecting;
+        if (entry.isIntersecting && scheduleRef.current) scheduleRef.current();
+      },
+      { rootMargin: "200px 0px", threshold: 0 }
+    );
+    obs.observe(obsEl);
+    return () => obs.disconnect();
+  }, []); // mount / unmount only
+
+  // Drawing effect — re-runs whenever zoom, data, or size changes.
   useEffect(() => {
     const cv = ref.current; if (!cv) return;
     const scrollHost = cv.closest("[data-arrange-scroll]");
     const dpr = window.devicePixelRatio || 1;
-    const peaks = track.peaks || []; const nb = peaks.length / 2;
+    const peaks = choosePeaks(track, pxPerSec);
+    const nb = peaks.length / 2;
     const bufDur = track.buffer.duration;
     const clipArr = clips || [{ start: 0, end: bufDur, offset: 0, params: null }];
     let raf = null;
 
     const draw = () => {
+      if (!isVisibleRef.current) return;
       const hostW = scrollHost ? scrollHost.clientWidth : window.innerWidth;
       const scrollLeft = scrollHost ? scrollHost.scrollLeft : 0;
       const overscan = 600;
@@ -108,10 +140,12 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(draw);
     };
+    scheduleRef.current = schedule;
     draw();
     scrollHost && scrollHost.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     return () => {
+      scheduleRef.current = null;
       if (raf) cancelAnimationFrame(raf);
       scrollHost && scrollHost.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
@@ -164,16 +198,17 @@ function AutomationOverlay({ track, pxPerSec, height, onBeforeChange }) {
   };
   const curveFit = track.params.autoCurve;
   const pathD = auto.map((p, i) => { const [x, y] = toXY(p); return (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); }).join(" ");
-  // applied curve (smooth) — sampled from the SAME engine sampler that feeds the audio,
-  // so the drawn curve matches what is heard.
-  let appliedD = pathD;
-  if (curveFit && DAW.monotoneCubicCurve && auto.length >= 2) {
-    const N = Math.max(64, Math.min(512, Math.round(laneW / 3)));
-    const c = DAW.monotoneCubicCurve(auto, N);
-    let d = "";
-    for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * laneW; const y = (1 - c[i]) * height; d += (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); }
-    appliedD = d;
-  }
+  // applied curve — memoized so SVG path is only recomputed when points/curve flag/size change.
+  const appliedD = React.useMemo(() => {
+    if (curveFit && DAW.monotoneCubicCurve && auto.length >= 2) {
+      const N = Math.max(64, Math.min(512, Math.round(laneW / 3)));
+      const c = DAW.monotoneCubicCurve(auto, N);
+      let d = "";
+      for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * laneW; const y = (1 - c[i]) * height; d += (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); }
+      return d;
+    }
+    return pathD;
+  }, [auto, curveFit, laneW, height, pathD]);
   const areaD = appliedD + ` L${laneW} ${height} L0 ${height} Z`;
   return (
     <svg id={"auto-" + track.id} width={laneW} height={height} onMouseDown={onLineDown}

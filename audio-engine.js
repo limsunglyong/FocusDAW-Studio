@@ -193,6 +193,17 @@
     return peaks;
   }
 
+  // Pre-compute 3 resolution levels: coarse(512), medium(2048), fine(duration-based).
+  // choosePeaks() in ui-tracks.jsx selects the level that best matches the current zoom.
+  function computePeakLevels(buffer) {
+    const fineN = Math.max(1600, Math.floor(buffer.duration * 200));
+    return {
+      coarse: computePeaks(buffer, 512),
+      medium: computePeaks(buffer, 2048),
+      fine:   computePeaks(buffer, fineN),
+    };
+  }
+
   // ============================================================
   //  ENGINE
   // ============================================================
@@ -220,6 +231,7 @@
     EQ_FREQS,
     EQ_PRESETS,
     tracks: [],
+    loopEnabled: true,
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.6, fadeOut: 1.4 },
     isPlaying: false,
     _startTime: 0,
@@ -306,9 +318,10 @@
       panner.connect(echoSend); echoSend.connect(delay);
       delay.connect(fb); fb.connect(delay); delay.connect(masterBus); // echo
 
-      const peaks = computePeaks(buffer, 1600);
+      const { coarse, medium, fine } = computePeakLevels(buffer);
       const track = {
-        id, name, type, color, buffer, peaks,
+        id, name, type, color, buffer,
+        peaks: fine, peaksMedium: medium, peaksCoarse: coarse,
         nodes: { fader, autoGain, filter, panner, meter, reverbSend, echoSend, delay, fb },
         params: {
           volume: 1.0, pan: 0, mute: false, solo: false,
@@ -337,7 +350,8 @@
       ));
       if (ph) {
         ph.buffer = buffer;
-        ph.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
+        const pl = computePeakLevels(buffer);
+        ph.peaks = pl.fine; ph.peaksMedium = pl.medium; ph.peaksCoarse = pl.coarse;
         ph.needsAudio = false;
         ph.fileName = ph.fileName || name;
         ph.filePath = filePath || ph.filePath || null;
@@ -348,7 +362,9 @@
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
       const t = this._addTrack({ name: displayName, type: "audio", color, buffer, fileName: name, filePath });
-      t.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
+      // _addTrack already computes peak levels; override with buffer-specific fine resolution
+      const pl2 = computePeakLevels(buffer);
+      t.peaks = pl2.fine; t.peaksMedium = pl2.medium; t.peaksCoarse = pl2.coarse;
       return t;
     },
 
@@ -363,7 +379,8 @@
       const ph = this.tracks.find(t => t.needsAudio && (t.fileName === fileName || t.fileName === name || t.name === name));
       if (ph) {
         ph.buffer = buffer;
-        ph.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
+        const pl = computePeakLevels(buffer);
+        ph.peaks = pl.fine; ph.peaksMedium = pl.medium; ph.peaksCoarse = pl.coarse;
         ph.needsAudio = false;
         ph.fileName = ph.fileName || fileName;
         ph.audioRev = (ph.audioRev || 0) + 1;
@@ -373,7 +390,8 @@
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
       const t = this._addTrack({ name, type: "audio", color, buffer, fileName });
-      t.peaks = computePeaks(buffer, Math.max(1600, Math.floor(buffer.duration * 200)));
+      const pl3 = computePeakLevels(buffer);
+      t.peaks = pl3.fine; t.peaksMedium = pl3.medium; t.peaksCoarse = pl3.coarse;
       return t;
     },
 
@@ -722,6 +740,8 @@
       g.setValueAtTime(1, base + dur);
     },
 
+    setLoop(val) { this.loopEnabled = !!val; },
+
     play() {
       this.init();
       if (ctx.state === "suspended") ctx.resume();
@@ -732,8 +752,8 @@
       this.tracks.forEach((t) => {
         const src = ctx.createBufferSource();
         src.buffer = t.buffer;
-        src.loop = true;
-        src.loopEnd = Math.min(this.duration, t.buffer.duration);
+        src.loop = this.loopEnabled;
+        if (this.loopEnabled) src.loopEnd = Math.min(this.duration, t.buffer.duration);
         src.connect(t.nodes.fader);
         src.start(now, this._offset % t.buffer.duration);
         this._sources.push(src);
@@ -773,7 +793,8 @@
     getPlayhead() {
       if (!ctx) return this._offset;
       if (!this.isPlaying) return this._offset;
-      return (this._offset + (ctx.currentTime - this._startTime)) % this.duration;
+      const raw = this._offset + (ctx.currentTime - this._startTime);
+      return this.loopEnabled ? raw % this.duration : Math.min(raw, this.duration);
     },
 
     getTrackLevel(id) {
@@ -820,8 +841,11 @@
     _lastLoop: 0,
     _loop() {
       if (!this.isPlaying) return;
-      const ph = this.getPlayhead();
-      const loopIdx = Math.floor((this._offset + (ctx.currentTime - this._startTime)) / this.duration);
+      // Non-loop mode: stop automatically when playhead reaches end
+      if (!this.loopEnabled) {
+        const raw = this._offset + (ctx.currentTime - this._startTime);
+        if (raw >= this.duration) { this.stop(); return; }
+      }
       this._emit();
       requestAnimationFrame(() => this._loop());
     },
@@ -998,11 +1022,20 @@
     return c;
   }
 
-  // dispatch: smooth curve when the track has curve-fitting enabled, else linear
+  // dispatch: smooth curve when the track has curve-fitting enabled, else linear.
+  // Memoized per track: recomputes only when automation array reference or autoCurve flag changes.
   function buildAutoCurve(track, n) {
-    return track.params.autoCurve
-      ? monotoneCubicCurve(track.params.automation, n)
-      : automationCurve(track.params.automation, n);
+    const auto = track.params.automation;
+    const curved = !!track.params.autoCurve;
+    let c = track._curveCache;
+    if (!c || c.auto !== auto || c.curved !== curved) {
+      c = { auto, curved };
+      track._curveCache = c;
+    }
+    if (!c[n]) {
+      c[n] = curved ? monotoneCubicCurve(auto, n) : automationCurve(auto, n);
+    }
+    return c[n];
   }
 
   // Point-evaluable automation sampler: returns f(t) -> gain in [0.0001, 1].
