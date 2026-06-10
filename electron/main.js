@@ -130,31 +130,58 @@ ipcMain.handle('open-project', async () => {
   };
 });
 
-// Encode WAV → MP3 via ffmpeg
+// Encode WAV → MP3 via ffmpeg (with ID3v2 tags + optional embedded cover art)
 ipcMain.handle('encode-mp3', async (_, wavBuffer, options) => {
   if (!ffmpegPath) throw new Error('ffmpeg-static not installed. Run: npm install');
-  const { bitrate = 320, sampleRate = 44100 } = options || {};
+  const { bitrate = 320, sampleRate = 44100, meta = {}, cover = null } = options || {};
   const base   = `focusdaw_${Date.now()}`;
   const tmpWav = path.join(os.tmpdir(), base + '.wav');
   const tmpMp3 = path.join(os.tmpdir(), base + '.mp3');
 
   fs.writeFileSync(tmpWav, Buffer.from(wavBuffer));
 
+  // Album art: write the base64 image bytes to a temp file for ffmpeg to attach
+  let tmpCover = null;
+  if (cover && cover.data) {
+    const ext = cover.mime === 'image/png' ? 'png'
+      : cover.mime === 'image/webp' ? 'webp'
+      : cover.mime === 'image/gif' ? 'gif'
+      : 'jpg';
+    tmpCover = path.join(os.tmpdir(), base + '_cover.' + ext);
+    fs.writeFileSync(tmpCover, Buffer.from(cover.data, 'base64'));
+  }
+
+  const args = ['-y', '-i', tmpWav];
+  if (tmpCover) {
+    args.push('-i', tmpCover,
+      '-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-c:v', 'copy',
+      '-disposition:v:0', 'attached_pic',
+      '-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)');
+  } else {
+    args.push('-c:a', 'libmp3lame');
+  }
+  args.push('-b:a', `${bitrate}k`, '-ar', String(sampleRate), '-id3v2_version', '3');
+
+  // text tags — id3v2.3 derives Year (TYER) + Date (TDAT) from a full ISO date
+  const addMeta = (k, v) => { if (v != null && String(v).length) args.push('-metadata', `${k}=${v}`); };
+  addMeta('title', meta.title);
+  addMeta('artist', meta.artist);
+  addMeta('album_artist', meta.artist);
+  addMeta('composer', meta.artist);
+  addMeta('album', meta.album);
+  addMeta('date', meta.date || meta.year);
+
+  args.push(tmpMp3);
+
   await new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath, [
-      '-y',
-      '-i',  tmpWav,
-      '-b:a', `${bitrate}k`,
-      '-ar',  String(sampleRate),
-      tmpMp3,
-    ]);
+    const proc = spawn(ffmpegPath, args);
     proc.stderr.on('data', () => {}); // suppress ffmpeg log noise
     proc.on('close', code => code === 0 ? resolve() : reject(new Error(`ffmpeg exited with code ${code}`)));
     proc.on('error', reject);
   });
 
   const mp3Buf = fs.readFileSync(tmpMp3);
-  try { fs.unlinkSync(tmpWav); fs.unlinkSync(tmpMp3); } catch (e) {}
+  try { fs.unlinkSync(tmpWav); fs.unlinkSync(tmpMp3); if (tmpCover) fs.unlinkSync(tmpCover); } catch (e) {}
   return mp3Buf.buffer.slice(mp3Buf.byteOffset, mp3Buf.byteOffset + mp3Buf.byteLength);
 });
 

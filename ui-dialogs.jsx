@@ -56,7 +56,7 @@ function LoaderScreen({ onOpen }) {
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center" }}><Icon name="check" size={11} /></span>{f}
             </div>
           ))}
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.19 · Electron · macOS / Win / Linux</div>
+          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.20 · Electron · macOS / Win / Linux</div>
         </div>
       </div>
 
@@ -142,11 +142,45 @@ async function audioBufferToMp3(audioBuf, bitrate, onProgress) {
 }
 
 /* ---------- WAV encoder ---------- */
-function audioBufferToWav(buf) {
+// Build a RIFF LIST/INFO chunk from metadata (Title/Artist/Album/Date) so players
+// and Windows Explorer can read WAV tags. Album art is not part of the WAV standard.
+function buildWavInfoChunk(meta) {
+  if (!meta) return null;
+  const fields = [
+    ["INAM", meta.title],   // title
+    ["IART", meta.artist],  // artist / composer
+    ["IPRD", meta.album],   // album (product)
+    ["ICRD", meta.date || meta.year], // creation date
+    ["ISFT", "FocusDAW Studio"],      // software
+  ].filter(([, v]) => v != null && String(v).length);
+  if (!fields.length) return null;
+  const enc = new TextEncoder();
+  const subs = fields.map(([id, v]) => {
+    let bytes = enc.encode(String(v) + "\0");
+    if (bytes.length % 2) { const p = new Uint8Array(bytes.length + 1); p.set(bytes); bytes = p; } // word-align
+    return { id, bytes };
+  });
+  let body = 4; // "INFO"
+  subs.forEach((s) => { body += 8 + s.bytes.length; });
+  const out = new Uint8Array(8 + body);
+  const dv = new DataView(out.buffer);
+  const tag = (o, t) => { for (let i = 0; i < 4; i++) out[o + i] = t.charCodeAt(i); };
+  tag(0, "LIST"); dv.setUint32(4, body, true); tag(8, "INFO");
+  let o = 12;
+  subs.forEach((s) => {
+    tag(o, s.id); dv.setUint32(o + 4, s.bytes.length, true); out.set(s.bytes, o + 8);
+    o += 8 + s.bytes.length;
+  });
+  return out;
+}
+
+function audioBufferToWav(buf, meta) {
   const numCh = buf.numberOfChannels, sr = buf.sampleRate, len = buf.length * numCh * 2;
-  const ab = new ArrayBuffer(44 + len); const dv = new DataView(ab);
+  const info = buildWavInfoChunk(meta);
+  const infoLen = info ? info.length : 0;
+  const ab = new ArrayBuffer(44 + len + infoLen); const dv = new DataView(ab);
   const wr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
-  wr(0, "RIFF"); dv.setUint32(4, 36 + len, true); wr(8, "WAVE"); wr(12, "fmt ");
+  wr(0, "RIFF"); dv.setUint32(4, 36 + len + infoLen, true); wr(8, "WAVE"); wr(12, "fmt ");
   dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, numCh, true);
   dv.setUint32(24, sr, true); dv.setUint32(28, sr * numCh * 2, true); dv.setUint16(32, numCh * 2, true);
   dv.setUint16(34, 16, true); wr(36, "data"); dv.setUint32(40, len, true);
@@ -155,7 +189,86 @@ function audioBufferToWav(buf) {
   for (let i = 0; i < buf.length; i++) for (let c = 0; c < numCh; c++) {
     let s = Math.max(-1, Math.min(1, chs[c][i])); dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true); off += 2;
   }
+  if (info) new Uint8Array(ab).set(info, 44 + len); // INFO chunk after data; duration unaffected
   return new Blob([ab], { type: "audio/wav" });
+}
+
+/* ---------- ID3v2.3 tag builder (for browser lamejs MP3 — ffmpeg handles tags natively) ---------- */
+function _dataUrlParts(dataUrl) {
+  const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl || "");
+  return m ? { mime: m[1], base64: m[2] } : null;
+}
+function _base64ToBytes(b64) {
+  const bin = atob(b64); const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+function _id3Uint32(n) { return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]; }
+function _id3Synchsafe(n) { return [(n >> 21) & 127, (n >> 14) & 127, (n >> 7) & 127, n & 127]; }
+function _id3Frame(id, dataArr) {
+  const frame = new Uint8Array(10 + dataArr.length);
+  for (let i = 0; i < 4; i++) frame[i] = id.charCodeAt(i);
+  const sz = _id3Uint32(dataArr.length);
+  frame[4] = sz[0]; frame[5] = sz[1]; frame[6] = sz[2]; frame[7] = sz[3];
+  frame.set(dataArr, 10); // flags (8,9) left 0
+  return frame;
+}
+function _id3TextFrame(id, value) {
+  if (value == null || !String(value).length) return null;
+  const str = String(value);
+  // encoding 0x01 = UTF-16 with BOM (ID3v2.3 supports Unicode this way → Korean OK)
+  const data = new Uint8Array(1 + 2 + str.length * 2 + 2);
+  data[0] = 0x01; data[1] = 0xff; data[2] = 0xfe; // encoding + LE BOM
+  let o = 3;
+  for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); data[o++] = c & 255; data[o++] = (c >> 8) & 255; }
+  return _id3Frame(id, data); // trailing 2 bytes stay 0 = null terminator
+}
+function _id3ApicFrame(mime, bytes) {
+  if (!bytes || !bytes.length) return null;
+  const head = [0x00]; // text encoding for description = latin1
+  for (let i = 0; i < mime.length; i++) head.push(mime.charCodeAt(i) & 255);
+  head.push(0x00, 0x03, 0x00); // mime null term, picture type 0x03 (front cover), empty description null term
+  const data = new Uint8Array(head.length + bytes.length);
+  data.set(head, 0); data.set(bytes, head.length);
+  return _id3Frame("APIC", data);
+}
+function buildId3v2(meta, coverBytes, coverMime) {
+  const frames = [];
+  const add = (f) => { if (f) frames.push(f); };
+  add(_id3TextFrame("TIT2", meta.title));
+  add(_id3TextFrame("TPE1", meta.artist));
+  add(_id3TextFrame("TCOM", meta.artist));
+  add(_id3TextFrame("TALB", meta.album));
+  const ym = String(meta.date || meta.year || "").match(/^(\d{4})(?:-(\d{2})-(\d{2}))?/);
+  if (ym) { add(_id3TextFrame("TYER", ym[1])); if (ym[2] && ym[3]) add(_id3TextFrame("TDAT", ym[3] + ym[2])); } // TDAT = DDMM
+  if (coverBytes) add(_id3ApicFrame(coverMime || "image/jpeg", coverBytes));
+  let total = 0; frames.forEach((f) => { total += f.length; });
+  const ss = _id3Synchsafe(total);
+  const out = new Uint8Array(10 + total);
+  out[0] = 0x49; out[1] = 0x44; out[2] = 0x33; out[3] = 0x03; out[4] = 0x00; out[5] = 0x00; // "ID3" v2.3.0 flags
+  out[6] = ss[0]; out[7] = ss[1]; out[8] = ss[2]; out[9] = ss[3];
+  let o = 10; frames.forEach((f) => { out.set(f, o); o += f.length; });
+  return out;
+}
+
+/* ---------- preset album covers (generated via canvas — works in browser & Electron) ---------- */
+function makePresetCovers() {
+  const defs = [
+    { name: "Amber Glow", a: "#e8b04b", b: "#5a2c0c" },
+    { name: "Indigo Night", a: "#5b9bd5", b: "#0e1b30" },
+    { name: "Forest", a: "#5de87a", b: "#0f1a13" },
+    { name: "Monochrome", a: "#d8d8d8", b: "#1a1a1a" },
+  ];
+  return defs.map((d) => {
+    const cv = document.createElement("canvas"); cv.width = 600; cv.height = 600;
+    const g = cv.getContext("2d");
+    const grad = g.createLinearGradient(0, 0, 600, 600);
+    grad.addColorStop(0, d.a); grad.addColorStop(1, d.b);
+    g.fillStyle = grad; g.fillRect(0, 0, 600, 600);
+    g.strokeStyle = "rgba(255,255,255,0.10)"; g.lineWidth = 2;
+    for (let r = 60; r < 420; r += 60) { g.beginPath(); g.arc(300, 300, r, 0, Math.PI * 2); g.stroke(); }
+    return { name: d.name, dataUrl: cv.toDataURL("image/jpeg", 0.9) };
+  });
 }
 
 /* ---------- export dialog ---------- */
@@ -180,33 +293,81 @@ function ExportDialog({ projectName, onClose }) {
   const [audioBlob, setAudioBlob] = useState(null);
   const [saving, setSaving]     = useState(false);
 
+  // ---- metadata (tags) ----
+  const _now = new Date();
+  const _curYear = String(_now.getFullYear());
+  const _curDate = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
+  const _projTitle = projectName || "untitled";
+  const [title, setTitle]   = useState(_projTitle);   // default: project title
+  const [artist, setArtist] = useState("unknown");     // composer, default: unknown
+  const [album, setAlbum]   = useState(_projTitle);    // default: project title
+  const [year, setYear]     = useState(_curYear);      // default: current year
+  const [mdate, setMdate]   = useState(_curDate);      // default: current date
+  const [cover, setCover]   = useState(null);          // { key, name, dataUrl } — MP3 only
+  const [presets] = useState(makePresetCovers);        // generated once (canvas)
+  const coverFileRef = useRef(null);
+  const artEnabled = format === "mp3";
+
+  const onCoverSelect = (e) => {
+    const v = e.target.value;
+    if (v === "none") { setCover(null); return; }
+    if (v === "file") { if (coverFileRef.current) coverFileRef.current.click(); return; }
+    if (v.startsWith("preset:")) {
+      const i = +v.slice(7); const p = presets[i];
+      if (p) setCover({ key: v, name: p.name, dataUrl: p.dataUrl });
+    }
+  };
+  const onCoverFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) {
+      const reader = new FileReader();
+      reader.onload = () => setCover({ key: "custom", name: f.name, dataUrl: reader.result });
+      reader.readAsDataURL(f);
+    }
+    e.target.value = ""; // allow re-picking the same file
+  };
+
   const render = async () => {
     setStage("rendering"); setProg(0); setLabel("Rendering mix…");
     const ratio = format === "mp3" ? 0.75 : 1;
     const rendered = await DAW.renderMix((p) => setProg(p * ratio), { normalize, sampleRate: sr });
+    // Combine Year (authoritative) + Date (month/day) into one ISO date for tags;
+    // ID3v2.3 derives Year (TYER) + Date (TDAT) from the full date.
+    const yr = String(year || "").trim();
+    const dt = String(mdate || "").trim();
+    let tagDate = dt;
+    if (/^\d{4}$/.test(yr)) tagDate = /^\d{4}-\d{2}-\d{2}/.test(dt) ? (yr + dt.slice(4)) : yr;
+    const meta = { title, artist, album, year: yr, date: tagDate };
+    const coverParts = cover ? _dataUrlParts(cover.dataUrl) : null;
 
     let blob;
     if (format === "mp3") {
       if (window.electronAPI && window.electronAPI.encodeMp3) {
-        // Electron path: ffmpeg
+        // Electron path: ffmpeg (tags + cover embedded as ID3v2)
         setLabel("Encoding MP3 via ffmpeg…"); setProg(0.78);
-        const wavBlob = audioBufferToWav(rendered);
+        const wavBlob = audioBufferToWav(rendered); // intermediate PCM; tags go via ffmpeg
         const wavAb   = await wavBlob.arrayBuffer();
-        const mp3Ab   = await window.electronAPI.encodeMp3(wavAb, { bitrate, sampleRate: sr });
+        const coverArg = coverParts ? { data: coverParts.base64, mime: coverParts.mime } : null;
+        const mp3Ab   = await window.electronAPI.encodeMp3(wavAb, { bitrate, sampleRate: sr, meta, cover: coverArg });
         blob = new Blob([mp3Ab], { type: "audio/mpeg" });
         setProg(1);
       } else if (window.lamejs) {
-        // Browser path: lamejs
+        // Browser path: lamejs + hand-built ID3v2 tag (text + APIC cover)
         setLabel("Encoding MP3…");
-        blob = await audioBufferToMp3(rendered, bitrate, (p) => setProg(0.75 + p * 0.25));
+        const mp3Blob = await audioBufferToMp3(rendered, bitrate, (p) => setProg(0.75 + p * 0.22));
+        const mp3Ab = await mp3Blob.arrayBuffer();
+        const coverBytes = coverParts ? _base64ToBytes(coverParts.base64) : null;
+        const id3 = buildId3v2(meta, coverBytes, coverParts ? coverParts.mime : null);
+        blob = new Blob([id3, mp3Ab], { type: "audio/mpeg" });
+        setProg(1);
       } else {
         // lamejs not loaded: fall back to WAV
         setLabel("lamejs unavailable — saving WAV…");
-        blob = audioBufferToWav(rendered);
+        blob = audioBufferToWav(rendered, meta);
         setExt("wav");
       }
     } else {
-      blob = audioBufferToWav(rendered);
+      blob = audioBufferToWav(rendered, meta); // WAV tags via RIFF INFO chunk
       setExt("wav");
     }
 
@@ -220,24 +381,59 @@ function ExportDialog({ projectName, onClose }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }} onMouseDown={onClose}>
-      <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 460, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+      <div onMouseDown={(e) => e.stopPropagation()} style={{ width: stage === "settings" ? 720 : 460, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
           <Icon name="download" size={18} style={{ color: "var(--amber)" }} />
-          <span style={{ fontWeight: 600, fontSize: 15 }}>Bounce to MP3</span>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Export mixdown</span>
           <div style={{ flex: 1 }} />
           <button className="iconbtn" onClick={onClose}><Icon name="scissors" size={0} /><span style={{ fontSize: 18 }}>×</span></button>
         </div>
 
         {stage === "settings" && (
-          <div style={{ padding: 20 }}>
-            <Row label="File name"><span className="mono" style={{ fontSize: 12.5, color: "var(--cream-2)" }}>{fileName}</span></Row>
-            <Row label="Format"><Seg small value={format} onChange={setFormat} options={[{ v: "mp3", l: "MP3" }, { v: "wav", l: "WAV" }]} /></Row>
-            <Row label="Bitrate"><Seg small value={bitrate} onChange={setBitrate} options={[{ v: 192, l: "192" }, { v: 256, l: "256" }, { v: 320, l: "320 kbps" }]} /></Row>
-            <Row label="Sample rate"><Seg small value={sr} onChange={setSr} options={[{ v: 44100, l: "44.1k" }, { v: 48000, l: "48k" }]} /></Row>
-            <Row label="Normalize (Compressor, Limiter)"><button onClick={() => setNormalize(!normalize)} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s" }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
-            <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(232,176,75,.06)", borderRadius: 9, fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5 }}>
-              Includes all unmuted tracks with their FX, automation, master EQ &amp; fades. Length {fmtTime(DAW.duration)}.
+          <div style={{ padding: 20, maxHeight: "76vh", overflowY: "auto" }}>
+            <input ref={coverFileRef} type="file" accept="image/*" onChange={onCoverFile} style={{ display: "none" }} />
+            <div style={{ display: "flex", gap: 20, alignItems: "stretch" }}>
+              {/* ---- left: export settings ---- */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ marginBottom: 2, fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)" }}>Export</div>
+                <Row label="File name"><span className="mono" style={{ fontSize: 12, color: "var(--cream-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{fileName}</span></Row>
+                <Row label="Format"><Seg small value={format} onChange={setFormat} options={[{ v: "mp3", l: "MP3" }, { v: "wav", l: "WAV" }]} /></Row>
+                <Row label="Bitrate"><Seg small value={bitrate} onChange={setBitrate} options={[{ v: 192, l: "192" }, { v: 256, l: "256" }, { v: 320, l: "320" }]} /></Row>
+                <Row label="Sample rate"><Seg small value={sr} onChange={setSr} options={[{ v: 44100, l: "44.1k" }, { v: 48000, l: "48k" }]} /></Row>
+                <Row label="Normalize"><button onClick={() => setNormalize(!normalize)} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s" }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
+                <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(232,176,75,.06)", borderRadius: 9, fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
+                  All unmuted tracks with FX, automation, master EQ &amp; fades. Length {fmtTime(DAW.duration)}.
+                </div>
+              </div>
+
+              {/* ---- vertical divider ---- */}
+              <div style={{ width: 1, background: "var(--line-strong)", alignSelf: "stretch" }} />
+
+              {/* ---- right: audio info / metadata ---- */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ marginBottom: 2, fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)" }}>Audio info (tags)</div>
+                <Row label="Title"><MetaInput value={title} onChange={setTitle} placeholder="Track title" /></Row>
+                <Row label="Artist / Composer"><MetaInput value={artist} onChange={setArtist} placeholder="unknown" /></Row>
+                <Row label="Album"><MetaInput value={album} onChange={setAlbum} placeholder="Album title" /></Row>
+                <Row label="Year"><MetaInput value={year} onChange={setYear} placeholder={_curYear} /></Row>
+                <Row label="Date"><MetaInput value={mdate} onChange={setMdate} placeholder={_curDate} /></Row>
+                <Row label={artEnabled ? "Album art" : "Album art (MP3 only)"}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {cover && artEnabled && <img src={cover.dataUrl} alt="cover" style={{ width: 30, height: 30, borderRadius: 5, objectFit: "cover", border: "1px solid var(--line)" }} />}
+                    <select value={cover ? cover.key : "none"} disabled={!artEnabled} onChange={onCoverSelect}
+                      style={{ height: 28, background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 7, color: "var(--cream)", fontSize: 11.5, padding: "0 6px", maxWidth: 150, opacity: artEnabled ? 1 : 0.4 }}>
+                      <option value="none">None</option>
+                      <optgroup label="Presets">
+                        {presets.map((p, i) => <option key={i} value={"preset:" + i}>{p.name}</option>)}
+                      </optgroup>
+                      {cover && cover.key === "custom" && <option value="custom">{cover.name}</option>}
+                      <option value="file">Choose file…</option>
+                    </select>
+                  </div>
+                </Row>
+              </div>
             </div>
+
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
               <button className="btn" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
               <button className="btn primary" onClick={render} style={{ flex: 2 }}><Icon name="disc" size={15} /> Render</button>
@@ -276,7 +472,7 @@ function ExportDialog({ projectName, onClose }) {
               <>
                 <a className="btn-save" href={url} download={fileName}><Icon name="download" size={18} /> Save file</a>
                 {format === "mp3" && (
-                  <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 12, lineHeight: 1.5 }}>Browser preview renders WAV — the native build pipes through ffmpeg for true MP3 encode.</div>
+                  <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 12, lineHeight: 1.5 }}>Browser build encodes MP3 via lamejs with ID3v2 tags &amp; cover art. The desktop build uses ffmpeg.</div>
                 )}
               </>
             )}
@@ -290,6 +486,13 @@ function ExportDialog({ projectName, onClose }) {
 function Row({ label, children }) {
   return <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
     <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{label}</span>{children}</div>;
+}
+function MetaInput({ value, onChange, placeholder, disabled }) {
+  return <input value={value} placeholder={placeholder} disabled={disabled}
+    onChange={(e) => onChange(e.target.value)}
+    style={{ width: 168, height: 28, padding: "0 9px", background: disabled ? "var(--surface)" : "var(--bg)",
+      border: "1px solid var(--line)", borderRadius: 7, color: "var(--cream)", fontSize: 12,
+      fontFamily: "var(--ui)", outline: "none", opacity: disabled ? 0.4 : 1 }} />;
 }
 
 /* ---------- settings dialog ---------- */
