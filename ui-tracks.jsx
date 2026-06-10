@@ -256,10 +256,10 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <Icon name="wave" size={compact ? 12 : 13} style={{ color: "var(--muted)", flex: "0 0 auto" }} />
           <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-            <input type="range" min="0" max="1.5" step="0.005" value={p.volume}
+            <input type="range" min="0" max="2.0" step="0.005" value={p.volume}
               onChange={(e) => onParam("volume", +e.target.value)} style={{ width: "100%", display: "block" }} />
-            {/* 0dB tick: value=1.0 is at 1.0/1.5 = 66.67% of slider */}
-            <div style={{ position: "absolute", left: "66.67%", bottom: 0, transform: "translateX(-50%)", width: 1.5, height: 4, background: "var(--muted)", borderRadius: 1, pointerEvents: "none" }} />
+            {/* 0dB tick: value=1.0 is at 1.0/2.0 = 50.0% of slider */}
+            <div style={{ position: "absolute", left: "50%", bottom: 0, transform: "translateX(-50%)", width: 1.5, height: 4, background: "var(--muted)", borderRadius: 1, pointerEvents: "none" }} />
           </div>
           {!compact && <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)", width: 28, textAlign: "right", flex: "0 0 auto" }}>{fmtDb(p.volume)}</span>}
         </div>

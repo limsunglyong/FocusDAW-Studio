@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.16.10";
+const APP_VERSION = "v0.16.15";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -681,12 +681,16 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       const nextName = json.projectName || projectNameFromPath(openedPath);
       if (onRenameProject) onRenameProject(nextName);
       if (openedPath && onProjectPathChange) onProjectPathChange(openedPath);
+      setAmp(1);
+      undoStack.current = [];
+      redoStack.current = [];
+      if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
       await reconnectProjectAudio();
       fitTimelineToProject();
       saveRecentProject(nextName);
       force((n) => n + 1);
     } catch (err) { console.error("Failed to open project:", err); }
-  }, [onRenameProject, onProjectPathChange, fitTimelineToProject, reconnectProjectAudio]);
+  }, [onRenameProject, onProjectPathChange, fitTimelineToProject, reconnectProjectAudio, onUndoStateChange]);
 
   useEffect(() => {
     const k = (e) => {
@@ -776,6 +780,11 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     DAW.clearTracks();
     if (onRenameProject) onRenameProject(nextName);
     if (onProjectPathChange) onProjectPathChange(null);
+    setPx(96);
+    setAmp(1);
+    undoStack.current = [];
+    redoStack.current = [];
+    if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
     fitTimelineRef.current = true;
     updateTimeMin();
     saveRecentProject(nextName);
@@ -786,6 +795,10 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     DAW.addDemoTracks();
     if (onRenameProject) onRenameProject(nextName);
     if (onProjectPathChange) onProjectPathChange(null);
+    setAmp(1);
+    undoStack.current = [];
+    redoStack.current = [];
+    if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
     fitTimelineRef.current = false;
     updateTimeMin();
     setPx(96);

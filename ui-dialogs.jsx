@@ -51,12 +51,12 @@ function LoaderScreen({ onOpen }) {
           Load a song's separated stems, balance and shape them per section, and bounce a single master.
         </p>
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
-          {["Bulk-register a stem folder", "Per-track filter · reverb · echo", "Volume automation overlay", "Master EQ + fade · MP3 bounce"].map((f) => (
+          {["Bulk-register a stem folder", "Per-track panning · reverb · echo", "Volume automation overlay", "Master EQ + fade · MP3 bounce"].map((f) => (
             <div key={f} style={{ display: "flex", gap: 9, alignItems: "center", fontSize: 12.5, color: "var(--dim)" }}>
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center" }}><Icon name="check" size={11} /></span>{f}
             </div>
           ))}
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.9.0 · Electron · macOS / Win / Linux</div>
+          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.15 · Electron · macOS / Win / Linux</div>
         </div>
       </div>
 
@@ -183,7 +183,7 @@ function ExportDialog({ projectName, onClose }) {
   const render = async () => {
     setStage("rendering"); setProg(0); setLabel("Rendering mix…");
     const ratio = format === "mp3" ? 0.75 : 1;
-    const rendered = await DAW.renderMix((p) => setProg(p * ratio));
+    const rendered = await DAW.renderMix((p) => setProg(p * ratio), { normalize });
 
     let blob;
     if (format === "mp3") {
@@ -234,7 +234,7 @@ function ExportDialog({ projectName, onClose }) {
             <Row label="Format"><Seg small value={format} onChange={setFormat} options={[{ v: "mp3", l: "MP3" }, { v: "wav", l: "WAV" }]} /></Row>
             <Row label="Bitrate"><Seg small value={bitrate} onChange={setBitrate} options={[{ v: 192, l: "192" }, { v: 256, l: "256" }, { v: 320, l: "320 kbps" }]} /></Row>
             <Row label="Sample rate"><Seg small value={sr} onChange={setSr} options={[{ v: 44100, l: "44.1k" }, { v: 48000, l: "48k" }]} /></Row>
-            <Row label="Normalize"><button onClick={() => setNormalize(!normalize)} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s" }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
+            <Row label="Normalize (Compressor, Limiter)"><button onClick={() => setNormalize(!normalize)} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s" }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
             <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(232,176,75,.06)", borderRadius: 9, fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5 }}>
               Includes all unmuted tracks with their FX, automation, master EQ &amp; fades. Length {fmtTime(DAW.duration)}.
             </div>

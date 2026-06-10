@@ -25,7 +25,7 @@
 <body>
     <header>
         <h1>FocusDAW Studio</h1>
-        <p style="font-size: 1.3rem; margin-top: 0.5rem;">Stem 기반 경량 DAW 사용자 메뉴얼 (v0.15.20)</p>
+        <p style="font-size: 1.3rem; margin-top: 0.5rem;">Stem 기반 경량 DAW 사용자 메뉴얼 (v0.16.11)</p>
     </header>
 
     <div class="container">
@@ -40,6 +40,7 @@
                 <li><a href="#output">6. Output Effect Track</a></li>
                 <li><a href="#export">7. Export MP3</a></li>
                 <li><a href="#shortcuts">8. 단축키</a></li>
+                <li><a href="#performance">9. 성능 최적화 및 문제 해결</a></li>
             </ul>
         </div>
 
@@ -96,7 +97,7 @@
                     <li><strong>Mute (M)</strong> — 해당 트랙 음소거</li>
                     <li><strong>Volume Fader</strong> — 트랙 볼륨 조절</li>
                     <li><strong>Pan Knob</strong> — 좌우 팬닝</li>
-                    <del><li><strong>VU Meter</strong> — 실시간 레벨 표시</li></del>
+                    <li><strong>VU Meter</strong> — 실시간 레벨 표시</li>
                     <li><strong>VOL AUTO</strong> — Volume Automation On/Off</li>
                     <li><strong>Trash</strong> — 트랙 삭제</li>
                 </ul>
@@ -117,12 +118,24 @@
             <img src="screens/mixer.png" alt="Mixer 화면">
             <img src="screens/mixer-master.png" alt="Master Mixer">
             <p>Mixer 버튼 클릭 → 드래그 가능한 별도 창이 열립니다.</p>
+            <p><strong>Master 채널 기능</strong>:</p>
+            <ul>
+                <li><strong>Graphic EQ · FFT</strong>: 9밴드 그래픽 EQ 조절 및 전반적인 스펙트럼 실시간 반응 시각화</li>
+                <li><strong>Level meter</strong>: 9대역 주파수별 실시간 LED 레벨 미터 및 EQ 그래픽 오버레이 조절</li>
+                <li><strong>EQ 프리셋 버튼</strong>: Flat(Reset), POP, Classic, HIP HOP 프리셋 일괄 적용</li>
+                <li><strong>Reverb / Echo & Delay</strong>: 마스터 이펙트 세기 슬라이더</li>
+            </ul>
             <img src="screens/mixer-button.png" alt="Mixer Button">
         </section>
 
         <section id="output">
             <h2>6. Output Effect Track</h2>
             <p>하단 전용 트랙에서 Master EQ, Fade In/Out을 조절할 수 있습니다.</p>
+            <ul>
+                <li><strong>MiniEQGraph</strong>: 트랙 헤더에서 현재 적용 중인 9밴드 마스터 EQ 커브의 미니 프리뷰를 실시간 렌더링하여 표시합니다.</li>
+                <li><strong>REV / ECHO 칩</strong>: 마스터 Reverb 또는 Echo 이펙트가 켜져 있으면 칩이 하이라이트 활성화 상태가 됩니다.</li>
+                <li><strong>Fade In/Out 핸들</strong>: 타임라인 위 삼각 영역의 핸들을 드래그하여 페이드 인/아웃 시간을 정교하게 편집할 수 있습니다.</li>
+            </ul>
         </section>
 
         <section id="export">
@@ -140,6 +153,20 @@
                 <tr><td>⌘O</td><td>Open Project</td></tr>
                 <tr><td>⌘E</td><td>Export MP3</td></tr>
             </table>
+        </section>
+
+        <section id="performance">
+            <h2>9. 성능 최적화 및 문제 해결</h2>
+            <div class="card">
+                <p>고사양 데스크톱 환경(예: Intel i9 하이브리드 CPU 등)에서 노트북보다 실행 속도, 피크 로딩, 타임라인 조작, 줌 반응 속도 등이 비정상적으로 느려질 때 조치할 사항입니다.</p>
+                <ul>
+                    <li><strong>Intel P-core / E-core 스케줄링 최적화</strong>: Windows 전원 관리 설정에서 "최고 성능" 모드로 변경하거나 작업 관리자에서 우선순위를 "높음"으로 설정합니다.</li>
+                    <li><strong>GPU 하드웨어 가속 점검</strong>: 외장 그래픽 카드 환경에서 크로미움 GPU 가속이 비활성화되어 소프트웨어 렌더링으로 줌 속도가 처지는지 드라이버 설정을 점검합니다.</li>
+                    <li><strong>NVIDIA G-Sync 및 백그라운드 프레임 제한 해제</strong>: NVIDIA 제어판에서 G-Sync 창 모드 버그 및 최대 프레임 속도 제한 해제를 진행합니다.</li>
+                    <li><strong>백신 실시간 감시 예외 설정</strong>: 프로젝트 및 오디오 폴더를 백신 실시간 감시 제외 경로로 지정하여 파일 I/O 대기시간을 방지합니다.</li>
+                </ul>
+                <p>※ 상세 가이드는 프로젝트 루트 폴더의 <code>성능가이드.md</code> 문서를 참고하시기 바랍니다.</p>
+            </div>
         </section>
 
         <footer style="text-align:center; margin-top:4rem; color:#857c6b; font-size:0.9rem;">

@@ -232,7 +232,7 @@
     EQ_PRESETS,
     tracks: [],
     loopEnabled: true,
-    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.6, fadeOut: 1.4 },
+    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.0, fadeOut: 0.0 },
     isPlaying: false,
     _startTime: 0,
     _offset: 0,
@@ -409,6 +409,21 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
+      this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.0, fadeOut: 0.0 };
+      if (ctx) {
+        ramp(masterVol.gain, 0.9);
+        ramp(mRevSend.gain, 0);
+        ramp(mEchoSend.gain, 0);
+        if (masterFade) {
+          try {
+            masterFade.gain.cancelScheduledValues(ctx.currentTime);
+            masterFade.gain.setValueAtTime(1.0, ctx.currentTime);
+          } catch (e) {}
+        }
+        for (let i = 0; i < EQ_FREQS.length; i++) {
+          if (eqNodes[i]) ramp(eqNodes[i].gain, 0);
+        }
+      }
     },
 
     _applyMix() {
@@ -849,7 +864,7 @@
     },
 
     // ---- offline render to WAV (for export) ----
-    async renderMix(onProgress) {
+    async renderMix(onProgress, options = {}) {
       this.init();
       const sr = ctx.sampleRate;
       const len = Math.ceil(this.duration * sr);
@@ -860,26 +875,41 @@
       // 9-band master EQ
       let node = mBus;
       EQ_FREQS.forEach((f, i) => {
-        const b = off.createBiquadFilter(); b.type = "peaking"; b.frequency.value = f; b.Q.value = 1.1; b.gain.value = this.master.bands[i] || 0;
+        const b = off.createBiquadFilter();
+        b.type = "peaking";
+        b.frequency.setValueAtTime(f, 0);
+        b.Q.setValueAtTime(1.1, 0);
+        b.gain.setValueAtTime(this.master.bands[i] || 0, 0);
         node.connect(b); node = b;
       });
       const fade = off.createGain();
-      const mv = off.createGain(); mv.gain.value = this.master.volume;
+      const mv = off.createGain(); mv.gain.setValueAtTime(this.master.volume, 0);
       // master FX
       const mConvO = off.createConvolver(); mConvO.buffer = makeIR(off, 2.8, 3.0);
-      const mRev = off.createGain(); mRev.gain.value = this.master.reverb;
-      const mDel = off.createDelay(1.2); mDel.delayTime.value = 0.3;
-      const mFbO = off.createGain(); mFbO.gain.value = 0.36;
-      const mEch = off.createGain(); mEch.gain.value = this.master.echo;
+      const mRev = off.createGain(); mRev.gain.setValueAtTime(this.master.reverb, 0);
+      const mDel = off.createDelay(1.2); mDel.delayTime.setValueAtTime(0.3, 0);
+      const mFbO = off.createGain(); mFbO.gain.setValueAtTime(0.36, 0);
+      const mEch = off.createGain(); mEch.gain.setValueAtTime(this.master.echo, 0);
       const mMix = off.createGain();
-      const comp = off.createDynamicsCompressor();
-      comp.threshold.value = -2; comp.knee.value = 4; comp.ratio.value = 12; comp.attack.value = 0.003; comp.release.value = 0.18;
+
       node.connect(fade); fade.connect(mv);
       mv.connect(mMix);
       mv.connect(mRev); mRev.connect(mConvO); mConvO.connect(mMix);
       mv.connect(mEch); mEch.connect(mDel); mDel.connect(mFbO); mFbO.connect(mDel); mDel.connect(mMix);
-      mMix.connect(comp); comp.connect(off.destination);
-      const rr = off.createGain(); rr.gain.value = 0.9; conv.connect(rr); rr.connect(mBus);
+
+      const useLimiter = options.normalize !== false;
+      if (useLimiter) {
+        const comp = off.createDynamicsCompressor();
+        comp.threshold.setValueAtTime(-2, 0);
+        comp.knee.setValueAtTime(4, 0);
+        comp.ratio.setValueAtTime(12, 0);
+        comp.attack.setValueAtTime(0.003, 0);
+        comp.release.setValueAtTime(0.18, 0);
+        mMix.connect(comp); comp.connect(off.destination);
+      } else {
+        mMix.connect(off.destination);
+      }
+      const rr = off.createGain(); rr.gain.setValueAtTime(0.9, 0); conv.connect(rr); rr.connect(mBus);
       // fade automation
       const fi = Math.min(this.master.fadeIn, this.duration / 2);
       const fo = Math.min(this.master.fadeOut, this.duration / 2);
@@ -892,15 +922,14 @@
         const p = t.params;
         const audible = p.mute ? 0 : (anySolo && !p.solo ? 0 : 1);
         const src = off.createBufferSource(); src.buffer = t.buffer;
-        const fd = off.createGain(); fd.gain.value = audible * p.volume;
+        const fd = off.createGain(); fd.gain.setValueAtTime(audible * p.volume, 0);
         const ag = off.createGain();
-        const fl = off.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.value = p.filterFreq; fl.Q.value = 0.7;
-        const pn = off.createStereoPanner(); pn.pan.value = p.pan;
-        const rs = off.createGain(); rs.gain.value = p.reverb;
-        const es = off.createGain(); es.gain.value = p.echo;
-        const dl = off.createDelay(1.0); dl.delayTime.value = 0.25;
-        const fb = off.createGain(); fb.gain.value = 0.34;
-        src.connect(fd); fd.connect(ag); ag.connect(fl); fl.connect(pn);
+        const pn = off.createStereoPanner(); pn.pan.setValueAtTime(p.pan, 0);
+        const rs = off.createGain(); rs.gain.setValueAtTime(p.reverb, 0);
+        const es = off.createGain(); es.gain.setValueAtTime(p.echo, 0);
+        const dl = off.createDelay(1.0); dl.delayTime.setValueAtTime(0.25, 0);
+        const fb = off.createGain(); fb.gain.setValueAtTime(0.34, 0);
+        src.connect(fd); fd.connect(ag); ag.connect(pn);
         pn.connect(mBus); pn.connect(rs); rs.connect(conv);
         pn.connect(es); es.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(mBus);
         const rHasGaps = t.clips && (t.clips.length > 1 || (t.clips[0] && (t.clips[0].start > 0.01 || t.clips[0].end < this.duration - 0.01)));
