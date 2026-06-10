@@ -56,7 +56,7 @@ function LoaderScreen({ onOpen }) {
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center" }}><Icon name="check" size={11} /></span>{f}
             </div>
           ))}
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.15 · Electron · macOS / Win / Linux</div>
+          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.19 · Electron · macOS / Win / Linux</div>
         </div>
       </div>
 
@@ -183,7 +183,7 @@ function ExportDialog({ projectName, onClose }) {
   const render = async () => {
     setStage("rendering"); setProg(0); setLabel("Rendering mix…");
     const ratio = format === "mp3" ? 0.75 : 1;
-    const rendered = await DAW.renderMix((p) => setProg(p * ratio), { normalize });
+    const rendered = await DAW.renderMix((p) => setProg(p * ratio), { normalize, sampleRate: sr });
 
     let blob;
     if (format === "mp3") {

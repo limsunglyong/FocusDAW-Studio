@@ -341,7 +341,12 @@
     async addFileBuffer(name, arrayBuffer, options = {}) {
       this.init();
       const buffer = await ctx.decodeAudioData(arrayBuffer);
-      this.duration = Math.max(this.duration, buffer.duration);
+      if (this.tracks.some(t => t.isDemo)) {
+        this.duration = Math.max(this.duration, buffer.duration);
+      } else {
+        const maxExisting = this.tracks.reduce((m, t) => Math.max(m, (t.buffer && !t.needsAudio) ? t.buffer.duration : 0), 0);
+        this.duration = Math.max(maxExisting, buffer.duration);
+      }
       const filePath = options.filePath || null;
       const displayName = options.displayName || this._displayName(name);
       const ph = this.tracks.find(t => t.needsAudio && (
@@ -373,7 +378,12 @@
       const buffer = await ctx.decodeAudioData(arr);
       const fileName = file.name;
       const name = this._displayName(fileName);
-      this.duration = Math.max(this.duration, buffer.duration);
+      if (this.tracks.some(t => t.isDemo)) {
+        this.duration = Math.max(this.duration, buffer.duration);
+      } else {
+        const maxExisting = this.tracks.reduce((m, t) => Math.max(m, (t.buffer && !t.needsAudio) ? t.buffer.duration : 0), 0);
+        this.duration = Math.max(maxExisting, buffer.duration);
+      }
       // link to a placeholder track from an imported project
       const ph = this.tracks.find(t => t.needsAudio && (t.fileName === fileName || t.fileName === name || t.name === name));
       if (ph) {
@@ -866,7 +876,10 @@
     // ---- offline render to WAV (for export) ----
     async renderMix(onProgress, options = {}) {
       this.init();
-      const sr = ctx.sampleRate;
+      // Render at the requested target sample rate (export dialog), not the system
+      // device rate. Source buffers are auto-resampled by OfflineAudioContext.
+      const reqSr = options.sampleRate || ctx.sampleRate;
+      const sr = Math.max(8000, Math.min(192000, reqSr));
       const len = Math.ceil(this.duration * sr);
       const off = new OfflineAudioContext(2, len, sr);
       // rebuild graph in offline ctx
@@ -899,13 +912,19 @@
 
       const useLimiter = options.normalize !== false;
       if (useLimiter) {
-        const comp = off.createDynamicsCompressor();
-        comp.threshold.setValueAtTime(-2, 0);
-        comp.knee.setValueAtTime(4, 0);
-        comp.ratio.setValueAtTime(12, 0);
-        comp.attack.setValueAtTime(0.003, 0);
-        comp.release.setValueAtTime(0.18, 0);
-        mMix.connect(comp); comp.connect(off.destination);
+        // WaveShaper soft-clipper: zero look-ahead latency (DynamicsCompressor added ~10ms delay)
+        const clipper = off.createWaveShaper();
+        const nc = 4096;
+        const cv = new Float32Array(nc);
+        const kn = 0.9;
+        for (let i = 0; i < nc; i++) {
+          const x = (i * 2) / (nc - 1) - 1;
+          const a = Math.abs(x);
+          const y = a <= kn ? a : kn + (1 - kn) * Math.tanh((a - kn) / (1 - kn));
+          cv[i] = x >= 0 ? y : -y;
+        }
+        clipper.curve = cv;
+        mMix.connect(clipper); clipper.connect(off.destination);
       } else {
         mMix.connect(off.destination);
       }
@@ -942,14 +961,29 @@
         }
         src.start(0);
       });
+      let rendered;
       if (onProgress) {
         let prog = 0;
         const iv = setInterval(() => { prog = Math.min(0.95, prog + Math.random() * 0.13); onProgress(prog); }, 120);
-        const rendered = await off.startRendering();
+        rendered = await off.startRendering();
         clearInterval(iv); onProgress(1);
-        return rendered;
+      } else {
+        rendered = await off.startRendering();
       }
-      return await off.startRendering();
+      // Trim any leading silence the render pipeline introduces, but PRESERVE the
+      // total length: shift left by `ts` and zero-fill the tail. Shortening the buffer
+      // even by 1 frame makes duration e.g. 4.999979s, which Windows Explorer floors
+      // to "4s" for a nominally 5s file. Keeping length === this.duration avoids that.
+      let ts = 0;
+      const c0 = rendered.getChannelData(0);
+      const c1 = rendered.numberOfChannels > 1 ? rendered.getChannelData(1) : c0;
+      const maxTs = Math.floor(sr * 0.05); // max 50ms
+      while (ts < maxTs && ts < c0.length && Math.abs(c0[ts]) < 1e-4 && Math.abs(c1[ts]) < 1e-4) ts++;
+      if (ts === 0) return rendered;
+      const out = off.createBuffer(rendered.numberOfChannels, rendered.length, sr);
+      for (let c = 0; c < rendered.numberOfChannels; c++)
+        out.getChannelData(c).set(rendered.getChannelData(c).subarray(ts)); // tail stays zero-filled
+      return out;
     },
   };
 
