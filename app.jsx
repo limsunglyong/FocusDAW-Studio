@@ -2,7 +2,7 @@
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.16.20";
+const APP_VERSION = "v0.16.21";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -102,7 +102,7 @@ function WindowControls() {
   );
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onSettings, onUndo, onRedo, canUndo, canRedo }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onSettings, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -127,12 +127,17 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
     { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo },
   ];
+  const helpItems = [
+    { label: "Manual", icon: "book", onClick: onHelpManual },
+    { label: "About", icon: "info", onClick: onHelpAbout },
+  ];
   return (
     <div className="menubar">
       <div style={{ display: "flex", alignItems: "center", paddingRight: 6 }}><Logo size={30} /></div>
       <Dropdown label="Project" items={projectItems} accent />
       <Dropdown label="Edit" items={editItems} />
       <div className="menu-item" onClick={onSettings} style={{ cursor: "pointer" }}>Settings</div>
+      <Dropdown label="Help" items={helpItems} />
       <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 }}>
         <MenuTransport />
       </div>
@@ -932,6 +937,8 @@ function App() {
   const handlersRef = useRef({});
   const [, force] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const registerHandlers = useCallback((h) => { handlersRef.current = h; }, []);
@@ -973,13 +980,17 @@ function App() {
         onOpenProject={() => H.onOpenProject && H.onOpenProject()}
         onSettings={() => setShowSettings(true)}
         onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
-        canUndo={undoState.canUndo} canRedo={undoState.canRedo} />
+        canUndo={undoState.canUndo} canRedo={undoState.canRedo}
+        onHelpManual={() => setShowHelp(true)}
+        onHelpAbout={() => setShowAbout(true)} />
       <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath}
         registerHandlers={registerHandlers}
         onRenameProject={renameProject}
         onProjectPathChange={setProjectPath}
         onUndoStateChange={setUndoState} />
       {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme} onClose={() => setShowSettings(false)} />}
+      {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
+      {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}
       <div className="bottombar">
         <span className="bottom-project mono">{projectName || DEFAULT_PROJECT_NAME}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

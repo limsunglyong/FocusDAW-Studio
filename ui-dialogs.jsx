@@ -56,7 +56,7 @@ function LoaderScreen({ onOpen }) {
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center" }}><Icon name="check" size={11} /></span>{f}
             </div>
           ))}
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.20 · Electron · macOS / Win / Linux</div>
+          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.21 · Electron · macOS / Win / Linux</div>
         </div>
       </div>
 

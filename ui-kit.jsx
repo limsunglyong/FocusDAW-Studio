@@ -27,6 +27,8 @@ const IC = {
   disc: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
   undo: "M4 9h11a5 5 0 0 1 0 10H8M7 6L4 9l3 3",
   redo: "M20 9H9a5 5 0 0 0 0 10h7M17 6l3 3-3 3",
+  book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5v-14A2.5 2.5 0 0 1 6.5 3H20v14H6.5",
+  info: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm0-14v4m0 4h.01",
 };
 function Icon({ name, size = 18, stroke = 1.7, fill = false, style }) {
   const d = IC[name];
