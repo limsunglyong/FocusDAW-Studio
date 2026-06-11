@@ -765,7 +765,7 @@
 
     setLoop(val) { this.loopEnabled = !!val; },
 
-    play() {
+    play(options = {}) {
       this.init();
       if (ctx.state === "suspended") ctx.resume();
       if (this.isPlaying) return;
@@ -775,15 +775,23 @@
       this.tracks.forEach((t) => {
         const src = ctx.createBufferSource();
         src.buffer = t.buffer;
-        src.loop = this.loopEnabled;
-        if (this.loopEnabled) src.loopEnd = Math.min(this.duration, t.buffer.duration);
+        // Repeat is controlled by the engine at the song boundary so toggling
+        // the button during playback does not require rebuilding live sources.
+        src.loop = false;
         src.connect(t.nodes.fader);
         src.start(now, this._offset % t.buffer.duration);
         this._sources.push(src);
       });
       this.isPlaying = true;
       this._scheduleAutomation();
-      this._scheduleFade();
+      if (options.skipFade) {
+        try {
+          masterFade.gain.cancelScheduledValues(ctx.currentTime);
+          masterFade.gain.setValueAtTime(1, ctx.currentTime);
+        } catch (e) {}
+      } else {
+        this._scheduleFade();
+      }
       this._loop();
     },
 
@@ -864,10 +872,19 @@
     _lastLoop: 0,
     _loop() {
       if (!this.isPlaying) return;
-      // Non-loop mode: stop automatically when playhead reaches end
-      if (!this.loopEnabled) {
-        const raw = this._offset + (ctx.currentTime - this._startTime);
-        if (raw >= this.duration) { this.stop(); return; }
+      // Source nodes are one-shot. At the song boundary the engine decides
+      // whether to start a fresh pass or stop, using the latest Repeat state.
+      const raw = this._offset + (ctx.currentTime - this._startTime);
+      if (raw >= this.duration) {
+        if (this.loopEnabled) {
+          this._offset = 0;
+          this._stopSources();
+          this.isPlaying = false;
+          this.play({ skipFade: true });
+          return;
+        }
+        this.stop();
+        return;
       }
       this._emit();
       requestAnimationFrame(() => this._loop());

@@ -961,8 +961,8 @@ function HelpDialog({ onClose }) {
 
             <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 20 }}>
               {lang === "ko"
-                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v0.16.20"
-                : "FocusDAW Studio User Manual · Written for version v0.16.20"}
+                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v0.16.21"
+                : "FocusDAW Studio User Manual · Written for version v0.16.21"}
             </div>
           </div>
         </div>
