@@ -285,13 +285,14 @@ function ExportDialog({ projectName, onClose }) {
   const [bitrate, setBitrate]   = useState(320);
   const [sr, setSr]             = useState(44100);
   const [normalize, setNormalize] = useState(true);
-  const [stage, setStage]       = useState("settings"); // settings | rendering | done
+  const [stage, setStage]       = useState("settings"); // settings | rendering | error | done
   const [prog, setProg]         = useState(0);
   const [stepLabel, setLabel]   = useState("Rendering mix…");
   const [url, setUrl]           = useState(null);
   const [ext, setExt]           = useState("mp3");
   const [audioBlob, setAudioBlob] = useState(null);
   const [saving, setSaving]     = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   // ---- metadata (tags) ----
   const _now = new Date();
@@ -328,52 +329,59 @@ function ExportDialog({ projectName, onClose }) {
   };
 
   const render = async () => {
-    setStage("rendering"); setProg(0); setLabel("Rendering mix…");
-    const ratio = format === "mp3" ? 0.75 : 1;
-    const rendered = await DAW.renderMix((p) => setProg(p * ratio), { normalize, sampleRate: sr });
-    // Combine Year (authoritative) + Date (month/day) into one ISO date for tags;
-    // ID3v2.3 derives Year (TYER) + Date (TDAT) from the full date.
-    const yr = String(year || "").trim();
-    const dt = String(mdate || "").trim();
-    let tagDate = dt;
-    if (/^\d{4}$/.test(yr)) tagDate = /^\d{4}-\d{2}-\d{2}/.test(dt) ? (yr + dt.slice(4)) : yr;
-    const meta = { title, artist, album, year: yr, date: tagDate };
-    const coverParts = cover ? _dataUrlParts(cover.dataUrl) : null;
+    try {
+      setErrorMsg("");
+      setStage("rendering"); setProg(0); setLabel("Rendering mix…");
+      const ratio = format === "mp3" ? 0.75 : 1;
+      const rendered = await DAW.renderMix((p) => setProg(p * ratio), { normalize, sampleRate: sr });
+      // Combine Year (authoritative) + Date (month/day) into one ISO date for tags;
+      // ID3v2.3 derives Year (TYER) + Date (TDAT) from the full date.
+      const yr = String(year || "").trim();
+      const dt = String(mdate || "").trim();
+      let tagDate = dt;
+      if (/^\d{4}$/.test(yr)) tagDate = /^\d{4}-\d{2}-\d{2}/.test(dt) ? (yr + dt.slice(4)) : yr;
+      const meta = { title, artist, album, year: yr, date: tagDate };
+      const coverParts = cover ? _dataUrlParts(cover.dataUrl) : null;
 
-    let blob;
-    if (format === "mp3") {
-      if (window.electronAPI && window.electronAPI.encodeMp3) {
-        // Electron path: ffmpeg (tags + cover embedded as ID3v2)
-        setLabel("Encoding MP3 via ffmpeg…"); setProg(0.78);
-        const wavBlob = audioBufferToWav(rendered); // intermediate PCM; tags go via ffmpeg
-        const wavAb   = await wavBlob.arrayBuffer();
-        const coverArg = coverParts ? { data: coverParts.base64, mime: coverParts.mime } : null;
-        const mp3Ab   = await window.electronAPI.encodeMp3(wavAb, { bitrate, sampleRate: sr, meta, cover: coverArg });
-        blob = new Blob([mp3Ab], { type: "audio/mpeg" });
-        setProg(1);
-      } else if (window.lamejs) {
-        // Browser path: lamejs + hand-built ID3v2 tag (text + APIC cover)
-        setLabel("Encoding MP3…");
-        const mp3Blob = await audioBufferToMp3(rendered, bitrate, (p) => setProg(0.75 + p * 0.22));
-        const mp3Ab = await mp3Blob.arrayBuffer();
-        const coverBytes = coverParts ? _base64ToBytes(coverParts.base64) : null;
-        const id3 = buildId3v2(meta, coverBytes, coverParts ? coverParts.mime : null);
-        blob = new Blob([id3, mp3Ab], { type: "audio/mpeg" });
-        setProg(1);
+      let blob;
+      if (format === "mp3") {
+        if (window.electronAPI && window.electronAPI.encodeMp3) {
+          // Electron path: ffmpeg (tags + cover embedded as ID3v2)
+          setLabel("Encoding MP3 via ffmpeg…"); setProg(0.78);
+          const wavBlob = audioBufferToWav(rendered); // intermediate PCM; tags go via ffmpeg
+          const wavAb   = await wavBlob.arrayBuffer();
+          const coverArg = coverParts ? { data: coverParts.base64, mime: coverParts.mime } : null;
+          const mp3Ab   = await window.electronAPI.encodeMp3(wavAb, { bitrate, sampleRate: sr, meta, cover: coverArg });
+          blob = new Blob([mp3Ab], { type: "audio/mpeg" });
+          setProg(1);
+        } else if (window.lamejs) {
+          // Browser path: lamejs + hand-built ID3v2 tag (text + APIC cover)
+          setLabel("Encoding MP3…");
+          const mp3Blob = await audioBufferToMp3(rendered, bitrate, (p) => setProg(0.75 + p * 0.22));
+          const mp3Ab = await mp3Blob.arrayBuffer();
+          const coverBytes = coverParts ? _base64ToBytes(coverParts.base64) : null;
+          const id3 = buildId3v2(meta, coverBytes, coverParts ? coverParts.mime : null);
+          blob = new Blob([id3, mp3Ab], { type: "audio/mpeg" });
+          setProg(1);
+        } else {
+          // lamejs not loaded: fall back to WAV
+          setLabel("lamejs unavailable — saving WAV…");
+          blob = audioBufferToWav(rendered, meta);
+          setExt("wav");
+        }
       } else {
-        // lamejs not loaded: fall back to WAV
-        setLabel("lamejs unavailable — saving WAV…");
-        blob = audioBufferToWav(rendered, meta);
+        blob = audioBufferToWav(rendered, meta); // WAV tags via RIFF INFO chunk
         setExt("wav");
       }
-    } else {
-      blob = audioBufferToWav(rendered, meta); // WAV tags via RIFF INFO chunk
-      setExt("wav");
-    }
 
-    setUrl(URL.createObjectURL(blob));
-    setAudioBlob(blob);
-    setStage("done");
+      setUrl(URL.createObjectURL(blob));
+      setAudioBlob(blob);
+      setStage("done");
+    } catch (err) {
+      console.error("Export failed:", err);
+      setErrorMsg(err && err.message ? err.message : String(err || "Unknown export error"));
+      setStage("error");
+    }
   };
 
   const baseName = safeExportFileBase(projectName);
@@ -443,14 +451,28 @@ function ExportDialog({ projectName, onClose }) {
 
         {stage === "rendering" && (
           <div style={{ padding: "34px 24px", textAlign: "center" }}>
-            <div style={{ fontSize: 13, color: "var(--cream-2)", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 13, color: "var(--cream-2)", marginBottom: 16 }}>
+              <span style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid var(--line-strong)", borderTopColor: "var(--amber)", animation: "spin .8s linear infinite", flex: "0 0 auto" }} />
               {stepLabel} <span className="mono" style={{ color: "var(--amber)" }}>{Math.round(prog * 100)}%</span>
+              <span className="rec-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--amber)", flex: "0 0 auto" }} />
             </div>
             <div style={{ height: 8, background: "var(--surface)", borderRadius: 5, overflow: "hidden" }}>
               <div style={{ height: "100%", width: prog * 100 + "%", background: "linear-gradient(90deg,var(--amber-deep),var(--amber))", borderRadius: 5, transition: "width .12s" }} />
             </div>
             <div className="mono" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 14 }}>
               offline render · {sr / 1000}kHz{format === "mp3" ? ` · ${bitrate}kbps MP3` : " · WAV"}
+            </div>
+          </div>
+        )}
+
+        {stage === "error" && (
+          <div style={{ padding: "30px 24px", textAlign: "center" }}>
+            <div style={{ width: 52, height: 52, borderRadius: "50%", background: "rgba(217,106,78,.14)", color: "var(--red)", display: "grid", placeItems: "center", margin: "0 auto 14px", fontWeight: 700, fontSize: 24 }}>!</div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>Export failed</div>
+            <div style={{ margin: "8px auto 18px", maxHeight: 96, overflow: "auto", fontSize: 11.5, color: "var(--dim)", lineHeight: 1.45, wordBreak: "break-word" }}>{errorMsg}</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn" onClick={() => setStage("settings")} style={{ flex: 1 }}>Back</button>
+              <button className="btn primary" onClick={render} style={{ flex: 1 }}><Icon name="disc" size={15} /> Retry</button>
             </div>
           </div>
         )}

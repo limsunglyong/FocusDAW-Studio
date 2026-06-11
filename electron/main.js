@@ -13,6 +13,17 @@ try { ffmpegPath = require('ffmpeg-static'); } catch (e) {
 
 const AUDIO_EXT = /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i;
 
+function resolveFfmpegPath() {
+  if (!ffmpegPath) return null;
+
+  const normalizedPath = String(ffmpegPath);
+  const unpackedPath = normalizedPath
+    .replace(/([\\/])app\.asar([\\/])/i, '$1app.asar.unpacked$2');
+  if (unpackedPath !== normalizedPath) return unpackedPath;
+
+  return normalizedPath;
+}
+
 function audioItem(filePath) {
   const fileName = path.basename(filePath);
   return {
@@ -132,7 +143,9 @@ ipcMain.handle('open-project', async () => {
 
 // Encode WAV → MP3 via ffmpeg (with ID3v2 tags + optional embedded cover art)
 ipcMain.handle('encode-mp3', async (_, wavBuffer, options) => {
-  if (!ffmpegPath) throw new Error('ffmpeg-static not installed. Run: npm install');
+  const resolvedFfmpegPath = resolveFfmpegPath();
+  if (!resolvedFfmpegPath) throw new Error('ffmpeg-static not installed. Run: npm install');
+  if (!fs.existsSync(resolvedFfmpegPath)) throw new Error(`ffmpeg executable not found: ${resolvedFfmpegPath}`);
   const { bitrate = 320, sampleRate = 44100, meta = {}, cover = null } = options || {};
   const base   = `focusdaw_${Date.now()}`;
   const tmpWav = path.join(os.tmpdir(), base + '.wav');
@@ -174,9 +187,15 @@ ipcMain.handle('encode-mp3', async (_, wavBuffer, options) => {
   args.push(tmpMp3);
 
   await new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath, args);
-    proc.stderr.on('data', () => {}); // suppress ffmpeg log noise
-    proc.on('close', code => code === 0 ? resolve() : reject(new Error(`ffmpeg exited with code ${code}`)));
+    let stderr = '';
+    const proc = spawn(resolvedFfmpegPath, args, { windowsHide: true });
+    proc.stderr.on('data', (chunk) => {
+      stderr = (stderr + chunk.toString()).slice(-4000);
+    });
+    proc.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
+    });
     proc.on('error', reject);
   });
 
