@@ -1,8 +1,9 @@
 /* ================= FocusDAW — main app ================= */
 
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
+const RECENT_PROJECT_LIST_KEY = "focusdaw-recent-project-list";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.16.22";
+const APP_VERSION = "v0.16.23";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -20,24 +21,66 @@ function projectNameFromPath(filePath) {
   return basenameFromPath(filePath).replace(/\.focus$/i, "") || DEFAULT_PROJECT_NAME;
 }
 
-function saveRecentProject(projectName) {
+function recentProjectId(projectName, projectPath) {
+  return projectPath ? `path:${projectPath}` : `autosave:${projectName || DEFAULT_PROJECT_NAME}`;
+}
+
+function readRecentProjectSnapshot() {
   try {
-    localStorage.setItem(RECENT_PROJECT_KEY, JSON.stringify(DAW.exportProject(projectName)));
+    const raw = localStorage.getItem(RECENT_PROJECT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.warn("Failed to read recent project:", err);
+    localStorage.removeItem(RECENT_PROJECT_KEY);
+    return null;
+  }
+}
+
+function readRecentProjectList() {
+  try {
+    const raw = localStorage.getItem(RECENT_PROJECT_LIST_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((x) => x && x.path && x.json).slice(0, 10) : [];
+  } catch (err) {
+    console.warn("Failed to read recent project list:", err);
+    localStorage.removeItem(RECENT_PROJECT_LIST_KEY);
+    return [];
+  }
+}
+
+function saveRecentProject(projectName, projectPath = null, options = {}) {
+  try {
+    const json = DAW.exportProject(projectName);
+    json.projectPath = projectPath || null;
+    const now = Date.now();
+    const entry = {
+      id: recentProjectId(projectName, projectPath),
+      name: projectName || DEFAULT_PROJECT_NAME,
+      path: projectPath || null,
+      updatedAt: now,
+      json,
+    };
+    localStorage.setItem(RECENT_PROJECT_KEY, JSON.stringify(json));
+    if (!options.updateSavedList || !projectPath) return;
+
+    const list = readRecentProjectList().filter((item) => item.id !== entry.id);
+    list.unshift(entry);
+    localStorage.setItem(RECENT_PROJECT_LIST_KEY, JSON.stringify(list.slice(0, 10)));
   } catch (err) {
     console.warn("Failed to save recent project:", err);
   }
 }
 
-function loadRecentProject(onRename) {
-  const raw = localStorage.getItem(RECENT_PROJECT_KEY);
-  if (!raw) {
+function loadRecentProject(onRename, onPath) {
+  const json = readRecentProjectSnapshot();
+  if (!json) {
     DAW.clearTracks();
     return false;
   }
   try {
-    const json = JSON.parse(raw);
     DAW.importProject(json);
     if (json.projectName && onRename) onRename(json.projectName);
+    if (onPath) onPath(json.projectPath || null);
     return true;
   } catch (err) {
     console.warn("Failed to load recent project:", err);
@@ -50,12 +93,29 @@ function loadRecentProject(onRename) {
 /* ---------- dropdown menu ---------- */
 function Dropdown({ label, items, accent }) {
   const [open, setOpen] = useState(false);
+  const [hoveredSubmenu, setHoveredSubmenu] = useState(null);
   const ref = useRef(null);
+  const submenuTimerRef = useRef(null);
+  const showSubmenu = (idx) => {
+    if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
+    submenuTimerRef.current = null;
+    setHoveredSubmenu(idx);
+  };
+  const hideSubmenuSoon = (idx) => {
+    if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
+    submenuTimerRef.current = setTimeout(() => {
+      setHoveredSubmenu((cur) => (cur === idx ? null : cur));
+      submenuTimerRef.current = null;
+    }, 220);
+  };
   useEffect(() => {
     if (!open) return;
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     window.addEventListener("mousedown", h);
-    return () => window.removeEventListener("mousedown", h);
+    return () => {
+      window.removeEventListener("mousedown", h);
+      if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
+    };
   }, [open]);
   return (
     <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
@@ -69,13 +129,43 @@ function Dropdown({ label, items, accent }) {
           {items.map((it, i) => it.sep ? (
             <div key={i} style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
           ) : (
-            <div key={i} onClick={() => { if (it.disabled) return; setOpen(false); it.onClick && it.onClick(); }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, cursor: it.disabled ? "default" : "pointer", fontSize: 12.5, opacity: it.disabled ? 0.38 : 1 }}
-              onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = "var(--surface3)"; }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-              {it.icon && <Icon name={it.icon} size={15} style={{ color: "var(--amber)", flex: "0 0 auto" }} />}
-              <span style={{ flex: 1 }}>{it.label}</span>
-              {it.hint && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{it.hint}</span>}
+            <div key={i} style={{ position: "relative" }}
+              onMouseEnter={() => it.submenu ? showSubmenu(i) : setHoveredSubmenu(null)}
+              onMouseLeave={() => it.submenu && hideSubmenuSoon(i)}>
+              <div onClick={() => { if (it.disabled) return; setOpen(false); it.onClick && it.onClick(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, cursor: it.disabled ? "default" : "pointer", fontSize: 12.5, opacity: it.disabled ? 0.38 : 1 }}
+                onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = "var(--surface3)"; }}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                {it.icon && <Icon name={it.icon} size={15} style={{ color: "var(--amber)", flex: "0 0 auto" }} />}
+                <span style={{ flex: 1 }}>{it.label}</span>
+                {it.hint && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{it.hint}</span>}
+                {it.submenu && <span style={{ color: "var(--faint)", marginLeft: 2 }}>›</span>}
+              </div>
+              {it.submenu && hoveredSubmenu === i && (
+                <React.Fragment>
+                <div style={{ position: "absolute", left: "100%", top: -6, width: 12, height: "calc(100% + 12px)", zIndex: 255 }} />
+                <div style={{ position: "absolute", left: "calc(100% + 6px)", top: -6, width: 280, maxHeight: 380, overflow: "auto",
+                  background: "var(--surface)", border: "1px solid var(--line-strong)", borderRadius: 10, boxShadow: "var(--shadow)", padding: 6, zIndex: 260 }}>
+                  {it.submenu.map((sub, si) => sub.sep ? (
+                    <div key={si} style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
+                  ) : sub.header ? (
+                    <div key={si} style={{ padding: "7px 9px 5px", fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)" }}>{sub.label}</div>
+                  ) : (
+                    <div key={si} onClick={(e) => { e.stopPropagation(); if (sub.disabled) return; setOpen(false); sub.onClick && sub.onClick(); }}
+                      style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 34, padding: "7px 9px", borderRadius: 7,
+                        cursor: sub.disabled ? "default" : "pointer", opacity: sub.disabled ? 0.42 : 1 }}
+                      onMouseEnter={(e) => { if (!sub.disabled) e.currentTarget.style.background = "var(--surface3)"; }}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                      {sub.icon && <Icon name={sub.icon} size={14} style={{ color: "var(--amber)", flex: "0 0 auto" }} />}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 12.2, color: "var(--cream-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub.label}</div>
+                        {sub.detail && <div className="mono" style={{ marginTop: 2, fontSize: 9.5, color: "var(--faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub.detail}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                </React.Fragment>
+              )}
             </div>
           ))}
         </div>
@@ -102,7 +192,13 @@ function WindowControls() {
   );
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onSettings, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
+function recentDateLabel(ms) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -111,10 +207,36 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     setDraft(value);
     if (value.trim()) onRename(value.trim());
   };
+  const currentRecent = readRecentProjectSnapshot();
+  const recentList = readRecentProjectList();
+  const currentRecentName = (currentRecent && currentRecent.projectName) || projectName || DEFAULT_PROJECT_NAME;
+  const currentRecentPath = (currentRecent && currentRecent.projectPath) || null;
+  const currentRecentId = recentProjectId(currentRecentName, currentRecentPath);
+  const recentSubmenu = [
+    { header: true, label: "Recent project" },
+    currentRecent
+      ? { label: currentRecentName, detail: currentRecentPath || "Autosaved exit/current state", icon: currentRecentPath ? "folder" : "disc", onClick: () => onOpenRecentProject && onOpenRecentProject(currentRecent, currentRecentPath) }
+      : { label: "No autosaved project", disabled: true },
+    { sep: true },
+    { header: true, label: "Recent saved" },
+    ...recentList
+      .filter((item) => item.id !== currentRecentId)
+      .slice(0, 10)
+      .map((item) => ({
+        label: item.name || DEFAULT_PROJECT_NAME,
+        detail: item.path || recentDateLabel(item.updatedAt) || "Autosaved session",
+        icon: item.path ? "folder" : "disc",
+        onClick: () => onOpenRecentProject && onOpenRecentProject(item.json, item.path || null),
+      })),
+  ];
+  if (recentSubmenu[recentSubmenu.length - 1].header) {
+    recentSubmenu.push({ label: "No recent work", disabled: true });
+  }
+
   const projectItems = [
     { label: "New Project", icon: "plus", hint: "\u2318N", onClick: onNew },
     { sep: true },
-    { label: "Open Project\u2026", icon: "folder", hint: "\u2318O", onClick: onOpenProject },
+    { label: "Open Project\u2026", icon: "folder", hint: "\u2318O", onClick: onOpenProject, submenu: recentSubmenu },
     { label: "Save Project", icon: "download", hint: "\u2318S", onClick: onSave },
     { sep: true },
     { label: "Import Stem Folder\u2026", icon: "folder", onClick: onImportFolder },
@@ -479,7 +601,7 @@ function LoadingOverlay({ state }) {
 }
 
 /* ---------- studio (arrange) ---------- */
-function Studio({ projectName, projectNameRef, projectPath, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange }) {
+function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
@@ -535,9 +657,9 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     DAW.applySnapshot(undoStack.current.pop());
     lastUndoKey.current = null;
     if (onUndoStateChange) onUndoStateChange({ canUndo: undoStack.current.length > 0, canRedo: true });
-    saveRecentProject(projectName);
+    saveRecentProject(projectName, projectPath);
     force(n => n + 1);
-  }, [onUndoStateChange, projectName]);
+  }, [onUndoStateChange, projectName, projectPath]);
 
   const redo = useCallback(() => {
     if (!redoStack.current.length) return;
@@ -545,9 +667,9 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     DAW.applySnapshot(redoStack.current.pop());
     lastUndoKey.current = null;
     if (onUndoStateChange) onUndoStateChange({ canUndo: true, canRedo: redoStack.current.length > 0 });
-    saveRecentProject(projectName);
+    saveRecentProject(projectName, projectPath);
     force(n => n + 1);
-  }, [onUndoStateChange, projectName]);
+  }, [onUndoStateChange, projectName, projectPath]);
 
   // Scroll the arrange area AND update timelineView in the same React render — no rAF lag.
   const scrollArrangeTo = useCallback((sl) => {
@@ -616,6 +738,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
   const saveProject = useCallback(async () => {
     const currentName = (projectNameRef && projectNameRef.current) || projectName || DEFAULT_PROJECT_NAME;
     const json = DAW.exportProject(currentName);
+    let savedPath = projectPath || null;
     if (window.electronAPI) {
       const currentBase = safeFileBase(currentName);
       const pathBase = projectPath ? safeFileBase(projectNameFromPath(projectPath)) : null;
@@ -623,6 +746,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       const result = await window.electronAPI.saveProject(json, currentName, targetPath);
       if (!result || result.saved === false) return;
       if (result.path && onProjectPathChange) onProjectPathChange(result.path);
+      if (result.path) savedPath = result.path;
     } else {
       const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -632,15 +756,15 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
-    saveRecentProject(currentName);
+    saveRecentProject(currentName, savedPath, { updateSavedList: !!savedPath });
   }, [projectName, projectNameRef, projectPath, onProjectPathChange]);
 
   const playPause = useCallback(() => { DAW.isPlaying ? DAW.pause() : DAW.play(); }, []);
 
   useEffect(() => {
-    const id = setInterval(() => saveRecentProject(projectName), 1500);
+    const id = setInterval(() => saveRecentProject(projectName, projectPath), 1500);
     return () => clearInterval(id);
-  }, [projectName]);
+  }, [projectName, projectPath]);
 
   const handleSplit = useCallback((trackId, clipId, atSec) => {
     pushUndo(); DAW.splitClip(trackId, clipId, atSec); force((n) => n + 1);
@@ -668,34 +792,39 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     setTimeout(() => setLoading(null), 220);
   }, []);
 
-  const openProjectFile = useCallback(async (file) => {
-    let text;
-    let openedPath = null;
-    if (window.electronAPI) {
-      const opened = await window.electronAPI.openProject();
-      if (!opened) return;
-      text = typeof opened === "string" ? opened : opened.text;
-      openedPath = typeof opened === "string" ? null : opened.path;
-    } else if (file) {
-      text = await file.text();
-      openedPath = file.name;
-    } else { return; }
-    try {
-      const json = JSON.parse(text);
-      DAW.importProject(json);
-      const nextName = json.projectName || projectNameFromPath(openedPath);
-      if (onRenameProject) onRenameProject(nextName);
-      if (openedPath && onProjectPathChange) onProjectPathChange(openedPath);
-      setAmp(1);
-      undoStack.current = [];
-      redoStack.current = [];
-      if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
-      await reconnectProjectAudio();
-      fitTimelineToProject();
-      saveRecentProject(nextName);
-      force((n) => n + 1);
-    } catch (err) { console.error("Failed to open project:", err); }
+  const loadProjectJson = useCallback(async (json, openedPath = null) => {
+    const nextPath = openedPath || json.projectPath || null;
+    DAW.importProject(json);
+    const nextName = json.projectName || projectNameFromPath(nextPath);
+    if (onRenameProject) onRenameProject(nextName);
+    if (onProjectPathChange) onProjectPathChange(nextPath);
+    setAmp(1);
+    undoStack.current = [];
+    redoStack.current = [];
+    if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
+    await reconnectProjectAudio();
+    fitTimelineToProject();
+    saveRecentProject(nextName, nextPath);
+    force((n) => n + 1);
   }, [onRenameProject, onProjectPathChange, fitTimelineToProject, reconnectProjectAudio, onUndoStateChange]);
+
+  const openProjectFile = useCallback(async (file) => {
+    try {
+      let text;
+      let openedPath = null;
+      if (window.electronAPI) {
+        const opened = await window.electronAPI.openProject();
+        if (!opened) return;
+        text = typeof opened === "string" ? opened : opened.text;
+        openedPath = typeof opened === "string" ? null : opened.path;
+      } else if (file) {
+        text = await file.text();
+        openedPath = file.name;
+      } else { return; }
+      const json = JSON.parse(text);
+      await loadProjectJson(json, openedPath);
+    } catch (err) { console.error("Failed to open project:", err); }
+  }, [loadProjectJson]);
 
   useEffect(() => {
     const k = (e) => {
@@ -719,11 +848,12 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
   }, [playPause, saveProject, openProjectFile, undo, redo]);
 
   useEffect(() => {
+    if (!startupReady) return;
     reconnectProjectAudio().then(() => {
       fitTimelineToProject();
       force((n) => n + 1);
     });
-  }, [reconnectProjectAudio, fitTimelineToProject]);
+  }, [startupReady, reconnectProjectAudio, fitTimelineToProject]);
 
   const addFiles = async (files, rootOnly = false) => {
     const audioFiles = files.filter((f) => {
@@ -739,7 +869,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       try { await DAW.addFile(f); } catch (e) { console.error("Failed to add", f.name, e); }
     }
     fitTimelineToProject();
-    saveRecentProject(projectName);
+    saveRecentProject(projectName, projectPath);
     setLoading({ active: true, total: audioFiles.length, done: audioFiles.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
@@ -756,11 +886,11 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       } catch (e) { console.error("Failed to add", item.name, e); }
     }
     fitTimelineToProject();
-    saveRecentProject(projectName);
+    saveRecentProject(projectName, projectPath);
     setLoading({ active: true, total: items.length, done: items.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
-  }, [fitTimelineToProject, projectName]);
+  }, [fitTimelineToProject, projectName, projectPath]);
 
   const pickAudioFiles = useCallback(async () => {
     if (window.electronAPI) {
@@ -792,7 +922,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
     fitTimelineRef.current = true;
     updateTimeMin();
-    saveRecentProject(nextName);
+    saveRecentProject(nextName, null);
     force((n) => n + 1);
   };
   const loadDemo = () => {
@@ -807,7 +937,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     fitTimelineRef.current = false;
     updateTimeMin();
     setPx(96);
-    saveRecentProject(nextName);
+    saveRecentProject(nextName, null);
     force((n) => n + 1);
   };
   // expose menu actions to parent
@@ -822,16 +952,17 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
       onOpenProject: window.electronAPI
         ? () => openProjectFile(null)
         : () => focusRef.current && focusRef.current.click(),
+      onOpenRecentProject: (json, path) => loadProjectJson(json, path || null),
       onUndo: undo,
       onRedo: redo,
     });
-  }, [registerHandlers, saveProject, openProjectFile, pickAudioFiles, pickAudioFolder, loadDemo, newProject, undo, redo]);
+  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, undo, redo]);
 
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) { pushUndo(); lastUndoKey.current = undoKey; }
     DAW.setTrackParam(id, k, v);
-    saveRecentProject(projectName);
+    saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
   const removeTrack = (id) => {
@@ -839,7 +970,7 @@ function Studio({ projectName, projectNameRef, projectPath, registerHandlers, on
     const i = DAW.tracks.findIndex((t) => t.id === id);
     if (i >= 0) DAW.tracks.splice(i, 1);
     DAW._spectrum = null;
-    saveRecentProject(projectName);
+    saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
 
@@ -934,6 +1065,7 @@ function App() {
   const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);
   const projectNameRef = useRef(DEFAULT_PROJECT_NAME);
   const [projectPath, setProjectPath] = useState(null);
+  const [startupReady, setStartupReady] = useState(false);
   const handlersRef = useRef({});
   const [, force] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
@@ -954,7 +1086,8 @@ function App() {
     loadRecentProject((name) => {
       projectNameRef.current = name || DEFAULT_PROJECT_NAME;
       setProjectName(projectNameRef.current);
-    });
+    }, setProjectPath);
+    setStartupReady(true);
     force((n) => n + 1);
   }, []);
 
@@ -978,12 +1111,13 @@ function App() {
         onExport={() => H.onExport && H.onExport()}
         onSave={() => H.onSave && H.onSave()}
         onOpenProject={() => H.onOpenProject && H.onOpenProject()}
+        onOpenRecentProject={(json, path) => H.onOpenRecentProject && H.onOpenRecentProject(json, path)}
         onSettings={() => setShowSettings(true)}
         onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
         canUndo={undoState.canUndo} canRedo={undoState.canRedo}
         onHelpManual={() => setShowHelp(true)}
         onHelpAbout={() => setShowAbout(true)} />
-      <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath}
+      <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath} startupReady={startupReady}
         registerHandlers={registerHandlers}
         onRenameProject={renameProject}
         onProjectPathChange={setProjectPath}
