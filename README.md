@@ -120,3 +120,6 @@ npm run dist:linux
 한국어 사용자 매뉴얼:
 
 [`manual/사용자 메뉴얼.html`](manual/사용자%20메뉴얼.html)
+
+
+<img width="1655" height="1055" alt="FocusDAW_Studio_MLFYW48JOI" src="https://github.com/user-attachments/assets/12e936de-d271-4173-840f-6b6b506e4d29" />
