@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mixer-FocusDAW Studio</title>
+<link rel="icon" type="image/png" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
+  --line:rgba(232,212,170,.10); --line-strong:rgba(232,212,170,.18);
+  --cream:#efe6d4; --cream-2:#d8cdb6; --dim:#b0a690; --muted:#857c6b; --faint:#5f574a;
+  --amber:#e8b04b; --amber-deep:#c8893a; --amber-soft:rgba(232,176,75,.16);
+  --green:#94c06a; --green-deep:#6e9a48; --red:#d96a4e; --blue:#7fb0c4; --violet:#c98fb0;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.7);
+  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace;
+  --r:10px;
+  --mixer-bar-bg:linear-gradient(#efe7d6,#e3d8c0); --mixer-bar-fg:#241a0a;
+}
+:root[data-theme="ivory"]{
+  --bg:#e4dcc8; --bg2:#dad0b8; --surface:#f0ead9; --surface2:#e2dac3; --surface3:#d4caac;
+  --line:rgba(95,75,42,.15); --line-strong:rgba(95,75,42,.26);
+  --cream:#3b3327; --cream-2:#6e6149; --dim:#8a7d62; --muted:#9a8c6e; --faint:#c8bb9a;
+  --amber:#bf7f2e; --amber-deep:#9e6620; --amber-soft:rgba(191,127,46,.14);
+  --green:#7c9a4f; --green-deep:#5e7a38; --red:#c2593b; --blue:#5f86a6; --violet:#a0668a;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.22);
+  --mixer-bar-bg:linear-gradient(#2a2520,#221d17); --mixer-bar-fg:#efe6d4;
+}
+:root[data-theme="blue"]{
+  --bg:#142841; --bg2:#1c3556; --surface:#274665; --surface2:#33567b; --surface3:#3f6791;
+  --line:rgba(180,205,235,.14); --line-strong:rgba(180,205,235,.24);
+  --cream:#eaf1fb; --cream-2:#a7b8d0; --dim:#8fa5bf; --muted:#6f82a0; --faint:#4d6680;
+  --amber:#5b9bd5; --amber-deep:#3a7bbf; --amber-soft:rgba(91,155,213,.16);
+  --green:#3fb985; --green-deep:#2a9068; --red:#e8654a; --blue:#7fb9e8; --violet:#c085c8;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.8);
+  --mixer-bar-bg:linear-gradient(#9cccf2,#6fb0e6); --mixer-bar-fg:#0f2640;
+}
+:root[data-theme="forest"]{
+  --bg:#0f1a13; --bg2:#162319; --surface:#1d3022; --surface2:#253d2b; --surface3:#2e4d35;
+  --line:rgba(120,200,100,.12); --line-strong:rgba(120,200,100,.22);
+  --cream:#d8f0d0; --cream-2:#9ec49a; --dim:#7aaa74; --muted:#5a8656; --faint:#3a5e3a;
+  --amber:#5de87a; --amber-deep:#3dc85a; --amber-soft:rgba(93,232,122,.16);
+  --green:#aae060; --green-deep:#82b83e; --red:#e06058; --blue:#60b8c8; --violet:#a880c0;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.85);
+  --mixer-bar-bg:linear-gradient(#a8e0a0,#7cca74); --mixer-bar-fg:#0c1e0f;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0d0b09;overflow:hidden}
+body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;
+  font-size:13px;line-height:1.35;}
+#root{height:100vh;width:100vw;display:flex;flex-direction:column}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+::selection{background:var(--amber-soft)}
+.mono{font-family:var(--mono);font-feature-settings:"tnum"1}
+
+/* scrollbars */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#3a342c;border-radius:4px;border:2px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:#4a4338}
+
+/* Titlebar & Layout */
+.mixer-app{display:flex;flex-direction:column;height:100vh;background:var(--bg);overflow:hidden}
+.mixer-titlebar{height:38px;flex:0 0 38px;display:flex;align-items:center;padding:0 14px;
+  background:linear-gradient(180deg,var(--bg2),var(--bg));border-bottom:1px solid var(--line);
+  user-select:none;-webkit-app-region:drag}
+.mixer-titlebar button, .mixer-titlebar .window-controls{-webkit-app-region:no-drag}
+.title-c{flex:1;text-align:center;font-size:12.5px;color:var(--dim);letter-spacing:.02em}
+.title-c b{color:var(--cream-2);font-weight:600}
+.window-controls{height:100%;display:flex;align-items:stretch;flex:0 0 auto;margin-right:-10px}
+.window-control{width:46px;height:100%;display:grid;place-items:center;color:var(--cream-2);
+  font-size:16px;line-height:1;background:transparent}
+.window-control:hover{background:var(--surface2);color:var(--cream)}
+.window-control.close:hover{background:#b94a3a;color:#fff}
+
+/* Knobs & Faders (from studio.html/ui-kit.jsx styles) */
+button.btn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 14px;
+  border-radius:8px;background:var(--surface2);color:var(--cream);font-weight:500;font-size:13px;
+  border:1px solid var(--line-strong);transition:.12s}
+button.btn:hover{background:var(--surface3);border-color:var(--amber-deep)}
+.iconbtn{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:8px;color:var(--cream-2);transition:.12s}
+.iconbtn:hover{background:var(--surface2);color:var(--cream)}
+.chip{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  padding:3px 7px;border-radius:5px;background:var(--surface2);color:var(--dim)}
+
+/* sleek slider */
+.sleek{position:relative;height:15px;cursor:pointer;display:flex;align-items:center}
+.sleek .strack{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:4px;
+  background:#171309;border-radius:3px;box-shadow:inset 0 1px 2px rgba(0,0,0,.7),inset 0 0 0 1px rgba(0,0,0,.4)}
+.sleek .sfill{position:absolute;left:0;top:50%;transform:translateY(-50%);height:4px;border-radius:3px;
+  background:linear-gradient(90deg,var(--amber-deep),var(--amber));box-shadow:0 0 7px rgba(232,176,75,.55)}
+.sleek .stick{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(232,212,170,.20);top:50%;transform:translate(-50%,-50%)}
+.sleek .sthumb{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#ffe0a0,var(--amber) 70%);
+  border:1px solid rgba(0,0,0,.55);box-shadow:0 1px 4px rgba(0,0,0,.6),0 0 0 0 rgba(232,176,75,.4);
+  transform:translate(-50%,-50%);transition:width .12s,height .12s,box-shadow .12s}
+.sleek:hover .sthumb{width:14px;height:14px;box-shadow:0 1px 5px rgba(0,0,0,.6),0 0 0 4px rgba(232,176,75,.16)}
+.sleek:active .sthumb{box-shadow:0 1px 5px rgba(0,0,0,.6),0 0 0 5px rgba(232,176,75,.22)}
+
+.tooltip{position:fixed;z-index:9999;background:#0e0c09;color:var(--cream);font-size:11px;
+  padding:4px 8px;border-radius:6px;border:1px solid var(--line-strong);pointer-events:none;
+  font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+/* Electron shell tweaks for MacOS Titlebar spacing */
+(function () {
+  if (!window.electronAPI) return;
+  const api = window.electronAPI;
+  const style = document.createElement('style');
+  const lines = [];
+  if (api.platform === 'darwin') {
+    lines.push('.mixer-titlebar { padding-left: 80px !important; }');
+  } else {
+    lines.push('.mixer-titlebar { height:40px !important; flex-basis:40px !important; padding-right:10px !important; }');
+  }
+  style.textContent = lines.join('\n');
+  document.head.appendChild(style);
+})();
+</script>
+
+<script type="text/babel" src="ui-kit.jsx"></script>
+<script type="text/babel" src="ui-mixer.jsx"></script>
+<script type="text/babel" src="mixer-app.jsx"></script>
+</body>
+</html>

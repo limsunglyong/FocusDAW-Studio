@@ -23,4 +23,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls (Windows / Linux custom title bar)
   winAction:      (action)        => ipcRenderer.invoke('win-action', action),
   onWinState:     (cb)            => ipcRenderer.on('win-state', (_, s) => cb(s)),
+
+  // Mixer window controls
+  openMixer:      (tracksCount)   => ipcRenderer.invoke('open-mixer', tracksCount),
+  closeMixer:     ()              => ipcRenderer.invoke('close-mixer'),
+  resetMixerBounds: ()            => ipcRenderer.invoke('reset-mixer-bounds'),
+  onMixerState:   (cb)            => {
+    const listener = (_, state) => cb(state);
+    ipcRenderer.on('mixer-state', listener);
+    return () => ipcRenderer.removeListener('mixer-state', listener);
+  }
 });

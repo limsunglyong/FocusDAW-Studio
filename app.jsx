@@ -3,7 +3,7 @@
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const RECENT_PROJECT_LIST_KEY = "focusdaw-recent-project-list";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v0.17.1";
+const APP_VERSION = "v1.1.8";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -449,7 +449,7 @@ function ActionBar({ onAddTrack, onMixer, mixerOpen, onExport }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" }}>
       <button className="btn" onClick={onAddTrack}><Icon name="plus" size={15} /> Track</button>
-      <button className={"btn" + (mixerOpen ? " primary" : "")} onClick={onMixer}><Icon name="mixer" size={15} /> Mixer</button>
+      <button className={"btn" + (mixerOpen ? " primary" : "")} onClick={(e) => { onMixer(); e.currentTarget.blur(); }}><Icon name="mixer" size={15} /> Mixer</button>
       <button className="btn" onClick={onExport}><Icon name="download" size={15} /> Export MP3</button>
     </div>
   );
@@ -607,6 +607,222 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
   const [ampZoom, setAmp] = useState(1);
   const [showMixer, setShowMixer] = useState(false);
+  const mixerChannelRef = useRef(null);
+
+  // BroadcastChannel for Mixer Window sync
+  useEffect(() => {
+    const channel = new BroadcastChannel("focusdaw-mixer-sync");
+    mixerChannelRef.current = channel;
+
+    const handleMessage = (e) => {
+      const msg = e.data;
+      if (!msg) return;
+
+      switch (msg.type) {
+        case "MIXER_READY":
+          channel.postMessage({
+            type: "INIT_STATE",
+            tracks: DAW.tracks.map((t) => ({
+              id: t.id,
+              name: t.name,
+              color: t.color,
+              params: { ...t.params },
+            })),
+            master: {
+              volume: DAW.master.volume,
+              reverb: DAW.master.reverb,
+              echo: DAW.master.echo,
+              bands: [...DAW.master.bands],
+              fadeIn: DAW.master.fadeIn,
+              fadeOut: DAW.master.fadeOut,
+            },
+            theme: localStorage.getItem("focusdaw-theme") || "default",
+          });
+          break;
+
+        case "BEFORE_CHANGE":
+          pushUndo();
+          break;
+
+        case "SET_TRACK_PARAM":
+          DAW.setTrackParam(msg.id, msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        case "SET_MASTER_PARAM":
+          DAW.setMaster(msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        case "SET_MASTER_BAND":
+          DAW.setMasterBand(msg.i, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        case "APPLY_EQ_PRESET":
+          pushUndo();
+          DAW.applyEQPreset(msg.name);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    channel.addEventListener("message", handleMessage);
+
+    let unsubMixerState = null;
+    if (window.electronAPI && window.electronAPI.onMixerState) {
+      unsubMixerState = window.electronAPI.onMixerState((state) => {
+        setShowMixer(state);
+      });
+    }
+
+    return () => {
+      channel.removeEventListener("message", handleMessage);
+      channel.close();
+      mixerChannelRef.current = null;
+      if (unsubMixerState) unsubMixerState();
+    };
+  }, [projectName, projectPath, pushUndo]);
+
+  // Broadcast real-time level meter and FFT spectrum data to mixer window (runs every frame via useTick)
+  useEffect(() => {
+    if (showMixer && mixerChannelRef.current) {
+      const trackLevels = {};
+      DAW.tracks.forEach((t) => {
+        trackLevels[t.id] = DAW.getTrackLevel(t.id);
+      });
+
+      mixerChannelRef.current.postMessage({
+        type: "LEVEL_METERS",
+        trackLevels,
+        masterLevel: DAW.getMasterLevel(),
+        masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
+        fftData: DAW.computeSpectrum(),
+      });
+    }
+  });
+
+  // Track project parameters and broadcast changes to mixer window
+  const currentTracksStateStr = JSON.stringify(
+    DAW.tracks.map((t) => ({ id: t.id, name: t.name, color: t.color, params: t.params }))
+  );
+  const currentMasterStateStr = JSON.stringify({
+    volume: DAW.master.volume,
+    reverb: DAW.master.reverb,
+    echo: DAW.master.echo,
+    bands: DAW.master.bands,
+    fadeIn: DAW.master.fadeIn,
+    fadeOut: DAW.master.fadeOut,
+  });
+
+  useEffect(() => {
+    if (showMixer && mixerChannelRef.current) {
+      mixerChannelRef.current.postMessage({
+        type: "SYNC_STATE",
+        tracks: DAW.tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          color: t.color,
+          params: { ...t.params },
+        })),
+        master: {
+          volume: DAW.master.volume,
+          reverb: DAW.master.reverb,
+          echo: DAW.master.echo,
+          bands: [...DAW.master.bands],
+          fadeIn: DAW.master.fadeIn,
+          fadeOut: DAW.master.fadeOut,
+        },
+      });
+    }
+  }, [showMixer, currentTracksStateStr, currentMasterStateStr]);
+
+  const toggleMixer = useCallback(() => {
+    if (window.electronAPI) {
+      if (showMixer) {
+        window.electronAPI.closeMixer();
+      } else {
+        window.electronAPI.openMixer(DAW.tracks.length);
+      }
+    } else {
+      if (showMixer) {
+        if (window.mixerPopup && !window.mixerPopup.closed) {
+          window.mixerPopup.close();
+        }
+        setShowMixer(false);
+      } else {
+        const MIXER_BOUNDS_KEY = "focusdaw-mixer-bounds";
+        const channelW = 92;
+        const masterW = 400;
+        const contentW = DAW.tracks.length * channelW + masterW;
+        let popW = Math.max(600, Math.min(1440, contentW));
+        let popH = 490;
+        let popLeft = null;
+        let popTop = null;
+        try {
+          const cached = localStorage.getItem(MIXER_BOUNDS_KEY);
+          if (cached) {
+            const bounds = JSON.parse(cached);
+            popW = bounds.width || popW;
+            popH = bounds.height || popH;
+            if (typeof bounds.left === 'number') popLeft = bounds.left;
+            if (typeof bounds.top === 'number') popTop = bounds.top;
+          }
+        } catch (e) {}
+
+        let features = `width=${popW},height=${popH}`;
+        if (popLeft !== null && popTop !== null) {
+          features += `,left=${popLeft},top=${popTop}`;
+        }
+
+        window.mixerPopup = window.open("mixer.html", "FocusDAWMixer", features);
+        setShowMixer(true);
+
+        if (window.mixerPopup) {
+          const saveBounds = () => {
+            try {
+              if (!localStorage.getItem(MIXER_BOUNDS_KEY)) {
+                return;
+              }
+              if (window.mixerPopup && !window.mixerPopup.closed) {
+                const bounds = {
+                  left: window.mixerPopup.screenX,
+                  top: window.mixerPopup.screenY,
+                  width: window.mixerPopup.outerWidth,
+                  height: window.mixerPopup.outerHeight
+                };
+                localStorage.setItem(MIXER_BOUNDS_KEY, JSON.stringify(bounds));
+              }
+            } catch (e) {}
+          };
+          window.mixerPopup.addEventListener("beforeunload", saveBounds);
+        }
+
+        const timer = setInterval(() => {
+          if (!window.mixerPopup || window.mixerPopup.closed) {
+            clearInterval(timer);
+            setShowMixer(false);
+          }
+        }, 500);
+      }
+    }
+  }, [showMixer]);
+
+  useEffect(() => {
+    if (!showMixer) {
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
+    }
+  }, [showMixer]);
+
   const [showExport, setShowExport] = useState(false);
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
@@ -829,6 +1045,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   useEffect(() => {
     const k = (e) => {
       const mod = e.metaKey || e.ctrlKey;
+      if (e.key === "F3") { e.preventDefault(); toggleMixer(); return; }
       if (mod && e.key === "s") { e.preventDefault(); saveProject(); return; }
       if (mod && e.key === "o") {
         e.preventDefault();
@@ -845,7 +1062,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
     };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
-  }, [playPause, saveProject, openProjectFile, undo, redo]);
+  }, [playPause, saveProject, openProjectFile, undo, redo, toggleMixer]);
 
   useEffect(() => {
     if (!startupReady) return;
@@ -1029,7 +1246,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         </div>
         <TimelineMinimap arrangeRef={arrangeRef} pxPerSec={pxPerSec} playhead={playhead} viewState={timelineView} setPx={setPxFromUser} timeMin={timeMinPx} onScroll={scrollArrangeTo} />
         {/* right cluster: actions */}
-        <ActionBar onAddTrack={pickAudioFiles} onMixer={() => setShowMixer((s) => !s)} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
+        <ActionBar onAddTrack={pickAudioFiles} onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
       </div>
 
       {/* arrange scroll area (whole area is a dropzone) */}
@@ -1053,7 +1270,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         )}
       </div>
 
-      {showMixer && <MixerWindow onClose={() => setShowMixer(false)} onBeforeChange={pushUndo} />}
+
       {showExport && <ExportDialog projectName={projectName} onClose={() => setShowExport(false)} />}
       <LoadingOverlay state={loading} />
     </div>

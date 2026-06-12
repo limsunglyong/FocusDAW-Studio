@@ -597,7 +597,7 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 680, maxWidth: "95vw", boxShadow: "var(--shadow)" }}>
+      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 860, maxWidth: "95vw", boxShadow: "var(--shadow)" }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Settings</div>
@@ -606,10 +606,31 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
         {/* body */}
         <div style={{ padding: "20px 22px 24px" }}>
           <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 14 }}>Color Theme</div>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "nowrap", marginBottom: 26 }}>
             {THEMES.map(t => (
               <ThemeSwatch key={t.id} theme={t} active={currentTheme === t.id} onClick={() => onThemeChange(t.id)} />
             ))}
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>Mixer Console Window</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cream)" }}>Reset Window Bounds</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>Restore the Mixer window size and screen coordinates to their default settings.</div>
+              </div>
+              <button className="btn" onClick={() => {
+                localStorage.removeItem("focusdaw-mixer-bounds");
+                if (window.electronAPI && window.electronAPI.resetMixerBounds) {
+                  window.electronAPI.resetMixerBounds();
+                } else {
+                  if (window.mixerPopup && !window.mixerPopup.closed) {
+                    window.mixerPopup.close();
+                  }
+                }
+                alert("Mixer window position and size have been reset.");
+              }} style={{ height: 32, fontSize: 12.5, padding: "0 14px", border: "1px solid var(--line-strong)" }}>Reset Position</button>
+            </div>
           </div>
         </div>
         <div style={{ padding: "12px 22px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "flex-end" }}>

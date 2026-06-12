@@ -41,6 +41,9 @@ function safeFileBase(name) {
   return cleaned || 'untitled';
 }
 
+let mainWindow = null;
+let mixerWindow = null;
+
 function createWindow() {
   const isMac = process.platform === 'darwin';
   const win = new BrowserWindow({
@@ -59,11 +62,20 @@ function createWindow() {
     backgroundColor: '#1b1712',
   });
 
+  mainWindow = win;
+
   win.loadFile(path.join(__dirname, '..', 'studio.html'));
 
   // Forward close/minimize/maximize to renderer for custom title bar buttons
   win.on('maximize',   () => win.webContents.send('win-state', 'maximized'));
   win.on('unmaximize', () => win.webContents.send('win-state', 'normal'));
+
+  win.on('closed', () => {
+    mainWindow = null;
+    if (mixerWindow && !mixerWindow.isDestroyed()) {
+      mixerWindow.close();
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -224,4 +236,81 @@ ipcMain.handle('win-action', (_, action) => {
   if (action === 'minimize') win.minimize();
   else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
   else if (action === 'close') win.close();
+});
+
+let lastMixerBounds = null;
+let isMixerBoundsReset = false;
+
+// Mixer window control actions
+ipcMain.handle('open-mixer', async (_, tracksCount) => {
+  if (mixerWindow && !mixerWindow.isDestroyed()) {
+    mixerWindow.focus();
+    return;
+  }
+
+  const isMac = process.platform === 'darwin';
+  const channelW = 92;
+  const masterW = 400;
+  const count = typeof tracksCount === 'number' ? tracksCount : 0;
+  const contentWidth = count * channelW + masterW;
+  const winWidth = lastMixerBounds ? lastMixerBounds.width : Math.max(600, Math.min(1440, contentWidth));
+  const winHeight = lastMixerBounds ? lastMixerBounds.height : 490;
+
+  mixerWindow = new BrowserWindow({
+    width: winWidth,
+    height: winHeight,
+    ...(lastMixerBounds ? { x: lastMixerBounds.x, y: lastMixerBounds.y } : {}),
+    minWidth: 500,
+    minHeight: 350,
+    parent: mainWindow || undefined,
+    icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+    backgroundColor: '#1b1712',
+  });
+
+  mixerWindow.loadFile(path.join(__dirname, '..', 'mixer.html'));
+
+  mixerWindow.on('close', () => {
+    try {
+      if (isMixerBoundsReset) {
+        lastMixerBounds = null;
+        isMixerBoundsReset = false;
+      } else if (mixerWindow && !mixerWindow.isDestroyed()) {
+        lastMixerBounds = mixerWindow.getBounds();
+      }
+    } catch (e) {
+      console.error("Failed to save mixer bounds:", e);
+    }
+  });
+
+  mixerWindow.on('closed', () => {
+    mixerWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('mixer-state', false);
+    }
+  });
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('mixer-state', true);
+  }
+});
+
+ipcMain.handle('close-mixer', async () => {
+  if (mixerWindow && !mixerWindow.isDestroyed()) {
+    mixerWindow.close();
+  }
+});
+
+ipcMain.handle('reset-mixer-bounds', () => {
+  isMixerBoundsReset = true;
+  lastMixerBounds = null;
+  if (mixerWindow && !mixerWindow.isDestroyed()) {
+    mixerWindow.close();
+  }
 });

@@ -292,7 +292,7 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
   const [, force] = useState(0);
   const applyPreset = (name) => { onBeforeChange && onBeforeChange(); DAW.applyEQPreset(name); force((n) => n + 1); };
   return (
-    <div style={{ width: 392, flex: "0 0 392px", display: "flex", flexDirection: "column", padding: "12px 14px", gap: 11,
+    <div style={{ width: 400, flex: "0 0 400px", display: "flex", flexDirection: "column", padding: "12px 14px", gap: 11,
       background: "linear-gradient(180deg,rgba(232,176,75,.06),transparent 40%)", borderLeft: "1px solid var(--line-strong)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: "var(--amber)" }}>MASTER</span>
@@ -353,7 +353,7 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
 function MixerWindow({ onClose, onBeforeChange }) {
   useTick();
   const channelW = 92;
-  const masterW = 392;
+  const masterW = 400;
   const bodyW = DAW.tracks.length * channelW + masterW;
   const windowW = Math.min(window.innerWidth - 56, bodyW + 2);
   const [pos, setPos] = useState({ x: Math.max(28, window.innerWidth - windowW - 52), y: 96 });

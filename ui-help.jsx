@@ -241,7 +241,7 @@ function HelpDialog({ onClose }) {
             <div style={{ fontWeight: 700, fontSize: 15 }}>
               {lang === "ko" ? "FocusDAW Studio 사용자 메뉴얼" : "FocusDAW Studio User Manual"}
             </div>
-            <div className="mono" style={{ fontSize: 10, border: "1px solid var(--line)", padding: "1px 6px", borderRadius: 4, color: "var(--dim)" }}>v0.17.1</div>
+            <div className="mono" style={{ fontSize: 10, border: "1px solid var(--line)", padding: "1px 6px", borderRadius: 4, color: "var(--dim)" }}>v1.1.8</div>
           </div>
           
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -855,21 +855,29 @@ function HelpDialog({ onClose }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">8. 설정과 테마</h2>
-                  <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 색상 테마를 변경할 수 있습니다. 선택한 테마는 로컬 저장소에 저장되어 다음 실행 때도 유지됩니다.</p>
+                  <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 색상 테마를 변경하거나 분리된 믹서 창의 환경 설정을 관리할 수 있습니다.</p>
+                  <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
+                    <li style={{ marginBottom: 6 }}><strong>Color Theme (색상 테마)</strong>: Warm Analog, Classical Ivory, Modern Blue, Forest Green 중 하나를 선택하면 앱 전체와 믹서 콘솔의 외관 색상이 즉시 연동되어 바뀝니다.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Mixer Console Window (믹서 위치 및 크기 초기화)</strong>: 믹서의 위치를 드래그하여 화면 구석으로 치워두었거나 크기를 크게 늘렸던 정보를 초기 상태로 되돌리고 싶다면 <strong>Reset Position</strong> 버튼을 누르십시오. 믹서 창의 좌표와 크기 기억 값이 디폴트 상태로 깨끗이 지워져 다음 오픈 시 다시 화면 중앙에 나타나게 됩니다.</li>
+                  </ul>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/06-settings-themes.png" alt="색상 테마 선택 화면" className="manual-img" />
-                    <div className="manual-figcaption">실제 앱에서 연 Settings 창입니다. Warm Analog, Classical Ivory, Modern Blue, Forest Green 테마를 선택할 수 있습니다.</div>
+                    <img src="manual/live-screens/06-settings-themes.png" alt="색상 테마 및 설정 화면" className="manual-img" />
+                    <div className="manual-figcaption">실제 앱에서 연 Settings 창입니다. 4가지 색상 테마 및 믹서 리셋 항목이 표시됩니다.</div>
                   </div>
                 </>
               ) : (
                 <>
                   <h2 className="manual-h2">8. Settings & Themes</h2>
-                  <p className="manual-p">Click <strong>Settings</strong> in the menu bar to change color themes. The selected theme is stored in local storage and is applied automatically on relaunch.</p>
+                  <p className="manual-p">Click <strong>Settings</strong> in the menu bar to change color themes or manage settings for the detached Mixer window.</p>
+                  <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
+                    <li style={{ marginBottom: 6 }}><strong>Color Theme</strong>: Choose between Warm Analog, Classical Ivory, Modern Blue, and Forest Green. The visual styles of the main window and Mixer console update instantly.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Mixer Console Window</strong>: If you need to restore the Mixer window size and screen coordinates to their default settings, click the <strong>Reset Position</strong> button. The cached window bounds will be cleared, causing the Mixer window to reappear in the center of the screen on the next open.</li>
+                  </ul>
 
                   <div className="manual-figure">
                     <img src="manual/live-screens/06-settings-themes.png" alt="Settings Dialog" className="manual-img" />
-                    <div className="manual-figcaption">Settings window. Switch between Warm Analog, Classical Ivory, Modern Blue, and Forest Green themes.</div>
+                    <div className="manual-figcaption">Settings window. Switch between color themes and reset the Mixer window bounds.</div>
                   </div>
                 </>
               )}
@@ -883,6 +891,7 @@ function HelpDialog({ onClose }) {
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">F3</kbd></th><td className="manual-td">믹서 콘솔(Mixer) 열기 / 닫기</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">S</kbd></th><td className="manual-td">프로젝트 저장</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">O</kbd></th><td className="manual-td">프로젝트 열기</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">실행 취소</td></tr>
@@ -900,6 +909,7 @@ function HelpDialog({ onClose }) {
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / Pause</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">F3</kbd></th><td className="manual-td">Open / Close Mixer Console</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">S</kbd></th><td className="manual-td">Save Project</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">O</kbd></th><td className="manual-td">Open Project</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">Undo</td></tr>
@@ -961,8 +971,8 @@ function HelpDialog({ onClose }) {
 
             <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 20 }}>
               {lang === "ko"
-                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v0.17.1"
-                : "FocusDAW Studio User Manual · Written for version v0.17.1"}
+                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v1.1.8"
+                : "FocusDAW Studio User Manual · Written for version v1.1.8"}
             </div>
           </div>
         </div>
@@ -985,7 +995,7 @@ function AboutDialog({ onClose }) {
 
         {/* App Info */}
         <div style={{ fontSize: 20, fontWeight: 700, color: "var(--cream)", marginBottom: 4 }}>FocusDAW Studio</div>
-        <div className="mono" style={{ fontSize: 12, color: "var(--amber)", marginBottom: 24 }}>v0.17.1</div>
+        <div className="mono" style={{ fontSize: 12, color: "var(--amber)", marginBottom: 24 }}>v1.1.8</div>
 
         <div style={{ borderTop: "1px solid var(--line)", padding: "16px 0", textAlign: "left", fontSize: 12.5, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
