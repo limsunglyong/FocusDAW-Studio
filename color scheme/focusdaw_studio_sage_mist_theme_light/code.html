@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FocusDAW Studio | Sage Mist Edition</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#b1cdc1",
+                        "secondary-container": "#334c43",
+                        "surface-container-lowest": "#f2f5f3", /* Sage Mist Light Base */
+                        "inverse-primary": "#236a56",
+                        "primary-container": "#7abea7",
+                        "on-tertiary-fixed": "#390b09",
+                        "on-primary-fixed": "#002118",
+                        "surface-container-high": "#e1e8e4",
+                        "surface-dim": "#d9e2dd",
+                        "surface-tint": "#8fd4bc",
+                        "primary": "#236a56", /* Forest Green Accent */
+                        "error": "#ba1a1a",
+                        "error-container": "#ffdad6",
+                        "primary-fixed-dim": "#8fd4bc",
+                        "surface-container-highest": "#ced9d2",
+                        "tertiary-fixed-dim": "#ffb4ab",
+                        "surface-container-low": "#edf2ef",
+                        "outline-variant": "#bfc9c3",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#e7ece9",
+                        "on-primary-container": "#002118",
+                        "inverse-on-surface": "#f2f5f3",
+                        "on-tertiary": "#ffffff",
+                        "on-background": "#191c1a",
+                        "inverse-surface": "#2d312f",
+                        "background": "#f7f9f8",
+                        "on-error-container": "#410002",
+                        "on-surface": "#191c1a",
+                        "on-secondary-container": "#002118",
+                        "tertiary-fixed": "#ffdad6",
+                        "on-surface-variant": "#3f4945",
+                        "on-secondary-fixed": "#062019",
+                        "outline": "#6f7974",
+                        "tertiary": "#904a43",
+                        "on-error": "#ffffff",
+                        "secondary-fixed-dim": "#b1cdc1",
+                        "surface": "#f7f9f8",
+                        "surface-variant": "#dae5df",
+                        "tertiary-container": "#ffdad6",
+                        "on-tertiary-fixed-variant": "#703530",
+                        "on-secondary": "#1c352d",
+                        "surface-bright": "#f7f9f8",
+                        "on-primary-fixed-variant": "#00513f",
+                        "secondary-fixed": "#cde9dd",
+                        "primary-fixed": "#abf1d7",
+                        "on-tertiary-container": "#3b0906",
+                        "on-secondary-fixed-variant": "#334c43",
+                        "waveform-emerald": "#064e3b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sidebar-width": "280px",
+                        "footer-height": "120px",
+                        "track-sm": "48px",
+                        "track-md": "80px",
+                        "track-lg": "120px",
+                        "gutter": "8px",
+                        "margin": "16px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Hanken Grotesk"],
+                        "mono-label": ["JetBrains Mono"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "mono-sm": ["JetBrains Mono"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "display-time": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "mono-label": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "mono-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "400"}],
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "display-time": ["48px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #f7f9f8;
+            color: #191c1a;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+        .waveform-path {
+            fill: none;
+            stroke: #064e3b;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #e7ece9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #bfc9c3;
+            border-radius: 3px;
+        }
+        .track-glow {
+            filter: drop-shadow(0 0 2px rgba(6, 78, 59, 0.2));
+        }
+    </style>
+</head>
+<body class="font-body-md">
+<!-- TopAppBar -->
+<header class="bg-surface-container dark:bg-surface-container docked full-width top-0 h-[48px] border-b border-outline-variant dark:border-outline-muted flex justify-between items-center w-full px-margin z-50">
+<div class="flex items-center gap-8">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim">FocusDAW Studio</span>
+<nav class="hidden md:flex gap-4">
+<button class="font-mono-label text-mono-label text-primary dark:text-primary-fixed-dim border-b-2 border-primary transition-colors duration-150 ease-in-out px-2">File</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-variant/50 transition-colors duration-150 ease-in-out px-2">Edit</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-variant/50 transition-colors duration-150 ease-in-out px-2">Track</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-variant/50 transition-colors duration-150 ease-in-out px-2">Clip</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-variant/50 transition-colors duration-150 ease-in-out px-2">Effect</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-variant/50 transition-colors duration-150 ease-in-out px-2">View</button>
+</nav>
+</div>
+<!-- Transport Quick View (Center Focus) -->
+<div class="flex items-center bg-surface-container-low px-4 py-1 rounded-full border border-outline-variant gap-6">
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-primary cursor-pointer hover:scale-110 transition-transform">play_arrow</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:scale-110 transition-transform">stop</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:scale-110 transition-transform">pause</span>
+</div>
+<div class="font-mono-label text-primary font-bold tracking-widest">
+                00:01:24:12
+            </div>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-variant/50 p-1 rounded">settings</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-variant/50 p-1 rounded">help</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-variant/50 p-1 rounded">account_circle</span>
+</div>
+</header>
+<div class="flex h-[calc(100vh-48px-120px)] mt-[48px]">
+<!-- SideNavBar -->
+<aside class="bg-surface-container-low dark:bg-surface-container-lowest fixed left-0 top-[48px] w-sidebar-width h-[calc(100vh-168px)] border-r border-outline-variant dark:border-outline-muted flex flex-col py-gutter z-40">
+<div class="px-margin mb-6">
+<h2 class="font-headline-md text-headline-md text-primary">Project Alpha</h2>
+<p class="font-mono-label text-mono-label text-on-surface-variant">44.1kHz / 24-bit</p>
+</div>
+<div class="flex-1 space-y-1">
+<div class="bg-primary-container text-on-primary-container dark:bg-primary-fixed-variant dark:text-on-primary-fixed border-l-2 border-primary flex items-center gap-3 py-3 px-margin cursor-pointer scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">folder_open</span>
+<span class="font-mono-label text-mono-label">Browser</span>
+</div>
+<div class="text-on-surface-variant dark:text-on-surface-variant flex items-center gap-3 py-3 px-margin cursor-pointer hover:bg-surface-container-highest dark:hover:bg-surface-container-high transition-transform">
+<span class="material-symbols-outlined">format_list_bulleted</span>
+<span class="font-mono-label text-mono-label">Tracks</span>
+</div>
+<div class="text-on-surface-variant dark:text-on-surface-variant flex items-center gap-3 py-3 px-margin cursor-pointer hover:bg-surface-container-highest dark:hover:bg-surface-container-high transition-transform">
+<span class="material-symbols-outlined">equalizer</span>
+<span class="font-mono-label text-mono-label">Mixer</span>
+</div>
+<div class="text-on-surface-variant dark:text-on-surface-variant flex items-center gap-3 py-3 px-margin cursor-pointer hover:bg-surface-container-highest dark:hover:bg-surface-container-high transition-transform">
+<span class="material-symbols-outlined">alt_route</span>
+<span class="font-mono-label text-mono-label">Routing</span>
+</div>
+<div class="text-on-surface-variant dark:text-on-surface-variant flex items-center gap-3 py-3 px-margin cursor-pointer hover:bg-surface-container-highest dark:hover:bg-surface-container-high transition-transform">
+<span class="material-symbols-outlined">history</span>
+<span class="font-mono-label text-mono-label">History</span>
+</div>
+</div>
+<div class="px-margin mt-auto">
+<button class="w-full bg-primary text-on-primary font-mono-label py-3 rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined">add</span>
+                    Add Track
+                </button>
+</div>
+</aside>
+<!-- Main Timeline Canvas -->
+<main class="ml-sidebar-width flex-1 bg-background relative overflow-hidden flex flex-col">
+<!-- Timeline Toolbar -->
+<div class="h-10 bg-surface-container-low border-b border-outline-variant flex items-center px-4 gap-6">
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">grid_on</span>
+<span class="font-mono-sm text-mono-sm uppercase">Grid: 1/16</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">near_me</span>
+<span class="font-mono-sm text-mono-sm uppercase">Tool: Select</span>
+</div>
+<div class="flex items-center gap-2 text-primary font-bold">
+<span class="material-symbols-outlined text-[18px]">speed</span>
+<span class="font-mono-sm text-mono-sm">BPM: 124.00</span>
+</div>
+</div>
+<!-- Scrollable Track Area -->
+<div class="flex-1 overflow-y-auto custom-scrollbar">
+<!-- Track 1: Drums -->
+<div class="flex h-track-md border-b border-outline-variant hover:bg-surface-container-low/50 group transition-colors">
+<div class="w-64 bg-surface-container-high/40 border-r border-outline-variant p-3 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<span class="font-mono-label font-bold text-on-surface">01 DRUMS</span>
+<div class="flex gap-1">
+<button class="w-5 h-5 rounded-sm bg-surface-variant text-[10px] flex items-center justify-center font-bold text-on-surface-variant hover:bg-primary/20">M</button>
+<button class="w-5 h-5 rounded-sm bg-tertiary-container/50 text-[10px] flex items-center justify-center font-bold text-on-tertiary-container hover:bg-tertiary/20">S</button>
+</div>
+</div>
+<div class="w-full h-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-3/4"></div>
+</div>
+</div>
+<div class="flex-1 relative bg-[url('https://www.transparenttextures.com/patterns/grid.png')] bg-repeat opacity-20">
+<!-- Waveform Region -->
+<div class="absolute inset-y-2 left-20 w-[40%] bg-primary-container/30 border border-primary/40 rounded-sm track-glow">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 100 40">
+<path class="waveform-path" d="M0,20 Q5,10 10,20 T20,20 T30,20 T40,10 T50,30 T60,20 T70,10 T80,25 T90,20 T100,20"></path>
+</svg>
+</div>
+</div>
+</div>
+<!-- Track 2: Bass -->
+<div class="flex h-track-md border-b border-outline-variant hover:bg-surface-container-low/50 group transition-colors">
+<div class="w-64 bg-surface-container-high/40 border-r border-outline-variant p-3 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<span class="font-mono-label font-bold text-on-surface">02 BASS</span>
+<div class="flex gap-1">
+<button class="w-5 h-5 rounded-sm bg-surface-variant text-[10px] flex items-center justify-center font-bold text-on-surface-variant">M</button>
+<button class="w-5 h-5 rounded-sm bg-surface-variant text-[10px] flex items-center justify-center font-bold text-on-surface-variant">S</button>
+</div>
+</div>
+<div class="w-full h-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-1/2"></div>
+</div>
+</div>
+<div class="flex-1 relative">
+<div class="absolute inset-y-2 left-[45%] w-[35%] bg-primary-container/20 border border-primary/30 rounded-sm">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 100 40">
+<path class="waveform-path" d="M0,20 L5,25 L10,15 L15,22 L20,18 L25,30 L30,10 L35,20 L40,20 L50,25 L60,15 L70,22 L80,18 L90,25 L100,20"></path>
+</svg>
+</div>
+</div>
+</div>
+<!-- Track 3: Lead Synth -->
+<div class="flex h-track-md border-b border-outline-variant hover:bg-surface-container-low/50 group transition-colors">
+<div class="w-64 bg-surface-container-high/40 border-r border-outline-variant p-3 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<span class="font-mono-label font-bold text-on-surface">03 LEAD</span>
+<div class="flex gap-1">
+<button class="w-5 h-5 rounded-sm bg-surface-variant text-[10px] flex items-center justify-center font-bold text-on-surface-variant">M</button>
+<button class="w-5 h-5 rounded-sm bg-surface-variant text-[10px] flex items-center justify-center font-bold text-on-surface-variant">S</button>
+</div>
+</div>
+<div class="w-full h-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-2/3"></div>
+</div>
+</div>
+<div class="flex-1 relative">
+<div class="absolute inset-y-2 left-[5%] w-[90%] bg-primary-container/10 border border-primary/20 rounded-sm">
+<svg class="w-full h-full opacity-60" preserveaspectratio="none" viewbox="0 0 200 40">
+<path class="waveform-path" d="M0,20 C10,5 20,35 30,20 S50,5 60,20 S80,35 90,20 S110,5 120,20 S140,35 150,20 S170,5 180,20 S190,35 200,20"></path>
+</svg>
+</div>
+</div>
+</div>
+<!-- Track 4: Atmosphere -->
+<div class="flex h-track-md border-b border-outline-variant hover:bg-surface-container-low/50 group transition-colors">
+<div class="w-64 bg-surface-container-high/40 border-r border-outline-variant p-3 flex flex-col justify-between">
+<div class="flex justify-between items-start text-primary">
+<span class="font-mono-label font-bold">04 PAD</span>
+<div class="flex gap-1">
+<button class="w-5 h-5 rounded-sm bg-surface-variant text-[10px] flex items-center justify-center font-bold">M</button>
+<button class="w-5 h-5 rounded-sm bg-surface-variant text-[10px] flex items-center justify-center font-bold">S</button>
+</div>
+</div>
+<div class="w-full h-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-1/4"></div>
+</div>
+</div>
+<div class="flex-1 relative"></div>
+</div>
+<!-- Empty Tracks to fill -->
+<div class="flex h-track-md border-b border-outline-variant/30 opacity-40">
+<div class="w-64 bg-surface-container-low/20 border-r border-outline-variant/30"></div>
+<div class="flex-1"></div>
+</div>
+</div>
+<!-- Playhead -->
+<div class="absolute top-0 bottom-0 left-[35%] w-px bg-primary z-10">
+<div class="w-3 h-3 bg-primary rounded-full absolute -top-1.5 -left-1 shadow-lg"></div>
+</div>
+</main>
+</div>
+<!-- Master Footer -->
+<footer class="fixed bottom-0 w-full h-footer-height bg-surface-container-lowest dark:bg-surface-lowest border-t border-outline-variant dark:border-outline-muted flex flex-row justify-between items-center px-margin z-50">
+<!-- Master Visualizer Cluster -->
+<div class="flex items-center gap-8 h-full py-4">
+<div class="flex flex-col justify-center gap-1 h-full">
+<span class="font-mono-sm text-mono-sm text-on-surface-variant uppercase">Master Level</span>
+<div class="flex gap-[2px] items-end h-16">
+<!-- Fake Spectrum Bars -->
+<div class="w-1.5 bg-primary/20 h-[30%]"></div>
+<div class="w-1.5 bg-primary/40 h-[60%]"></div>
+<div class="w-1.5 bg-primary/60 h-[85%]"></div>
+<div class="w-1.5 bg-primary h-[95%]"></div>
+<div class="w-1.5 bg-primary/80 h-[70%]"></div>
+<div class="w-1.5 bg-primary/50 h-[40%]"></div>
+<div class="w-1.5 bg-primary/20 h-[20%]"></div>
+<div class="w-1.5 bg-primary/40 h-[50%]"></div>
+<div class="w-1.5 bg-primary/60 h-[80%]"></div>
+<div class="w-1.5 bg-primary/40 h-[45%]"></div>
+</div>
+</div>
+<!-- Large Playback Timer -->
+<div class="flex flex-col items-start">
+<div class="font-display-time text-display-time text-primary tabular-nums">
+                    01:24<span class="text-on-surface-variant opacity-50">.128</span>
+</div>
+<div class="font-mono-sm text-mono-sm text-on-surface-variant tracking-[0.2em] uppercase">
+                    Bars: 042 . 02 . 001
+                </div>
+</div>
+</div>
+<!-- Master Transport Control -->
+<div class="flex items-center gap-4 bg-surface-container px-6 py-3 rounded-xl border border-outline-variant">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors text-[32px]">skip_previous</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors text-[32px]">fast_rewind</button>
+<button class="w-14 h-14 bg-primary text-on-primary rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
+<span class="material-symbols-outlined text-[40px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors text-[32px]">fast_forward</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors text-[32px]">skip_next</button>
+<div class="h-8 w-px bg-outline-variant mx-2"></div>
+<button class="material-symbols-outlined text-tertiary hover:scale-110 transition-all text-[32px]" style="font-variation-settings: 'FILL' 1;">fiber_manual_record</button>
+</div>
+<!-- Right System Info -->
+<div class="flex flex-col items-end gap-1">
+<span class="font-mono-sm text-mono-sm text-on-surface-variant">FocusDAW v2.4.0 Professional Edition</span>
+<div class="flex gap-4 font-mono-sm text-mono-sm text-primary dark:text-waveform-glow">
+<span class="hover:text-primary cursor-default transition-all duration-300">Latency: 2.4ms</span>
+<span class="hover:text-primary cursor-default transition-all duration-300">Disk: 12%</span>
+<span class="hover:text-primary cursor-default transition-all duration-300">CPU: 18%</span>
+</div>
+<div class="flex items-center gap-2 mt-1">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant">Audio Engine Online</span>
+</div>
+</div>
+</footer>
+<!-- Bento-style Floating Tools (Right Side) -->
+<div class="fixed right-6 top-[70px] w-64 flex flex-col gap-4 pointer-events-none">
+<div class="pointer-events-auto bg-surface-container-high/90 backdrop-blur-md p-4 rounded-xl border border-outline-variant shadow-xl">
+<div class="flex justify-between items-center mb-3">
+<span class="font-mono-label font-bold text-on-surface">Channel EQ</span>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">drag_handle</span>
+</div>
+<div class="h-24 bg-surface-container-lowest rounded border border-outline-variant relative overflow-hidden">
+<!-- EQ Visualization Placeholder -->
+<svg class="w-full h-full" viewbox="0 0 100 40">
+<path d="M0,30 Q25,30 40,15 T60,20 T100,25" fill="none" stroke="#236a56" stroke-width="2"></path>
+<circle cx="40" cy="15" fill="#236a56" r="3"></circle>
+</svg>
+</div>
+<div class="grid grid-cols-3 gap-2 mt-3">
+<div class="flex flex-col items-center">
+<div class="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin-slow mb-1"></div>
+<span class="font-mono-sm text-[8px] text-on-surface-variant uppercase">Gain</span>
+</div>
+<div class="flex flex-col items-center">
+<div class="w-8 h-8 rounded-full border-2 border-outline-variant mb-1"></div>
+<span class="font-mono-sm text-[8px] text-on-surface-variant uppercase">Freq</span>
+</div>
+<div class="flex flex-col items-center">
+<div class="w-8 h-8 rounded-full border-2 border-outline-variant mb-1"></div>
+<span class="font-mono-sm text-[8px] text-on-surface-variant uppercase">Q</span>
+</div>
+</div>
+</div>
+<div class="pointer-events-auto bg-surface-container-high/90 backdrop-blur-md p-4 rounded-xl border border-outline-variant shadow-xl">
+<div class="flex justify-between items-center mb-3">
+<span class="font-mono-label font-bold text-on-surface">Signal Path</span>
+<span class="material-symbols-outlined text-[16px] text-primary">sensors</span>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant">Analog In 1/2</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-outline"></div>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant">Bus A (Reverb)</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-outline"></div>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant">Master Out</span>
+</div>
+</div>
+</div>
+</div>
+<script>
+        // Simple micro-interaction for playback
+        const playBtn = document.querySelector('.bg-primary.rounded-full');
+        let isPlaying = false;
+        
+        playBtn?.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            const icon = playBtn.querySelector('.material-symbols-outlined');
+            icon.textContent = isPlaying ? 'pause' : 'play_arrow';
+            
+            if (isPlaying) {
+                playBtn.classList.add('animate-pulse');
+            } else {
+                playBtn.classList.remove('animate-pulse');
+            }
+        });
+
+        // Dynamic playhead movement simulation
+        const playhead = document.querySelector('.absolute.top-0.bottom-0');
+        let position = 35;
+        setInterval(() => {
+            if (isPlaying) {
+                position += 0.05;
+                if (position > 100) position = 0;
+                playhead.style.left = position + '%';
+            }
+        }, 16);
+    </script>
+</body></html>

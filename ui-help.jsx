@@ -982,7 +982,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h2 className="manual-h2">8. 설정과 테마</h2>
                   <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 색상 테마를 변경하거나 분리된 믹서 창의 환경 설정을 관리할 수 있습니다.</p>
                   <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
-                    <li style={{ marginBottom: 6 }}><strong>Color Theme (색상 테마)</strong>: Warm Analog, Classical Ivory, Modern Blue, Forest Green 중 하나를 선택하면 앱 전체와 믹서 콘솔의 외관 색상이 즉시 연동되어 바뀝니다.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Color Theme (색상 테마)</strong>: 다양한 색상 테마 중 하나를 선택하면 앱 전체와 믹서 콘솔의 외관 색상이 즉시 연동되어 바뀝니다.</li>
                     <li style={{ marginBottom: 6 }}><strong>Mixer Console Window (믹서 위치 및 크기 초기화)</strong>: 믹서의 위치를 드래그하여 화면 구석으로 치워두었거나 크기를 크게 늘렸던 정보를 초기 상태로 되돌리고 싶다면 <strong>Reset Position</strong> 버튼을 누르십시오. 믹서 창의 좌표와 크기 기억 값이 디폴트 상태로 깨끗이 지워져 다음 오픈 시 다시 화면 중앙에 나타나게 됩니다.</li>
                   </ul>
 
@@ -996,7 +996,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h2 className="manual-h2">8. Settings & Themes</h2>
                   <p className="manual-p">Click <strong>Settings</strong> in the menu bar to change color themes or manage settings for the detached Mixer window.</p>
                   <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
-                    <li style={{ marginBottom: 6 }}><strong>Color Theme</strong>: Choose between Warm Analog, Classical Ivory, Modern Blue, and Forest Green. The visual styles of the main window and Mixer console update instantly.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Color Theme</strong>: Choose from multiple color themes. The visual styles of the main window and Mixer console update instantly.</li>
                     <li style={{ marginBottom: 6 }}><strong>Mixer Console Window</strong>: If you need to restore the Mixer window size and screen coordinates to their default settings, click the <strong>Reset Position</strong> button. The cached window bounds will be cleared, causing the Mixer window to reappear in the center of the screen on the next open.</li>
                   </ul>
 

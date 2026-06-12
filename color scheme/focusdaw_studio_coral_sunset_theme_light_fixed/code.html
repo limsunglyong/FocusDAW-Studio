@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=Hanken+Grotesk:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom Waveform Glow and Peak Meter Gradients */
+        .waveform-path {
+            filter: drop-shadow(0 0 2px rgba(78, 222, 163, 0.3));
+        }
+        .peak-meter-gradient {
+            background: linear-gradient(to top, #4edea3 0%, #11b981 80%, #6ffbbe 100%);
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #171f33;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3c4a42;
+            border-radius: 2px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4edea3;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container": "#171f33",
+                      "surface-bright": "#31394e",
+                      "on-error-container": "#ffdad6",
+                      "surface-container-highest": "#2d3449",
+                      "on-tertiary": "#003829",
+                      "on-tertiary-fixed-variant": "#0d503e",
+                      "surface-high": "#222a3d",
+                      "on-primary": "#003824",
+                      "surface-tint": "#4edea3",
+                      "surface-container-lowest": "#060d20",
+                      "tertiary": "#95d3ba",
+                      "on-background": "#dbe2fd",
+                      "on-tertiary-fixed": "#002117",
+                      "primary-fixed-dim": "#4edea3",
+                      "on-secondary": "#003824",
+                      "inverse-primary": "#006c4a",
+                      "tertiary-fixed": "#b1f0d6",
+                      "surface-lowest": "#060e20",
+                      "outline-variant": "#3c4a42",
+                      "waveform-glow": "rgba(78, 222, 163, 0.4)",
+                      "outline-muted": "#3c4a42",
+                      "background": "#0b1326",
+                      "surface-variant": "#2d3449",
+                      "on-error": "#690005",
+                      "secondary-fixed-dim": "#4edea3",
+                      "on-primary-fixed-variant": "#005236",
+                      "on-secondary-container": "#00311f",
+                      "on-tertiary-container": "#004231",
+                      "inverse-on-surface": "#283044",
+                      "primary-fixed": "#6ffbbe",
+                      "on-primary-container": "#00422b",
+                      "outline": "#86948a",
+                      "on-primary-fixed": "#002114",
+                      "outline-standard": "#86948a",
+                      "surface-container-low": "#131b2e",
+                      "on-surface": "#dbe2fd",
+                      "error-alert": "#ffb4ab",
+                      "surface-highest": "#2d3449",
+                      "tertiary-container": "#72af97",
+                      "error-container": "#93000a",
+                      "surface-default": "#0b1326",
+                      "tertiary-fixed-dim": "#95d3ba",
+                      "inverse-surface": "#dbe2fd",
+                      "surface-dim": "#0b1326",
+                      "primary": "#4edea3",
+                      "surface-container-high": "#222a3e",
+                      "surface": "#0b1326",
+                      "secondary-container": "#00a572",
+                      "on-surface-variant": "#bbcabf",
+                      "secondary-fixed": "#6ffbbe",
+                      "on-secondary-fixed": "#002113",
+                      "secondary": "#4edea3",
+                      "primary-container": "#11b981",
+                      "on-secondary-fixed-variant": "#005236",
+                      "error": "#ffb4ab"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "margin": "16px",
+                      "gutter": "8px",
+                      "track-sm": "48px",
+                      "footer-height": "120px",
+                      "sidebar-width": "280px",
+                      "track-md": "80px",
+                      "unit": "4px",
+                      "track-lg": "120px"
+              },
+              "fontFamily": {
+                      "mono-label": ["JetBrains Mono"],
+                      "mono-sm": ["JetBrains Mono"],
+                      "headline-lg": ["Hanken Grotesk"],
+                      "display-time": ["JetBrains Mono"],
+                      "headline-md": ["Hanken Grotesk"],
+                      "body-md": ["Hanken Grotesk"]
+              },
+              "fontSize": {
+                      "mono-label": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                      "mono-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "400"}],
+                      "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "display-time": ["48px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-surface-lowest text-on-surface font-body-md selection:bg-primary selection:text-on-primary overflow-hidden">
+<!-- TopAppBar -->
+<header class="fixed top-0 z-50 flex justify-between items-center w-full px-margin h-[48px] bg-surface-container border-b border-outline-variant transition-colors duration-150 ease-in-out">
+<div class="flex items-center gap-margin">
+<span class="font-headline-md text-headline-md font-bold text-primary">FocusDAW Studio</span>
+<nav class="hidden md:flex items-center h-[48px]">
+<button class="px-4 h-full flex items-center text-mono-label font-mono-label transition-colors duration-150 ease-in-out text-primary border-b-2 border-primary hover:bg-surface-variant/50">File</button>
+<button class="px-4 h-full flex items-center text-mono-label font-mono-label transition-colors duration-150 ease-in-out text-on-surface-variant hover:bg-surface-variant/50">Edit</button>
+<button class="px-4 h-full flex items-center text-mono-label font-mono-label transition-colors duration-150 ease-in-out text-on-surface-variant hover:bg-surface-variant/50">Track</button>
+<button class="px-4 h-full flex items-center text-mono-label font-mono-label transition-colors duration-150 ease-in-out text-on-surface-variant hover:bg-surface-variant/50">Clip</button>
+<button class="px-4 h-full flex items-center text-mono-label font-mono-label transition-colors duration-150 ease-in-out text-on-surface-variant hover:bg-surface-variant/50">Effect</button>
+<button class="px-4 h-full flex items-center text-mono-label font-mono-label transition-colors duration-150 ease-in-out text-on-surface-variant hover:bg-surface-variant/50">View</button>
+</nav>
+</div>
+<div class="flex items-center gap-gutter text-on-surface-variant">
+<button class="p-2 hover:bg-surface-variant/50 rounded transition-colors"><span class="material-symbols-outlined text-[20px]">settings</span></button>
+<button class="p-2 hover:bg-surface-variant/50 rounded transition-colors"><span class="material-symbols-outlined text-[20px]">help</span></button>
+<button class="p-2 hover:bg-surface-variant/50 rounded transition-colors"><span class="material-symbols-outlined text-[20px]">account_circle</span></button>
+</div>
+</header>
+<div class="flex pt-[48px] h-[calc(100vh-120px)]">
+<!-- SideNavBar -->
+<aside class="w-sidebar-width flex flex-col py-gutter bg-surface-container-low border-r border-outline-variant fixed left-0 top-[48px] h-[calc(100vh-168px)]">
+<div class="px-4 mb-6">
+<div class="flex items-center gap-3 mb-2">
+<img alt="User Profile" class="w-10 h-10 rounded-lg bg-surface-container-highest" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDTc102v-mmHolCG3ac3WjImfShIK636iw3UOS1XJCHKduVCbfvfNsW-8arWnFin2cr5Qj-9dvkV9uPaFIJN_Mdw14nNlfhrrc6FBKr_yZe0zIaxumdotJdzjVAlHGVAhlLDkS4rZX71Pm2Xtgu1xReKyFimM-U2wNAnSKOt8kxyDO8OnxRF_R8djMmHXR320Ugjs3pBjFbxhFJ6xuQR2ulvW8rkAGltdMxF3tgegrXV5mGgof93S8yaeATRMmON6Ky7GFFe5Vzlke0"/>
+<div>
+<h3 class="font-mono-label text-mono-label text-primary">Project Alpha</h3>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-widest">44.1kHz / 24-bit</p>
+</div>
+</div>
+<button class="w-full py-3 bg-primary text-on-primary font-mono-label rounded border border-primary/20 scale-95 active:scale-90 transition-transform flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                    Add Track
+                </button>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center px-4 py-3 gap-3 bg-primary/10 text-primary border-l-2 border-primary font-mono-label hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+                    Browser
+                </a>
+<a class="flex items-center px-4 py-3 gap-3 text-on-surface-variant font-mono-label hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">format_list_bulleted</span>
+                    Tracks
+                </a>
+<a class="flex items-center px-4 py-3 gap-3 text-on-surface-variant font-mono-label hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">equalizer</span>
+                    Mixer
+                </a>
+<a class="flex items-center px-4 py-3 gap-3 text-on-surface-variant font-mono-label hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">alt_route</span>
+                    Routing
+                </a>
+<a class="flex items-center px-4 py-3 gap-3 text-on-surface-variant font-mono-label hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">history</span>
+                    History
+                </a>
+</nav>
+</aside>
+<!-- Main Timeline Canvas -->
+<main class="ml-sidebar-width flex-1 bg-surface-lowest relative overflow-hidden">
+<!-- Timeline Grid Background -->
+<div class="absolute inset-0 pointer-events-none opacity-5" style="background-image: linear-gradient(to right, #86948a 1px, transparent 1px), linear-gradient(to bottom, #86948a 1px, transparent 1px); background-size: 80px 80px;"></div>
+<!-- Playhead -->
+<div class="absolute left-1/3 top-0 bottom-0 w-[1px] bg-secondary z-20 shadow-[0_0_8px_rgba(78,222,163,0.8)]">
+<div class="w-3 h-3 bg-secondary absolute -top-1.5 -left-1.5 rotate-45"></div>
+</div>
+<!-- Track Area -->
+<div class="flex flex-col h-full overflow-y-auto">
+<!-- Track 1: Vocals -->
+<div class="group flex border-b border-outline-muted hover:bg-surface-container-low transition-colors h-track-md">
+<div class="w-sidebar-width flex-shrink-0 bg-surface-container px-4 py-2 border-r border-outline-muted relative">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="flex justify-between items-start mb-2">
+<span class="text-mono-label font-mono-label text-primary">01 VOCAL MAIN</span>
+<div class="flex gap-1">
+<button class="w-6 h-6 flex items-center justify-center bg-surface-container-high hover:bg-primary transition-colors rounded-sm text-[10px] font-bold">S</button>
+<button class="w-6 h-6 flex items-center justify-center bg-surface-container-high hover:bg-error transition-colors rounded-sm text-[10px] font-bold">M</button>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">mic</span>
+<div class="h-1 flex-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="w-2/3 h-full bg-primary shadow-[0_0_4px_rgba(78,222,163,0.6)]"></div>
+</div>
+</div>
+</div>
+<div class="flex-1 relative flex items-center px-margin">
+<svg class="w-full h-12 text-primary opacity-60 waveform-path" preserveaspectratio="none" viewbox="0 0 1000 100">
+<path d="M0,50 Q20,10 40,50 T80,50 T120,50 T160,50 T200,10 T240,90 T280,50 T320,20 T360,50 T400,80 T440,50 T480,50 T520,30 T560,50 T600,70 T640,50 T680,10 T720,50 T760,50 T800,40 T840,50 T880,50 T920,90 T960,50 T1000,50" fill="none" stroke="currentColor" stroke-width="2"></path>
+</svg>
+</div>
+</div>
+<!-- Track 2: Synth Pad -->
+<div class="group flex border-b border-outline-muted hover:bg-surface-container-low transition-colors h-track-md">
+<div class="w-sidebar-width flex-shrink-0 bg-surface-container px-4 py-2 border-r border-outline-muted relative">
+<div class="flex justify-between items-start mb-2">
+<span class="text-mono-label font-mono-label text-on-surface">02 SYNTH PAD</span>
+<div class="flex gap-1">
+<button class="w-6 h-6 flex items-center justify-center bg-surface-container-high hover:bg-primary transition-colors rounded-sm text-[10px] font-bold">S</button>
+<button class="w-6 h-6 flex items-center justify-center bg-surface-container-high hover:bg-error transition-colors rounded-sm text-[10px] font-bold">M</button>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">piano</span>
+<div class="h-1 flex-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="w-1/3 h-full bg-secondary shadow-[0_0_4px_rgba(0,165,114,0.6)]"></div>
+</div>
+</div>
+</div>
+<div class="flex-1 relative flex items-center px-margin">
+<div class="w-3/4 h-12 bg-primary/10 border border-primary/30 rounded-sm relative overflow-hidden">
+<svg class="w-full h-full text-primary opacity-40 waveform-path" preserveaspectratio="none" viewbox="0 0 1000 100">
+<path d="M0,50 L10,50 L20,30 L30,70 L40,50 L50,50 L60,20 L70,80 L80,50 L90,50 L100,50 L110,40 L120,60 L130,50 L1000,50" fill="none" stroke="currentColor" stroke-width="1.5"></path>
+</svg>
+<span class="absolute top-1 left-2 text-mono-sm text-primary font-mono-sm">PAD_LAYER_01.wav</span>
+</div>
+</div>
+</div>
+<!-- Track 3: Drum Rack -->
+<div class="group flex border-b border-outline-muted hover:bg-surface-container-low transition-colors h-track-md">
+<div class="w-sidebar-width flex-shrink-0 bg-surface-container px-4 py-2 border-r border-outline-muted relative">
+<div class="flex justify-between items-start mb-2">
+<span class="text-mono-label font-mono-label text-on-surface">03 DRUM RACK</span>
+<div class="flex gap-1">
+<button class="w-6 h-6 flex items-center justify-center bg-surface-container-high hover:bg-primary transition-colors rounded-sm text-[10px] font-bold">S</button>
+<button class="w-6 h-6 flex items-center justify-center bg-surface-container-high hover:bg-error transition-colors rounded-sm text-[10px] font-bold">M</button>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">grid_view</span>
+<div class="h-1 flex-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="w-5/6 h-full bg-tertiary shadow-[0_0_4px_rgba(149,211,186,0.6)]"></div>
+</div>
+</div>
+</div>
+<div class="flex-1 relative flex items-center gap-4 px-margin">
+<div class="w-24 h-10 bg-on-surface-variant/10 border border-outline-variant rounded-sm flex items-center justify-center">
+<span class="text-mono-sm font-mono-sm text-on-surface-variant">KICK_HIT</span>
+</div>
+<div class="w-24 h-10 bg-on-surface-variant/10 border border-outline-variant rounded-sm flex items-center justify-center">
+<span class="text-mono-sm font-mono-sm text-on-surface-variant">SNARE_HIT</span>
+</div>
+<div class="w-24 h-10 bg-on-surface-variant/10 border border-outline-variant rounded-sm flex items-center justify-center">
+<span class="text-mono-sm font-mono-sm text-on-surface-variant">KICK_HIT</span>
+</div>
+</div>
+</div>
+<!-- Atmospheric Canvas Visualization -->
+<div class="flex-1 min-h-[200px] p-margin grid grid-cols-4 gap-gutter">
+<div class="col-span-3 rounded-xl border border-outline-variant bg-surface-container-lowest/50 relative overflow-hidden p-margin flex items-center justify-center">
+<div class="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary via-transparent to-transparent"></div>
+<div class="z-10 text-center">
+<p class="text-mono-sm font-mono-sm text-on-surface-variant mb-2">FOCAL SPECTRUM ANALYSIS</p>
+<div class="flex items-end gap-1 h-32 w-64">
+<script>
+                                    for(let i=0; i<32; i++){
+                                        const h = Math.random() * 80 + 10;
+                                        document.write(`<div class="flex-1 bg-primary/60" style="height: ${h}%"></div>`);
+                                    }
+                                </script>
+</div>
+</div>
+</div>
+<div class="col-span-1 flex flex-col gap-gutter">
+<div class="flex-1 rounded-xl border border-outline-variant bg-surface-container flex flex-col items-center justify-center p-gutter">
+<span class="text-mono-sm font-mono-sm text-on-surface-variant mb-1">LUFS</span>
+<span class="text-headline-lg font-display-time text-primary">-14.2</span>
+</div>
+<div class="flex-1 rounded-xl border border-outline-variant bg-surface-container flex flex-col items-center justify-center p-gutter">
+<span class="text-mono-sm font-mono-sm text-on-surface-variant mb-1">PHASE</span>
+<div class="w-16 h-16 rounded-full border-2 border-outline-muted flex items-center justify-center">
+<div class="w-1 h-12 bg-secondary rounded-full animate-pulse rotate-45 shadow-[0_0_8px_rgba(0,165,114,0.4)]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Master Footer -->
+<footer class="fixed bottom-0 z-50 w-full h-footer-height bg-surface-container-lowest border-t border-outline-variant transition-all duration-300">
+<div class="h-full flex flex-row justify-between items-center px-margin">
+<!-- Global Transport -->
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[24px]">skip_previous</span>
+</button>
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-[0_0_15px_rgba(78,222,163,0.5)] active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-[32px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[24px]">stop</span>
+</button>
+</div>
+<div class="text-center">
+<div class="text-display-time font-display-time text-on-surface leading-none">00:42:15:08</div>
+<div class="flex justify-center gap-4 text-mono-sm font-mono-sm text-on-surface-variant uppercase mt-1">
+<span>128.00 BPM</span>
+<span>4 / 4 SIG</span>
+</div>
+</div>
+</div>
+<!-- Master Meters -->
+<div class="flex items-center gap-margin">
+<div class="flex flex-col items-center gap-1">
+<div class="flex gap-1 h-20 w-8">
+<div class="flex-1 bg-surface-variant relative overflow-hidden rounded-sm">
+<div class="absolute bottom-0 w-full h-[75%] peak-meter-gradient shadow-[0_0_8px_rgba(78,222,163,0.4)]"></div>
+</div>
+<div class="flex-1 bg-surface-variant relative overflow-hidden rounded-sm">
+<div class="absolute bottom-0 w-full h-[72%] peak-meter-gradient shadow-[0_0_8px_rgba(78,222,163,0.4)]"></div>
+</div>
+</div>
+<span class="text-mono-sm font-mono-sm text-on-surface-variant uppercase">Master</span>
+</div>
+<div class="w-[200px] h-20 bg-surface-container rounded border border-outline-variant p-2 flex flex-col justify-between">
+<div class="flex justify-between text-mono-sm font-mono-sm text-on-surface-variant">
+<span>CPU 12%</span>
+<span>DISK 4%</span>
+</div>
+<div class="h-1 bg-surface-variant rounded-full overflow-hidden">
+<div class="w-1/4 h-full bg-tertiary"></div>
+</div>
+<div class="text-mono-sm font-mono-sm text-on-surface-variant flex justify-between">
+<span>v2.4.0 Pro Edition</span>
+<span>Latency: 2.4ms</span>
+</div>
+</div>
+</div>
+</div>
+</footer>
+<!-- FAB for quick action -->
+<button class="fixed bottom-[140px] right-8 w-14 h-14 bg-secondary text-on-secondary-container rounded-full shadow-[0_8px_24px_rgba(0,165,114,0.4)] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform z-50">
+<span class="material-symbols-outlined text-[28px]">mic_external_on</span>
+</button>
+</body></html>

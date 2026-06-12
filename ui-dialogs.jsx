@@ -551,13 +551,61 @@ const THEMES = [
     accent: "#5de87a", text: "#d8f0d0", text2: "#9ec49a",
     green: "#aae060", red: "#e06058", blue: "#60b8c8",
   },
+  {
+    id: "arctic",
+    name: "Arctic Frost",
+    desc: "deep ice · cyan glow · crisp & precise",
+    bg: "#0b1326", bg2: "#131b2e", surface: "#171f33",
+    accent: "#22d3ee", text: "#dbe2fd", text2: "#bbcabf",
+    green: "#6ffbbe", red: "#ffb4ab", blue: "#95d3ba",
+  },
+  {
+    id: "lime",
+    name: "Neon Lime",
+    desc: "black lime · high energy · electronic",
+    bg: "#0c0e0a", bg2: "#151a11", surface: "#1a1e15",
+    accent: "#a3e635", text: "#e4ead8", text2: "#c2c9b4",
+    green: "#bef264", red: "#ffb4ab", blue: "#bacac3",
+  },
+  {
+    id: "slate",
+    name: "Minimal Slate",
+    desc: "near black · quiet chrome · minimal",
+    bg: "#020617", bg2: "#0f172a", surface: "#111827",
+    accent: "#e2e8f0", text: "#f8fafc", text2: "#94a3b8",
+    green: "#94a3b8", red: "#fca5a5", blue: "#cbd5e1",
+  },
+  {
+    id: "sage",
+    name: "Sage Mist",
+    desc: "soft green · airy light · calm",
+    bg: "#f7f9f8", bg2: "#eef4f1", surface: "#e7ece9",
+    accent: "#236a56", text: "#191c1a", text2: "#3f4945",
+    green: "#7abea7", red: "#ba1a1a", blue: "#4f7f93",
+  },
+  {
+    id: "solar",
+    name: "Solar Gold",
+    desc: "warm black · golden pulse · confident",
+    bg: "#1c1917", bg2: "#292524", surface: "#292524",
+    accent: "#fbbf24", text: "#fef3c7", text2: "#d6d3d1",
+    green: "#84cc16", red: "#f87171", blue: "#38bdf8",
+  },
+  {
+    id: "navy",
+    name: "Slate Navy",
+    desc: "charcoal navy · cyan edge · technical",
+    bg: "#0e1416", bg2: "#161d1e", surface: "#1a2122",
+    accent: "#44d8f1", text: "#dde3e5", text2: "#bbc9cc",
+    green: "#64d8a7", red: "#ffb4ab", blue: "#44d8f1",
+  },
 ];
 
 function ThemeSwatch({ theme, active, onClick }) {
   const t = theme;
   return (
     <div onClick={onClick} style={{
-      width: 190, borderRadius: 10, overflow: "hidden", cursor: "pointer",
+      flex: "1 1 180px", minWidth: 176, maxWidth: 208, borderRadius: 10, overflow: "hidden", cursor: "pointer",
       border: `2px solid ${active ? t.accent : "transparent"}`,
       boxShadow: active ? `0 0 0 3px ${t.accent}44` : "0 2px 10px rgba(0,0,0,.35)",
       transition: ".15s", background: t.bg,
@@ -597,16 +645,16 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 860, maxWidth: "95vw", boxShadow: "var(--shadow)" }}>
+      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 1020, maxWidth: "95vw", maxHeight: "92vh", boxShadow: "var(--shadow)", display: "flex", flexDirection: "column" }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Settings</div>
           <button className="iconbtn" onClick={onClose} style={{ fontSize: 18, lineHeight: 1 }}>×</button>
         </div>
         {/* body */}
-        <div style={{ padding: "20px 22px 24px" }}>
+        <div style={{ padding: "20px 22px 24px", overflowY: "auto" }}>
           <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 14 }}>Color Theme</div>
-          <div style={{ display: "flex", gap: 16, flexWrap: "nowrap", marginBottom: 26 }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 26 }}>
             {THEMES.map(t => (
               <ThemeSwatch key={t.id} theme={t} active={currentTheme === t.id} onClick={() => onThemeChange(t.id)} />
             ))}

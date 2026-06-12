@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FocusDAW Studio | Professional Audio Workstation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;family=Geist:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        
+        /* Custom scrollbar for DAW aesthetic */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #161d1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3c494c;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #44d8f1;
+        }
+
+        /* Waveform Animation */
+        @keyframes waveform-pulse {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(1.5); }
+        }
+        .animate-wave {
+            animation: waveform-pulse 2s ease-in-out infinite;
+        }
+
+        /* Tonal Layering */
+        .panel-border {
+            border: 1px solid rgba(134, 147, 150, 0.1);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#bbc9cc",
+                        "primary-container": "#00bcd4",
+                        "surface-container": "#1a2122",
+                        "surface-container-low": "#161d1e",
+                        "on-background": "#dde3e5",
+                        "primary-fixed": "#a1efff",
+                        "secondary": "#bdc2ff",
+                        "surface": "#0e1416",
+                        "error-container": "#93000a",
+                        "primary": "#44d8f1",
+                        "surface-dim": "#0e1416",
+                        "background": "#0e1416",
+                        "on-secondary-fixed": "#000767",
+                        "on-primary-fixed": "#001f25",
+                        "on-primary-fixed-variant": "#004e59",
+                        "inverse-surface": "#dde3e5",
+                        "surface-tint": "#44d8f1",
+                        "surface-container-lowest": "#090f11",
+                        "on-secondary-container": "#a8afff",
+                        "on-primary": "#00363e",
+                        "on-secondary": "#1b247f",
+                        "surface-variant": "#2f3637",
+                        "outline-variant": "#3c494c",
+                        "inverse-primary": "#006876",
+                        "surface-bright": "#343a3c",
+                        "primary-fixed-dim": "#44d8f1",
+                        "on-tertiary-fixed-variant": "#6d3a00",
+                        "on-tertiary-fixed": "#2e1500",
+                        "on-surface": "#dde3e5",
+                        "tertiary": "#ffb87b",
+                        "tertiary-container": "#f19640",
+                        "secondary-container": "#343d96",
+                        "error": "#ffb4ab",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-highest": "#2f3637",
+                        "on-error": "#690005",
+                        "on-tertiary": "#4c2700",
+                        "inverse-on-surface": "#2b3133",
+                        "tertiary-fixed": "#ffdcc2",
+                        "on-secondary-fixed-variant": "#343d96",
+                        "secondary-fixed-dim": "#bdc2ff",
+                        "outline": "#869396",
+                        "secondary-fixed": "#e0e0ff",
+                        "on-primary-container": "#004650",
+                        "surface-container-high": "#252b2c",
+                        "on-tertiary-container": "#633400",
+                        "tertiary-fixed-dim": "#ffb77b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "12px",
+                        "xs": "4px",
+                        "base": "4px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "xl": "48px",
+                        "sm": "8px",
+                        "sidebar-width": "260px",
+                        "footer-height": "32px"
+                    },
+                    "fontFamily": {
+                        "headline-sm": ["Geist"],
+                        "label-caps": ["JetBrains Mono"],
+                        "body-sm": ["JetBrains Mono"],
+                        "headline-md": ["Geist"],
+                        "body-md": ["JetBrains Mono"],
+                        "display-lg": ["Geist"],
+                        "mono-label": ["JetBrains Mono"],
+                        "mono-sm": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "headline-sm": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "label-caps": ["10px", {"lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "body-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "mono-label": ["11px", {"lineHeight": "14px", "fontWeight": "500"}],
+                        "mono-sm": ["10px", {"lineHeight": "12px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md selection:bg-primary-container selection:text-on-primary-container overflow-hidden h-screen w-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="bg-surface-container text-primary flex justify-between items-center w-full px-margin h-[48px] border-b border-outline-variant z-50">
+<div class="flex items-center gap-md">
+<span class="font-headline-md text-headline-md font-bold text-primary tracking-tight">FocusDAW Studio</span>
+<nav class="hidden md:flex gap-md items-center h-full">
+<button class="font-mono-label text-mono-label text-primary font-bold border-b-2 border-primary pb-1 hover:bg-surface-variant transition-colors duration-150 cursor-pointer active:opacity-80">File</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant font-medium hover:bg-surface-variant transition-colors duration-150 cursor-pointer active:opacity-80 px-2 rounded">Edit</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant font-medium hover:bg-surface-variant transition-colors duration-150 cursor-pointer active:opacity-80 px-2 rounded">Track</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant font-medium hover:bg-surface-variant transition-colors duration-150 cursor-pointer active:opacity-80 px-2 rounded">Mix</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant font-medium hover:bg-surface-variant transition-colors duration-150 cursor-pointer active:opacity-80 px-2 rounded">View</button>
+<button class="font-mono-label text-mono-label text-on-surface-variant font-medium hover:bg-surface-variant transition-colors duration-150 cursor-pointer active:opacity-80 px-2 rounded">Help</button>
+</nav>
+</div>
+<!-- Transport Controls (Contextual Addition) -->
+<div class="flex items-center gap-sm bg-surface-container-low rounded-lg p-1 border border-outline-variant">
+<button class="p-2 hover:bg-surface-variant rounded transition-all text-on-surface-variant active:scale-95">
+<span class="material-symbols-outlined text-[20px]" data-icon="skip_previous">skip_previous</span>
+</button>
+<button class="p-2 hover:bg-surface-variant rounded transition-all text-on-surface-variant active:scale-95">
+<span class="material-symbols-outlined text-[20px]" data-icon="stop">stop</span>
+</button>
+<button class="px-4 py-1.5 bg-surface-container-highest text-primary border border-primary/20 rounded transition-all active:scale-95 flex items-center gap-2">
+<span class="material-symbols-outlined fill text-[20px]" data-icon="play_arrow" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+<button class="p-2 hover:bg-surface-variant rounded transition-all text-error active:scale-95">
+<span class="material-symbols-outlined fill text-[20px]" data-icon="fiber_manual_record" style="font-variation-settings: 'FILL' 1;">fiber_manual_record</span>
+</button>
+</div>
+<div class="flex items-center gap-md">
+<div class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-on-surface-variant hover:bg-surface-variant p-2 rounded cursor-pointer" data-icon="settings">settings</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:bg-surface-variant p-2 rounded cursor-pointer" data-icon="help_outline">help_outline</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:bg-surface-variant p-2 rounded cursor-pointer" data-icon="account_circle">account_circle</span>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="bg-surface-container text-primary flex flex-col w-sidebar-width h-full border-r border-outline-variant">
+<!-- Project Header -->
+<div class="p-md flex items-center gap-md border-b border-outline-variant/30">
+<div class="w-10 h-10 rounded bg-secondary-container flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined" data-icon="album">album</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface truncate">Project Alpha</h3>
+<p class="font-mono-sm text-mono-sm text-outline">44.1kHz | 24-bit</p>
+</div>
+</div>
+<!-- Main Tabs -->
+<nav class="flex-1 py-margin px-gutter flex flex-col gap-unit">
+<div class="space-y-1">
+<button class="w-full flex items-center gap-md px-md py-2 bg-primary-container text-on-primary-container rounded-lg font-mono-label text-mono-label transition-all cursor-pointer active:scale-95">
+<span class="material-symbols-outlined" data-icon="view_list">view_list</span>
+                        Tracks
+                    </button>
+<button class="w-full flex items-center gap-md px-md py-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg font-mono-label text-mono-label transition-all cursor-pointer active:scale-95">
+<span class="material-symbols-outlined" data-icon="extension">extension</span>
+                        Plugins
+                    </button>
+<button class="w-full flex items-center gap-md px-md py-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg font-mono-label text-mono-label transition-all cursor-pointer active:scale-95">
+<span class="material-symbols-outlined" data-icon="waves">waves</span>
+                        Samples
+                    </button>
+<button class="w-full flex items-center gap-md px-md py-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg font-mono-label text-mono-label transition-all cursor-pointer active:scale-95">
+<span class="material-symbols-outlined" data-icon="settings_backup_restore">settings_backup_restore</span>
+                        Loops
+                    </button>
+<button class="w-full flex items-center gap-md px-md py-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg font-mono-label text-mono-label transition-all cursor-pointer active:scale-95">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+                        Browser
+                    </button>
+</div>
+<div class="mt-xl">
+<button class="w-full py-2 border border-dashed border-outline-variant rounded hover:bg-surface-container-highest text-outline transition-colors font-mono-label text-mono-label flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[16px]" data-icon="add">add</span>
+                        Add Track
+                    </button>
+</div>
+</nav>
+<!-- Footer Tabs -->
+<div class="p-gutter border-t border-outline-variant/30 flex flex-col gap-unit">
+<button class="flex items-center gap-md px-md py-1.5 text-on-surface-variant hover:text-primary font-mono-label text-mono-label transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="alt_route">alt_route</span>
+                    Routing
+                </button>
+<button class="flex items-center gap-md px-md py-1.5 text-on-surface-variant hover:text-primary font-mono-label text-mono-label transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="history">history</span>
+                    History
+                </button>
+</div>
+</aside>
+<!-- Main Timeline Canvas -->
+<main class="flex-1 bg-surface flex flex-col relative overflow-hidden">
+<!-- Timeline Ruler -->
+<div class="h-10 w-full bg-surface-container-low border-b border-outline-variant flex items-end">
+<div class="flex-1 flex px-4">
+<div class="flex-1 flex justify-between border-l border-outline-variant/40 h-4">
+<span class="text-[10px] font-mono-sm text-outline-variant px-1">1.1.1</span>
+<span class="text-[10px] font-mono-sm text-outline-variant px-1">1.2.1</span>
+<span class="text-[10px] font-mono-sm text-outline-variant px-1">1.3.1</span>
+<span class="text-[10px] font-mono-sm text-outline-variant px-1">1.4.1</span>
+<span class="text-[10px] font-mono-sm text-outline-variant px-1">2.1.1</span>
+<span class="text-[10px] font-mono-sm text-outline-variant px-1">2.2.1</span>
+</div>
+</div>
+</div>
+<!-- Tracks Area -->
+<div class="flex-1 overflow-y-auto">
+<!-- Track 1: Vocals -->
+<div class="h-28 border-b border-outline-variant/20 flex hover:bg-surface-container-lowest transition-colors group">
+<div class="w-sidebar-width shrink-0 bg-surface-container-low border-r border-outline-variant/20 p-2 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="font-mono-label text-[11px] text-primary">01 | Vocals Main</span>
+<span class="text-[10px] text-outline uppercase tracking-wider">Mono / Input 1</span>
+</div>
+<div class="flex gap-1">
+<button class="w-5 h-5 flex items-center justify-center rounded-sm bg-surface-variant text-[10px] font-bold text-on-surface-variant">M</button>
+<button class="w-5 h-5 flex items-center justify-center rounded-sm bg-secondary-container text-on-secondary-container text-[10px] font-bold">S</button>
+</div>
+</div>
+<div class="space-y-1">
+<div class="h-1 w-full bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[70%]"></div>
+</div>
+<div class="flex justify-between text-[9px] font-mono-sm text-outline">
+<span>-inf</span>
+<span>-12dB</span>
+<span>0</span>
+</div>
+</div>
+</div>
+<div class="flex-1 relative bg-surface overflow-hidden">
+<div class="absolute inset-y-2 left-10 right-20 bg-primary-container/10 border border-primary/20 rounded flex items-center">
+<div class="w-full h-full flex items-center justify-around px-4">
+<!-- Waveform bars -->
+<div class="flex items-center gap-[1px] h-3/4 w-full">
+<div class="w-0.5 bg-primary rounded-full h-[40%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[60%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[80%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[30%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[50%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[90%] animate-pulse"></div>
+<div class="w-0.5 bg-primary rounded-full h-[45%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[70%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[20%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[85%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[60%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[40%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[30%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[50%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[70%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[40%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[85%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[60%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[40%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[60%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[80%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[30%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[50%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[90%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[45%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[70%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[20%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[85%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[60%]"></div>
+<div class="w-0.5 bg-primary rounded-full h-[40%]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Track 2: Kick -->
+<div class="h-28 border-b border-outline-variant/20 flex hover:bg-surface-container-lowest transition-colors group">
+<div class="w-sidebar-width shrink-0 bg-surface-container-low border-r border-outline-variant/20 p-2 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="font-mono-label text-[11px] text-secondary">02 | Kick Drum</span>
+<span class="text-[10px] text-outline uppercase tracking-wider">Sampler / Omni</span>
+</div>
+<div class="flex gap-1">
+<button class="w-5 h-5 flex items-center justify-center rounded-sm bg-surface-variant text-[10px] font-bold text-on-surface-variant">M</button>
+<button class="w-5 h-5 flex items-center justify-center rounded-sm bg-surface-variant text-on-surface-variant text-[10px] font-bold">S</button>
+</div>
+</div>
+<div class="space-y-1">
+<div class="h-1 w-full bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-secondary w-[85%]"></div>
+</div>
+<div class="flex justify-between text-[9px] font-mono-sm text-outline">
+<span>-inf</span>
+<span>-6dB</span>
+<span>0</span>
+</div>
+</div>
+</div>
+<div class="flex-1 relative bg-surface overflow-hidden">
+<!-- Repetitive Kick Pattern -->
+<div class="flex h-full gap-4 px-4 items-center">
+<div class="h-20 w-32 bg-secondary-container/20 border border-secondary/30 rounded flex items-center justify-center">
+<div class="w-3/4 h-2/3 bg-secondary/10 flex items-center gap-[2px]">
+<div class="w-1 bg-secondary h-[90%] rounded-full"></div>
+<div class="w-1 bg-secondary h-[40%] rounded-full"></div>
+<div class="w-1 bg-secondary h-[20%] rounded-full"></div>
+</div>
+</div>
+<div class="h-20 w-32 bg-secondary-container/20 border border-secondary/30 rounded flex items-center justify-center">
+<div class="w-3/4 h-2/3 bg-secondary/10 flex items-center gap-[2px]">
+<div class="w-1 bg-secondary h-[90%] rounded-full"></div>
+<div class="w-1 bg-secondary h-[40%] rounded-full"></div>
+<div class="w-1 bg-secondary h-[20%] rounded-full"></div>
+</div>
+</div>
+<div class="h-20 w-32 bg-secondary-container/20 border border-secondary/30 rounded flex items-center justify-center">
+<div class="w-3/4 h-2/3 bg-secondary/10 flex items-center gap-[2px]">
+<div class="w-1 bg-secondary h-[90%] rounded-full"></div>
+<div class="w-1 bg-secondary h-[40%] rounded-full"></div>
+<div class="w-1 bg-secondary h-[20%] rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Track 3: Pads -->
+<div class="h-28 border-b border-outline-variant/20 flex hover:bg-surface-container-lowest transition-colors group">
+<div class="w-sidebar-width shrink-0 bg-surface-container-low border-r border-outline-variant/20 p-2 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="font-mono-label text-[11px] text-tertiary">03 | Synth Pads</span>
+<span class="text-[10px] text-outline uppercase tracking-wider">Serum / VST3</span>
+</div>
+<div class="flex gap-1">
+<button class="w-5 h-5 flex items-center justify-center rounded-sm bg-surface-variant text-[10px] font-bold text-on-surface-variant">M</button>
+<button class="w-5 h-5 flex items-center justify-center rounded-sm bg-surface-variant text-on-surface-variant text-[10px] font-bold">S</button>
+</div>
+</div>
+<div class="space-y-1">
+<div class="h-1 w-full bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-tertiary w-[45%]"></div>
+</div>
+<div class="flex justify-between text-[9px] font-mono-sm text-outline">
+<span>-inf</span>
+<span>-18dB</span>
+<span>0</span>
+</div>
+</div>
+</div>
+<div class="flex-1 relative bg-surface overflow-hidden">
+<div class="absolute inset-y-2 left-2 right-40 bg-tertiary-container/10 border border-tertiary/20 rounded p-1">
+<div class="w-full h-full flex items-center justify-center">
+<div class="w-full h-1/2 flex items-center gap-1">
+<!-- Long pad visualization -->
+<div class="h-[2px] bg-tertiary/40 w-full rounded-full"></div>
+<div class="absolute inset-0 flex items-center justify-around">
+<div class="w-1 h-3 bg-tertiary rounded-full shadow-[0_0_8px_rgba(255,184,123,0.5)]"></div>
+<div class="w-1 h-2 bg-tertiary rounded-full shadow-[0_0_8px_rgba(255,184,123,0.5)]"></div>
+<div class="w-1 h-4 bg-tertiary rounded-full shadow-[0_0_8px_rgba(255,184,123,0.5)]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Empty Tracks -->
+<div class="h-28 border-b border-outline-variant/10 flex opacity-30">
+<div class="w-sidebar-width shrink-0 bg-surface-container-low border-r border-outline-variant/20 p-2"></div>
+<div class="flex-1 bg-surface"></div>
+</div>
+<div class="h-28 border-b border-outline-variant/10 flex opacity-30">
+<div class="w-sidebar-width shrink-0 bg-surface-container-low border-r border-outline-variant/20 p-2"></div>
+<div class="flex-1 bg-surface"></div>
+</div>
+</div>
+<!-- Playhead -->
+<div class="absolute top-0 bottom-0 left-[20%] w-[1px] bg-primary-container z-40 shadow-[0_0_10px_rgba(0,188,212,0.8)] pointer-events-none">
+<div class="absolute -top-1 -left-1.5 w-3 h-3 bg-primary-container rounded-sm rotate-45"></div>
+</div>
+</main>
+<!-- Right Inspector (Optional but adds value) -->
+<aside class="w-64 bg-surface-container-low border-l border-outline-variant hidden xl:flex flex-col">
+<div class="p-md border-b border-outline-variant">
+<h4 class="font-label-caps text-label-caps text-outline uppercase">Inspector</h4>
+</div>
+<div class="p-md space-y-md">
+<div class="space-y-sm">
+<label class="font-mono-sm text-mono-sm text-on-surface-variant">Gain</label>
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full border-2 border-primary border-t-transparent flex items-center justify-center">
+<span class="text-[10px] font-mono-sm">+2.4</span>
+</div>
+<input class="flex-1 accent-primary bg-surface-variant h-1 rounded-full appearance-none" type="range"/>
+</div>
+</div>
+<div class="space-y-sm">
+<label class="font-mono-sm text-mono-sm text-on-surface-variant">Pan</label>
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full border-2 border-secondary border-b-transparent flex items-center justify-center rotate-45">
+<span class="text-[10px] font-mono-sm text-secondary">L12</span>
+</div>
+<input class="flex-1 accent-secondary bg-surface-variant h-1 rounded-full appearance-none" type="range"/>
+</div>
+</div>
+<div class="pt-md">
+<label class="font-mono-sm text-mono-sm text-on-surface-variant mb-2 block">Effects Chain</label>
+<ul class="space-y-1">
+<li class="bg-surface-container p-2 rounded border border-outline-variant/40 flex justify-between items-center group">
+<span class="text-[11px] font-mono-label text-on-surface">Pro-Q 3</span>
+<span class="material-symbols-outlined text-[14px] text-primary opacity-0 group-hover:opacity-100" data-icon="power_settings_new">power_settings_new</span>
+</li>
+<li class="bg-surface-container p-2 rounded border border-outline-variant/40 flex justify-between items-center group">
+<span class="text-[11px] font-mono-label text-on-surface">CLA-2A</span>
+<span class="material-symbols-outlined text-[14px] text-primary opacity-0 group-hover:opacity-100" data-icon="power_settings_new">power_settings_new</span>
+</li>
+<li class="p-2 border border-dashed border-outline-variant rounded flex justify-center hover:bg-surface-container transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[16px] text-outline" data-icon="add">add</span>
+</li>
+</ul>
+</div>
+</div>
+</aside>
+</div>
+<!-- Footer -->
+<footer class="bg-surface-container-high text-secondary flex justify-between items-center px-margin h-footer-height border-t border-outline-variant z-50">
+<div class="flex items-center gap-lg">
+<span class="font-mono-sm text-mono-sm text-outline-standard">FocusDAW Studio v2.4.0</span>
+<div class="flex items-center gap-md text-mono-sm text-outline-standard">
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_4px_#44d8f1]"></span> DSP: 12%</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary shadow-[0_0_4px_#bdc2ff]"></span> Disk: 2%</span>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<nav class="flex gap-md">
+<button class="font-mono-sm text-mono-sm text-outline-standard hover:text-primary transition-colors cursor-default">Mastering</button>
+<button class="font-mono-sm text-mono-sm text-outline-standard hover:text-primary transition-colors cursor-default">Visualizer</button>
+<button class="font-mono-sm text-mono-sm text-outline-standard hover:text-primary transition-colors cursor-default">System Status</button>
+</nav>
+<div class="flex items-center gap-2 bg-surface-container-highest px-3 py-0.5 rounded text-[10px] font-mono-sm text-on-surface">
+<span>120.00 BPM</span>
+<span class="text-outline">|</span>
+<span>4/4</span>
+</div>
+</div>
+</footer>
+<script>
+        // Simple transport interaction logic
+        const playBtn = document.querySelector('[data-icon="play_arrow"]').parentElement;
+        let isPlaying = false;
+        
+        playBtn.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            const icon = playBtn.querySelector('.material-symbols-outlined');
+            if (isPlaying) {
+                icon.innerText = 'pause';
+                playBtn.classList.add('bg-primary', 'text-on-primary');
+                playBtn.classList.remove('bg-surface-container-highest', 'text-primary');
+            } else {
+                icon.innerText = 'play_arrow';
+                playBtn.classList.remove('bg-primary', 'text-on-primary');
+                playBtn.classList.add('bg-surface-container-highest', 'text-primary');
+            }
+        });
+
+        // Hover feedback for tracks
+        const tracks = document.querySelectorAll('.h-28');
+        tracks.forEach(track => {
+            track.addEventListener('mouseenter', () => {
+                track.style.backgroundColor = 'rgba(47, 54, 55, 0.2)';
+            });
+            track.addEventListener('mouseleave', () => {
+                track.style.backgroundColor = '';
+            });
+        });
+    </script>
+</body></html>
