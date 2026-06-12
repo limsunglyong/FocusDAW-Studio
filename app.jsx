@@ -774,11 +774,18 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         isPlaying: DAW.isPlaying,
         playhead: DAW.getPlayhead(),
       });
-      if (window.electronAPI && window.electronAPI.resizeMixer) {
-        window.electronAPI.resizeMixer(DAW.tracks.length);
-      }
     }
   }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme]);
+
+  // Resize the Electron mixer window only when the channel COUNT changes.
+  // Previously this lived in the SYNC_STATE effect (keyed on theme/params too),
+  // so every color-scheme change triggered an extra setSize round-trip that
+  // compounded the Windows frameless getBounds() drift and grew the window.
+  useEffect(() => {
+    if (showMixer && window.electronAPI && window.electronAPI.resizeMixer) {
+      window.electronAPI.resizeMixer(DAW.tracks.length);
+    }
+  }, [showMixer, DAW.tracks.length]);
 
   const toggleMixer = useCallback(() => {
     if (window.electronAPI) {

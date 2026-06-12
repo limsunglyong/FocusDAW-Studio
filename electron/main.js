@@ -276,7 +276,16 @@ ipcMain.handle('open-help', async () => {
   });
 });
 
-let lastMixerBounds = null;
+// Persisted across mixer open/close within a session.
+// IMPORTANT: only ever set from user-driven 'resized'/'moved' events — never
+// from getBounds() in the close handler. On Windows frameless windows
+// getBounds() is not reciprocal with the size that was set (electron/electron
+// #27651, #51679: frameless+thickFrame HWND drifts vs getBounds), so saving
+// getBounds() on close and feeding it back as the next window size grows the
+// window a few px on every open/close cycle. 'resized'/'moved' fire only for
+// manual user changes, so programmatic setSize (resize-mixer) can't pollute it.
+let mixerWinSize = null;   // { width, height }
+let mixerWinPos = null;    // { x, y }
 let isMixerBoundsReset = false;
 
 function preferredMixerWidth(tracksCount) {
@@ -295,13 +304,13 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   }
 
   const isMac = process.platform === 'darwin';
-  const winWidth = lastMixerBounds ? lastMixerBounds.width : preferredMixerWidth(tracksCount);
-  const winHeight = lastMixerBounds ? lastMixerBounds.height : 490;
+  const winWidth = mixerWinSize ? mixerWinSize.width : preferredMixerWidth(tracksCount);
+  const winHeight = mixerWinSize ? mixerWinSize.height : 490;
 
   mixerWindow = new BrowserWindow({
     width: winWidth,
     height: winHeight,
-    ...(lastMixerBounds ? { x: lastMixerBounds.x, y: lastMixerBounds.y } : {}),
+    ...(mixerWinPos ? { x: mixerWinPos.x, y: mixerWinPos.y } : {}),
     minWidth: 500,
     minHeight: 350,
     parent: mainWindow || undefined,
@@ -318,16 +327,25 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
 
   mixerWindow.loadFile(path.join(__dirname, '..', 'mixer.html'));
 
+  // Capture size/position only from genuine user actions (see mixerWinSize note).
+  mixerWindow.on('resized', () => {
+    if (mixerWindow && !mixerWindow.isDestroyed()) {
+      const b = mixerWindow.getBounds();
+      mixerWinSize = { width: b.width, height: b.height };
+    }
+  });
+  mixerWindow.on('moved', () => {
+    if (mixerWindow && !mixerWindow.isDestroyed()) {
+      const b = mixerWindow.getBounds();
+      mixerWinPos = { x: b.x, y: b.y };
+    }
+  });
+
   mixerWindow.on('close', () => {
-    try {
-      if (isMixerBoundsReset) {
-        lastMixerBounds = null;
-        isMixerBoundsReset = false;
-      } else if (mixerWindow && !mixerWindow.isDestroyed()) {
-        lastMixerBounds = mixerWindow.getBounds();
-      }
-    } catch (e) {
-      console.error("Failed to save mixer bounds:", e);
+    if (isMixerBoundsReset) {
+      mixerWinSize = null;
+      mixerWinPos = null;
+      isMixerBoundsReset = false;
     }
   });
 
@@ -351,16 +369,20 @@ ipcMain.handle('close-mixer', async () => {
 
 ipcMain.handle('resize-mixer', async (_, tracksCount) => {
   if (!mixerWindow || mixerWindow.isDestroyed()) return;
-  const bounds = mixerWindow.getBounds();
+  const [curW, curH] = mixerWindow.getSize();
   const nextWidth = preferredMixerWidth(tracksCount);
-  if (nextWidth > bounds.width) {
-    mixerWindow.setSize(nextWidth, bounds.height);
+  // Grow only, and only when more channels need the room. This fires for track
+  // additions, never for theme syncs (see app.jsx), so curH isn't re-fed on
+  // every render and can't compound the frameless bounds drift.
+  if (nextWidth > curW) {
+    mixerWindow.setSize(nextWidth, curH);
   }
 });
 
 ipcMain.handle('reset-mixer-bounds', () => {
   isMixerBoundsReset = true;
-  lastMixerBounds = null;
+  mixerWinSize = null;
+  mixerWinPos = null;
   if (mixerWindow && !mixerWindow.isDestroyed()) {
     mixerWindow.close();
   }
