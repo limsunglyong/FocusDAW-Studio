@@ -27,6 +27,7 @@ const IC = {
   disc: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
   undo: "M4 9h11a5 5 0 0 1 0 10H8M7 6L4 9l3 3",
   redo: "M20 9H9a5 5 0 0 0 0 10h7M17 6l3 3-3 3",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.5-4.5",
   book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5v-14A2.5 2.5 0 0 1 6.5 3H20v14H6.5",
   info: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm0-14v4m0 4h.01",
 };
@@ -54,13 +55,14 @@ function useTick(active = true) {
 }
 
 /* ---------- rotary knob ---------- */
-function Knob({ value, min = 0, max = 1, onChange, size = 38, label, unit, format, color = "var(--amber)", curve = 1 }) {
+function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, label, unit, format, color = "var(--amber)", curve = 1 }) {
   const ref = useRef(null);
   const norm = (value - min) / (max - min);
   const ang = -135 + Math.pow(norm, 1 / curve) * 270;
   const drag = useRef(null);
   const onDown = (e) => {
     e.preventDefault();
+    if (onBeforeChange) onBeforeChange();
     drag.current = { y: e.clientY, v: value };
     const move = (ev) => {
       const dy = drag.current.y - ev.clientY;
@@ -71,7 +73,7 @@ function Knob({ value, min = 0, max = 1, onChange, size = 38, label, unit, forma
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
-  const onDbl = () => onChange((min + max) / 2);
+  const onDbl = () => { if (onBeforeChange) onBeforeChange(); onChange((min + max) / 2); };
   const r = size / 2;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, userSelect: "none" }}>
@@ -96,7 +98,7 @@ function Knob({ value, min = 0, max = 1, onChange, size = 38, label, unit, forma
 }
 
 /* ---------- vertical fader ---------- */
-function Fader({ value, onChange, height = 120, color = "var(--amber)", showVal, max = 1 }) {
+function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--amber)", showVal, max = 1 }) {
   const ref = useRef(null);
   const norm = Math.max(0, Math.min(1, value / max));
   const set = (clientY) => {
@@ -105,7 +107,9 @@ function Fader({ value, onChange, height = 120, color = "var(--amber)", showVal,
     onChange(Math.max(0, Math.min(max, n * max)));
   };
   const onDown = (e) => {
-    e.preventDefault(); set(e.clientY);
+    e.preventDefault();
+    if (onBeforeChange) onBeforeChange();
+    set(e.clientY);
     const move = (ev) => set(ev.clientY);
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
@@ -181,7 +185,7 @@ function fmtTime(s) {
 function fmtDb(g) { if (g <= 0.0001) return "-\u221e"; const db = 20 * Math.log10(g); return (db >= 0 ? "+" : "") + db.toFixed(1); }
 
 /* ---------- sleek horizontal slider ---------- */
-function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, width = 108, ticks = 5 }) {
+function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeChange, width = 108, ticks = 5 }) {
   const ref = useRef(null);
   const frac = Math.max(0, Math.min(1, (value - min) / (max - min)));
   const set = (clientX) => {
@@ -193,7 +197,9 @@ function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, width = 1
     onChange(Math.max(min, Math.min(max, v)));
   };
   const onDown = (e) => {
-    e.preventDefault(); set(e.clientX);
+    e.preventDefault();
+    if (onBeforeChange) onBeforeChange();
+    set(e.clientX);
     const move = (ev) => set(ev.clientX);
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);

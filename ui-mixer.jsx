@@ -1,7 +1,7 @@
 /* ================= FocusDAW — mixer window + output effect track ================= */
 
 /* ---------- channel strip ---------- */
-function ChannelStrip({ track, level, onParam }) {
+function ChannelStrip({ track, level, onParam, onBeforeChange }) {
   const p = track.params;
   const faderAreaRef = useRef(null);
   const [faderH, setFaderH] = useState(120);
@@ -18,18 +18,19 @@ function ChannelStrip({ track, level, onParam }) {
       <div style={{ fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 }}>{track.name}</div>
       {/* FX knobs */}
       <div style={{ display: "flex", gap: 4 }}>
-        <Knob value={p.reverb} size={28} color="var(--violet)" label="VRB" onChange={(v) => onParam("reverb", v)} />
-        <Knob value={p.echo} size={28} color="var(--blue)" label="ECHO" onChange={(v) => onParam("echo", v)} />
+        <Knob value={p.reverb} size={28} color="var(--violet)" label="VRB" onBeforeChange={onBeforeChange} onChange={(v) => onParam("reverb", v)} />
+        <Knob value={p.echo} size={28} color="var(--blue)" label="ECHO" onBeforeChange={onBeforeChange} onChange={(v) => onParam("echo", v)} />
       </div>
       <div style={{ display: "flex", gap: 5 }}>
-        <SoloBtn on={p.solo} size={22} onClick={() => onParam("solo", !p.solo)} />
-        <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} size={22} onClick={() => onParam("mute", !p.mute)} />
+        <SoloBtn on={p.solo} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("solo", !p.solo); }} />
+        <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("mute", !p.mute); }} />
       </div>
       <Knob value={p.pan} min={-1} max={1} size={26} color="var(--cream-2)" label="PAN"
+        onBeforeChange={onBeforeChange}
         onChange={(v) => onParam("pan", v)} format={(v) => (Math.abs(v) < 0.02 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100))} />
       {/* fader + meter — flex:1 fills remaining height */}
       <div ref={faderAreaRef} style={{ display: "flex", gap: 6, alignItems: "flex-end", flex: 1, minHeight: 0, justifyContent: "center" }}>
-        <Fader value={p.volume} height={faderH} max={2} onChange={(v) => onParam("volume", v)} />
+        <Fader value={p.volume} height={faderH} max={2} onBeforeChange={onBeforeChange} onChange={(v) => onParam("volume", v)} />
         <Meter level={level} height={faderH} width={7} />
       </div>
       <div className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)" }}>{fmtDb(p.volume)} dB</div>
@@ -262,7 +263,7 @@ function FxChip({ label, active, color }) {
 }
 
 /* ---------- master effect card ---------- */
-function FxCard({ icon, name, value, color, onChange }) {
+function FxCard({ icon, name, value, color, onChange, onBeforeChange }) {
   const on = value > 0.001;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 9,
@@ -273,7 +274,7 @@ function FxCard({ icon, name, value, color, onChange }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: on ? "var(--cream)" : "var(--dim)" }}>{name}</div>
-        <SleekSlider value={value} min={0} max={1} step={0.01} onChange={onChange} width={120} ticks={4} />
+        <SleekSlider value={value} min={0} max={1} step={0.01} onBeforeChange={onBeforeChange} onChange={onChange} width={120} ticks={4} />
       </div>
       <span className="mono" style={{ fontSize: 10, color: on ? "var(--cream-2)" : "var(--faint)", width: 30, textAlign: "right" }}>{Math.round(value * 100)}%</span>
     </div>
@@ -310,7 +311,7 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
           <span style={{ fontSize: 9, color: "var(--muted)", fontWeight: 600, letterSpacing: ".08em" }}>VOL</span>
           <div style={{ display: "flex", gap: 5, alignItems: "flex-end" }}>
-            <Fader value={master.volume} height={132} color="var(--amber)" onChange={(v) => onMaster("volume", v)} />
+            <Fader value={master.volume} height={132} color="var(--amber)" onBeforeChange={onBeforeChange} onChange={(v) => onMaster("volume", v)} />
             <Meter level={level} height={132} width={7} />
             <Meter level={level * 0.92} height={132} width={7} />
           </div>
@@ -321,10 +322,11 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>EQ&nbsp;PRESET</span>
         {EQ_PRESET_BTNS.map(([lbl, name, col]) => (
-          <button key={name} onClick={() => applyPreset(name)} title={`Apply ${lbl} EQ`}
+          <button key={name} onClick={(e) => { applyPreset(name); e.currentTarget.blur(); }} title={`Apply ${lbl} EQ`}
             style={{ flex: 1, padding: "5px 0", borderRadius: 7, background: "rgba(255,255,255,.02)",
               border: "1px solid var(--line)", color: "var(--dim)", fontSize: 10, fontWeight: 600,
-              letterSpacing: ".04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+              letterSpacing: ".04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              outline: "none" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = col; e.currentTarget.style.color = "var(--cream)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--dim)"; }}>
             <span style={{ width: 6, height: 6, borderRadius: 2, background: col }} />
@@ -339,8 +341,8 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
         <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <FxCard icon="disc" name="Reverb" color="var(--violet)" value={master.reverb} onChange={(v) => onMaster("reverb", v)} />
-        <FxCard icon="loop" name="Echo / Delay" color="var(--blue)" value={master.echo} onChange={(v) => onMaster("echo", v)} />
+        <FxCard icon="disc" name="Reverb" color="var(--violet)" value={master.reverb} onBeforeChange={onBeforeChange} onChange={(v) => onMaster("reverb", v)} />
+        <FxCard icon="loop" name="Echo / Delay" color="var(--blue)" value={master.echo} onBeforeChange={onBeforeChange} onChange={(v) => onMaster("echo", v)} />
         <button style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 9, border: "1px dashed var(--line-strong)", color: "var(--muted)", fontSize: 11.5, justifyContent: "center", background: "transparent" }}>
           <Icon name="plus" size={13} /> Add effect
         </button>
@@ -384,7 +386,7 @@ function MixerWindow({ onClose, onBeforeChange }) {
       </div>
       <div style={{ display: "flex", overflowX: "auto", maxWidth: "100%", background: "var(--bg)" }}>
         <div style={{ display: "flex", flex: "0 0 auto" }}>
-          {DAW.tracks.map((t) => <ChannelStrip key={t.id} track={t} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} />)}
+          {DAW.tracks.map((t) => <ChannelStrip key={t.id} track={t} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onBeforeChange={onBeforeChange} />)}
         </div>
         <MasterPanel level={DAW.getMasterLevel()} master={DAW.master} onMaster={(k, v) => DAW.setMaster(k, v)} onBeforeChange={onBeforeChange} />
       </div>

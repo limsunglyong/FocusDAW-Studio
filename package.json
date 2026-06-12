@@ -1,6 +1,6 @@
 {
   "name": "focusdaw-studio",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "description": "Stem mixing DAW — Electron desktop app",
   "main": "electron/main.js",
   "scripts": {
@@ -25,6 +25,7 @@
       "manual/live-screens/**/*",
       "studio.html",
       "mixer.html",
+      "help.html",
       "audio-engine.js",
       "ui-kit.jsx",
       "ui-tracks.jsx",

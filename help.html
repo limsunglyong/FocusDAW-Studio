@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FocusDAW Studio Help</title>
+<link rel="icon" type="image/png" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
+  --line:rgba(232,212,170,.10); --line-strong:rgba(232,212,170,.18);
+  --cream:#efe6d4; --cream-2:#d8cdb6; --dim:#b0a690; --muted:#857c6b; --faint:#5f574a;
+  --amber:#e8b04b; --amber-deep:#c8893a; --amber-soft:rgba(232,176,75,.16);
+  --green:#94c06a; --green-deep:#6e9a48; --red:#d96a4e; --blue:#7fb0c4; --violet:#c98fb0;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.7);
+  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace;
+  --help-bar-bg:linear-gradient(#efe7d6,#e3d8c0); --help-bar-fg:#241a0a;
+}
+:root[data-theme="ivory"]{
+  --bg:#e4dcc8; --bg2:#dad0b8; --surface:#f0ead9; --surface2:#e2dac3; --surface3:#d4caac;
+  --line:rgba(95,75,42,.15); --line-strong:rgba(95,75,42,.26);
+  --cream:#3b3327; --cream-2:#6e6149; --dim:#8a7d62; --muted:#9a8c6e; --faint:#c8bb9a;
+  --amber:#bf7f2e; --amber-deep:#9e6620; --amber-soft:rgba(191,127,46,.14);
+  --green:#7c9a4f; --green-deep:#5e7a38; --red:#c2593b; --blue:#5f86a6; --violet:#a0668a;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.22);
+  --help-bar-bg:linear-gradient(#2a2520,#221d17); --help-bar-fg:#efe6d4;
+}
+:root[data-theme="blue"]{
+  --bg:#142841; --bg2:#1c3556; --surface:#274665; --surface2:#33567b; --surface3:#3f6791;
+  --line:rgba(180,205,235,.14); --line-strong:rgba(180,205,235,.24);
+  --cream:#eaf1fb; --cream-2:#a7b8d0; --dim:#8fa5bf; --muted:#6f82a0; --faint:#4d6680;
+  --amber:#5b9bd5; --amber-deep:#3a7bbf; --amber-soft:rgba(91,155,213,.16);
+  --green:#3fb985; --green-deep:#2a9068; --red:#e8654a; --blue:#7fb9e8; --violet:#c085c8;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.8);
+  --help-bar-bg:linear-gradient(#9cccf2,#6fb0e6); --help-bar-fg:#0f2640;
+}
+:root[data-theme="forest"]{
+  --bg:#0f1a13; --bg2:#162319; --surface:#1d3022; --surface2:#253d2b; --surface3:#2e4d35;
+  --line:rgba(120,200,100,.12); --line-strong:rgba(120,200,100,.22);
+  --cream:#d8f0d0; --cream-2:#9ec49a; --dim:#7aaa74; --muted:#5a8656; --faint:#3a5e3a;
+  --amber:#5de87a; --amber-deep:#3dc85a; --amber-soft:rgba(93,232,122,.16);
+  --green:#aae060; --green-deep:#82b83e; --red:#e06058; --blue:#60b8c8; --violet:#a880c0;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.85);
+  --help-bar-bg:linear-gradient(#a8e0a0,#7cca74); --help-bar-fg:#0c1e0f;
+}
+*{box-sizing:border-box}
+html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.35}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input{font-family:inherit;color:inherit}
+.mono{font-family:var(--mono);font-feature-settings:"tnum"1}
+.iconbtn{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;color:var(--cream-2);transition:.12s}
+.iconbtn:hover{background:var(--surface2);color:var(--cream)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#3a342c;border-radius:6px;border:3px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:#4a4338}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script>
+(function () {
+  const theme = localStorage.getItem("focusdaw-theme") || "default";
+  if (theme !== "default") document.documentElement.setAttribute("data-theme", theme);
+})();
+function Logo({ size = 24, style }) {
+  return React.createElement("img", {
+    src: "assets/logo.png",
+    alt: "FocusDAW Studio",
+    style: Object.assign({ width: size, height: size, borderRadius: Math.round(size * 0.22), display: "block" }, style || {})
+  });
+}
+</script>
+<script type="text/babel" src="ui-kit.jsx"></script>
+<script type="text/babel" src="ui-help.jsx"></script>
+<script type="text/babel">
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <HelpDialog standalone onClose={() => window.close()} />
+);
+</script>
+</body>
+</html>

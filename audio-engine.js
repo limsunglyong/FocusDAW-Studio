@@ -522,6 +522,13 @@
 
     getSnapshot() {
       return {
+        master: {
+          volume: this.master.volume,
+          reverb: this.master.reverb,
+          echo: this.master.echo,
+          fadeIn: this.master.fadeIn,
+          fadeOut: this.master.fadeOut,
+        },
         eqBands: [...this.master.bands],
         tracks: this.tracks.map(t => ({
           id: t.id,
@@ -536,6 +543,13 @@
     },
 
     applySnapshot(snap) {
+      if (snap.master) {
+        this.setMaster("volume", snap.master.volume ?? this.master.volume);
+        this.setMaster("reverb", snap.master.reverb ?? this.master.reverb);
+        this.setMaster("echo", snap.master.echo ?? this.master.echo);
+        this.setMaster("fadeIn", snap.master.fadeIn ?? this.master.fadeIn);
+        this.setMaster("fadeOut", snap.master.fadeOut ?? this.master.fadeOut);
+      }
       if (snap.eqBands) this.setMasterBands(snap.eqBands);
       for (const st of snap.tracks) {
         const t = this.tracks.find(x => x.id === st.id);

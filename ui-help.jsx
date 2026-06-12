@@ -1,9 +1,37 @@
 /* ================= FocusDAW — Help Dialog (Manual) + About Dialog ================= */
 
-function HelpDialog({ onClose }) {
+function HelpDialog({ onClose, standalone = false }) {
   const scrollContainerRef = React.useRef(null);
+  const matchesRef = React.useRef([]);
   const [lang, setLang] = React.useState(() => localStorage.getItem("focusdaw-manual-lang") || "ko");
   const [activeSection, setActiveSection] = React.useState("overview");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchIndex, setSearchIndex] = React.useState(-1);
+  const [searchCount, setSearchCount] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!standalone) return;
+    const applyTheme = (nextTheme) => {
+      const root = document.documentElement;
+      if (!nextTheme || nextTheme === "default") root.removeAttribute("data-theme");
+      else root.setAttribute("data-theme", nextTheme);
+    };
+    applyTheme(localStorage.getItem("focusdaw-theme") || "default");
+    const channel = new BroadcastChannel("focusdaw-theme-sync");
+    const onTheme = (e) => {
+      if (e.data && e.data.type === "THEME_CHANGED") applyTheme(e.data.theme);
+    };
+    const onStorage = (e) => {
+      if (e.key === "focusdaw-theme") applyTheme(e.newValue || "default");
+    };
+    channel.addEventListener("message", onTheme);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      channel.removeEventListener("message", onTheme);
+      channel.close();
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [standalone]);
 
   const changeLang = (l) => {
     setLang(l);
@@ -68,9 +96,71 @@ function HelpDialog({ onClose }) {
     setActiveSection(currentSection);
   };
 
+  const clearSearchMarks = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    container.querySelectorAll(".manual-search-hit").forEach((el) => {
+      el.classList.remove("manual-search-hit");
+    });
+  };
+
+  const scrollToMatch = (index) => {
+    const container = scrollContainerRef.current;
+    const el = matchesRef.current[index];
+    if (!container || !el) return;
+    clearSearchMarks();
+    el.classList.add("manual-search-hit");
+    const containerTop = container.getBoundingClientRect().top;
+    const elTop = el.getBoundingClientRect().top;
+    const relativeTop = elTop - containerTop + container.scrollTop;
+    container.scrollTo({ top: Math.max(0, relativeTop - 18), behavior: "smooth" });
+    const section = el.closest(".manual-section");
+    if (section && section.id) setActiveSection(section.id);
+  };
+
+  const refreshSearch = React.useCallback((query, preferredIndex = 0) => {
+    const container = scrollContainerRef.current;
+    clearSearchMarks();
+    matchesRef.current = [];
+    const q = query.trim().toLocaleLowerCase();
+    if (!container || !q) {
+      setSearchCount(0);
+      setSearchIndex(-1);
+      return;
+    }
+    const targets = Array.from(container.querySelectorAll(
+      ".manual-section h2, .manual-section h3, .manual-section p, .manual-section li, .manual-section td, .manual-section th, .manual-figcaption, .manual-note, .manual-warning"
+    ));
+    matchesRef.current = targets.filter((el) => (el.textContent || "").toLocaleLowerCase().includes(q));
+    const count = matchesRef.current.length;
+    setSearchCount(count);
+    if (!count) {
+      setSearchIndex(-1);
+      return;
+    }
+    const nextIndex = Math.max(0, Math.min(count - 1, preferredIndex));
+    setSearchIndex(nextIndex);
+    requestAnimationFrame(() => scrollToMatch(nextIndex));
+  }, []);
+
+  React.useEffect(() => {
+    const id = setTimeout(() => refreshSearch(searchQuery, 0), 80);
+    return () => clearTimeout(id);
+  }, [searchQuery, lang, refreshSearch]);
+
+  const goMatch = (delta) => {
+    const count = matchesRef.current.length;
+    if (!count) return;
+    const next = (searchIndex + delta + count) % count;
+    setSearchIndex(next);
+    scrollToMatch(next);
+  };
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800 }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
+    <div style={standalone
+      ? { position: "fixed", inset: 0, background: "var(--bg)", display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "stretch", zIndex: 800 }
+      : { position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800 }}
+      onClick={e => !standalone && e.target === e.currentTarget && onClose()}>
       
       {/* Local Styles for Manual */}
       <style>{`
@@ -231,20 +321,55 @@ function HelpDialog({ onClose }) {
           font-weight: 600;
           border: 1px solid var(--line-strong);
         }
+        .manual-search-hit {
+          outline: 2px solid var(--amber);
+          outline-offset: 3px;
+          background: var(--amber-soft) !important;
+          border-radius: 5px;
+        }
       `}</style>
 
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 960, maxWidth: "95vw", height: "82vh", maxHeight: "720px", display: "flex", flexDirection: "column", boxShadow: "var(--shadow)" }}>
+      <div style={{ background: "var(--bg2)", border: standalone ? "none" : "1px solid var(--line-strong)", borderRadius: standalone ? 0 : 14,
+        width: standalone ? "100vw" : 960, maxWidth: standalone ? "100vw" : "95vw",
+        height: standalone ? "100vh" : "82vh", maxHeight: standalone ? "100vh" : "720px",
+        display: "flex", flexDirection: "column", boxShadow: standalone ? "none" : "var(--shadow)" }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "13px 18px", borderBottom: "1px solid var(--line)",
+          WebkitAppRegion: standalone ? "drag" : "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: "0 0 auto" }}>
             <Logo size={24} />
-            <div style={{ fontWeight: 700, fontSize: 15 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap" }}>
               {lang === "ko" ? "FocusDAW Studio 사용자 메뉴얼" : "FocusDAW Studio User Manual"}
             </div>
-            <div className="mono" style={{ fontSize: 10, border: "1px solid var(--line)", padding: "1px 6px", borderRadius: 4, color: "var(--dim)" }}>v1.1.8</div>
+            <div className="mono" style={{ fontSize: 10, border: "1px solid var(--line)", padding: "1px 6px", borderRadius: 4, color: "var(--dim)" }}>v1.1.9</div>
           </div>
           
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", maxWidth: 340, minWidth: 180,
+            height: 32, padding: "0 9px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--bg)",
+            WebkitAppRegion: "no-drag" }}>
+            <Icon name="search" size={14} style={{ color: "var(--muted)", flex: "0 0 auto" }} />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  goMatch(e.shiftKey ? -1 : 1);
+                }
+              }}
+              placeholder={lang === "ko" ? "도움말 검색" : "Search manual"}
+              style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", color: "var(--cream)", fontSize: 12.5 }}
+            />
+            <span className="mono" style={{ minWidth: 42, textAlign: "right", fontSize: 10, color: searchQuery ? "var(--cream-2)" : "var(--faint)" }}>
+              {searchQuery ? `${searchCount ? searchIndex + 1 : 0}/${searchCount}` : "0/0"}
+            </span>
+            <button title="Previous result" onClick={() => goMatch(-1)} disabled={!searchCount}
+              style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center", color: searchCount ? "var(--cream-2)" : "var(--faint)", outline: "none" }}>‹</button>
+            <button title="Next result" onClick={() => goMatch(1)} disabled={!searchCount}
+              style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center", color: searchCount ? "var(--cream-2)" : "var(--faint)", outline: "none" }}>›</button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 0 auto", WebkitAppRegion: "no-drag" }}>
             {/* Language Switcher */}
             <div style={{ display: "inline-flex", background: "var(--bg)", borderRadius: 8, padding: 2, border: "1px solid var(--line)" }}>
               <button onClick={() => changeLang("ko")} style={{ padding: "3px 9px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "none", cursor: "pointer",
@@ -971,8 +1096,8 @@ function HelpDialog({ onClose }) {
 
             <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 20 }}>
               {lang === "ko"
-                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v1.1.8"
-                : "FocusDAW Studio User Manual · Written for version v1.1.8"}
+                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v1.1.9"
+                : "FocusDAW Studio User Manual · Written for version v1.1.9"}
             </div>
           </div>
         </div>
@@ -995,7 +1120,7 @@ function AboutDialog({ onClose }) {
 
         {/* App Info */}
         <div style={{ fontSize: 20, fontWeight: 700, color: "var(--cream)", marginBottom: 4 }}>FocusDAW Studio</div>
-        <div className="mono" style={{ fontSize: 12, color: "var(--amber)", marginBottom: 24 }}>v1.1.8</div>
+        <div className="mono" style={{ fontSize: 12, color: "var(--amber)", marginBottom: 24 }}>v1.1.9</div>
 
         <div style={{ borderTop: "1px solid var(--line)", padding: "16px 0", textAlign: "left", fontSize: 12.5, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>

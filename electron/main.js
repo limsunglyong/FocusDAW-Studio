@@ -43,6 +43,7 @@ function safeFileBase(name) {
 
 let mainWindow = null;
 let mixerWindow = null;
+let helpWindow = null;
 
 function createWindow() {
   const isMac = process.platform === 'darwin';
@@ -74,6 +75,9 @@ function createWindow() {
     mainWindow = null;
     if (mixerWindow && !mixerWindow.isDestroyed()) {
       mixerWindow.close();
+    }
+    if (helpWindow && !helpWindow.isDestroyed()) {
+      helpWindow.close();
     }
   });
 }
@@ -238,8 +242,50 @@ ipcMain.handle('win-action', (_, action) => {
   else if (action === 'close') win.close();
 });
 
+ipcMain.handle('open-help', async () => {
+  if (helpWindow && !helpWindow.isDestroyed()) {
+    helpWindow.focus();
+    return;
+  }
+
+  helpWindow = new BrowserWindow({
+    width: 1040,
+    height: 760,
+    minWidth: 820,
+    minHeight: 560,
+    frame: process.platform === 'darwin',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
+    autoHideMenuBar: true,
+    parent: undefined,
+    icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+    backgroundColor: '#1b1712',
+    title: 'FocusDAW Studio Help',
+  });
+
+  helpWindow.setMenuBarVisibility(false);
+  helpWindow.removeMenu();
+  helpWindow.loadFile(path.join(__dirname, '..', 'help.html'));
+  helpWindow.on('closed', () => {
+    helpWindow = null;
+  });
+});
+
 let lastMixerBounds = null;
 let isMixerBoundsReset = false;
+
+function preferredMixerWidth(tracksCount) {
+  const channelW = 92;
+  const masterW = 400;
+  const count = typeof tracksCount === 'number' ? tracksCount : 0;
+  const contentWidth = count * channelW + masterW + 2;
+  return Math.max(600, Math.min(1440, contentWidth));
+}
 
 // Mixer window control actions
 ipcMain.handle('open-mixer', async (_, tracksCount) => {
@@ -249,11 +295,7 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   }
 
   const isMac = process.platform === 'darwin';
-  const channelW = 92;
-  const masterW = 400;
-  const count = typeof tracksCount === 'number' ? tracksCount : 0;
-  const contentWidth = count * channelW + masterW;
-  const winWidth = lastMixerBounds ? lastMixerBounds.width : Math.max(600, Math.min(1440, contentWidth));
+  const winWidth = lastMixerBounds ? lastMixerBounds.width : preferredMixerWidth(tracksCount);
   const winHeight = lastMixerBounds ? lastMixerBounds.height : 490;
 
   mixerWindow = new BrowserWindow({
@@ -304,6 +346,15 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
 ipcMain.handle('close-mixer', async () => {
   if (mixerWindow && !mixerWindow.isDestroyed()) {
     mixerWindow.close();
+  }
+});
+
+ipcMain.handle('resize-mixer', async (_, tracksCount) => {
+  if (!mixerWindow || mixerWindow.isDestroyed()) return;
+  const bounds = mixerWindow.getBounds();
+  const nextWidth = preferredMixerWidth(tracksCount);
+  if (nextWidth > bounds.width) {
+    mixerWindow.setSize(nextWidth, bounds.height);
   }
 });
 

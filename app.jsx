@@ -3,7 +3,7 @@
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const RECENT_PROJECT_LIST_KEY = "focusdaw-recent-project-list";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v1.1.8";
+const APP_VERSION = "v1.1.9";
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)
@@ -176,16 +176,20 @@ function Dropdown({ label, items, accent }) {
 
 function WindowControls() {
   if (!window.electronAPI || window.electronAPI.platform === "darwin") return null;
-  const act = (name) => window.electronAPI.winAction(name);
+  const act = (e, name) => {
+    e.currentTarget.blur();
+    window.electronAPI.winAction(name);
+  };
+  const suppressFocus = (e) => e.preventDefault();
   return (
     <div className="window-controls" aria-label="Window controls">
-      <button className="window-control" onClick={() => act("minimize")} title="Minimize" aria-label="Minimize">
+      <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => act(e, "minimize")} title="Minimize" aria-label="Minimize">
         <span aria-hidden="true">-</span>
       </button>
-      <button className="window-control" onClick={() => act("maximize")} title="Maximize" aria-label="Maximize">
+      <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => act(e, "maximize")} title="Maximize" aria-label="Maximize">
         <span aria-hidden="true">□</span>
       </button>
-      <button className="window-control close" onClick={() => act("close")} title="Close" aria-label="Close">
+      <button className="window-control close" onMouseDown={suppressFocus} onClick={(e) => act(e, "close")} title="Close" aria-label="Close">
         <span aria-hidden="true">×</span>
       </button>
     </div>
@@ -286,9 +290,14 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
 
 /* ---------- transport ---------- */
 function MenuTransportButton({ title, active, children, onClick, wide }) {
+  const handleClick = (e) => {
+    if (onClick) onClick(e);
+    e.currentTarget.blur();
+  };
   return (
-    <button onClick={onClick} title={title}
+    <button onClick={handleClick} title={title}
       style={{ width: wide ? 34 : 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+        outline: "none",
         color: active ? "#241a0a" : "var(--cream-2)",
         background: active
           ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
@@ -601,7 +610,7 @@ function LoadingOverlay({ state }) {
 }
 
 /* ---------- studio (arrange) ---------- */
-function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange }) {
+function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange, theme }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
@@ -637,11 +646,31 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               fadeOut: DAW.master.fadeOut,
             },
             theme: localStorage.getItem("focusdaw-theme") || "default",
+            isPlaying: DAW.isPlaying,
+            playhead: DAW.getPlayhead(),
           });
           break;
 
         case "BEFORE_CHANGE":
           pushUndo();
+          break;
+
+        case "REQUEST_UNDO":
+          undo();
+          break;
+
+        case "REQUEST_REDO":
+          redo();
+          break;
+
+        case "REQUEST_PLAY_PAUSE":
+          DAW.isPlaying ? DAW.pause() : DAW.play();
+          force((n) => n + 1);
+          break;
+
+        case "REQUEST_STOP":
+          DAW.stop();
+          force((n) => n + 1);
           break;
 
         case "SET_TRACK_PARAM":
@@ -663,7 +692,6 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           break;
 
         case "APPLY_EQ_PRESET":
-          pushUndo();
           DAW.applyEQPreset(msg.name);
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
@@ -689,7 +717,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       mixerChannelRef.current = null;
       if (unsubMixerState) unsubMixerState();
     };
-  }, [projectName, projectPath, pushUndo]);
+  }, [projectName, projectPath, pushUndo, undo, redo]);
 
   // Broadcast real-time level meter and FFT spectrum data to mixer window (runs every frame via useTick)
   useEffect(() => {
@@ -705,6 +733,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         masterLevel: DAW.getMasterLevel(),
         masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
         fftData: DAW.computeSpectrum(),
+        isPlaying: DAW.isPlaying,
+        playhead: DAW.getPlayhead(),
       });
     }
   });
@@ -740,9 +770,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           fadeIn: DAW.master.fadeIn,
           fadeOut: DAW.master.fadeOut,
         },
+        theme,
+        isPlaying: DAW.isPlaying,
+        playhead: DAW.getPlayhead(),
       });
+      if (window.electronAPI && window.electronAPI.resizeMixer) {
+        window.electronAPI.resizeMixer(DAW.tracks.length);
+      }
     }
-  }, [showMixer, currentTracksStateStr, currentMasterStateStr]);
+  }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme]);
 
   const toggleMixer = useCallback(() => {
     if (window.electronAPI) {
@@ -1043,8 +1079,18 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [loadProjectJson]);
 
   useEffect(() => {
+    const isTextInput = (el) => {
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+    };
     const k = (e) => {
       const mod = e.metaKey || e.ctrlKey;
+      if (e.code === "Space" && !isTextInput(e.target)) {
+        e.preventDefault();
+        playPause();
+        return;
+      }
       if (e.key === "F3") { e.preventDefault(); toggleMixer(); return; }
       if (mod && e.key === "s") { e.preventDefault(); saveProject(); return; }
       if (mod && e.key === "o") {
@@ -1055,13 +1101,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       }
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
-      if (e.target.tagName === "INPUT") return;
-      if (e.code === "Space") { e.preventDefault(); playPause(); }
+      if (isTextInput(e.target)) return;
       if (!mod && (e.key === "s" || e.key === "S")) setTool("select");
       if (!mod && (e.key === "c" || e.key === "C")) setTool("scissors");
       if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
     };
-    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+    window.addEventListener("keydown", k, true); return () => window.removeEventListener("keydown", k, true);
   }, [playPause, saveProject, openProjectFile, undo, redo, toggleMixer]);
 
   useEffect(() => {
@@ -1313,11 +1358,26 @@ function App() {
     if (theme === "default") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", theme);
     localStorage.setItem("focusdaw-theme", theme);
+    try {
+      const channel = new BroadcastChannel("focusdaw-theme-sync");
+      channel.postMessage({ type: "THEME_CHANGED", theme });
+      channel.close();
+    } catch (e) {}
   }, [theme]);
 
   useEffect(() => {
     document.title = `${projectName || DEFAULT_PROJECT_NAME}-FocusDAW Studio`;
   }, [projectName]);
+
+  const openHelpManual = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.openHelp) {
+      window.electronAPI.openHelp();
+      return;
+    }
+    const features = "width=1040,height=760,resizable=yes,scrollbars=no";
+    const popup = window.open("help.html", "FocusDAWHelp", features);
+    if (!popup) setShowHelp(true);
+  }, []);
 
   const H = handlersRef.current;
   return (
@@ -1332,13 +1392,14 @@ function App() {
         onSettings={() => setShowSettings(true)}
         onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
         canUndo={undoState.canUndo} canRedo={undoState.canRedo}
-        onHelpManual={() => setShowHelp(true)}
+        onHelpManual={openHelpManual}
         onHelpAbout={() => setShowAbout(true)} />
       <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath} startupReady={startupReady}
         registerHandlers={registerHandlers}
         onRenameProject={renameProject}
         onProjectPathChange={setProjectPath}
-        onUndoStateChange={setUndoState} />
+        onUndoStateChange={setUndoState}
+        theme={theme} />
       {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme} onClose={() => setShowSettings(false)} />}
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
       {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}

@@ -16,6 +16,8 @@ window.DAW = {
   _masterLevel: 0,
   _masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
   _fftData: [],
+  _isPlaying: false,
+  _playhead: 0,
 
   _anySolo() {
     return this.tracks.some(t => t.params.solo);
@@ -70,16 +72,23 @@ function MixerApp() {
         window.DAW.tracks = msg.tracks;
         window.DAW.master = msg.master;
         setTheme(msg.theme);
+        window.DAW._isPlaying = !!msg.isPlaying;
+        window.DAW._playhead = msg.playhead || 0;
         force(n => n + 1);
       } else if (msg.type === "SYNC_STATE") {
         window.DAW.tracks = msg.tracks;
         window.DAW.master = msg.master;
+        if (msg.theme) setTheme(msg.theme);
+        window.DAW._isPlaying = !!msg.isPlaying;
+        window.DAW._playhead = msg.playhead || 0;
         force(n => n + 1);
       } else if (msg.type === "LEVEL_METERS") {
         window.DAW._levels = msg.trackLevels;
         window.DAW._masterLevel = msg.masterLevel;
         window.DAW._masterBandLevels = msg.masterBandLevels;
         window.DAW._fftData = msg.fftData;
+        window.DAW._isPlaying = !!msg.isPlaying;
+        window.DAW._playhead = msg.playhead || 0;
         // Levels are updated rapidly, relying on useTick() for visual refresh without React component lag
       }
     };
@@ -98,9 +107,25 @@ function MixerApp() {
 
   React.useEffect(() => {
     const k = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
       if (e.key === "F3") {
         e.preventDefault();
         handleWinAction("close");
+        return;
+      }
+      if (mod && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        channel.postMessage({ type: "REQUEST_UNDO" });
+        return;
+      }
+      if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        channel.postMessage({ type: "REQUEST_REDO" });
+        return;
+      }
+      if (e.code === "Space") {
+        e.preventDefault();
+        channel.postMessage({ type: "REQUEST_PLAY_PAUSE" });
       }
     };
     window.addEventListener("keydown", k);
@@ -114,28 +139,60 @@ function MixerApp() {
       if (action === "close") window.close();
     }
   };
+  const handleWindowButton = (e, action) => {
+    e.currentTarget.blur();
+    handleWinAction(action);
+  };
+  const suppressFocus = (e) => e.preventDefault();
 
   const isMac = window.electronAPI && window.electronAPI.platform === "darwin";
+  const playing = window.DAW._isPlaying;
 
   return (
     <div className="mixer-app">
       {/* Custom Titlebar */}
-      <div className="mixer-titlebar">
+      <div className="mixer-titlebar" style={{ position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Icon name="mixer" size={14} style={{ color: "var(--amber)" }} />
           <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".06em", color: "var(--cream-2)" }}>MIXER CONSOLE</span>
         </div>
-        <div className="title-c">
-          FocusDAW Studio <b>Mixer</b>
+        <div className="title-c" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "auto", whiteSpace: "nowrap" }}>
+          <span>FocusDAW Studio <b>Mixer</b></span>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 4px",
+            borderRadius: 999, background: "linear-gradient(180deg,var(--bg2),var(--bg))",
+            border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)" }}>
+            <button
+              title="Stop"
+              onClick={(e) => { channel.postMessage({ type: "REQUEST_STOP" }); e.currentTarget.blur(); }}
+              style={{ width: 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+                outline: "none", color: "var(--cream-2)",
+                background: "linear-gradient(180deg,var(--surface3),var(--surface2))",
+                border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+              <Icon name="stop" size={11} fill />
+            </button>
+            <button
+              title="Play / Pause"
+              onClick={(e) => { channel.postMessage({ type: "REQUEST_PLAY_PAUSE" }); e.currentTarget.blur(); }}
+              style={{ width: 34, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+                outline: "none", color: playing ? "#241a0a" : "var(--cream-2)",
+                background: playing
+                  ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
+                  : "linear-gradient(180deg,var(--surface3),var(--surface2))",
+                border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"),
+                boxShadow: playing ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+              <Icon name={playing ? "pause" : "play"} size={14} fill />
+            </button>
+          </div>
         </div>
         {(!isMac && window.electronAPI) ? (
-          <div className="window-controls">
-            <button className="window-control" onClick={() => handleWinAction("minimize")} title="Minimize">—</button>
-            <button className="window-control" onClick={() => handleWinAction("maximize")} title="Maximize">▢</button>
-            <button className="window-control close" onClick={() => handleWinAction("close")} title="Close">×</button>
+          <div className="window-controls" style={{ marginLeft: "auto" }}>
+            <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "minimize")} title="Minimize">—</button>
+            <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "maximize")} title="Maximize">▢</button>
+            <button className="window-control close" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "close")} title="Close">×</button>
           </div>
         ) : (
-          <div style={{ width: 80 }} />
+          <div style={{ width: 80, marginLeft: "auto" }} />
         )}
       </div>
 
@@ -148,8 +205,8 @@ function MixerApp() {
                 key={t.id}
                 track={t}
                 level={window.DAW.getTrackLevel(t.id)}
+                onBeforeChange={() => channel.postMessage({ type: "BEFORE_CHANGE" })}
                 onParam={(k, v) => {
-                  channel.postMessage({ type: "BEFORE_CHANGE" });
                   window.DAW.setTrackParam(t.id, k, v);
                   force(n => n + 1);
                 }}
@@ -162,7 +219,6 @@ function MixerApp() {
           level={window.DAW.getMasterLevel()}
           master={window.DAW.master}
           onMaster={(k, v) => {
-            channel.postMessage({ type: "BEFORE_CHANGE" });
             window.DAW.setMaster(k, v);
             force(n => n + 1);
           }}
