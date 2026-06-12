@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
@@ -276,17 +276,19 @@ ipcMain.handle('open-help', async () => {
   });
 });
 
-// Persisted across mixer open/close within a session.
-// IMPORTANT: only ever set from user-driven 'resized'/'moved' events — never
-// from getBounds() in the close handler. On Windows frameless windows
-// getBounds() is not reciprocal with the size that was set (electron/electron
-// #27651, #51679: frameless+thickFrame HWND drifts vs getBounds), so saving
-// getBounds() on close and feeding it back as the next window size grows the
-// window a few px on every open/close cycle. 'resized'/'moved' fire only for
-// manual user changes, so programmatic setSize (resize-mixer) can't pollute it.
-let mixerWinSize = null;   // { width, height }
-let mixerWinPos = null;    // { x, y }
+// Only the POSITION is remembered across mixer open/close — never the size.
+// The mixer content is fixed-width (channels×92 + master 400) and fixed-height,
+// so the size is always recomputed to fit on open. Persisting the OS-reported
+// size is what repeatedly caused the window to grow: on Windows frameless
+// windows, opening with x/y applies the #51679 inset (a few px), and any path
+// that then saved getBounds() and fed it back as the next open's size — close,
+// move, or even a vertical-only resize (which still reports the inflated width)
+// — compounded that inset on every cycle. Storing position only removes the
+// feedback entirely; the inset becomes a harmless one-off that never accumulates.
+let mixerWinPos = null;   // { x, y }
 let isMixerBoundsReset = false;
+
+const MIXER_HEIGHT = 490;
 
 function preferredMixerWidth(tracksCount) {
   const channelW = 92;
@@ -294,6 +296,17 @@ function preferredMixerWidth(tracksCount) {
   const count = typeof tracksCount === 'number' ? tracksCount : 0;
   const contentWidth = count * channelW + masterW + 2;
   return Math.max(600, Math.min(1440, contentWidth));
+}
+
+// Keep restored bounds inside a connected display's work area, so the mixer
+// never reopens off-screen (after a monitor change, an edge-resize, etc.).
+function clampMixerBounds(b) {
+  const wa = screen.getDisplayMatching(b).workArea;
+  const width = Math.min(b.width, wa.width);
+  const height = Math.min(b.height, wa.height);
+  const x = Math.max(wa.x, Math.min(b.x, wa.x + wa.width - width));
+  const y = Math.max(wa.y, Math.min(b.y, wa.y + wa.height - height));
+  return { x, y, width, height };
 }
 
 // Mixer window control actions
@@ -304,13 +317,17 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   }
 
   const isMac = process.platform === 'darwin';
-  const winWidth = mixerWinSize ? mixerWinSize.width : preferredMixerWidth(tracksCount);
-  const winHeight = mixerWinSize ? mixerWinSize.height : 490;
+  // Size is always recomputed to fit; only the (clamped) position is restored.
+  const winWidth = preferredMixerWidth(tracksCount);
+  const winHeight = MIXER_HEIGHT;
+  const pos = mixerWinPos
+    ? clampMixerBounds({ x: mixerWinPos.x, y: mixerWinPos.y, width: winWidth, height: winHeight })
+    : null;
 
   mixerWindow = new BrowserWindow({
     width: winWidth,
     height: winHeight,
-    ...(mixerWinPos ? { x: mixerWinPos.x, y: mixerWinPos.y } : {}),
+    ...(pos ? { x: pos.x, y: pos.y } : {}),
     minWidth: 500,
     minHeight: 350,
     parent: mainWindow || undefined,
@@ -327,23 +344,20 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
 
   mixerWindow.loadFile(path.join(__dirname, '..', 'mixer.html'));
 
-  // Capture size/position only from genuine user actions (see mixerWinSize note).
-  mixerWindow.on('resized', () => {
-    if (mixerWindow && !mixerWindow.isDestroyed()) {
-      const b = mixerWindow.getBounds();
-      mixerWinSize = { width: b.width, height: b.height };
-    }
-  });
-  mixerWindow.on('moved', () => {
+  // Remember POSITION only — never size (see mixerWinPos note above). Both 'moved'
+  // and 'resized' update it, since dragging a top/left edge also moves x/y; the
+  // size is deliberately ignored so the #51679 inset can never feed back and grow.
+  const captureMixerPos = () => {
     if (mixerWindow && !mixerWindow.isDestroyed()) {
       const b = mixerWindow.getBounds();
       mixerWinPos = { x: b.x, y: b.y };
     }
-  });
+  };
+  mixerWindow.on('moved', captureMixerPos);
+  mixerWindow.on('resized', captureMixerPos);
 
   mixerWindow.on('close', () => {
     if (isMixerBoundsReset) {
-      mixerWinSize = null;
       mixerWinPos = null;
       isMixerBoundsReset = false;
     }
@@ -381,7 +395,6 @@ ipcMain.handle('resize-mixer', async (_, tracksCount) => {
 
 ipcMain.handle('reset-mixer-bounds', () => {
   isMixerBoundsReset = true;
-  mixerWinSize = null;
   mixerWinPos = null;
   if (mixerWindow && !mixerWindow.isDestroyed()) {
     mixerWindow.close();
