@@ -276,17 +276,17 @@ ipcMain.handle('open-help', async () => {
   });
 });
 
-// Only the POSITION is remembered across mixer open/close — never the size.
-// The mixer content is fixed-width (channels×92 + master 400) and fixed-height,
-// so the size is always recomputed to fit on open. Persisting the OS-reported
-// size is what repeatedly caused the window to grow: on Windows frameless
-// windows, opening with x/y applies the #51679 inset (a few px), and any path
-// that then saved getBounds() and fed it back as the next open's size — close,
-// move, or even a vertical-only resize (which still reports the inflated width)
-// — compounded that inset on every cycle. Storing position only removes the
-// feedback entirely; the inset becomes a harmless one-off that never accumulates.
-let mixerWinPos = null;   // { x, y }
+// Remember the CONTENT bounds (both position and size) across mixer open/close.
+// By using delta-based calculations relative to the initial loaded size, we isolate
+// and eliminate the OS-level frameless resize-hit inset (#51679) feedback loop.
+let mixerWinBounds = null;   // { x, y, width, height }
 let isMixerBoundsReset = false;
+let isMixerFullyLoaded = false;
+
+let requestedWidth = 0;
+let requestedHeight = 0;
+let initialContentWidth = 0;
+let initialContentHeight = 0;
 
 const MIXER_HEIGHT = 490;
 
@@ -317,17 +317,18 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   }
 
   const isMac = process.platform === 'darwin';
-  // Size is always recomputed to fit; only the (clamped) position is restored.
-  const winWidth = preferredMixerWidth(tracksCount);
-  const winHeight = MIXER_HEIGHT;
-  const pos = mixerWinPos
-    ? clampMixerBounds({ x: mixerWinPos.x, y: mixerWinPos.y, width: winWidth, height: winHeight })
+  requestedWidth = mixerWinBounds ? mixerWinBounds.width : preferredMixerWidth(tracksCount);
+  requestedHeight = mixerWinBounds ? mixerWinBounds.height : MIXER_HEIGHT;
+  const bounds = mixerWinBounds
+    ? clampMixerBounds(mixerWinBounds)
     : null;
 
+  isMixerFullyLoaded = false;
+
   mixerWindow = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
-    ...(pos ? { x: pos.x, y: pos.y } : {}),
+    width: requestedWidth,
+    height: requestedHeight,
+    useContentSize: true, // Crucial: width and height are content dimensions
     minWidth: 500,
     minHeight: 350,
     parent: mainWindow || undefined,
@@ -344,13 +345,30 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
 
   mixerWindow.loadFile(path.join(__dirname, '..', 'mixer.html'));
 
-  // Remember POSITION only — never size (see mixerWinPos note above). Both 'moved'
-  // and 'resized' update it, since dragging a top/left edge also moves x/y; the
-  // size is deliberately ignored so the #51679 inset can never feed back and grow.
+  if (bounds) {
+    mixerWindow.setContentBounds(bounds);
+  }
+
+  // Allow startup positioning and OS inset adjustments to settle before capturing manual size changes
+  setTimeout(() => {
+    if (mixerWindow && !mixerWindow.isDestroyed()) {
+      const cb = mixerWindow.getContentBounds();
+      initialContentWidth = cb.width;
+      initialContentHeight = cb.height;
+      isMixerFullyLoaded = true;
+    }
+  }, 300);
+
+  // Capture content position (x, y) on moved/resized immediately on startup
   const captureMixerPos = () => {
     if (mixerWindow && !mixerWindow.isDestroyed()) {
-      const b = mixerWindow.getBounds();
-      mixerWinPos = { x: b.x, y: b.y };
+      const cb = mixerWindow.getContentBounds();
+      if (mixerWinBounds) {
+        mixerWinBounds.x = cb.x;
+        mixerWinBounds.y = cb.y;
+      } else {
+        mixerWinBounds = { x: cb.x, y: cb.y, width: requestedWidth, height: requestedHeight };
+      }
     }
   };
   mixerWindow.on('moved', captureMixerPos);
@@ -358,7 +376,7 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
 
   mixerWindow.on('close', () => {
     if (isMixerBoundsReset) {
-      mixerWinPos = null;
+      mixerWinBounds = null;
       isMixerBoundsReset = false;
     }
   });
@@ -383,19 +401,57 @@ ipcMain.handle('close-mixer', async () => {
 
 ipcMain.handle('resize-mixer', async (_, tracksCount) => {
   if (!mixerWindow || mixerWindow.isDestroyed()) return;
-  const [curW, curH] = mixerWindow.getSize();
+  const currentContent = mixerWindow.getContentBounds();
   const nextWidth = preferredMixerWidth(tracksCount);
-  // Grow only, and only when more channels need the room. This fires for track
-  // additions, never for theme syncs (see app.jsx), so curH isn't re-fed on
-  // every render and can't compound the frameless bounds drift.
-  if (nextWidth > curW) {
-    mixerWindow.setSize(nextWidth, curH);
+  // Grow only, and only when more channels need the room
+  if (nextWidth > currentContent.width) {
+    isMixerFullyLoaded = false;
+    mixerWindow.setContentSize(nextWidth, currentContent.height);
+    
+    requestedWidth = nextWidth;
+    if (mixerWinBounds) {
+      mixerWinBounds.width = nextWidth;
+    }
+    
+    setTimeout(() => {
+      if (mixerWindow && !mixerWindow.isDestroyed()) {
+        const cb = mixerWindow.getContentBounds();
+        initialContentWidth = cb.width;
+        initialContentHeight = cb.height;
+        isMixerFullyLoaded = true;
+      }
+    }, 500);
+  }
+});
+
+ipcMain.handle('report-mixer-size', (_, w, h) => {
+  if (!isMixerFullyLoaded) return;
+  if (mixerWindow && !mixerWindow.isDestroyed()) {
+    const deltaW = w - initialContentWidth;
+    const deltaH = h - initialContentHeight;
+    
+    if (mixerWinBounds) {
+      mixerWinBounds.width = requestedWidth + deltaW;
+      mixerWinBounds.height = requestedHeight + deltaH;
+    } else {
+      const cb = mixerWindow.getContentBounds();
+      mixerWinBounds = {
+        x: cb.x,
+        y: cb.y,
+        width: requestedWidth + deltaW,
+        height: requestedHeight + deltaH
+      };
+    }
   }
 });
 
 ipcMain.handle('reset-mixer-bounds', () => {
   isMixerBoundsReset = true;
-  mixerWinPos = null;
+  mixerWinBounds = null;
+  requestedWidth = 0;
+  requestedHeight = 0;
+  initialContentWidth = 0;
+  initialContentHeight = 0;
   if (mixerWindow && !mixerWindow.isDestroyed()) {
     mixerWindow.close();
   }

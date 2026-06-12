@@ -132,6 +132,17 @@ function MixerApp() {
     return () => window.removeEventListener("keydown", k);
   }, []);
 
+  React.useEffect(() => {
+    if (window.electronAPI && window.electronAPI.reportMixerSize) {
+      const handleResize = () => {
+        window.electronAPI.reportMixerSize(window.innerWidth, window.innerHeight);
+      };
+      window.addEventListener("resize", handleResize);
+      handleResize();
+      return () => window.removeEventListener("resize", handleResize);
+    }
+  }, []);
+
   const handleWinAction = (action) => {
     if (window.electronAPI && window.electronAPI.winAction) {
       window.electronAPI.winAction(action);

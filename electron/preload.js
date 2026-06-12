@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resizeMixer:    (tracksCount)   => ipcRenderer.invoke('resize-mixer', tracksCount),
   closeMixer:     ()              => ipcRenderer.invoke('close-mixer'),
   resetMixerBounds: ()            => ipcRenderer.invoke('reset-mixer-bounds'),
+  reportMixerSize: (width, height) => ipcRenderer.invoke('report-mixer-size', width, height),
   onMixerState:   (cb)            => {
     const listener = (_, state) => cb(state);
     ipcRenderer.on('mixer-state', listener);
