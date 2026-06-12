@@ -341,7 +341,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <div style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap" }}>
               {lang === "ko" ? "FocusDAW Studio 사용자 메뉴얼" : "FocusDAW Studio User Manual"}
             </div>
-            <div className="mono" style={{ fontSize: 10, border: "1px solid var(--line)", padding: "1px 6px", borderRadius: 4, color: "var(--dim)" }}>v1.1.9</div>
+            <div className="mono" style={{ fontSize: 10, border: "1px solid var(--line)", padding: "1px 6px", borderRadius: 4, color: "var(--dim)" }}>{"v" + (window.APP_VERSION || "0.0.0")}</div>
           </div>
           
           <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", maxWidth: 340, minWidth: 180,
@@ -1096,8 +1096,8 @@ function HelpDialog({ onClose, standalone = false }) {
 
             <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 11, marginTop: 20 }}>
               {lang === "ko"
-                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v1.1.9"
-                : "FocusDAW Studio User Manual · Written for version v1.1.9"}
+                ? "FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v" + (window.APP_VERSION || "0.0.0")
+                : "FocusDAW Studio User Manual · Written for version v" + (window.APP_VERSION || "0.0.0")}
             </div>
           </div>
         </div>
@@ -1120,7 +1120,7 @@ function AboutDialog({ onClose }) {
 
         {/* App Info */}
         <div style={{ fontSize: 20, fontWeight: 700, color: "var(--cream)", marginBottom: 4 }}>FocusDAW Studio</div>
-        <div className="mono" style={{ fontSize: 12, color: "var(--amber)", marginBottom: 24 }}>v1.1.9</div>
+        <div className="mono" style={{ fontSize: 12, color: "var(--amber)", marginBottom: 24 }}>{"v" + (window.APP_VERSION || "0.0.0")}</div>
 
         <div style={{ borderTop: "1px solid var(--line)", padding: "16px 0", textAlign: "left", fontSize: 12.5, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>

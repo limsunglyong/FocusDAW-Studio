@@ -3,7 +3,7 @@
 const RECENT_PROJECT_KEY = "focusdaw-recent-project";
 const RECENT_PROJECT_LIST_KEY = "focusdaw-recent-project-list";
 const DEFAULT_PROJECT_NAME = "untitled";
-const APP_VERSION = "v1.1.9";
+const APP_VERSION = "v" + (window.APP_VERSION || "0.0.0"); // source: version.js
 
 function safeFileBase(name) {
   const cleaned = String(name || DEFAULT_PROJECT_NAME)

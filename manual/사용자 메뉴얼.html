@@ -247,10 +247,10 @@
   <div class="page">
     <header>
       <h1>FocusDAW Studio 사용자 메뉴얼</h1>
-      <div class="manual-version">앱 버전 v1.1.9</div>
+      <div class="manual-version">앱 버전 <span class="appver">v1.1.10</span></div>
       <p>스템 오디오를 불러와 트랙별 믹싱, 볼륨 오토메이션, 마스터 EQ, 페이드, MP3/WAV 출력까지 처리하는 데스크톱 DAW 앱입니다.</p>
       <div class="meta">
-        <span class="pill">버전 v1.1.9</span>
+        <span class="pill">버전 <span class="appver">v1.1.10</span></span>
         <span class="pill">Windows / macOS / Linux</span>
         <span class="pill">Electron 기반</span>
         <span class="pill">MP3 / WAV / AIFF / M4A / OGG / FLAC 입력</span>
@@ -593,8 +593,17 @@
     </section>
 
     <footer>
-      FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 v1.1.9
+      FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 <span class="appver">v1.1.10</span>
     </footer>
   </div>
+  <!-- 버전 단일 소스(version.js)에서 주입. JS 미실행 시 위 폴백 텍스트를 표시. -->
+  <script src="../version.js"></script>
+  <script>
+    if (window.APP_VERSION) {
+      document.querySelectorAll(".appver").forEach(function (el) {
+        el.textContent = "v" + window.APP_VERSION;
+      });
+    }
+  </script>
 </body>
 </html>

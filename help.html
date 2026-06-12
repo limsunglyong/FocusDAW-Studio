@@ -50,6 +50,7 @@
 html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg)}
 body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.35}
 button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+button:focus,button:focus-visible,[role=button]:focus,[role=button]:focus-visible,input[type=range]:focus,input[type=range]:focus-visible{outline:none;box-shadow:none}
 input{font-family:inherit;color:inherit}
 .mono{font-family:var(--mono);font-feature-settings:"tnum"1}
 .iconbtn{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;color:var(--cream-2);transition:.12s}
@@ -79,6 +80,7 @@ function Logo({ size = 24, style }) {
   });
 }
 </script>
+<script src="version.js"></script>
 <script type="text/babel" src="ui-kit.jsx"></script>
 <script type="text/babel" src="ui-help.jsx"></script>
 <script type="text/babel">
