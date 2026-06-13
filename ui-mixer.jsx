@@ -25,7 +25,7 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
         <SoloBtn on={p.solo} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("solo", !p.solo); }} />
         <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("mute", !p.mute); }} />
       </div>
-      <Knob value={p.pan} min={-1} max={1} size={26} color="var(--cream-2)" label="PAN"
+      <Knob value={p.pan} min={-1} max={1} size={26} color="var(--pan-arc, var(--cream-2))" label="PAN"
         onBeforeChange={onBeforeChange}
         onChange={(v) => onParam("pan", v)} format={(v) => (Math.abs(v) < 0.02 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100))} />
       {/* fader + meter — flex:1 fills remaining height */}
@@ -237,7 +237,7 @@ function MiniEQGraph({ width = 116, height = 30 }) {
   const isFlat = bands.every(b => Math.abs(b) < 0.1);
   return (
     <svg width={width} height={height} style={{ display: "block", flexShrink: 0, borderRadius: 5,
-      background: "rgba(0,0,0,.32)", overflow: "hidden" }}>
+      background: "var(--eq-graph-bg, rgba(0,0,0,.32))", overflow: "hidden" }}>
       <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="rgba(232,212,170,.15)" strokeWidth="1" />
       <path d={`${eqLine} L${width} ${zeroY} L0 ${zeroY} Z`}
         fill={isFlat ? "rgba(232,176,75,.04)" : "rgba(232,176,75,.14)"} />
@@ -247,34 +247,65 @@ function MiniEQGraph({ width = 116, height = 30 }) {
   );
 }
 
-/* ---------- fx status chip (REV / ECHO indicator) ---------- */
-function FxChip({ label, active, color }) {
+/* ---------- fx on/off chip-button (REV / ECHO bypass toggle) ---------- */
+function FxChip({ label, active, color, onClick, canEnable = true }) {
   return (
-    <div style={{ height: 30, padding: "0 7px", borderRadius: 5, display: "flex", alignItems: "center",
-      flexShrink: 0, fontSize: 9, fontWeight: 700, letterSpacing: ".06em",
+    <button onClick={onClick} onMouseDown={(e) => e.preventDefault()}
+      title={`${label} ${active ? "ON — click to bypass" : canEnable ? "OFF — click to enable" : "OFF — set amount in mixer to enable"}`}
+      style={{ height: 30, padding: "0 7px", borderRadius: 5, display: "flex", alignItems: "center",
+      flexShrink: 0, fontSize: 9, fontWeight: 700, letterSpacing: ".06em", cursor: active || canEnable ? "pointer" : "default", outline: "none",
       background: active ? color : "rgba(0,0,0,.28)",
       color: active ? "#fff" : "var(--faint)",
       border: "1px solid " + (active ? color : "rgba(232,212,170,.08)"),
       boxShadow: active ? `0 0 8px ${color}88` : "none",
       transition: "background .2s, color .2s, border-color .2s, box-shadow .2s" }}>
       {label}
-    </div>
+    </button>
   );
 }
 
-/* ---------- master effect card ---------- */
-function FxCard({ icon, name, value, color, onChange, onBeforeChange }) {
+/* ---------- master effect card ----------
+   Icon doubles as an on/off (bypass) button. The slider amount is remembered in
+   `<paramKey>Stored` on the master object so toggling off→on instantly restores it. */
+function FxCard({ icon, name, paramKey, color, master, onMaster, onBeforeChange }) {
+  const value = master[paramKey] || 0;
   const on = value > 0.001;
+  const storedKey = paramKey + "Stored";
+  const stored = master[storedKey];
+  // off but re-enableable: stored amount exists. False only when the user zeroed
+  // the slider (stored cleared to 0) — then the button is intentionally a no-op.
+  const canEnable = stored === undefined || stored > 0.001;
+  const toggle = (e) => {
+    e.currentTarget.blur();
+    if (on) {
+      onBeforeChange && onBeforeChange();
+      onMaster(storedKey, value); // remember current amount before bypassing
+      onMaster(paramKey, 0);
+    } else if (canEnable) {
+      onBeforeChange && onBeforeChange();
+      onMaster(paramKey, stored === undefined ? 0.4 : stored);
+    }
+    // off & !canEnable → no-op: user set the slider to 0, so there is nothing to restore
+  };
+  const setAmount = (v) => {
+    onMaster(paramKey, v);
+    if (v <= 0.001) onMaster(storedKey, 0); // zeroing the slider clears the remembered amount
+  };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 9,
       background: on ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.012)", border: "1px solid " + (on ? "var(--line-strong)" : "var(--line)") }}>
-      <div style={{ width: 28, height: 28, borderRadius: 7, display: "grid", placeItems: "center", flex: "0 0 auto",
-        background: on ? color : "var(--surface2)", color: on ? "#15110b" : "var(--muted)" }}>
+      <button onClick={toggle} onMouseDown={(e) => e.preventDefault()}
+        title={`${name} ${on ? "ON — click to bypass" : canEnable ? "OFF — click to enable" : "OFF — raise the slider to enable"}`}
+        style={{ width: 28, height: 28, borderRadius: 7, display: "grid", placeItems: "center", flex: "0 0 auto",
+          cursor: on || canEnable ? "pointer" : "default", padding: 0, outline: "none",
+          background: on ? color : "var(--surface2)", color: on ? "#15110b" : "var(--muted)",
+          border: "1px solid " + (on ? color : "var(--line-strong)"),
+          boxShadow: on ? `0 0 8px ${color}66` : "none", transition: "background .15s, color .15s, box-shadow .15s" }}>
         <Icon name={icon} size={15} />
-      </div>
+      </button>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: on ? "var(--cream)" : "var(--dim)" }}>{name}</div>
-        <SleekSlider value={value} min={0} max={1} step={0.01} onBeforeChange={onBeforeChange} onChange={onChange} width={120} ticks={4} />
+        <SleekSlider value={value} min={0} max={1} step={0.01} onBeforeChange={onBeforeChange} onChange={setAmount} width={120} ticks={4} />
       </div>
       <span className="mono" style={{ fontSize: 10, color: on ? "var(--cream-2)" : "var(--faint)", width: 30, textAlign: "right" }}>{Math.round(value * 100)}%</span>
     </div>
@@ -341,8 +372,8 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
         <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <FxCard icon="disc" name="Reverb" color="var(--violet)" value={master.reverb} onBeforeChange={onBeforeChange} onChange={(v) => onMaster("reverb", v)} />
-        <FxCard icon="loop" name="Echo / Delay" color="var(--blue)" value={master.echo} onBeforeChange={onBeforeChange} onChange={(v) => onMaster("echo", v)} />
+        <FxCard icon="disc" name="Reverb" paramKey="reverb" color="var(--violet)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} />
+        <FxCard icon="loop" name="Echo / Delay" paramKey="echo" color="var(--blue)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} />
         <button style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 9, border: "1px dashed var(--line-strong)", color: "var(--muted)", fontSize: 11.5, justifyContent: "center", background: "transparent" }}>
           <Icon name="plus" size={13} /> Add effect
         </button>
@@ -395,10 +426,26 @@ function MixerWindow({ onClose, onBeforeChange }) {
 }
 
 /* ---------- output effect track (master fade + EQ overlay on timeline) ---------- */
-function OutputTrack({ pxPerSec, laneH, playhead, onSeek }) {
+function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange }) {
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const m = DAW.master;
+  // REV / ECHO bypass toggle — mirrors the mixer FxCard: remember amount on off, restore on on.
+  // If the amount was zeroed via the mixer slider (stored===0), enabling is a no-op.
+  const fxCanEnable = (key) => { const s = m[key + "Stored"]; return s === undefined || s > 0.001; };
+  const toggleFx = (key) => () => {
+    const cur = m[key] || 0;
+    const storedKey = key + "Stored";
+    const stored = m[storedKey];
+    if (cur > 0.001) {
+      onBeforeChange && onBeforeChange();
+      DAW.setMaster(storedKey, cur); DAW.setMaster(key, 0);
+    } else if (stored === undefined || stored > 0.001) {
+      onBeforeChange && onBeforeChange();
+      DAW.setMaster(key, stored === undefined ? 0.4 : stored);
+    }
+    // else (stored===0): user zeroed the slider — nothing to restore, no-op
+  };
   const phx = (playhead / DAW.duration) * laneW;
   const inX = m.fadeIn * pxPerSec;
   const outX = (DAW.duration - m.fadeOut) * pxPerSec;
@@ -426,9 +473,11 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek }) {
           <span className="chip" style={{ fontSize: 9, marginLeft: "auto" }}>master</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <MiniEQGraph width={112} height={30} />
-          <FxChip label="REV" active={m.reverb > 0.001} color="var(--violet)" />
-          <FxChip label="ECHO" active={m.echo > 0.001} color="var(--blue)" />
+          <div onClick={onOpenMixer} title="Open mixer" style={{ cursor: "pointer", display: "flex", borderRadius: 5 }}>
+            <MiniEQGraph width={112} height={30} />
+          </div>
+          <FxChip label="REV" active={m.reverb > 0.001} canEnable={fxCanEnable("reverb")} color="var(--violet)" onClick={toggleFx("reverb")} />
+          <FxChip label="ECHO" active={m.echo > 0.001} canEnable={fxCanEnable("echo")} color="var(--blue)" onClick={toggleFx("echo")} />
           <div style={{ flex: 1 }} />
           <Meter level={DAW.getMasterLevel()} height={46} width={7} />
         </div>

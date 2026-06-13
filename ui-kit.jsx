@@ -80,14 +80,14 @@ function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, la
       <div ref={ref} onMouseDown={onDown} onDoubleClick={onDbl}
         style={{ width: size, height: size, cursor: "ns-resize", position: "relative" }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <circle cx={r} cy={r} r={r - 2} fill="#211c16" stroke="rgba(0,0,0,.5)" strokeWidth="1.5" />
+          <circle cx={r} cy={r} r={r - 2} fill="var(--knob-body, #211c16)" stroke="rgba(0,0,0,.5)" strokeWidth="1.5" />
           <circle cx={r} cy={r} r={r - 2} fill="none" stroke="#3a342c" strokeWidth="3"
             strokeDasharray={`${2 * Math.PI * (r - 2) * 0.75} 999`}
             transform={`rotate(135 ${r} ${r})`} strokeLinecap="round" />
-          <circle cx={r} cy={r} r={r - 2} fill="none" stroke={color} strokeWidth="3"
+          <circle cx={r} cy={r} r={r - 2} fill="none" stroke={`var(--knob-arc, ${color})`} strokeWidth="3"
             strokeDasharray={`${2 * Math.PI * (r - 2) * 0.75 * norm} 999`}
             transform={`rotate(135 ${r} ${r})`} strokeLinecap="round" />
-          <line x1={r} y1={r} x2={r} y2={6} stroke={color} strokeWidth="2.2" strokeLinecap="round"
+          <line x1={r} y1={r} x2={r} y2={6} stroke={`var(--knob-arc, ${color})`} strokeWidth="2.2" strokeLinecap="round"
             transform={`rotate(${ang} ${r} ${r})`} />
         </svg>
       </div>
@@ -121,7 +121,7 @@ function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--a
       <div style={{ position: "absolute", left: "50%", bottom: `calc(${norm * 100}% - 8px)`, width: 4, transform: "translateX(-50%)", height: 4, background: color, borderRadius: 3, top: 4 }} />
       {/* 0dB marker — shown when max > 1 */}
       {max > 1 && <div style={{ position: "absolute", left: "50%", bottom: trackH / max, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" }} />}
-      <div style={{ position: "absolute", left: "50%", bottom: norm * trackH, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "linear-gradient(#4a4338,#2c2720)", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" }}>
+      <div style={{ position: "absolute", left: "50%", bottom: norm * trackH, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "var(--fader-knob, linear-gradient(#4a4338,#2c2720))", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" }}>
         <div style={{ position: "absolute", top: "50%", left: 3, right: 3, height: 1.5, transform: "translateY(-50%)", background: color, opacity: .8 }} />
       </div>
     </div>

@@ -605,37 +605,43 @@ function ThemeSwatch({ theme, active, onClick }) {
   const t = theme;
   return (
     <div onClick={onClick} style={{
-      flex: "1 1 180px", minWidth: 176, maxWidth: 208, borderRadius: 10, overflow: "hidden", cursor: "pointer",
-      border: `2px solid ${active ? t.accent : "transparent"}`,
-      boxShadow: active ? `0 0 0 3px ${t.accent}44` : "0 2px 10px rgba(0,0,0,.35)",
-      transition: ".15s", background: t.bg,
+      display: "flex", flexDirection: "column", gap: 3, cursor: "pointer",
+      width: "100%", maxWidth: 130, margin: "0 auto",
     }}>
-      {/* mini menubar */}
-      <div style={{ height: 22, background: t.bg2, display: "flex", alignItems: "center", gap: 6, padding: "0 8px", borderBottom: `1px solid ${t.text}18` }}>
-        <div style={{ width: 7, height: 7, borderRadius: "50%", border: `1.5px solid ${t.accent}` }} />
-        <span style={{ fontSize: 9, fontWeight: 700, color: t.accent, letterSpacing: ".08em" }}>PROJECT</span>
-        <span style={{ fontSize: 9, color: t.text2 }}>Edit · View</span>
-      </div>
-      {/* mini tracks */}
-      {[["Drums", t.accent, "62%"], ["Bass", t.blue, "44%"], ["Lead", t.green, "55%"]].map(([name, col, fill]) => (
-        <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderBottom: `1px solid ${t.text}10` }}>
-          <div style={{ width: 3, height: 18, borderRadius: 2, background: col }} />
-          <span style={{ fontSize: 10, fontWeight: 600, color: t.text, width: 32 }}>{name}</span>
-          <div style={{ flex: 1, height: 3, background: t.surface, borderRadius: 2, position: "relative" }}>
-            <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: fill, background: t.accent, borderRadius: 2 }} />
-          </div>
+      {/* scheme name on top */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: active ? "var(--accent)" : "var(--cream)", paddingLeft: 1, lineHeight: 1.2 }}>{t.name}</div>
+      <div style={{
+        borderRadius: 6, overflow: "hidden",
+        border: `1.5px solid ${active ? t.accent : "transparent"}`,
+        boxShadow: active ? `0 0 0 2px ${t.accent}44` : "0 1px 6px rgba(0,0,0,.35)",
+        transition: ".15s", background: t.bg,
+      }}>
+        {/* mini menubar */}
+        <div style={{ height: 11, background: t.bg2, display: "flex", alignItems: "center", gap: 3, padding: "0 4px", borderBottom: `1px solid ${t.text}18` }}>
+          <div style={{ width: 4, height: 4, borderRadius: "50%", border: `1px solid ${t.accent}` }} />
+          <span style={{ fontSize: 5, fontWeight: 700, color: t.accent, letterSpacing: ".06em" }}>PROJECT</span>
+          <span style={{ fontSize: 5, color: t.text2 }}>Edit · View</span>
         </div>
-      ))}
-      {/* palette bar */}
-      <div style={{ display: "flex", height: 8 }}>
-        {[t.bg, t.surface, t.text, t.accent, t.green, t.red, t.blue].map((c, i) => (
-          <div key={i} style={{ flex: 1, background: c }} />
+        {/* mini tracks */}
+        {[["Drums", t.accent, "62%"], ["Bass", t.blue, "44%"], ["Lead", t.green, "55%"]].map(([name, col, fill]) => (
+          <div key={name} style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 4px", borderBottom: `1px solid ${t.text}10` }}>
+            <div style={{ width: 2, height: 9, borderRadius: 2, background: col }} />
+            <span style={{ fontSize: 6, fontWeight: 600, color: t.text, width: 17 }}>{name}</span>
+            <div style={{ flex: 1, height: 2, background: t.surface, borderRadius: 2, position: "relative" }}>
+              <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: fill, background: t.accent, borderRadius: 2 }} />
+            </div>
+          </div>
         ))}
-      </div>
-      {/* label */}
-      <div style={{ padding: "7px 10px", background: t.bg2 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: t.text }}>{t.name}</div>
-        <div style={{ fontSize: 10, color: t.text2, marginTop: 2 }}>{t.desc}</div>
+        {/* palette bar */}
+        <div style={{ display: "flex", height: 4 }}>
+          {[t.bg, t.surface, t.text, t.accent, t.green, t.red, t.blue].map((c, i) => (
+            <div key={i} style={{ flex: 1, background: c }} />
+          ))}
+        </div>
+        {/* description */}
+        <div style={{ padding: "4px 5px", background: t.bg2 }}>
+          <div style={{ fontSize: 6, color: t.text2, lineHeight: 1.3 }}>{t.desc}</div>
+        </div>
       </div>
     </div>
   );
@@ -645,7 +651,7 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 1020, maxWidth: "95vw", maxHeight: "92vh", boxShadow: "var(--shadow)", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 760, maxWidth: "95vw", maxHeight: "92vh", boxShadow: "var(--shadow)", display: "flex", flexDirection: "column" }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Settings</div>
@@ -654,7 +660,7 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
         {/* body */}
         <div style={{ padding: "20px 22px 24px", overflowY: "auto" }}>
           <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 14 }}>Color Theme</div>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 26 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 26 }}>
             {THEMES.map(t => (
               <ThemeSwatch key={t.id} theme={t} active={currentTheme === t.id} onClick={() => onThemeChange(t.id)} />
             ))}

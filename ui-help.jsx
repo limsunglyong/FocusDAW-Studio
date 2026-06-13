@@ -1017,14 +1017,16 @@ function HelpDialog({ onClose, standalone = false }) {
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">F3</kbd></th><td className="manual-td">믹서 콘솔(Mixer) 열기 / 닫기</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">0</kbd></th><td className="manual-td">Play bar를 0초로 이동</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">,</kbd> 또는 <kbd className="manual-kbd">&lt;</kbd></th><td className="manual-td">Play bar를 1초 뒤로 이동</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">.</kbd> 또는 <kbd className="manual-kbd">&gt;</kbd></th><td className="manual-td">Play bar를 1초 앞으로 이동</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">←</kbd></th><td className="manual-td">Play bar를 1초 뒤로 이동</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">→</kbd></th><td className="manual-td">Play bar를 1초 앞으로 이동</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">S</kbd></th><td className="manual-td">프로젝트 저장</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">O</kbd></th><td className="manual-td">프로젝트 열기</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">실행 취소</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Y</kbd></th><td className="manual-td">다시 실행</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">다시 실행</td></tr>
-                      <tr><th className="manual-th"><kbd className="manual-kbd">S</kbd></th><td className="manual-td">선택/탐색 도구 선택. 현재 화면에서는 도구 UI가 숨겨져 있을 수 있습니다.</td></tr>
-                      <tr><th className="manual-th"><kbd className="manual-kbd">C</kbd></th><td className="manual-td">클립 자르기 도구 선택. 현재 화면에서는 도구 UI가 숨겨져 있을 수 있습니다.</td></tr>
-                      <tr><th className="manual-th"><kbd className="manual-kbd">J</kbd></th><td className="manual-td">클립 합치기 도구 선택. 현재 화면에서는 도구 UI가 숨겨져 있을 수 있습니다.</td></tr>
                     </tbody>
                   </table>
                 </>
@@ -1035,14 +1037,16 @@ function HelpDialog({ onClose, standalone = false }) {
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / Pause</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">F3</kbd></th><td className="manual-td">Open / Close Mixer Console</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">0</kbd></th><td className="manual-td">Move the play bar to 0 seconds</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">,</kbd> or <kbd className="manual-kbd">&lt;</kbd></th><td className="manual-td">Move the play bar backward by 1 second</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">.</kbd> or <kbd className="manual-kbd">&gt;</kbd></th><td className="manual-td">Move the play bar forward by 1 second</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">←</kbd></th><td className="manual-td">Move the play bar backward by 1 second</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">→</kbd></th><td className="manual-td">Move the play bar forward by 1 second</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">S</kbd></th><td className="manual-td">Save Project</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">O</kbd></th><td className="manual-td">Open Project</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">Undo</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Y</kbd></th><td className="manual-td">Redo</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">Redo</td></tr>
-                      <tr><th className="manual-th"><kbd className="manual-kbd">S</kbd></th><td className="manual-td">Select Select/Seek tool. (May be hidden depending on UI context)</td></tr>
-                      <tr><th className="manual-th"><kbd className="manual-kbd">C</kbd></th><td className="manual-td">Select Split tool. (May be hidden depending on UI context)</td></tr>
-                      <tr><th className="manual-th"><kbd className="manual-kbd">J</kbd></th><td className="manual-td">Select Join tool. (May be hidden depending on UI context)</td></tr>
                     </tbody>
                   </table>
                 </>

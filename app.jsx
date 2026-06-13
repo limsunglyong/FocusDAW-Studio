@@ -313,12 +313,21 @@ function MenuTransportButton({ title, active, children, onClick, wide }) {
   );
 }
 
+function fmtTransportTime(s) {
+  const v = Math.max(0, Number.isFinite(s) ? s : 0);
+  const m = Math.floor(v / 60);
+  const sec = Math.floor(v % 60);
+  const ms = Math.floor((v % 1) * 100);
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}.${String(ms).padStart(2, "0")}`;
+}
+
 function MenuTransport() {
   useTick();
   const [, force] = useState(0);
   const [loop, setLoop] = useState(DAW.loopEnabled);
   const playing = DAW.isPlaying;
   const playhead = DAW.getPlayhead();
+  const duration = DAW.duration || 0;
   const playPause = () => { DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
   const toggleLoop = () => { const next = !loop; setLoop(next); DAW.setLoop(next); };
   return (
@@ -339,11 +348,12 @@ function MenuTransport() {
           <Icon name="repeat" size={13} />
         </MenuTransportButton>
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 15px",
+      <div title={`${fmtTransportTime(playhead)} / ${fmtTransportTime(duration)}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "0 15px",
         background: "linear-gradient(180deg,var(--surface2),var(--bg))", borderRadius: 999,
-        border: "1px solid var(--line-strong)", minWidth: 124, height: 32,
+        border: "1px solid var(--line-strong)", minWidth: 168, height: 32,
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
-        <span className="mono" style={{ fontSize: 18, fontWeight: 400, color: "var(--amber)", lineHeight: 1 }}>{fmtTime(playhead)}</span>
+        <span className="mono" style={{ fontSize: 18, fontWeight: 400, color: "var(--amber)", lineHeight: 1 }}>{fmtTransportTime(playhead)}</span>
+        <span className="mono" style={{ fontSize: 10.8, fontWeight: 400, color: "var(--muted)", lineHeight: 1 }}>/ {fmtTransportTime(duration)}</span>
       </div>
     </div>
   );
@@ -641,6 +651,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               volume: DAW.master.volume,
               reverb: DAW.master.reverb,
               echo: DAW.master.echo,
+              reverbStored: DAW.master.reverbStored,
+              echoStored: DAW.master.echoStored,
               bands: [...DAW.master.bands],
               fadeIn: DAW.master.fadeIn,
               fadeOut: DAW.master.fadeOut,
@@ -747,6 +759,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     volume: DAW.master.volume,
     reverb: DAW.master.reverb,
     echo: DAW.master.echo,
+    reverbStored: DAW.master.reverbStored,
+    echoStored: DAW.master.echoStored,
     bands: DAW.master.bands,
     fadeIn: DAW.master.fadeIn,
     fadeOut: DAW.master.fadeOut,
@@ -766,6 +780,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           volume: DAW.master.volume,
           reverb: DAW.master.reverb,
           echo: DAW.master.echo,
+          reverbStored: DAW.master.reverbStored,
+          echoStored: DAW.master.echoStored,
           bands: [...DAW.master.bands],
           fadeIn: DAW.master.fadeIn,
           fadeOut: DAW.master.fadeOut,
@@ -857,6 +873,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       }
     }
   }, [showMixer]);
+
+  // Open the mixer only if it isn't already open (no-op when open).
+  const openMixerIfClosed = useCallback(() => {
+    if (!showMixer) toggleMixer();
+  }, [showMixer, toggleMixer]);
 
   useEffect(() => {
     if (!showMixer) {
@@ -1109,6 +1130,19 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
       if (isTextInput(e.target)) return;
+      if (!mod && (e.code === "Digit0" || e.code === "Numpad0")) {
+        e.preventDefault();
+        DAW.seek(0);
+        force((n) => n + 1);
+        return;
+      }
+      if (!mod && (e.code === "Comma" || e.code === "ArrowLeft" || e.code === "Period" || e.code === "ArrowRight")) {
+        e.preventDefault();
+        const delta = (e.code === "Comma" || e.code === "ArrowLeft") ? -1 : 1;
+        DAW.seek(DAW.getPlayhead() + delta);
+        force((n) => n + 1);
+        return;
+      }
       if (!mod && (e.key === "s" || e.key === "S")) setTool("select");
       if (!mod && (e.key === "c" || e.key === "C")) setTool("scissors");
       if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
@@ -1316,7 +1350,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                 tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />
             ))}
             <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
-              onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} />
+              onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }}
+              onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo} />
             <div style={{ height: 40 }} />
           </React.Fragment>
         )}

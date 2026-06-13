@@ -232,7 +232,7 @@
     EQ_PRESETS,
     tracks: [],
     loopEnabled: true,
-    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.0, fadeOut: 0.0 },
+    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 },
     isPlaying: false,
     _startTime: 0,
     _offset: 0,
@@ -419,7 +419,7 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
-      this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, fadeIn: 0.0, fadeOut: 0.0 };
+      this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 };
       if (ctx) {
         ramp(masterVol.gain, 0.9);
         ramp(mRevSend.gain, 0);

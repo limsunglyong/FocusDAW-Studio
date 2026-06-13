@@ -263,7 +263,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
           </div>
           {!compact && <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)", width: 28, textAlign: "right", flex: "0 0 auto" }}>{fmtDb(p.volume)}</span>}
         </div>
-        <Knob value={p.pan} min={-1} max={1} size={knobSize} color="var(--blue)"
+        <Knob value={p.pan} min={-1} max={1} size={knobSize} color="var(--pan-arc, var(--cream-2))"
           onChange={(v) => onParam("pan", v)} />
         <Meter level={level} height={meterH} width={6} />
       </div>
