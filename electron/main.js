@@ -26,10 +26,14 @@ function resolveFfmpegPath() {
 
 function audioItem(filePath) {
   const fileName = path.basename(filePath);
+  let stat = null;
+  try { stat = fs.statSync(filePath); } catch (e) {}
   return {
     name: fileName,
     displayName: fileName.replace(AUDIO_EXT, ''),
     path: filePath,
+    size: stat ? stat.size : null,
+    mtimeMs: stat ? stat.mtimeMs : null,
   };
 }
 
@@ -39,6 +43,54 @@ function safeFileBase(name) {
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
     .replace(/[.\s]+$/g, '');
   return cleaned || 'untitled';
+}
+
+function buildAtempoFilter(rate) {
+  let r = Number(rate);
+  if (!Number.isFinite(r) || r <= 0) return null;
+  const parts = [];
+  while (r < 0.5) { parts.push(0.5); r /= 0.5; }
+  while (r > 2.0) { parts.push(2.0); r /= 2.0; }
+  parts.push(Math.max(0.5, Math.min(2.0, r)));
+  return parts.map(v => `atempo=${v.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')}`).join(',');
+}
+
+// Run ffmpeg and resolve with captured stderr (used for loudnorm measurement).
+function runFfmpeg(ffmpegPath, args) {
+  return new Promise((resolve, reject) => {
+    let stderr = '';
+    const proc = spawn(ffmpegPath, args, { windowsHide: true });
+    proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    proc.on('close', code => {
+      if (code === 0) resolve(stderr);
+      else reject(new Error(`ffmpeg exited with code ${code}${stderr ? `: ${stderr.slice(-1500).trim()}` : ''}`));
+    });
+    proc.on('error', reject);
+  });
+}
+
+// Extract the trailing JSON block ffmpeg's loudnorm print_format=json writes to stderr.
+function parseLoudnormJson(stderr) {
+  const start = stderr.lastIndexOf('{');
+  const end = stderr.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try { return JSON.parse(stderr.slice(start, end + 1)); } catch (e) { return null; }
+}
+
+// Build a loudnorm filter string. When `measured` is supplied, use linear (two-pass
+// transparent) normalization; otherwise single-pass dynamic measurement.
+function buildLoudnormFilter(ln, measured, printFormat) {
+  const I = Number.isFinite(ln.I) ? ln.I : -14;
+  const TP = Number.isFinite(ln.TP) ? ln.TP : -1;
+  const LRA = Number.isFinite(ln.LRA) ? ln.LRA : 11;
+  let f = `loudnorm=I=${I}:TP=${TP}:LRA=${LRA}`;
+  if (measured) {
+    f += `:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}` +
+         `:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}` +
+         `:offset=${measured.target_offset}:linear=true`;
+  }
+  if (printFormat) f += `:print_format=${printFormat}`;
+  return f;
 }
 
 let mainWindow = null;
@@ -218,6 +270,61 @@ ipcMain.handle('encode-mp3', async (_, wavBuffer, options) => {
   const mp3Buf = fs.readFileSync(tmpMp3);
   try { fs.unlinkSync(tmpWav); fs.unlinkSync(tmpMp3); if (tmpCover) fs.unlinkSync(tmpCover); } catch (e) {}
   return mp3Buf.buffer.slice(mp3Buf.byteOffset, mp3Buf.byteOffset + mp3Buf.byteLength);
+});
+
+// Post-render audio processing via ffmpeg: optional pitch-preserving tempo (atempo)
+// and/or LUFS loudness normalization (loudnorm, two-pass linear). Both stages run in
+// one filter chain so the audio is written/decoded only once.
+//   options = { rate, sampleRate, loudnorm: { I, TP, LRA } | null }
+async function processAudioFfmpeg(wavBuffer, options) {
+  const resolvedFfmpegPath = resolveFfmpegPath();
+  if (!resolvedFfmpegPath) throw new Error('ffmpeg-static not installed. Run: npm install');
+  if (!fs.existsSync(resolvedFfmpegPath)) throw new Error(`ffmpeg executable not found: ${resolvedFfmpegPath}`);
+  const { rate = 1, sampleRate = 44100, loudnorm = null } = options || {};
+
+  // Tempo stage (skipped when rate ~= 1).
+  const tempoFilter = Math.abs(Number(rate) - 1) > 0.001 ? buildAtempoFilter(rate) : null;
+  if (Math.abs(Number(rate) - 1) > 0.001 && !tempoFilter) throw new Error(`Invalid tempo rate: ${rate}`);
+
+  const base = `focusdaw_audio_${Date.now()}`;
+  const tmpIn = path.join(os.tmpdir(), base + '_in.wav');
+  const tmpOut = path.join(os.tmpdir(), base + '_out.wav');
+  fs.writeFileSync(tmpIn, Buffer.from(wavBuffer));
+
+  try {
+    let measured = null;
+    if (loudnorm) {
+      // Pass 1: measure loudness on the tempo-adjusted signal (output discarded).
+      const p1 = ['-y', '-i', tmpIn];
+      const p1chain = [tempoFilter, buildLoudnormFilter(loudnorm, null, 'json')].filter(Boolean).join(',');
+      p1.push('-filter:a', p1chain, '-f', 'null', '-');
+      const stderr = await runFfmpeg(resolvedFfmpegPath, p1);
+      measured = parseLoudnormJson(stderr);
+    }
+
+    // Final pass: tempo + (linear loudnorm with measured values, or atempo only).
+    const finalChain = [tempoFilter];
+    if (loudnorm) finalChain.push(buildLoudnormFilter(loudnorm, measured, 'summary'));
+    const chain = finalChain.filter(Boolean).join(',');
+    const args = ['-y', '-i', tmpIn];
+    if (chain) args.push('-filter:a', chain);
+    args.push('-ar', String(sampleRate), tmpOut);
+    await runFfmpeg(resolvedFfmpegPath, args);
+
+    const out = fs.readFileSync(tmpOut);
+    return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+  } finally {
+    try { fs.unlinkSync(tmpIn); } catch (e) {}
+    try { fs.unlinkSync(tmpOut); } catch (e) {}
+  }
+}
+
+ipcMain.handle('process-audio', (_, wavBuffer, options) => processAudioFfmpeg(wavBuffer, options));
+
+// Backward-compatible alias: tempo-only processing.
+ipcMain.handle('process-tempo', (_, wavBuffer, options) => {
+  const { rate = 1, sampleRate = 44100 } = options || {};
+  return processAudioFfmpeg(wavBuffer, { rate, sampleRate, loudnorm: null });
 });
 
 // Save rendered audio via native Save dialog (handles overwrite confirmation)

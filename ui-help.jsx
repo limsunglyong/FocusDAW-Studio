@@ -501,7 +501,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Import Stem Folder...</th><td className="manual-td">선택한 폴더의 루트에 있는 오디오 파일을 한 번에 등록합니다.</td></tr>
                       <tr><th className="manual-th">Import Audio Files...</th><td className="manual-td">개별 오디오 파일을 여러 개 선택해 트랙으로 추가합니다.</td></tr>
                       <tr><th className="manual-th">Load Demo Session</th><td className="manual-td">Drums, Bass, Keys, Lead 데모 트랙을 불러와 앱 기능을 시험합니다.</td></tr>
-                      <tr><th className="manual-th">Export MP3...</th><td className="manual-td">믹스다운 내보내기 창을 엽니다. 실제 창에서는 MP3와 WAV를 선택할 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">Export...</th><td className="manual-td">믹스다운 내보내기 창을 엽니다. 실제 창에서는 MP3와 WAV를 선택할 수 있습니다.</td></tr>
                     </tbody>
                   </table>
 
@@ -534,7 +534,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Import Stem Folder...</th><td className="manual-td">Imports and creates tracks for all audio files located in the root of the chosen folder.</td></tr>
                       <tr><th className="manual-th">Import Audio Files...</th><td className="manual-td">Opens a file selector to add multiple individual audio files as tracks.</td></tr>
                       <tr><th className="manual-th">Load Demo Session</th><td className="manual-td">Loads a pre-configured multi-track demo session (Drums, Bass, Keys, Lead) to test the app features.</td></tr>
-                      <tr><th className="manual-th">Export MP3...</th><td className="manual-td">Opens the mixdown export dialog (supports MP3 and WAV export formats).</td></tr>
+                      <tr><th className="manual-th">Export...</th><td className="manual-td">Opens the mixdown export dialog (supports MP3 and WAV export formats).</td></tr>
                     </tbody>
                   </table>
 
@@ -676,7 +676,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
                     <div className="manual-figcaption">재생 BPM을 <strong>158 → 180</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>158 BPM | 180</strong>으로 바뀝니다.</div>
                   </div>
-                  <div className="manual-warning">현재 템포 변경은 Web Audio의 playbackRate 방식이라 속도를 바꾸면 피치(음 높이)도 함께 변합니다. 피치를 유지한 채 템포만 바꾸는 기능은 다음 단계에서 제공될 예정입니다.</div>
+                  <div className="manual-warning">실시간 재생의 템포 변경은 아직 Web Audio의 playbackRate 방식이라 속도를 바꾸면 피치(음 높이)도 함께 변합니다. Export 창의 Keep pitch 옵션은 피치 보존 Time Stretch를 파일 출력에 먼저 적용하는 1차 프로토타입입니다.</div>
 
                   <h3 className="manual-h3">트랙 헤더 컨트롤</h3>
                   <table className="manual-table">
@@ -768,7 +768,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="Playing after a tempo change" className="manual-img" />
                     <div className="manual-figcaption">Playing after raising the playback BPM <strong>158 → 180</strong>; the indicator reads <strong>158 BPM | 180</strong>.</div>
                   </div>
-                  <div className="manual-warning">Tempo changes currently use Web Audio's playbackRate, so changing the speed also changes the pitch. Pitch-preserving tempo change is planned for a later stage.</div>
+                  <div className="manual-warning">Realtime tempo changes still use Web Audio's playbackRate, so changing speed also changes pitch. The Export dialog's Keep pitch option is the first pitch-preserving Time Stretch prototype for rendered files.</div>
 
                   <h3 className="manual-h3">Track Header Controls</h3>
                   <table className="manual-table">
@@ -1013,7 +1013,7 @@ function HelpDialog({ onClose, standalone = false }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">7. 믹스다운 내보내기</h2>
-                  <p className="manual-p"><strong>Export MP3</strong> 버튼 또는 <strong>Project &gt; Export MP3...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
+                  <p className="manual-p"><strong>Export</strong> 버튼 또는 <strong>Project &gt; Export...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
 
                   <h3 className="manual-h3">Export 설정</h3>
                   <div className="manual-figure">
@@ -1027,6 +1027,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">MP3 출력 시 192, 256, 320kbps 중에서 선택합니다.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">44.1kHz 또는 48kHz로 렌더링합니다.</td></tr>
                       <tr><th className="manual-th">Normalize</th><td className="manual-td">최종 출력이 과도하게 커지지 않도록 렌더링 단계에서 정규화/리미팅을 적용합니다.</td></tr>
+                      <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Vari BPM으로 출력 템포를 바꿀 때 Export 파일에 피치 보존 Time Stretch를 적용합니다. 실시간 재생은 아직 기존 playbackRate 방식입니다.</td></tr>
                     </tbody>
                   </table>
 
@@ -1045,7 +1046,7 @@ function HelpDialog({ onClose, standalone = false }) {
               ) : (
                 <>
                   <h2 className="manual-h2">7. Exporting Mixdown</h2>
-                  <p className="manual-p">Click the <strong>Export MP3</strong> button or go to <strong>Project &gt; Export MP3...</strong> to open the Export dialog. The dialog supports exporting in either MP3 or WAV format.</p>
+                  <p className="manual-p">Click the <strong>Export</strong> button or go to <strong>Project &gt; Export...</strong> to open the Export dialog. The dialog supports exporting in either MP3 or WAV format.</p>
 
                   <h3 className="manual-h3">Export Settings</h3>
                   <div className="manual-figure">
@@ -1059,6 +1060,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">Choose 192, 256, or 320kbps for MP3 compression quality.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">Select 44.1kHz or 48kHz for output rendering.</td></tr>
                       <tr><th className="manual-th">Normalize</th><td className="manual-td">Applies peak normalization and limiting during rendering to maximize volume without clipping.</td></tr>
+                      <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Applies pitch-preserving Time Stretch to exported files when Vari BPM changes the output tempo. Realtime playback still uses playbackRate.</td></tr>
                     </tbody>
                   </table>
 

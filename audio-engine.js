@@ -241,6 +241,11 @@
     _sources: [],
     _tickCbs: [],
     _autoSchedTimer: null,
+    _decodedCache: new Map(),
+    _decodedCacheOrder: [],
+    _decodedCacheLimit: 8,
+    _renderCacheKey: null,
+    _renderCacheBuffer: null,
     _clipCounter: 0,
     _cid() { return 'c' + (++this._clipCounter); },
     _displayName(fileName) {
@@ -307,7 +312,7 @@
       });
     },
 
-    _addTrack({ name, type, color, buffer, isDemo = false, fileName = null, filePath = null, needsAudio = false }) {
+    _addTrack({ name, type, color, buffer, peaks = null, isDemo = false, fileName = null, filePath = null, needsAudio = false }) {
       const id = "t" + (this.tracks.length + 1) + "_" + Math.random().toString(36).slice(2, 6);
       // persistent nodes
       const fader = ctx.createGain();
@@ -327,7 +332,7 @@
       panner.connect(echoSend); echoSend.connect(delay);
       delay.connect(fb); fb.connect(delay); delay.connect(masterBus); // echo
 
-      const { coarse, medium, fine } = computePeakLevels(buffer);
+      const { coarse, medium, fine } = peaks || computePeakLevels(buffer);
       const track = {
         id, name, type, color, buffer,
         peaks: fine, peaksMedium: medium, peaksCoarse: coarse,
@@ -349,9 +354,58 @@
       return track;
     },
 
+    _decodedCacheKeyForFile(file) {
+      if (!file) return null;
+      const size = Number.isFinite(file.size) ? file.size : "unknown";
+      const modified = Number.isFinite(file.lastModified) ? file.lastModified : 0;
+      return `file:${file.name}:${size}:${modified}`;
+    },
+
+    _decodedCacheKeyForBuffer(name, arrayBuffer, options = {}) {
+      if (options.cacheKey) return options.cacheKey;
+      const size = Number.isFinite(options.fileSize) ? options.fileSize : (arrayBuffer ? arrayBuffer.byteLength : "unknown");
+      const modified = Number.isFinite(options.fileMtimeMs) ? Math.round(options.fileMtimeMs) : 0;
+      if (options.filePath) return `path:${options.filePath}:${size}:${modified}`;
+      return `buffer:${name}:${size}`;
+    },
+
+    _rememberDecodedAudio(key, buffer) {
+      if (!key || !buffer) return null;
+      if (this._decodedCache.has(key)) {
+        this._decodedCacheOrder = this._decodedCacheOrder.filter((x) => x !== key);
+      }
+      const entry = { buffer, peaks: computePeakLevels(buffer) };
+      this._decodedCache.set(key, entry);
+      this._decodedCacheOrder.push(key);
+      while (this._decodedCacheOrder.length > this._decodedCacheLimit) {
+        const old = this._decodedCacheOrder.shift();
+        this._decodedCache.delete(old);
+      }
+      return entry;
+    },
+
+    async _decodeAudio(arrayBuffer, cacheKey) {
+      if (cacheKey && this._decodedCache.has(cacheKey)) {
+        return this._decodedCache.get(cacheKey);
+      }
+      const buffer = await ctx.decodeAudioData(arrayBuffer);
+      return this._rememberDecodedAudio(cacheKey, buffer) || { buffer, peaks: computePeakLevels(buffer) };
+    },
+
+    _assignDecodedToTrack(track, decoded) {
+      track.buffer = decoded.buffer;
+      track.peaks = decoded.peaks.fine;
+      track.peaksMedium = decoded.peaks.medium;
+      track.peaksCoarse = decoded.peaks.coarse;
+      track.needsAudio = false;
+      track.audioRev = (track.audioRev || 0) + 1;
+    },
+
     async addFileBuffer(name, arrayBuffer, options = {}) {
       this.init();
-      const buffer = await ctx.decodeAudioData(arrayBuffer);
+      const cacheKey = this._decodedCacheKeyForBuffer(name, arrayBuffer, options);
+      const decoded = await this._decodeAudio(arrayBuffer, cacheKey);
+      const buffer = decoded.buffer;
       if (this.tracks.some(t => t.isDemo)) {
         this.duration = Math.max(this.duration, buffer.duration);
       } else {
@@ -364,29 +418,27 @@
         (filePath && t.filePath === filePath) || t.fileName === name || t.name === name || t.name === displayName
       ));
       if (ph) {
-        ph.buffer = buffer;
-        const pl = computePeakLevels(buffer);
-        ph.peaks = pl.fine; ph.peaksMedium = pl.medium; ph.peaksCoarse = pl.coarse;
-        ph.needsAudio = false;
+        this._assignDecodedToTrack(ph, decoded);
         ph.fileName = ph.fileName || name;
         ph.filePath = filePath || ph.filePath || null;
-        ph.audioRev = (ph.audioRev || 0) + 1;
         this._applyMix();
         return ph;
       }
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
-      const t = this._addTrack({ name: displayName, type: "audio", color, buffer, fileName: name, filePath });
-      // _addTrack already computes peak levels; override with buffer-specific fine resolution
-      const pl2 = computePeakLevels(buffer);
-      t.peaks = pl2.fine; t.peaksMedium = pl2.medium; t.peaksCoarse = pl2.coarse;
+      const t = this._addTrack({ name: displayName, type: "audio", color, buffer, peaks: decoded.peaks, fileName: name, filePath });
       return t;
     },
 
     async addFile(file) {
       this.init();
-      const arr = await file.arrayBuffer();
-      const buffer = await ctx.decodeAudioData(arr);
+      const cacheKey = this._decodedCacheKeyForFile(file);
+      let decoded = cacheKey && this._decodedCache.get(cacheKey);
+      if (!decoded) {
+        const arr = await file.arrayBuffer();
+        decoded = await this._decodeAudio(arr, cacheKey);
+      }
+      const buffer = decoded.buffer;
       const fileName = file.name;
       const name = this._displayName(fileName);
       if (this.tracks.some(t => t.isDemo)) {
@@ -398,20 +450,14 @@
       // link to a placeholder track from an imported project
       const ph = this.tracks.find(t => t.needsAudio && (t.fileName === fileName || t.fileName === name || t.name === name));
       if (ph) {
-        ph.buffer = buffer;
-        const pl = computePeakLevels(buffer);
-        ph.peaks = pl.fine; ph.peaksMedium = pl.medium; ph.peaksCoarse = pl.coarse;
-        ph.needsAudio = false;
+        this._assignDecodedToTrack(ph, decoded);
         ph.fileName = ph.fileName || fileName;
-        ph.audioRev = (ph.audioRev || 0) + 1;
         this._applyMix();
         return ph;
       }
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
-      const t = this._addTrack({ name, type: "audio", color, buffer, fileName });
-      const pl3 = computePeakLevels(buffer);
-      t.peaks = pl3.fine; t.peaksMedium = pl3.medium; t.peaksCoarse = pl3.coarse;
+      const t = this._addTrack({ name, type: "audio", color, buffer, peaks: decoded.peaks, fileName });
       return t;
     },
 
@@ -548,13 +594,54 @@
       return this._projectRate();
     },
 
+    _activePlaybackRate() {
+      const rate = this.isPlaying ? this._appliedRate : this._projectRate();
+      return Number.isFinite(rate) && rate > 0 ? rate : 1;
+    },
+
+    _projectPositionAt(audioTime, rate = this._activePlaybackRate()) {
+      return this._offset + (audioTime - this._startTime) * rate;
+    },
+
+    _renderCacheSignature(sampleRate, normalize, renderRate, preservePitch) {
+      return JSON.stringify({
+        sampleRate,
+        normalize: normalize !== false,
+        renderRate,
+        preservePitch: !!preservePitch,
+        duration: this.duration,
+        tempo: this.tempo,
+        master: this.master,
+        tracks: this.tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          fileName: t.fileName || null,
+          filePath: t.filePath || null,
+          isDemo: !!t.isDemo,
+          needsAudio: !!t.needsAudio,
+          buffer: t.buffer ? {
+            duration: t.buffer.duration,
+            sampleRate: t.buffer.sampleRate,
+            channels: t.buffer.numberOfChannels,
+            length: t.buffer.length,
+          } : null,
+          params: t.params,
+          clips: t.clips,
+        })),
+      });
+    },
+
     _restartPlaybackForTempo() {
       if (!ctx || !this.isPlaying) return;
       // 실제 적용되는 재생 rate가 바뀌지 않으면 재시작하지 않는다.
       // (예: Vari BPM이 OFF인 상태에서 재생 BPM 값만 스크롤로 바꿀 때 → rate는 계속 1이므로
       //  소스를 재시작할 필요가 없고, 재시작하면 오히려 클릭/글리치가 발생함.)
-      if (this._projectRate() === this._appliedRate) return;
-      const pos = this.getPlayhead();
+      const oldRate = this._activePlaybackRate();
+      const nextRate = this._projectRate();
+      if (nextRate === oldRate) return;
+      const raw = this._projectPositionAt(ctx.currentTime, oldRate);
+      const pos = this.loopEnabled ? raw % this.duration : Math.min(raw, this.duration);
       this._offset = pos;
       this._stopSources();
       this.isPlaying = false;
@@ -843,13 +930,14 @@
           ? this._buildCompositeCurve(t, 256)
           : buildAutoCurve(t, 256);
         // current playhead position within the loop
-        const pos = (this._offset + (now - this._startTime)) % dur;
-        const base = now - pos;               // audio time of loop start (pos = 0)
+        const rate = this._activePlaybackRate();
+        const pos = this._projectPositionAt(now, rate) % dur;
+        const base = now - (pos / rate);      // audio time of loop start (pos = 0)
         const startT = now + 0.001;
         // current (partial) loop: slice the curve from `pos` so it stays aligned 1:1
         // with the audio (instead of cramming the whole loop into the remaining time).
         const partial = sliceCurveFrom(curve, pos / dur);
-        const remain = (base + dur) - startT; // ends exactly at the next loop boundary
+        const remain = (base + (dur / rate)) - startT; // ends exactly at the next loop boundary
         try {
           if (remain > 0.002 && partial.length >= 2) g.setValueCurveAtTime(partial, startT, remain);
           else g.setValueAtTime(curve[curve.length - 1], startT);
@@ -858,9 +946,9 @@
         }
         // subsequent full loops, back-to-back and aligned to audio loop boundaries
         for (let l = 1; l <= loops; l++) {
-          const tstart = base + l * dur;
+          const tstart = base + l * (dur / rate);
           if (tstart < now) continue;
-          try { g.setValueCurveAtTime(curve, tstart, dur); } catch (e) {}
+          try { g.setValueCurveAtTime(curve, tstart, dur / rate); } catch (e) {}
         }
       });
     },
@@ -871,20 +959,21 @@
       const dur = this.duration;
       const fi = Math.min(this.master.fadeIn, dur / 2);
       const fo = Math.min(this.master.fadeOut, dur / 2);
-      const pos = (this._offset + (now - this._startTime)) % dur;
+      const rate = this._activePlaybackRate();
+      const pos = this._projectPositionAt(now, rate) % dur;
       g.cancelScheduledValues(now);
       // simple: only apply fade on first loop pass
-      const base = now - pos;
+      const base = now - (pos / rate);
       g.setValueAtTime(fadeVal(pos, dur, fi, fo), now);
       // ramp through the rest of this loop
       const steps = 48;
       for (let i = 1; i <= steps; i++) {
         const lp = (i / steps) * dur;
         if (lp <= pos) continue;
-        g.linearRampToValueAtTime(fadeVal(lp, dur, fi, fo), base + lp);
+        g.linearRampToValueAtTime(fadeVal(lp, dur, fi, fo), base + (lp / rate));
       }
       // subsequent loops: keep at 1 (fades are a one-shot master gesture)
-      g.setValueAtTime(1, base + dur);
+      g.setValueAtTime(1, base + (dur / rate));
     },
 
     setLoop(val) { this.loopEnabled = !!val; },
@@ -906,7 +995,7 @@
         // the button during playback does not require rebuilding live sources.
         src.loop = false;
         src.connect(t.nodes.fader);
-        src.start(now, (this._offset * rate) % t.buffer.duration);
+        src.start(now, this._offset % t.buffer.duration);
         this._sources.push(src);
       });
       this.isPlaying = true;
@@ -951,7 +1040,7 @@
     getPlayhead() {
       if (!ctx) return this._offset;
       if (!this.isPlaying) return this._offset;
-      const raw = this._offset + (ctx.currentTime - this._startTime);
+      const raw = this._projectPositionAt(ctx.currentTime);
       return this.loopEnabled ? raw % this.duration : Math.min(raw, this.duration);
     },
 
@@ -1016,7 +1105,7 @@
       if (!this.isPlaying) return;
       // Source nodes are one-shot. At the song boundary the engine decides
       // whether to start a fresh pass or stop, using the latest Repeat state.
-      const raw = this._offset + (ctx.currentTime - this._startTime);
+      const raw = this._projectPositionAt(ctx.currentTime);
       if (raw >= this.duration) {
         if (this.loopEnabled) {
           this._offset = 0;
@@ -1039,7 +1128,17 @@
       // device rate. Source buffers are auto-resampled by OfflineAudioContext.
       const reqSr = options.sampleRate || ctx.sampleRate;
       const sr = Math.max(8000, Math.min(192000, reqSr));
-      const len = Math.ceil(this.duration * sr);
+      const renderRate = options.applyTempo === false ? 1 : this._projectRate();
+      const preservePitch = !!options.preservePitch && Math.abs(renderRate - 1) > 0.001;
+      const graphRate = preservePitch ? 1 : renderRate;
+      const renderDuration = this.duration / graphRate;
+      const targetDuration = this.duration / renderRate;
+      const cacheKey = this._renderCacheSignature(sr, options.normalize, renderRate, preservePitch);
+      if (this._renderCacheKey === cacheKey && this._renderCacheBuffer) {
+        if (onProgress) onProgress(1);
+        return this._renderCacheBuffer;
+      }
+      const len = Math.ceil(renderDuration * sr);
       const off = new OfflineAudioContext(2, len, sr);
       // rebuild graph in offline ctx
       const conv = off.createConvolver(); conv.buffer = makeIR(off, 2.4, 2.6);
@@ -1089,18 +1188,18 @@
       }
       const rr = off.createGain(); rr.gain.setValueAtTime(0.9, 0); conv.connect(rr); rr.connect(mBus);
       // fade automation
-      const fi = Math.min(this.master.fadeIn, this.duration / 2);
-      const fo = Math.min(this.master.fadeOut, this.duration / 2);
+      const fi = Math.min(this.master.fadeIn / graphRate, renderDuration / 2);
+      const fo = Math.min(this.master.fadeOut / graphRate, renderDuration / 2);
       fade.gain.setValueAtTime(fi > 0 ? 0 : 1, 0);
       if (fi > 0) fade.gain.linearRampToValueAtTime(1, fi);
-      if (fo > 0) { fade.gain.setValueAtTime(1, this.duration - fo); fade.gain.linearRampToValueAtTime(0, this.duration); }
+      if (fo > 0) { fade.gain.setValueAtTime(1, renderDuration - fo); fade.gain.linearRampToValueAtTime(0, renderDuration); }
 
       const anySolo = this._anySolo();
       this.tracks.forEach((t) => {
         const p = t.params;
         const audible = p.mute ? 0 : (anySolo && !p.solo ? 0 : 1);
         const src = off.createBufferSource(); src.buffer = t.buffer;
-        const rate = this._trackPlaybackRate(t);
+        const rate = graphRate;
         try { src.playbackRate.setValueAtTime(rate, 0); } catch (e) {}
         const fd = off.createGain(); fd.gain.setValueAtTime(audible * p.volume, 0);
         const ag = off.createGain();
@@ -1118,7 +1217,7 @@
           const curve = (rHasGaps || rHasOverrides)
             ? this._buildCompositeCurve(t, 512)
             : buildAutoCurve(t, 512);
-          ag.gain.setValueCurveAtTime(curve, 0, this.duration);
+          ag.gain.setValueCurveAtTime(curve, 0, renderDuration);
         }
         src.start(0);
       });
@@ -1132,19 +1231,27 @@
         rendered = await off.startRendering();
       }
       // Trim any leading silence the render pipeline introduces, but PRESERVE the
-      // total length: shift left by `ts` and zero-fill the tail. Shortening the buffer
-      // even by 1 frame makes duration e.g. 4.999979s, which Windows Explorer floors
-      // to "4s" for a nominally 5s file. Keeping length === this.duration avoids that.
+      // target render length: shift left by `ts` and zero-fill the tail. Shortening
+      // the buffer even by 1 frame makes duration e.g. 4.999979s, which Windows
+      // Explorer floors to "4s" for a nominally 5s file.
       let ts = 0;
       const c0 = rendered.getChannelData(0);
       const c1 = rendered.numberOfChannels > 1 ? rendered.getChannelData(1) : c0;
       const maxTs = Math.floor(sr * 0.05); // max 50ms
       while (ts < maxTs && ts < c0.length && Math.abs(c0[ts]) < 1e-4 && Math.abs(c1[ts]) < 1e-4) ts++;
-      if (ts === 0) return rendered;
-      const out = off.createBuffer(rendered.numberOfChannels, rendered.length, sr);
-      for (let c = 0; c < rendered.numberOfChannels; c++)
-        out.getChannelData(c).set(rendered.getChannelData(c).subarray(ts)); // tail stays zero-filled
-      return out;
+      let result = rendered;
+      if (ts > 0) {
+        const out = off.createBuffer(rendered.numberOfChannels, rendered.length, sr);
+        for (let c = 0; c < rendered.numberOfChannels; c++)
+          out.getChannelData(c).set(rendered.getChannelData(c).subarray(ts)); // tail stays zero-filled
+        result = out;
+      }
+      if (preservePitch) {
+        result = timeStretchBuffer(off, result, renderRate, Math.max(1, Math.ceil(targetDuration * sr)));
+      }
+      this._renderCacheKey = cacheKey;
+      this._renderCacheBuffer = result;
+      return result;
     },
   };
 
@@ -1184,6 +1291,93 @@
     if (fo > 0 && pos > dur - fo) return Math.max(0, (dur - pos) / fo);
     return 1;
   }
+
+  function timeStretchBuffer(context, input, rate, targetLength) {
+    const sr = input.sampleRate || 44100;
+    const channels = input.numberOfChannels || 1;
+    const outLen = Math.max(1, targetLength || Math.ceil(input.length / Math.max(0.001, rate)));
+    const output = context.createBuffer(channels, outLen, sr);
+    if (!input.length || Math.abs(rate - 1) < 0.001) {
+      for (let c = 0; c < channels; c++) {
+        output.getChannelData(c).set(input.getChannelData(c).subarray(0, outLen));
+      }
+      return output;
+    }
+
+    const grainSize = Math.max(1024, Math.min(4096, Math.floor(sr * 0.055)));
+    const hopOut = Math.max(256, Math.floor(grainSize / 4));
+    const overlap = grainSize - hopOut;
+    const searchRadius = Math.max(128, Math.min(768, Math.floor(sr * 0.012)));
+    const searchStep = 32;
+    const matchLength = Math.max(128, Math.min(768, overlap, grainSize));
+    const inChannels = [];
+    const outChannels = [];
+    for (let c = 0; c < channels; c++) {
+      inChannels.push(input.getChannelData(c));
+      outChannels.push(output.getChannelData(c));
+    }
+
+    let frame = 0;
+    for (let outPos = 0; outPos < outLen; outPos += hopOut, frame++) {
+      const nominalIn = Math.round(frame * hopOut * rate);
+      const inPos = frame === 0
+        ? 0
+        : findBestWsolaPosition(inChannels, outChannels, nominalIn, outPos, input.length, grainSize, overlap, matchLength, searchRadius, searchStep);
+      const frames = Math.min(grainSize, input.length - inPos, outLen - outPos);
+      if (frames <= 0) break;
+      for (let c = 0; c < channels; c++) {
+        const src = inChannels[c];
+        const dst = outChannels[c];
+        for (let i = 0; i < frames; i++) {
+          const oi = outPos + i;
+          const v = src[inPos + i];
+          if (frame > 0 && i < overlap && oi < outLen) {
+            const fadeIn = i / overlap;
+            dst[oi] = dst[oi] * (1 - fadeIn) + v * fadeIn;
+          } else {
+            dst[oi] = v;
+          }
+        }
+      }
+    }
+    return output;
+  }
+
+  function findBestWsolaPosition(inChannels, outChannels, nominalIn, outPos, inputLength, grainSize, overlap, matchLength, searchRadius, searchStep) {
+    const minIn = Math.max(0, nominalIn - searchRadius);
+    const maxIn = Math.max(minIn, Math.min(inputLength - grainSize, nominalIn + searchRadius));
+    let best = Math.max(0, Math.min(inputLength - grainSize, nominalIn));
+    let bestScore = -Infinity;
+    const compareOut = Math.max(0, outPos);
+    for (let cand = minIn; cand <= maxIn; cand += searchStep) {
+      const score = wsolaCorrelation(inChannels, outChannels, cand, compareOut, matchLength);
+      if (score > bestScore) {
+        bestScore = score;
+        best = cand;
+      }
+    }
+    return best;
+  }
+
+  function wsolaCorrelation(inChannels, outChannels, inPos, outPos, length) {
+    let xy = 0, xx = 0, yy = 0;
+    const channels = Math.min(2, inChannels.length, outChannels.length);
+    for (let i = 0; i < length; i += 2) {
+      let a = 0, b = 0;
+      for (let c = 0; c < channels; c++) {
+        a += inChannels[c][inPos + i] || 0;
+        b += outChannels[c][outPos + i] || 0;
+      }
+      a /= channels;
+      b /= channels;
+      xy += a * b;
+      xx += a * a;
+      yy += b * b;
+    }
+    if (xx <= 1e-12 || yy <= 1e-12) return 0;
+    return xy / Math.sqrt(xx * yy);
+  }
+
   function defaultAutomation(type) {
     if (type === "lead") return [{ t: 0, v: 0.3 }, { t: 0.25, v: 1 }, { t: 0.6, v: 1 }, { t: 1, v: 0.5 }];
     if (type === "keys") return [{ t: 0, v: 0.85 }, { t: 0.5, v: 1 }, { t: 1, v: 0.7 }];

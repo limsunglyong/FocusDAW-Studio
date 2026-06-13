@@ -56,7 +56,7 @@ function LoaderScreen({ onOpen }) {
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center" }}><Icon name="check" size={11} /></span>{f}
             </div>
           ))}
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v0.16.21 · Electron · macOS / Win / Linux</div>
+          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 14 }}>v{window.APP_VERSION || "0.0.0"} · Electron · macOS / Win / Linux</div>
         </div>
       </div>
 
@@ -284,7 +284,15 @@ function ExportDialog({ projectName, onClose }) {
   const [format, setFormat]     = useState("mp3");
   const [bitrate, setBitrate]   = useState(320);
   const [sr, setSr]             = useState(44100);
-  const [normalize, setNormalize] = useState(true);
+  // Normalize defaults OFF; both Normalize and the LUFS target persist across sessions.
+  const [normalize, setNormalize] = useState(() => localStorage.getItem("focusdaw-export-normalize") === "1");
+  const [lufsTarget, setLufsTarget] = useState(() => {
+    const v = parseFloat(localStorage.getItem("focusdaw-export-lufs"));
+    return Number.isFinite(v) ? v : -14;
+  });
+  useEffect(() => { try { localStorage.setItem("focusdaw-export-normalize", normalize ? "1" : "0"); } catch (e) {} }, [normalize]);
+  useEffect(() => { try { localStorage.setItem("focusdaw-export-lufs", String(lufsTarget)); } catch (e) {} }, [lufsTarget]);
+  const [preservePitch, setPreservePitch] = useState(false);
   const [stage, setStage]       = useState("settings"); // settings | rendering | error | done
   const [prog, setProg]         = useState(0);
   const [stepLabel, setLabel]   = useState("Rendering mix…");
@@ -333,7 +341,27 @@ function ExportDialog({ projectName, onClose }) {
       setErrorMsg("");
       setStage("rendering"); setProg(0); setLabel("Rendering mix…");
       const ratio = format === "mp3" ? 0.75 : 1;
-      const rendered = await DAW.renderMix((p) => setProg(p * ratio), { normalize, sampleRate: sr });
+      const tempoRate = DAW && DAW._projectRate ? DAW._projectRate() : 1;
+      const tempoChanged = Math.abs(tempoRate - 1) > 0.001;
+      const nativeAudio = !!(window.electronAPI && window.electronAPI.processAudio);
+      // Pitch-preserving tempo via ffmpeg atempo (desktop only).
+      const nativeKeepPitch = nativeAudio && preservePitch && tempoChanged;
+      // LUFS loudness normalization via ffmpeg loudnorm (desktop only). Replaces the
+      // in-graph soft-clipper "Normalize", which only attenuated and never made up gain.
+      const nativeLoudnorm = nativeAudio && normalize;
+      const ffmpegProcess = nativeKeepPitch || nativeLoudnorm;
+      const rendered = await DAW.renderMix((p) => setProg(p * ratio), {
+        // Skip the in-graph clipper when ffmpeg loudnorm will normalize loudness/true-peak.
+        normalize: normalize && !nativeLoudnorm,
+        sampleRate: sr,
+        preservePitch: preservePitch && !nativeKeepPitch,
+        applyTempo: !nativeKeepPitch,
+      });
+      const audioProcessOpts = {
+        rate: nativeKeepPitch ? tempoRate : 1,
+        sampleRate: sr,
+        loudnorm: nativeLoudnorm ? { I: lufsTarget, TP: -1, LRA: 11 } : null,
+      };
       // Combine Year (authoritative) + Date (month/day) into one ISO date for tags;
       // ID3v2.3 derives Year (TYER) + Date (TDAT) from the full date.
       const yr = String(year || "").trim();
@@ -347,9 +375,13 @@ function ExportDialog({ projectName, onClose }) {
       if (format === "mp3") {
         if (window.electronAPI && window.electronAPI.encodeMp3) {
           // Electron path: ffmpeg (tags + cover embedded as ID3v2)
-          setLabel("Encoding MP3 via ffmpeg…"); setProg(0.78);
+          setLabel(ffmpegProcess ? "Processing audio via ffmpeg…" : "Encoding MP3 via ffmpeg…"); setProg(0.78);
           const wavBlob = audioBufferToWav(rendered); // intermediate PCM; tags go via ffmpeg
-          const wavAb   = await wavBlob.arrayBuffer();
+          let wavAb = await wavBlob.arrayBuffer();
+          if (ffmpegProcess) {
+            wavAb = await window.electronAPI.processAudio(wavAb, audioProcessOpts);
+            setLabel("Encoding MP3 via ffmpeg…"); setProg(0.84);
+          }
           const coverArg = coverParts ? { data: coverParts.base64, mime: coverParts.mime } : null;
           const mp3Ab   = await window.electronAPI.encodeMp3(wavAb, { bitrate, sampleRate: sr, meta, cover: coverArg });
           blob = new Blob([mp3Ab], { type: "audio/mpeg" });
@@ -370,7 +402,15 @@ function ExportDialog({ projectName, onClose }) {
           setExt("wav");
         }
       } else {
-        blob = audioBufferToWav(rendered, meta); // WAV tags via RIFF INFO chunk
+        const wavBlob = audioBufferToWav(rendered, meta); // WAV tags via RIFF INFO chunk
+        if (ffmpegProcess) {
+          setLabel("Processing audio via ffmpeg…"); setProg(0.84);
+          const wavAb = await wavBlob.arrayBuffer();
+          const processed = await window.electronAPI.processAudio(wavAb, audioProcessOpts);
+          blob = new Blob([processed], { type: "audio/wav" });
+        } else {
+          blob = wavBlob;
+        }
         setExt("wav");
       }
 
@@ -386,6 +426,9 @@ function ExportDialog({ projectName, onClose }) {
 
   const baseName = safeExportFileBase(projectName);
   const fileName = baseName + (format === "mp3" ? ".mp3" : ".wav");
+  const tempoRate = DAW && DAW._projectRate ? DAW._projectRate() : 1;
+  const tempoChanged = Math.abs(tempoRate - 1) > 0.001;
+  const exportDuration = tempoChanged ? DAW.duration / tempoRate : DAW.duration;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }} onMouseDown={onClose}>
@@ -408,9 +451,27 @@ function ExportDialog({ projectName, onClose }) {
                 <Row label="Format"><Seg small value={format} onChange={setFormat} options={[{ v: "mp3", l: "MP3" }, { v: "wav", l: "WAV" }]} /></Row>
                 <Row label="Bitrate"><Seg small value={bitrate} onChange={setBitrate} options={[{ v: 192, l: "192" }, { v: 256, l: "256" }, { v: 320, l: "320" }]} /></Row>
                 <Row label="Sample rate"><Seg small value={sr} onChange={setSr} options={[{ v: 44100, l: "44.1k" }, { v: 48000, l: "48k" }]} /></Row>
-                <Row label="Normalize"><button onClick={() => setNormalize(!normalize)} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s" }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
+                <Row label="Normalize">
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {normalize && window.electronAPI && window.electronAPI.processAudio && (
+                      <select value={lufsTarget} onChange={(e) => setLufsTarget(parseFloat(e.target.value))}
+                        title="Integrated loudness target (LUFS)"
+                        style={{ height: 24, background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 7, color: "var(--cream)", fontSize: 11, padding: "0 6px", maxWidth: 150 }}>
+                        <option value={-9}>−9 LUFS · loud master</option>
+                        <option value={-12}>−12 LUFS · loud</option>
+                        <option value={-14}>−14 LUFS · streaming</option>
+                        <option value={-16}>−16 LUFS · podcast</option>
+                        <option value={-23}>−23 LUFS · broadcast</option>
+                      </select>
+                    )}
+                    <button onClick={() => setNormalize(!normalize)} title={(window.electronAPI && window.electronAPI.processAudio) ? `Normalize loudness to ${lufsTarget} LUFS (true peak −1 dBTP)` : "Soft-limit peaks (browser fallback)"} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s", flexShrink: 0 }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button>
+                  </div>
+                </Row>
+                <Row label="Keep pitch"><button onClick={() => setPreservePitch(!preservePitch)} disabled={!tempoChanged} title={tempoChanged ? "Export tempo changes without changing pitch" : "Enable Vari BPM and change Playback BPM first"} style={{ width: 40, height: 22, borderRadius: 12, background: preservePitch && tempoChanged ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s", opacity: tempoChanged ? 1 : 0.45 }}><span style={{ position: "absolute", top: 2, left: preservePitch && tempoChanged ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
                 <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(232,176,75,.06)", borderRadius: 9, fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
-                  All unmuted tracks with FX, automation, master EQ &amp; fades. Length {fmtTime(DAW.duration)}.
+                  All unmuted tracks with FX, automation, master EQ &amp; fades. Length {fmtTime(exportDuration)}.
+                  {normalize && window.electronAPI && window.electronAPI.processAudio ? ` Loudness normalized to ${lufsTarget} LUFS.` : ""}
+                  {preservePitch && tempoChanged ? " Pitch-preserving time stretch is applied after mix render." : ""}
                 </div>
               </div>
 
@@ -460,7 +521,7 @@ function ExportDialog({ projectName, onClose }) {
               <div style={{ height: "100%", width: prog * 100 + "%", background: "linear-gradient(90deg,var(--amber-deep),var(--amber))", borderRadius: 5, transition: "width .12s" }} />
             </div>
             <div className="mono" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 14 }}>
-              offline render · {sr / 1000}kHz{format === "mp3" ? ` · ${bitrate}kbps MP3` : " · WAV"}
+              offline render · {sr / 1000}kHz{format === "mp3" ? ` · ${bitrate}kbps MP3` : " · WAV"}{preservePitch && tempoChanged ? " · keep pitch" : ""}
             </div>
           </div>
         )}
@@ -481,7 +542,7 @@ function ExportDialog({ projectName, onClose }) {
           <div style={{ padding: "30px 24px", textAlign: "center" }}>
             <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" }}><Icon name="check" size={26} /></div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Mixdown ready</div>
-            <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(DAW.duration)} · {sr / 1000}kHz · {ext.toUpperCase()}</div>
+            <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(exportDuration)} · {sr / 1000}kHz · {ext.toUpperCase()}{preservePitch && tempoChanged ? " · keep pitch" : ""}</div>
             {window.electronAPI ? (
               <button className="btn-save" disabled={saving} onClick={async () => {
                 setSaving(true);

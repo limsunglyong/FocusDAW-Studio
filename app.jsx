@@ -247,7 +247,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Import Audio Files\u2026", icon: "wave", onClick: onImport },
     { label: "Load Demo Session", icon: "disc", onClick: onLoadDemo },
     { sep: true },
-    { label: "Export MP3\u2026", icon: "download", hint: "\u2318E", onClick: onExport },
+    { label: "Export\u2026", icon: "download", hint: "\u2318E", onClick: onExport },
   ];
   const editItems = [
     { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
@@ -1470,7 +1470,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       setLoading({ active: true, total: items.length, done: i, label: item.name });
       try {
         const ab = await window.electronAPI.readAudioFile(item.path);
-        await DAW.addFileBuffer(item.name, ab, { filePath: item.path, displayName: item.displayName });
+        await DAW.addFileBuffer(item.name, ab, {
+          filePath: item.path,
+          displayName: item.displayName,
+          fileSize: item.size,
+          fileMtimeMs: item.mtimeMs,
+        });
       } catch (e) { console.error("Failed to add", item.name, e); }
     }
     fitTimelineToProject();

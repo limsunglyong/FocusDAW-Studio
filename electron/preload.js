@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // MP3 encoding via ffmpeg (opts.cover = { data: base64, mime } for album art)
   encodeMp3:      (wavBuf, opts)  => ipcRenderer.invoke('encode-mp3', wavBuf, opts),
+  processTempo:   (wavBuf, opts)  => ipcRenderer.invoke('process-tempo', wavBuf, opts),
+  processAudio:   (wavBuf, opts)  => ipcRenderer.invoke('process-audio', wavBuf, opts),
 
   // Save rendered audio via native OS dialog (with overwrite confirmation)
   saveAudio:      (buf, name)     => ipcRenderer.invoke('save-audio', buf, name),

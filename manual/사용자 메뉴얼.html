@@ -327,7 +327,7 @@
           <tr><th>Import Stem Folder...</th><td>선택한 폴더의 루트에 있는 오디오 파일을 한 번에 등록합니다.</td></tr>
           <tr><th>Import Audio Files...</th><td>개별 오디오 파일을 여러 개 선택해 트랙으로 추가합니다.</td></tr>
           <tr><th>Load Demo Session</th><td>Drums, Bass, Keys, Lead 데모 트랙을 불러와 앱 기능을 시험합니다.</td></tr>
-          <tr><th>Export MP3...</th><td>믹스다운 내보내기 창을 엽니다. 실제 창에서는 MP3와 WAV를 선택할 수 있습니다.</td></tr>
+          <tr><th>Export...</th><td>믹스다운 내보내기 창을 엽니다. 실제 창에서는 MP3와 WAV를 선택할 수 있습니다.</td></tr>
         </tbody>
       </table>
 
@@ -445,7 +445,7 @@
         <figcaption>재생 BPM을 <strong>158 → 180</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>158 BPM | 180</strong>으로 바뀌고 곡 전체가 그 비율만큼 빠르게 재생됩니다.</figcaption>
       </div>
 
-      <div class="warning">현재 템포 변경은 Web Audio의 playbackRate 방식이라 속도를 바꾸면 <strong>피치(음 높이)도 함께 변합니다.</strong> 피치를 유지한 채 템포만 바꾸는 기능은 다음 단계에서 제공될 예정입니다.</div>
+      <div class="warning">실시간 재생의 템포 변경은 아직 Web Audio의 playbackRate 방식이라 속도를 바꾸면 <strong>피치(음 높이)도 함께 변합니다.</strong> Export 창의 Keep pitch 옵션은 피치 보존 Time Stretch를 파일 출력에 먼저 적용하는 1차 프로토타입입니다.</div>
 
       <h3>트랙 헤더 컨트롤</h3>
       <table>
@@ -570,7 +570,7 @@
 
     <section id="export">
       <h2>7. 믹스다운 내보내기</h2>
-      <p><strong>Export MP3</strong> 버튼 또는 <strong>Project &gt; Export MP3...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
+      <p><strong>Export</strong> 버튼 또는 <strong>Project &gt; Export...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
 
       <h3>Export 설정</h3>
       <div class="figure">
@@ -584,6 +584,7 @@
           <tr><th>Bitrate</th><td>MP3 출력 시 192, 256, 320kbps 중에서 선택합니다.</td></tr>
           <tr><th>Sample rate</th><td>44.1kHz 또는 48kHz로 렌더링합니다.</td></tr>
           <tr><th>Normalize</th><td>최종 출력이 과도하게 커지지 않도록 렌더링 단계에서 정규화/리미팅을 적용합니다.</td></tr>
+          <tr><th>Keep pitch</th><td>Vari BPM으로 출력 템포를 바꿀 때 Export 파일에 피치 보존 Time Stretch를 적용합니다. 실시간 재생은 아직 기존 playbackRate 방식입니다.</td></tr>
         </tbody>
       </table>
 
