@@ -623,11 +623,22 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">상단 미니맵으로 1분대 구간으로 이동한 화면입니다. 긴 오디오 프로젝트에서 스크롤보다 빠르게 위치를 잡을 수 있습니다.</div>
                   </div>
 
+                  <h3 className="manual-h3">BPM 표시기와 Phase 0 템포 변경</h3>
+                  <p className="manual-p">새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시됩니다. BPM 표시기를 누르면 설정 패널이 아래로 확장되고, 다시 누르거나 마우스가 벗어난 상태로 5초가 지나면 접힙니다.</p>
+                  <ul className="manual-ul">
+                    <li className="manual-li"><strong>B 버튼</strong>: BPM 측정에 사용할 트랙을 하나만 선택합니다.</li>
+                    <li className="manual-li"><strong>Detect</strong>: B 버튼으로 선택한 트랙에서 BPM을 추정합니다.</li>
+                    <li className="manual-li"><strong>TAP</strong>: 박자에 맞춰 누르면 BPM을 수동 측정합니다. 숫자 입력 후 <strong>APPLY</strong>를 눌러 프로젝트 BPM으로 확정할 수도 있습니다.</li>
+                    <li className="manual-li">표시 형식은 <strong>120 BPM | 120</strong>이며, 뒤 숫자는 재생 BPM입니다. BPM 표시기 위에서 마우스 휠을 돌리거나 상하 버튼을 누르면 1씩 바뀌며, 곡 전체가 그 비율로 빨라지거나 느려집니다.</li>
+                  </ul>
+                  <div className="manual-warning">Phase 0 템포 변경은 Web Audio playbackRate 기반입니다. 속도 확인용 프로토타입이므로 BPM을 바꾸면 피치도 함께 변합니다.</div>
+
                   <h3 className="manual-h3">트랙 헤더 컨트롤</h3>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th">볼륨 슬라이더</th><td className="manual-td">트랙의 재생 레벨을 조절합니다. 0dB 지점은 슬라이더 중앙 눈금으로 표시됩니다.</td></tr>
                       <tr><th className="manual-th">Pan 노브</th><td className="manual-td">좌우 스테레오 위치를 조정합니다.</td></tr>
+                      <tr><th className="manual-th">B 버튼</th><td className="manual-td">BPM 측정 대상으로 사용할 트랙을 선택합니다. 한 번에 하나의 트랙만 선택됩니다.</td></tr>
                       <tr><th className="manual-th">S 버튼</th><td className="manual-td">해당 트랙만 듣는 Solo 기능입니다. Solo가 켜진 트랙이 있으면 다른 트랙은 자동으로 들리지 않습니다.</td></tr>
                       <tr><th className="manual-th">M 버튼</th><td className="manual-td">해당 트랙을 음소거합니다.</td></tr>
                       <tr><th className="manual-th">레벨 미터</th><td className="manual-td">트랙의 현재 출력 레벨을 표시합니다.</td></tr>
@@ -669,11 +680,22 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">Using the minimap to navigate to the 1-minute mark. Much faster than manual horizontal scrolling.</div>
                   </div>
 
+                  <h3 className="manual-h3">BPM Indicator and Phase 0 Tempo Change</h3>
+                  <p className="manual-p">A new project starts with BPM shown as <strong>---</strong>. Click the BPM indicator to expand the settings panel below it; click it again, or leave it inactive outside the mouse area for 5 seconds, to collapse it.</p>
+                  <ul className="manual-ul">
+                    <li className="manual-li"><strong>B button</strong>: Selects one track as the BPM detection source.</li>
+                    <li className="manual-li"><strong>Detect</strong>: Estimates BPM from the selected B track.</li>
+                    <li className="manual-li"><strong>TAP</strong>: Tap along with the beat to measure BPM manually. You can also type a value and press <strong>APPLY</strong>.</li>
+                    <li className="manual-li">The display format is <strong>120 BPM | 120</strong>. The number after the divider is playback BPM; mouse wheel or the up/down buttons change it by 1, speeding up or slowing down the whole song by that ratio.</li>
+                  </ul>
+                  <div className="manual-warning">Phase 0 tempo changes use Web Audio playbackRate. This is a prototype for speed validation, so changing BPM also changes pitch.</div>
+
                   <h3 className="manual-h3">Track Header Controls</h3>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th">Volume Slider</th><td className="manual-td">Controls track volume. The center position marks nominal gain (0dB).</td></tr>
                       <tr><th className="manual-th">Pan Knob</th><td className="manual-td">Positions the track in the stereo field (Left/Right balance).</td></tr>
+                      <tr><th className="manual-th">B Button</th><td className="manual-td">Selects the track used for BPM detection. Only one track can be selected at a time.</td></tr>
                       <tr><th className="manual-th">S Button</th><td className="manual-td">Solos the track (mutes all other non-soloed tracks).</td></tr>
                       <tr><th className="manual-th">M Button</th><td className="manual-td">Mutes the track.</td></tr>
                       <tr><th className="manual-th">Level Meter</th><td className="manual-td">Displays real-time playback output levels.</td></tr>

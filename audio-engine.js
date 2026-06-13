@@ -232,6 +232,7 @@
     EQ_PRESETS,
     tracks: [],
     loopEnabled: true,
+    tempo: { projectBpm: null, playbackBpm: null },
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 },
     isPlaying: false,
     _startTime: 0,
@@ -325,6 +326,7 @@
         params: {
           volume: 1.0, pan: 0, mute: false, solo: false,
           reverb: 0, echo: 0,
+          bpmSource: false,
           autoOn: false,
           autoCurve: false,
           automation: defaultAutomation(type),
@@ -419,6 +421,7 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
+      this.tempo = { projectBpm: null, playbackBpm: null };
       this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 };
       if (ctx) {
         ramp(masterVol.gain, 0.9);
@@ -453,6 +456,11 @@
     setTrackParam(id, key, val) {
       const t = this.tracks.find((x) => x.id === id);
       if (!t) return;
+      if (key === "bpmSource" && val) {
+        this.tracks.forEach((track) => {
+          if (track.id !== id) track.params.bpmSource = false;
+        });
+      }
       t.params[key] = val;
       // Solo/Mute are mutually exclusive on the same track
       if (key === "solo" && val) t.params.mute = false;
@@ -463,6 +471,71 @@
         // re-schedule every track × every loop on each mousemove.
         if (this.isPlaying) this._scheduleAutomationSoon();
       }
+    },
+
+    _normalizeBpm(bpm) {
+      const n = Number(bpm);
+      if (!Number.isFinite(n)) return null;
+      return Math.max(20, Math.min(300, Math.round(n)));
+    },
+
+    setProjectBpm(bpm) {
+      const next = this._normalizeBpm(bpm);
+      if (!next) return false;
+      this.tempo.projectBpm = next;
+      if (!this.tempo.playbackBpm) this.tempo.playbackBpm = next;
+      this._restartPlaybackForTempo();
+      this._emit();
+      return true;
+    },
+
+    setPlaybackBpm(bpm) {
+      if (!this.tempo.projectBpm) return false;
+      const next = this._normalizeBpm(bpm);
+      if (!next) return false;
+      this.tempo.playbackBpm = next;
+      this._restartPlaybackForTempo();
+      this._emit();
+      return true;
+    },
+
+    adjustPlaybackBpm(delta) {
+      const base = this.tempo.playbackBpm || this.tempo.projectBpm;
+      if (!base) return false;
+      return this.setPlaybackBpm(base + delta);
+    },
+
+    getBpmSourceTrack() {
+      return this.tracks.find((t) => t.params && t.params.bpmSource) || null;
+    },
+
+    detectBpmFromTrack(id) {
+      const t = this.tracks.find((x) => x.id === id);
+      if (!t || !t.buffer || t.needsAudio) return null;
+      const estimated = estimateBpm(t.buffer);
+      if (!estimated) return null;
+      return estimated;
+    },
+
+    _projectRate() {
+      const project = this.tempo.projectBpm;
+      const playback = this.tempo.playbackBpm || project;
+      if (!project || !playback) return 1;
+      return Math.max(0.25, Math.min(4, playback / project));
+    },
+
+    _trackPlaybackRate() {
+      // All tracks share the global tempo ratio (Playback BPM / Project BPM).
+      return this._projectRate();
+    },
+
+    _restartPlaybackForTempo() {
+      if (!ctx || !this.isPlaying) return;
+      const pos = this.getPlayhead();
+      this._offset = pos;
+      this._stopSources();
+      this.isPlaying = false;
+      this.play({ skipFade: true });
     },
 
     setMaster(key, val) {
@@ -498,6 +571,7 @@
         version: "0.11",
         projectName,
         duration: this.duration,
+        tempo: { ...this.tempo },
         master: { ...this.master, bands: [...this.master.bands] },
         tracks: this.tracks.map(t => ({
           id: t.id,
@@ -530,6 +604,7 @@
           fadeOut: this.master.fadeOut,
         },
         eqBands: [...this.master.bands],
+        tempo: { ...this.tempo },
         tracks: this.tracks.map(t => ({
           id: t.id,
           params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })) },
@@ -551,6 +626,12 @@
         this.setMaster("fadeOut", snap.master.fadeOut ?? this.master.fadeOut);
       }
       if (snap.eqBands) this.setMasterBands(snap.eqBands);
+      if (snap.tempo) {
+        this.tempo = {
+          projectBpm: this._normalizeBpm(snap.tempo.projectBpm),
+          playbackBpm: this._normalizeBpm(snap.tempo.playbackBpm),
+        };
+      }
       for (const st of snap.tracks) {
         const t = this.tracks.find(x => x.id === st.id);
         if (!t) continue;
@@ -573,6 +654,10 @@
       this.tracks.length = 0;
       this._spectrum = null;
       this.duration = json.duration || DURATION;
+      this.tempo = {
+        projectBpm: this._normalizeBpm(json.tempo && json.tempo.projectBpm),
+        playbackBpm: this._normalizeBpm(json.tempo && json.tempo.playbackBpm),
+      };
       if (json.master) {
         Object.assign(this.master, json.master);
         ramp(masterVol.gain, this.master.volume);
@@ -789,11 +874,13 @@
       this.tracks.forEach((t) => {
         const src = ctx.createBufferSource();
         src.buffer = t.buffer;
+        const rate = this._trackPlaybackRate(t);
+        try { src.playbackRate.value = rate; } catch (e) {}
         // Repeat is controlled by the engine at the song boundary so toggling
         // the button during playback does not require rebuilding live sources.
         src.loop = false;
         src.connect(t.nodes.fader);
-        src.start(now, this._offset % t.buffer.duration);
+        src.start(now, (this._offset * rate) % t.buffer.duration);
         this._sources.push(src);
       });
       this.isPlaying = true;
@@ -972,6 +1059,8 @@
         const p = t.params;
         const audible = p.mute ? 0 : (anySolo && !p.solo ? 0 : 1);
         const src = off.createBufferSource(); src.buffer = t.buffer;
+        const rate = this._trackPlaybackRate(t);
+        try { src.playbackRate.setValueAtTime(rate, 0); } catch (e) {}
         const fd = off.createGain(); fd.gain.setValueAtTime(audible * p.volume, 0);
         const ag = off.createGain();
         const pn = off.createStereoPanner(); pn.pan.setValueAtTime(p.pan, 0);
@@ -1058,6 +1147,152 @@
     if (type === "lead") return [{ t: 0, v: 0.3 }, { t: 0.25, v: 1 }, { t: 0.6, v: 1 }, { t: 1, v: 0.5 }];
     if (type === "keys") return [{ t: 0, v: 0.85 }, { t: 0.5, v: 1 }, { t: 1, v: 0.7 }];
     return [{ t: 0, v: 1 }, { t: 1, v: 1 }];
+  }
+
+  // BPM 측정 (표준 onset detection + tempo estimation 흐름):
+  //   1) 곡 중앙의 연속 구간(최대 ~75초)에서 spectral-flux onset strength 곡선 생성
+  //   2) 전체 구간 자기상관(ACF)으로 periodicity 추정 + tempo prior 가중
+  //   3) 다중 후보 중 옥타브(½×·2×) 해소 후 best tempo 선택, 포물선 보간으로 정밀화
+  // 구간 분할/RMS 없이 단일 global 추정값을 반환한다.
+  const BPM_MIN = 40;
+  const BPM_MAX = 240;
+  const BPM_PRIOR_CENTER = 120; // tempo prior 중심(BPM)
+  const BPM_PRIOR_SIGMA = 0.9;  // log2 영역 표준편차(약 ±1 옥타브)
+
+  // tempo prior: 로그정규 분포. 중심에서 멀수록(특히 옥타브 단위) 가중 감소.
+  function tempoPrior(bpm) {
+    const z = Math.log2(bpm / BPM_PRIOR_CENTER) / BPM_PRIOR_SIGMA;
+    return Math.exp(-0.5 * z * z);
+  }
+
+  // 곡 중앙의 대표 구간에 대한 onset strength 곡선을 만들고 best tempo를 추정한다.
+  function estimateBpm(buffer) {
+    if (typeof Meyda === "undefined") return null;
+    const sr = buffer.sampleRate || 44100;
+    const len = buffer.length || 0;
+    if (!len) return null;
+
+    // 1) 분석 구간: 곡 중앙의 연속된 최대 75초 (periodicity 증거 보존)
+    const spanLen = Math.min(len, Math.floor(sr * 75));
+    const center = Math.floor(len / 2);
+    let rangeStart = Math.max(0, center - Math.floor(spanLen / 2));
+    let rangeEnd = Math.min(len, rangeStart + spanLen);
+    rangeStart = Math.max(0, rangeEnd - spanLen);
+    if ((rangeEnd - rangeStart) / sr < 4) return null; // periodicity 추정에 부족
+
+    // 2) Spectral Flux onset strength 곡선
+    const onset = computeOnsetEnvelope(buffer, rangeStart, rangeEnd);
+    if (!onset || onset.curve.length < 32) return null;
+
+    // 3) ACF + tempo prior + 옥타브 해소
+    const bpm = estimateTempoFromOnset(onset.curve, onset.envelopeSR);
+    if (!bpm) return null;
+    return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(bpm)));
+  }
+
+  // STFT spectral flux → 로그 압축·국소 평균 차감으로 정규화한 onset strength 곡선.
+  function computeOnsetEnvelope(buffer, rangeStart, rangeEnd) {
+    const sr = buffer.sampleRate || 44100;
+    const frameSize = 2048;
+    const hopSize = 512;
+    Meyda.bufferSize = frameSize;
+    Meyda.windowingFunction = "hanning";
+
+    const channelData = buffer.getChannelData(0);
+    const fluxes = [];
+    let prevSpectrum = null;
+    for (let i = rangeStart; i <= rangeEnd - frameSize; i += hopSize) {
+      const frame = channelData.slice(i, i + frameSize);
+      let spectrum = Meyda.extract("amplitudeSpectrum", frame);
+      if (!spectrum) spectrum = new Float32Array(frameSize / 2);
+      // 로그 압축: 큰 저역 에너지가 flux를 지배하는 것을 완화 (librosa 방식)
+      let flux = 0;
+      const cur = new Float32Array(spectrum.length);
+      for (let k = 0; k < spectrum.length; k++) {
+        cur[k] = Math.log1p(spectrum[k]);
+        if (prevSpectrum) {
+          const diff = cur[k] - prevSpectrum[k];
+          if (diff > 0) flux += diff; // half-wave rectify
+        }
+      }
+      if (prevSpectrum) fluxes.push(flux);
+      prevSpectrum = cur;
+    }
+    if (fluxes.length < 32) return null;
+
+    // 국소 평균 차감(adaptive threshold)으로 DC·느린 에너지 드리프트 제거
+    const envelopeSR = sr / hopSize;
+    const win = Math.max(4, Math.round(envelopeSR * 0.5)); // ~0.5초 이동 평균
+    const curve = new Float32Array(fluxes.length);
+    let acc = 0;
+    for (let i = 0; i < fluxes.length; i++) {
+      acc += fluxes[i];
+      if (i >= win) acc -= fluxes[i - win];
+      const localMean = acc / Math.min(i + 1, win);
+      curve[i] = Math.max(0, fluxes[i] - localMean);
+    }
+    return { curve, envelopeSR };
+  }
+
+  // onset 곡선의 자기상관 + tempo prior로 best tempo(BPM)를 산출한다.
+  function estimateTempoFromOnset(curve, envelopeSR) {
+    const n = curve.length;
+    const lagMin = Math.max(1, Math.floor((60 * envelopeSR) / BPM_MAX));
+    const lagMax = Math.min(n - 2, Math.ceil((60 * envelopeSR) / BPM_MIN));
+    if (lagMax <= lagMin) return null;
+
+    // biased 자기상관: r[lag] = (1/n)·Σ curve[i]·curve[i+lag].
+    // 분모를 n으로 고정하면 큰 lag(낮은 BPM)에서 항 수가 줄어 자연히 감쇠 → 저-BPM 과대평가 방지.
+    const r = new Float32Array(lagMax + 2);
+    for (let lag = lagMin; lag <= lagMax; lag++) {
+      let sum = 0;
+      for (let i = 0; i < n - lag; i++) sum += curve[i] * curve[i + lag];
+      r[lag] = sum / n;
+    }
+
+    const lagToBpm = (lag) => (60 * envelopeSR) / lag;
+
+    // 후보: 자기상관의 국소 최대(peak)
+    const candidates = [];
+    for (let lag = lagMin + 1; lag < lagMax; lag++) {
+      if (r[lag] > r[lag - 1] && r[lag] >= r[lag + 1] && r[lag] > 0) candidates.push(lag);
+    }
+    if (!candidates.length) return null;
+
+    // 옥타브 해소: harmonic comb score × tempo prior로 fundamental 선택.
+    // comb(L)=Σ_{m=1..4} r[m·L] 는 기본 템포 L이 자기 배음(2L·3L…) 피크의 지지를 흡수하므로,
+    // half-tempo(2L) 후보보다 항상 강해져 "더 빠른 기본 템포"를 선택하게 된다.
+    let bestLag = 0;
+    let bestScore = -Infinity;
+    for (const L of candidates) {
+      let comb = 0;
+      for (let m = 1; m <= 4; m++) {
+        const ml = Math.round(m * L);
+        if (ml > lagMax) break;
+        comb += r[ml];
+      }
+      const score = comb * tempoPrior(lagToBpm(L));
+      if (score > bestScore) {
+        bestScore = score;
+        bestLag = L;
+      }
+    }
+    if (!bestLag) return null;
+
+    // 포물선 보간으로 lag 정밀화
+    const refinedLag = parabolicPeakLag(r, bestLag, lagMin, lagMax);
+    return lagToBpm(refinedLag);
+  }
+
+  // y[L-1], y[L], y[L+1]을 이용한 포물선 정점 보간으로 소수점 lag를 추정한다.
+  function parabolicPeakLag(y, L, lagMin, lagMax) {
+    if (L <= lagMin || L >= lagMax) return L;
+    const a = y[L - 1], b = y[L], c = y[L + 1];
+    const denom = a - 2 * b + c;
+    if (denom === 0) return L;
+    const delta = (0.5 * (a - c)) / denom;
+    if (delta < -1 || delta > 1) return L;
+    return L + delta;
   }
   function automationCurve(bps, n) {
     const pts = [...bps].sort((a, b) => a.t - b.t);

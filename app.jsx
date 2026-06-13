@@ -381,6 +381,7 @@ function Transport({ playing, onPlay, onStop, onToStart, loop, onLoop, playhead 
 /* ---------- toolbar (zoom / tools / actions) ---------- */
 const TIME_ZOOM_BASE_MIN = 28;
 const TIME_ZOOM_MAX = 420;
+const TOOLBAR_PANEL_H = 52;
 
 function timelineMinPx(containerWidth) {
   const width = containerWidth || window.innerWidth || 1980;
@@ -397,7 +398,7 @@ function timelineStep(minPx) {
 
 function ZoomGroup({ label, onMinus, onPlus, sliderProps }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "5px 9px", background: "var(--bg)", borderRadius: 10, border: "1px solid var(--line)" }}>
+    <div style={{ height: TOOLBAR_PANEL_H, display: "flex", flexDirection: "column", justifyContent: "center", gap: 5, padding: "5px 9px", background: "var(--bg)", borderRadius: 10, border: "1px solid var(--line)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, letterSpacing: ".06em", marginRight: 3 }}>{label}</span>
         <button className="iconbtn" style={{ width: 24, height: 24 }} onClick={onMinus}><Icon name="zoomOut" size={14} /></button>
@@ -474,6 +475,143 @@ function ActionBar({ onAddTrack, onMixer, mixerOpen, onExport }) {
   );
 }
 
+function BpmIndicator({
+  tempo,
+  open,
+  manualBpm,
+  measuredBpm,
+  detecting,
+  detectSeq,
+  applySeq,
+  tapInfo,
+  selectedTrack,
+  selectedTrackIndex,
+  onToggle,
+  onActivity,
+  onMouseInside,
+  onPlaybackAdjust,
+  onManualBpm,
+  onDetect,
+  onTap,
+  onApply,
+}) {
+  const projectBpm = tempo && tempo.projectBpm;
+  const playbackBpm = (tempo && tempo.playbackBpm) || projectBpm;
+  const canAdjust = !!projectBpm;
+  const canDetect = !!selectedTrack && !selectedTrack.needsAudio && !detecting;
+  // Keying these spans by applySeq/detectSeq remounts them on each APPLY / Detect,
+  // which replays the bpmPop "punch" animation so a fresh value is clearly noticeable.
+  const display = projectBpm ? (
+    <React.Fragment>
+      <span key={applySeq} style={{ fontFamily: "var(--bpm-number-font)", fontSize: 17, lineHeight: 1, fontWeight: 400, color: "var(--bpm-fg, var(--cream))", textShadow: "0 0 8px var(--amber-soft)", display: "inline-block", animation: "bpmPop .45s cubic-bezier(.22,1.2,.36,1) both" }}>{Math.round(projectBpm)}</span>
+      <span style={{ fontSize: 10.5, lineHeight: 1, fontWeight: 400, letterSpacing: ".12em", color: "var(--bpm-label-fg, var(--cream-2))" }}>BPM</span>
+      <span style={{ color: "var(--line-strong)", fontSize: 13, padding: "0 1px" }}>|</span>
+      <span className="mono" style={{ fontSize: 15, lineHeight: 1, fontWeight: 400, color: "var(--bpm-fg, var(--cream))", textShadow: "0 0 7px var(--amber-soft)" }}>{Math.round(playbackBpm)}</span>
+    </React.Fragment>
+  ) : (
+    <span className="mono" style={{ fontSize: 17, lineHeight: 1, fontWeight: 700, color: "var(--bpm-fg, var(--cream))", textShadow: "0 0 8px var(--amber-soft)" }}>---</span>
+  );
+  const adjust = (delta, e) => {
+    if (e) e.stopPropagation();
+    if (!canAdjust) return;
+    onActivity();
+    onPlaybackAdjust(delta);
+  };
+  const onWheel = (e) => {
+    if (!canAdjust) return;
+    e.preventDefault();
+    adjust(e.deltaY < 0 ? 1 : -1, e);
+  };
+  return (
+    <div onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)} onWheel={onWheel}
+      style={{ position: "relative", zIndex: 30, width: 150, height: TOOLBAR_PANEL_H, flex: "0 0 150px" }}>
+      <div style={{ position: "absolute", right: 0, top: 0, width: 150, maxHeight: open ? 410 : TOOLBAR_PANEL_H,
+        overflow: "hidden", borderRadius: 10, border: "1px solid var(--line-strong)",
+        background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))",
+        boxShadow: open ? "var(--shadow), inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px rgba(232,176,75,.12)",
+        transition: "max-height .18s ease, box-shadow .16s ease" }}>
+      <button title="Project BPM" onClick={onToggle} onWheel={onWheel}
+        style={{ height: TOOLBAR_PANEL_H, width: "100%", padding: "0 10px 0 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
+          borderRadius: 0, border: 0, background: "transparent", cursor: "pointer" }}>
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, lineHeight: 1 }}>{display}</span>
+        {canAdjust && (
+          <span style={{ display: "flex", flexDirection: "column", gap: 2, marginLeft: 1 }}>
+            <span onClick={(e) => adjust(1, e)} style={{ width: 14, height: 12, display: "grid", placeItems: "center", borderRadius: 3, color: "var(--bpm-label-fg, var(--cream-2))", fontSize: 8, lineHeight: 1 }}>▲</span>
+            <span onClick={(e) => adjust(-1, e)} style={{ width: 14, height: 12, display: "grid", placeItems: "center", borderRadius: 3, color: "var(--bpm-label-fg, var(--cream-2))", fontSize: 8, lineHeight: 1 }}>▼</span>
+          </span>
+        )}
+      </button>
+      {open && (
+        <div onMouseDown={onActivity} onKeyDown={onActivity} onWheel={onActivity}
+          style={{ padding: "10px 10px 11px", borderTop: "1px solid var(--line-strong)",
+            background: "linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.18))",
+            color: "var(--cream)", cursor: "default", animation: "bpmPanelIn .16s ease both" }}>
+          {/* Two-column header: [BPM SOURCE / track name] | [Track / number] */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>BPM SOURCE</div>
+              <div title={selectedTrack ? selectedTrack.name : undefined}
+                style={{ marginTop: 4, fontSize: 12, fontWeight: 600, color: selectedTrack ? "var(--bpm-fg, var(--cream))" : "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedTrack ? selectedTrack.name : "Select track"}
+              </div>
+            </div>
+            <div style={{ width: 36, flex: "0 0 36px", textAlign: "center" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", color: "var(--muted)", lineHeight: 1 }}>Track</div>
+              <span className="mono" title="Selected BPM source track number"
+                style={{ marginTop: 4, width: 34, height: 22, display: "grid", placeItems: "center", borderRadius: 6,
+                  border: "1px solid var(--line-strong)", background: "rgba(0,0,0,.18)",
+                  color: selectedTrack ? "var(--bpm-fg, var(--cream))" : "var(--muted)", fontSize: 11 }}>
+                {selectedTrackIndex ? String(selectedTrackIndex).padStart(2, "0") : "--"}
+              </span>
+            </div>
+          </div>
+          {/* Full-width Detect button, centered label */}
+          <button className="btn" disabled={!canDetect} onClick={onDetect}
+            style={{ width: "100%", height: 30, padding: "0 8px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", opacity: canDetect || detecting ? 1 : 0.45 }}>
+            {detecting ? (
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <span style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--amber-soft)", borderTopColor: "var(--amber)", animation: "spin .7s linear infinite", display: "inline-block" }} />
+                Analyzing…
+              </span>
+            ) : "Detect"}
+          </button>
+          <div style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(0,0,0,.18)", border: "1px solid var(--line)" }}>
+            <div style={{ fontSize: 10.5, lineHeight: 1.45, color: "var(--bpm-label-fg, var(--cream-2))" }}>
+              Phase 0은 playbackRate 방식이라 템포를 바꾸면 피치도 함께 변합니다.
+            </div>
+          </div>
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr", gap: 7, alignItems: "center" }}>
+            <input key={detectSeq} className="mono" type="number" min="20" max="300" step="1" value={manualBpm}
+              onChange={(e) => onManualBpm(e.target.value)}
+              placeholder={measuredBpm ? String(measuredBpm) : "BPM"}
+              style={{ height: 34, borderRadius: 7, border: "1px solid var(--line-strong)", background: "var(--bg)", color: "var(--cream)", padding: "0 10px", fontSize: 15, fontWeight: 700,
+                animation: detectSeq ? "bpmPop .4s cubic-bezier(.22,1.2,.36,1) both" : "none" }} />
+            <button className="btn primary" onClick={onApply} style={{ height: 30, padding: "0 10px" }}>APPLY</button>
+          </div>
+          <button onClick={onTap}
+            style={{ marginTop: 9, width: "100%", height: 50, borderRadius: 8, border: "1px solid var(--amber)",
+              background: "var(--amber)", color: "var(--accent-fg)", fontWeight: 800, letterSpacing: ".08em", cursor: "pointer",
+              boxShadow: "0 0 12px rgba(232,176,75,.4)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.05, gap: 1 }}>
+            {tapInfo && tapInfo.count > 0 ? (
+              <React.Fragment>
+                <span className="mono" style={{ fontSize: 20, fontWeight: 800 }}>{tapInfo.bpm != null ? tapInfo.bpm : "·"}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".14em", opacity: 0.85 }}>TAP · {tapInfo.count}</span>
+              </React.Fragment>
+            ) : (
+              <span style={{ fontSize: 18 }}>TAP</span>
+            )}
+          </button>
+        </div>
+      )}
+      </div>
+    </div>
+  );
+}
+
+function ToolbarDivider() {
+  return <div aria-hidden="true" style={{ width: 1, height: TOOLBAR_PANEL_H - 8, background: "var(--line-strong)", boxShadow: "1px 0 0 rgba(255,255,255,.04)" }} />;
+}
+
 function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, timeMin, onScroll }) {
   const ref = useRef(null);
   const duration = Math.max(0.001, DAW.duration || 0.001);
@@ -524,10 +662,10 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
 
   return (
     <div ref={ref} onMouseDown={onDown} title="Timeline minimap"
-      style={{ flex: "1 1 420px", minWidth: 220, height: 40, position: "relative", overflow: "hidden",
+      style={{ flex: "1 1 252px", minWidth: 150, height: TOOLBAR_PANEL_H, position: "relative", overflow: "hidden",
         borderRadius: 10, border: "1px solid var(--line)", background: "#0b0b0d",
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.035)", cursor: "pointer" }}>
-      <div style={{ position: "absolute", inset: "6px 10px 7px", borderRadius: 7, overflow: "hidden", background: "rgba(255,255,255,.018)" }}>
+      <div style={{ position: "absolute", inset: "8px 10px", borderRadius: 7, overflow: "hidden", background: "rgba(255,255,255,.018)" }}>
         <span style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "rgba(232,212,170,.045)" }} />
         {ticks.map((t) => {
           const isMajor = Math.round(t) % 30 === 0;
@@ -893,6 +1031,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [loading, setLoading] = useState(null);
   const [tool, setTool] = useState("select");
   const [timelineView, setTimelineView] = useState({ scrollLeft: 0, clientWidth: 1 });
+  const [bpmOpen, setBpmOpen] = useState(false);
+  const [bpmHover, setBpmHover] = useState(false);
+  const [bpmTouchedAt, setBpmTouchedAt] = useState(Date.now());
+  const [manualBpm, setManualBpm] = useState("");
+  const [measuredBpm, setMeasuredBpm] = useState(null);
+  const [detecting, setDetecting] = useState(false);
+  const [detectSeq, setDetectSeq] = useState(0); // bumps on each detect/tap → replays measured-value pop
+  const [applySeq, setApplySeq] = useState(0);    // bumps on each APPLY → replays project-BPM pop
+  const [tapInfo, setTapInfo] = useState({ bpm: null, count: 0 }); // live TAP readout
+  const tapTimesRef = useRef([]);
   const [, force] = useState(0);
   const fileRef = useRef(null);
   const folderRef = useRef(null);
@@ -905,6 +1053,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const MAX_UNDO = 50;
   const playhead = DAW.getPlayhead();
   const sessionDuration = DAW.duration;
+  const selectedBpmTrack = DAW.getBpmSourceTrack ? DAW.getBpmSourceTrack() : null;
+  const selectedBpmTrackIndex = selectedBpmTrack ? DAW.tracks.findIndex((t) => t.id === selectedBpmTrack.id) + 1 : null;
+  const touchBpmPanel = useCallback(() => setBpmTouchedAt(Date.now()), []);
 
   const updateTimelineView = useCallback(() => {
     const el = arrangeRef.current;
@@ -930,6 +1081,89 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     redoStack.current = [];
     if (onUndoStateChange) onUndoStateChange({ canUndo: true, canRedo: false });
   }, [onUndoStateChange]);
+
+  const setProjectBpmFromInput = useCallback((value) => {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    pushUndo();
+    if (DAW.setProjectBpm(next)) {
+      // APPLY sets BOTH Project BPM and Playback BPM to the same value.
+      if (DAW.setPlaybackBpm) DAW.setPlaybackBpm(next);
+      const applied = DAW.tempo && DAW.tempo.projectBpm ? DAW.tempo.projectBpm : Math.round(next);
+      setMeasuredBpm(applied);
+      setManualBpm(String(applied));
+      setApplySeq((n) => n + 1);
+      saveRecentProject(projectName, projectPath);
+      force((n) => n + 1);
+    }
+  }, [pushUndo, projectName, projectPath]);
+
+  const applyBpm = useCallback(() => {
+    const candidate = manualBpm || measuredBpm;
+    if (!candidate) return;
+    touchBpmPanel();
+    setProjectBpmFromInput(candidate);
+  }, [manualBpm, measuredBpm, touchBpmPanel, setProjectBpmFromInput]);
+
+  const detectBpm = useCallback(async () => {
+    if (!selectedBpmTrack || !DAW.detectBpmFromTrack || detecting) return;
+    touchBpmPanel();
+    setDetecting(true);
+    // Yield two frames so the "Analyzing…" state actually paints before the
+    // synchronous STFT analysis blocks the main thread.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let bpm = null;
+    try {
+      bpm = DAW.detectBpmFromTrack(selectedBpmTrack.id);
+    } finally {
+      setDetecting(false);
+    }
+    if (!bpm) return;
+    setMeasuredBpm(bpm);
+    setManualBpm(String(bpm));
+    setDetectSeq((n) => n + 1);
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
+  }, [selectedBpmTrack, detecting, touchBpmPanel, projectName, projectPath]);
+
+  const tapBpm = useCallback(() => {
+    const now = performance.now();
+    const taps = tapTimesRef.current;
+    // Start a fresh tapping session if the gap since the last tap is too long
+    // (≈ more than ~2 beats, or 2.5s when no interval yet) — i.e. a new tempo.
+    if (taps.length) {
+      const gap = now - taps[taps.length - 1];
+      const lastInterval = taps.length >= 2 ? taps[taps.length - 1] - taps[taps.length - 2] : 0;
+      const resetGap = lastInterval ? Math.max(2000, lastInterval * 2.2) : 2500;
+      if (gap > resetGap) taps.length = 0;
+    }
+    taps.push(now);
+    if (taps.length > 40) taps.splice(0, taps.length - 40); // bound memory, keep many taps for precision
+    touchBpmPanel();
+    const n = taps.length;
+    if (n < 2) { setTapInfo({ bpm: null, count: n }); return; }
+    // Least-squares regression of tap time vs beat index: t_i ≈ a + b·i.
+    // slope b = ms per beat. Uses ALL taps (robust to per-tap jitter) and
+    // converges/stabilises as more taps accumulate — unlike a sliding mean.
+    let sumI = 0, sumT = 0, sumII = 0, sumIT = 0;
+    for (let i = 0; i < n; i++) { sumI += i; sumT += taps[i]; sumII += i * i; sumIT += i * taps[i]; }
+    const denom = n * sumII - sumI * sumI;
+    const slope = denom !== 0 ? (n * sumIT - sumI * sumT) / denom : (taps[n - 1] - taps[0]) / (n - 1);
+    if (!(slope > 0)) return;
+    const bpm = Math.max(20, Math.min(300, Math.round(60000 / slope)));
+    setMeasuredBpm(bpm);
+    setManualBpm(String(bpm));
+    setTapInfo({ bpm, count: n });
+    setDetectSeq((s) => s + 1);
+  }, [touchBpmPanel]);
+
+  const adjustPlaybackBpm = useCallback((delta) => {
+    if (!DAW.adjustPlaybackBpm) return;
+    if (DAW.adjustPlaybackBpm(delta)) {
+      saveRecentProject(projectName, projectPath);
+      force((n) => n + 1);
+    }
+  }, [projectName, projectPath]);
 
   const undo = useCallback(() => {
     if (!undoStack.current.length) return;
@@ -1014,6 +1248,33 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     window.addEventListener("mouseup", reset);
     return () => window.removeEventListener("mouseup", reset);
   }, []);
+
+  useEffect(() => {
+    const projectBpm = DAW.tempo && DAW.tempo.projectBpm;
+    if (!projectBpm) {
+      setManualBpm("");
+      setMeasuredBpm(null);
+      return;
+    }
+    setManualBpm(String(Math.round(projectBpm)));
+    setMeasuredBpm(Math.round(projectBpm));
+  }, [projectName, projectPath, DAW.tempo && DAW.tempo.projectBpm]);
+
+  useEffect(() => {
+    if (!bpmOpen) return;
+    const timer = setInterval(() => {
+      if (!bpmHover && Date.now() - bpmTouchedAt >= 5000) setBpmOpen(false);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [bpmOpen, bpmHover, bpmTouchedAt]);
+
+  // Reset the TAP tempo session whenever the panel closes, so each open starts fresh.
+  useEffect(() => {
+    if (!bpmOpen) {
+      tapTimesRef.current = [];
+      setTapInfo({ bpm: null, count: 0 });
+    }
+  }, [bpmOpen]);
 
   const saveProject = useCallback(async () => {
     const currentName = (projectNameRef && projectNameRef.current) || projectName || DEFAULT_PROJECT_NAME;
@@ -1273,6 +1534,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const i = DAW.tracks.findIndex((t) => t.id === id);
     if (i >= 0) DAW.tracks.splice(i, 1);
     DAW._spectrum = null;
+    // When the project becomes empty, reset the tempo so Project/Playback BPM
+    // return to the uninitialized "---" state (matches a fresh project).
+    if (DAW.tracks.length === 0) DAW.tempo = { projectBpm: null, playbackBpm: null };
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
@@ -1303,10 +1567,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         onChange={(e) => { if (e.target.files[0]) { openProjectFile(e.target.files[0]); e.target.value = ""; } }} />
 
       {/* control bar */}
-      <div style={{ height: 60, flex: "0 0 60px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "0 16px",
+      <div style={{ height: 68, flex: "0 0 68px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "0 16px",
         background: "linear-gradient(180deg,var(--surface),var(--bg2))", borderBottom: "1px solid var(--line-strong)", position: "relative" }}>
-        {/* left cluster: undo/redo + zoom + tools + row height */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* left cluster: undo/redo + zoom + tools + row height + minimap */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 1 auto", minWidth: 0 }}>
           <div style={{ display: "flex", gap: 2 }}>
             <button className="iconbtn" style={{ width: 30, height: 30, opacity: undoStack.current.length ? 1 : 0.32 }}
               onClick={undo} title="Undo (Ctrl+Z)" disabled={!undoStack.current.length}>
@@ -1329,10 +1593,33 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, letterSpacing: ".06em" }}>TRACK SIZE</span>
             <Seg small value={laneH} onChange={setLaneH} options={[{ v: 68, l: "S" }, { v: 96, l: "M" }, { v: 132, l: "L" }]} />
           </div>
+          <TimelineMinimap arrangeRef={arrangeRef} pxPerSec={pxPerSec} playhead={playhead} viewState={timelineView} setPx={setPxFromUser} timeMin={timeMinPx} onScroll={scrollArrangeTo} />
         </div>
-        <TimelineMinimap arrangeRef={arrangeRef} pxPerSec={pxPerSec} playhead={playhead} viewState={timelineView} setPx={setPxFromUser} timeMin={timeMinPx} onScroll={scrollArrangeTo} />
-        {/* right cluster: actions */}
-        <ActionBar onAddTrack={pickAudioFiles} onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
+        {/* right cluster: project tempo + actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto", flex: "0 0 auto" }}>
+          <BpmIndicator
+            tempo={DAW.tempo}
+            open={bpmOpen}
+            manualBpm={manualBpm}
+            measuredBpm={measuredBpm}
+            detecting={detecting}
+            detectSeq={detectSeq}
+            applySeq={applySeq}
+            tapInfo={tapInfo}
+            selectedTrack={selectedBpmTrack}
+            selectedTrackIndex={selectedBpmTrackIndex}
+            onToggle={() => { touchBpmPanel(); setBpmOpen((v) => !v); }}
+            onActivity={touchBpmPanel}
+            onMouseInside={setBpmHover}
+            onPlaybackAdjust={adjustPlaybackBpm}
+            onManualBpm={(value) => { touchBpmPanel(); setManualBpm(value); }}
+            onDetect={detectBpm}
+            onTap={tapBpm}
+            onApply={applyBpm}
+          />
+          <ToolbarDivider />
+          <ActionBar onAddTrack={pickAudioFiles} onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
+        </div>
       </div>
 
       {/* arrange scroll area (whole area is a dropzone) */}

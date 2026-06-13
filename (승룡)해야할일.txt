@@ -1,0 +1,45 @@
+추천 순서는 이렇습니다.
+
+1) Phase 0: BPM 변화 1차 프로토타입
+	프로젝트 BPM 저장
+	트랙별 원본 BPM 저장
+	트랙별 Sync to Project BPM 토글 추가
+	우선 playbackRate 기반으로 템포 변경 동작 확인
+	단, 이 방식은 피치도 같이 변하므로 UI/문서에 한계 명시
+
+2) Phase 1: BPM 측정 기능
+	임포트 오디오 BPM 자동 검출
+	수동 BPM 입력
+	Tap Tempo 버튼
+	트랙 헤더나 인스펙터에 BPM 표시
+
+3) Phase 2: Time Stretch / Pitch Shift 검토
+	AudioWorklet 기반 DSP 실험
+	soundtouchjs 같은 JS DSP 라이브러리 포팅 검토
+	WSOLA 또는 Phase Vocoder 방식 비교
+	실시간 품질, CPU, Export 일치성 확인
+
+4) Phase 3: Export 연동
+	renderMix() 오프라인 렌더링에도 BPM/Pitch 편집 반영
+	MP3/WAV 출력 결과가 재생 결과와 일치하는지 검증
+
+
+
+## 동작 방법
+1. 최초에 프로젝트 new를 선택하거나 앱이 초기화 되면 BPM 값은 NULL 이 되고 BPM 표시기에는 --- 로 표시한다.
+2. BPM 창을 누르면 BPM 관련 설정창이 내려온다. 
+- 내려온다의 의미 : 현재의 BPM 표시기가 아래로 확장된다.
+- BPM 창을 한번더 누르면 BPM 설정창이 원래대로 돌아간다.
+- BPM 창은 사용자의 입력이 없거나 마우스가 영역안에 없으면 5초 이후에 원래대로 돌아간다.
+3. BPM 이 확정되면 studio.html 창에 BPM 표시를 한다.
+4. BPM 표시기를 "120 BPM" -> "120 BPM | 120" 로 표시 형식을 변경한다. (이건 UI design으로 미리 준비)
+- 뒤에 숫자는 플레이 하고자하는 BPM으로 이것을 변경하여 play 속도를 조절하는 것이다.
+- 숫자 뒤에는 🔼🔽 버튼을 위아래로 배치한다. BPM 창에서 마우스 훨로 스크롤 하거나 버튼을 누르면 플레이 속도를 나타내는 숫자를 변경한다. (마우스 휠로 스크롤 할때 1씩 변하도록 할것.)
+5. BPM 설정창
+- BPM은 Track 별로 detection 하지 않는다.
+- studio.html 메인 앱 화면의 track label 부분에 (S)olo, (M)ute 버튼이 있는데 (S) 버튼 왼쪽에 (B) 버튼을 만든다. (UI design 미리 준비)
+- Track 중 (B) 버튼은 하나의 Track 만 선택할 수 있다. Track 하나가 (B) 버튼이 눌러지면 다른 Track에 (B) 버튼은 무효화 된다.
+- BPM 설정창에 BPM detection 버튼을 만들고 Track 중 하나가 B 버튼이 눌러져 있다면 available 상태로 바뀌고 그 버튼을 누르면 BPM 을 측정한다.
+- BPM 설정창 하단에 수동으로 측정할 수 있는 큰 TAP 버튼이 있고 TAP 버튼 위에 측정된 BPM을 표시하는 작은 창을 둔다. TAP과 측정 BPM을 표시하는 창 사이에 "APPLY" 버튼을 둔다. 이 APPLY 버튼을 누르면 측정된 BPM을 젤 위의 BPM 표시기에 표시한다.
+- TAP 아래의 BPM 표시기는 측정된 BPM을 표시하기도 하지만 수동으로 BPM을 입력할 수 있도록 한다. (manual 입력)
+

@@ -7,21 +7,24 @@
 <link rel="icon" type="image/png" href="assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
 :root{
   --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
   --line:rgba(232,212,170,.10); --line-strong:rgba(232,212,170,.18);
   --cream:#efe6d4; --cream-2:#d8cdb6; --dim:#b0a690; --muted:#857c6b; --faint:#5f574a;
   --amber:#e8b04b; --amber-deep:#c8893a; --amber-soft:rgba(232,176,75,.16);
+  /* readable text color on a solid --amber (accent) fill — overridden per theme where the accent is dark */
+  --accent-fg:#241a0a;
   --green:#94c06a; --green-deep:#6e9a48; --red:#d96a4e; --blue:#7fb0c4; --violet:#c98fb0;
   --shadow:0 18px 50px -18px rgba(0,0,0,.7);
-  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace;
+  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace; --bpm-number-font:"Orbitron",var(--mono);
   --r:10px;
   /* Mixer window title bar — contrasts with the track area per theme */
   --mixer-bar-bg:linear-gradient(#efe7d6,#e3d8c0); --mixer-bar-fg:#241a0a;
   /* OUTPUT FX (master) track label — darker than normal tracks per theme */
   --outfx-bg:linear-gradient(rgba(0,0,0,.26),rgba(0,0,0,.26)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --bpm-bg:linear-gradient(180deg,#17120d,#0e0c09); --bpm-fg:var(--cream); --bpm-label-fg:var(--cream-2);
 }
 /* ── Classical Ivory theme ── */
 :root[data-theme="ivory"]{
@@ -33,6 +36,7 @@
   --shadow:0 18px 50px -18px rgba(0,0,0,.22);
   --mixer-bar-bg:linear-gradient(#2a2520,#221d17); --mixer-bar-fg:#efe6d4;
   --outfx-bg:linear-gradient(#37322a,#2b271f); --outfx-fg:#efe6d4;
+  --bpm-bg:linear-gradient(180deg,#332b20,#211b13); --bpm-fg:#efe6d4; --bpm-label-fg:#d8cdb6;
   --pan-arc:#c9a227;
 }
 :root[data-theme="ivory"] html,
@@ -50,6 +54,7 @@
   --green:#3fb985; --green-deep:#2a9068; --red:#e8654a; --blue:#7fb9e8; --violet:#c085c8;
   --shadow:0 18px 50px -18px rgba(0,0,0,.8);
   --mixer-bar-bg:linear-gradient(#9cccf2,#6fb0e6); --mixer-bar-fg:#0f2640;
+  --bpm-bg:linear-gradient(180deg,#0e2238,#081522); --bpm-fg:#eaf1fb; --bpm-label-fg:#a7b8d0;
 }
 
 /* ── Forest Green theme ── */
@@ -62,6 +67,7 @@
   --shadow:0 18px 50px -18px rgba(0,0,0,.85);
   --mixer-bar-bg:linear-gradient(#a8e0a0,#7cca74); --mixer-bar-fg:#0c1e0f;
   --outfx-bg:linear-gradient(rgba(0,0,0,.32),rgba(0,0,0,.32)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --bpm-bg:linear-gradient(180deg,#0b160f,#050d07); --bpm-fg:#d8f0d0; --bpm-label-fg:#9ec49a;
 }
 
 /* ── Arctic Frost theme ── */
@@ -74,6 +80,7 @@
   --shadow:0 18px 50px -18px rgba(0,0,0,.85);
   --mixer-bar-bg:linear-gradient(#8de9f7,#22d3ee); --mixer-bar-fg:#062533;
   --outfx-bg:linear-gradient(rgba(0,0,0,.32),rgba(0,0,0,.32)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --bpm-bg:linear-gradient(180deg,#071126,#030816); --bpm-fg:#dbe2fd; --bpm-label-fg:#bbcabf;
 }
 
 /* ── Neon Lime theme ── */
@@ -86,6 +93,7 @@
   --shadow:0 18px 50px -18px rgba(0,0,0,.9);
   --mixer-bar-bg:linear-gradient(#d9ff7a,#a3e635); --mixer-bar-fg:#182404;
   --outfx-bg:linear-gradient(rgba(0,0,0,.34),rgba(0,0,0,.34)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --bpm-bg:linear-gradient(180deg,#0b1007,#050703); --bpm-fg:#e4ead8; --bpm-label-fg:#c2c9b4;
 }
 
 /* ── Minimal Slate theme ── */
@@ -98,6 +106,7 @@
   --shadow:0 18px 50px -18px rgba(0,0,0,.9);
   --mixer-bar-bg:linear-gradient(#e2e8f0,#cbd5e1); --mixer-bar-fg:#0f172a;
   --outfx-bg:linear-gradient(rgba(0,0,0,.36),rgba(0,0,0,.36)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --bpm-bg:linear-gradient(180deg,#050a18,#02040d); --bpm-fg:#f8fafc; --bpm-label-fg:#cbd5e1;
 }
 
 /* ── Sage Mist theme ── */
@@ -106,10 +115,12 @@
   --line:rgba(63,73,69,.15); --line-strong:rgba(63,73,69,.26);
   --cream:#191c1a; --cream-2:#3f4945; --dim:#5f6965; --muted:#6f7974; --faint:#bec9c3;
   --amber:#236a56; --amber-deep:#0f523f; --amber-soft:rgba(35,106,86,.14);
+  --accent-fg:#eef8f2; /* sage accent is a dark teal → needs light text */
   --green:#7abea7; --green-deep:#4f947f; --red:#ba1a1a; --blue:#4f7f93; --violet:#904a43;
   --shadow:0 18px 50px -18px rgba(0,0,0,.18);
   --mixer-bar-bg:linear-gradient(#154c3c,#0f3d30); --mixer-bar-fg:#eef8f2;
   --outfx-bg:linear-gradient(#154c3c,#0f3d30); --outfx-fg:#eef8f2; --eq-graph-bg:#000;
+  --bpm-bg:linear-gradient(180deg,#12372c,#092019); --bpm-fg:#eef8f2; --bpm-label-fg:#cfe0d8;
   --knob-body:#5a7a2c; --knob-arc:#a8d84a; --fader-knob:linear-gradient(#6e8f3a,#4e6b29);
 }
 :root[data-theme="sage"] html,
@@ -126,6 +137,7 @@
   --shadow:0 18px 50px -18px rgba(0,0,0,.82);
   --mixer-bar-bg:linear-gradient(#fde68a,#fbbf24); --mixer-bar-fg:#451a03;
   --outfx-bg:linear-gradient(rgba(0,0,0,.28),rgba(0,0,0,.28)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --bpm-bg:linear-gradient(180deg,#18110a,#0d0905); --bpm-fg:#fef3c7; --bpm-label-fg:#d6d3d1;
 }
 
 /* ── Slate Navy theme ── */
@@ -138,6 +150,7 @@
   --shadow:0 18px 50px -18px rgba(0,0,0,.86);
   --mixer-bar-bg:linear-gradient(#89e9f7,#44d8f1); --mixer-bar-fg:#001f25;
   --outfx-bg:linear-gradient(rgba(0,0,0,.32),rgba(0,0,0,.32)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --bpm-bg:linear-gradient(180deg,#081114,#04090a); --bpm-fg:#dde3e5; --bpm-label-fg:#bbc9cc;
 }
 
 *{box-sizing:border-box}
@@ -217,6 +230,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes bpmPanelIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+/* "punch in" effect for a freshly detected / applied BPM number: expand then settle */
+@keyframes bpmPop{0%{transform:scale(1.4);opacity:.55}55%{transform:scale(.93)}100%{transform:scale(1);opacity:1}}
 .rec-dot{animation:pulse 1.1s ease-in-out infinite}
 
 /* ---- prominent SAVE button (Mixdown ready) ---- */
@@ -287,6 +303,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 </script>
 
 <script src="version.js"></script>
+<script src="https://unpkg.com/meyda/dist/web/meyda.min.js"></script>
 <script src="audio-engine.js"></script>
 <script type="text/babel" src="ui-kit.jsx"></script>
 <script type="text/babel" src="ui-tracks.jsx"></script>

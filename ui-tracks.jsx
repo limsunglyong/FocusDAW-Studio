@@ -238,6 +238,21 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
   const buttonSize = compact ? 22 : 24;
   const knobSize = compact ? 24 : 28;
   const meterH = compact ? 22 : medium ? 24 : 28;
+  const bpmButtonStyle = {
+    width: buttonSize,
+    height: buttonSize,
+    borderRadius: 5,
+    display: "grid",
+    placeItems: "center",
+    fontSize: 10,
+    fontWeight: 800,
+    lineHeight: 1,
+    cursor: "pointer",
+    background: p.bpmSource ? "var(--amber)" : "var(--surface2)",
+    color: p.bpmSource ? "var(--accent-fg)" : "var(--cream-2)",
+    border: "1px solid " + (p.bpmSource ? "var(--amber)" : "var(--line-strong)"),
+    boxShadow: p.bpmSource ? "0 0 10px rgba(232,176,75,.5)" : "none",
+  };
   return (
     <React.Fragment>
     <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 6,
@@ -248,6 +263,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
         <span style={{ fontWeight: 600, fontSize: compact ? 12.5 : 13.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.name}</span>
+        <button title="Use this track for BPM detection" onClick={() => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>
         <SoloBtn size={buttonSize} on={p.solo} onClick={() => onParam("solo", !p.solo)} />
         <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} onClick={() => onParam("mute", !p.mute)} />
       </div>
