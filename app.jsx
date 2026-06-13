@@ -470,7 +470,23 @@ function ActionBar({ onAddTrack, onMixer, mixerOpen, onExport }) {
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" }}>
       <button className="btn" onClick={onAddTrack}><Icon name="plus" size={15} /> Track</button>
       <button className={"btn" + (mixerOpen ? " primary" : "")} onClick={(e) => { onMixer(); e.currentTarget.blur(); }}><Icon name="mixer" size={15} /> Mixer</button>
-      <button className="btn" onClick={onExport}><Icon name="download" size={15} /> Export MP3</button>
+      <button className="btn" onClick={onExport} title="Export mixdown (MP3 / WAV)"><Icon name="download" size={15} /> Export</button>
+    </div>
+  );
+}
+
+function VariBpmSwitch({ on, onToggle }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: TOOLBAR_PANEL_H, flex: "0 0 auto" }}>
+      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", lineHeight: 1, whiteSpace: "nowrap", color: on ? "var(--amber)" : "var(--muted)" }}>Vari BPM</span>
+      <button role="switch" aria-checked={on} onClick={onToggle}
+        title="Vari BPM: 켜면 재생(Playback) BPM으로 곡 전체 속도를 조정합니다. 끄면 속도가 변하지 않습니다."
+        style={{ width: 40, height: 20, padding: 0, borderRadius: 999, position: "relative", cursor: "pointer",
+          border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"),
+          background: on ? "var(--amber)" : "var(--surface2)", transition: "background .15s, border-color .15s" }}>
+        <span style={{ position: "absolute", top: 1.5, left: on ? 21.5 : 1.5, width: 15, height: 15, borderRadius: "50%",
+          background: on ? "var(--accent-fg)" : "var(--dim)", boxShadow: "0 1px 2px rgba(0,0,0,.4)", transition: "left .15s, background .15s" }} />
+      </button>
     </div>
   );
 }
@@ -881,6 +897,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         type: "LEVEL_METERS",
         trackLevels,
         masterLevel: DAW.getMasterLevel(),
+        masterStereo: DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : null,
         masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
         fftData: DAW.computeSpectrum(),
         isPlaying: DAW.isPlaying,
@@ -1163,6 +1180,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       saveRecentProject(projectName, projectPath);
       force((n) => n + 1);
     }
+  }, [projectName, projectPath]);
+
+  const toggleVariBpm = useCallback(() => {
+    if (!DAW.setVariBpm) return;
+    DAW.setVariBpm(!(DAW.tempo && DAW.tempo.variBpm));
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
   }, [projectName, projectPath]);
 
   const undo = useCallback(() => {
@@ -1536,7 +1560,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     DAW._spectrum = null;
     // When the project becomes empty, reset the tempo so Project/Playback BPM
     // return to the uninitialized "---" state (matches a fresh project).
-    if (DAW.tracks.length === 0) DAW.tempo = { projectBpm: null, playbackBpm: null };
+    if (DAW.tracks.length === 0) DAW.tempo = { projectBpm: null, playbackBpm: null, variBpm: false };
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
@@ -1617,6 +1641,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             onTap={tapBpm}
             onApply={applyBpm}
           />
+          <VariBpmSwitch on={!!(DAW.tempo && DAW.tempo.variBpm)} onToggle={toggleVariBpm} />
           <ToolbarDivider />
           <ActionBar onAddTrack={pickAudioFiles} onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
         </div>

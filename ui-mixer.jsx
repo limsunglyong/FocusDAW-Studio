@@ -322,6 +322,7 @@ const EQ_PRESET_BTNS = [
 function MasterPanel({ level, master, onMaster, onBeforeChange }) {
   const [view, setView] = useState("eq");
   const [, force] = useState(0);
+  const stereo = DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : { l: level, r: level };
   const applyPreset = (name) => { onBeforeChange && onBeforeChange(); DAW.applyEQPreset(name); force((n) => n + 1); };
   return (
     <div style={{ width: 400, flex: "0 0 400px", display: "flex", flexDirection: "column", padding: "12px 14px", gap: 11,
@@ -343,8 +344,8 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
           <span style={{ fontSize: 9, color: "var(--muted)", fontWeight: 600, letterSpacing: ".08em" }}>VOL</span>
           <div style={{ display: "flex", gap: 5, alignItems: "flex-end" }}>
             <Fader value={master.volume} height={132} color="var(--amber)" onBeforeChange={onBeforeChange} onChange={(v) => onMaster("volume", v)} />
-            <Meter level={level} height={132} width={7} />
-            <Meter level={level * 0.92} height={132} width={7} />
+            <Meter level={stereo.l} height={132} width={7} />
+            <Meter level={stereo.r} height={132} width={7} />
           </div>
         </div>
       </div>

@@ -505,7 +505,12 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
-                  <div className="manual-note">프로젝트 이름은 상단 오른쪽의 프로젝트 이름 영역을 클릭해 바로 수정할 수 있습니다. 저장 시 파일 이름의 기준으로도 사용됩니다.</div>
+                  <h3 className="manual-h3">프로젝트 이름 설정</h3>
+                  <p className="manual-p">상단 오른쪽의 프로젝트 이름 칸을 클릭하면 이름을 바로 입력·수정할 수 있습니다. 여기서 정한 이름은 제목 표시줄에 나타나고, 프로젝트를 저장할 때 파일 이름의 기본값으로도 사용됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/18-project-name.png" alt="프로젝트 이름 설정 화면" className="manual-img" />
+                    <div className="manual-figcaption">상단 오른쪽의 프로젝트 이름 칸(예: <code className="manual-code">untitled</code>)을 클릭해 원하는 이름으로 바꿉니다.</div>
+                  </div>
                 </>
               ) : (
                 <>
@@ -533,7 +538,12 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
-                  <div className="manual-note">The project name can be renamed instantly by clicking the project title field on the top right. This name is also used as the default filename when saving.</div>
+                  <h3 className="manual-h3">Setting the Project Name</h3>
+                  <p className="manual-p">Click the project name field on the top right to rename it instantly. The name appears in the title bar and is also used as the default filename when saving the project.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/18-project-name.png" alt="Project name field" className="manual-img" />
+                    <div className="manual-figcaption">Click the project name field on the top right (e.g. <code className="manual-code">untitled</code>) to rename it.</div>
+                  </div>
                 </>
               )}
             </section>
@@ -623,15 +633,50 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">상단 미니맵으로 1분대 구간으로 이동한 화면입니다. 긴 오디오 프로젝트에서 스크롤보다 빠르게 위치를 잡을 수 있습니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">BPM 표시기와 Phase 0 템포 변경</h3>
-                  <p className="manual-p">새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시됩니다. BPM 표시기를 누르면 설정 패널이 아래로 확장되고, 다시 누르거나 마우스가 벗어난 상태로 5초가 지나면 접힙니다.</p>
-                  <ul className="manual-ul">
-                    <li className="manual-li"><strong>B 버튼</strong>: BPM 측정에 사용할 트랙을 하나만 선택합니다.</li>
-                    <li className="manual-li"><strong>Detect</strong>: B 버튼으로 선택한 트랙에서 BPM을 추정합니다.</li>
-                    <li className="manual-li"><strong>TAP</strong>: 박자에 맞춰 누르면 BPM을 수동 측정합니다. 숫자 입력 후 <strong>APPLY</strong>를 눌러 프로젝트 BPM으로 확정할 수도 있습니다.</li>
-                    <li className="manual-li">표시 형식은 <strong>120 BPM | 120</strong>이며, 뒤 숫자는 재생 BPM입니다. BPM 표시기 위에서 마우스 휠을 돌리거나 상하 버튼을 누르면 1씩 바뀌며, 곡 전체가 그 비율로 빨라지거나 느려집니다.</li>
-                  </ul>
-                  <div className="manual-warning">Phase 0 템포 변경은 Web Audio playbackRate 기반입니다. 속도 확인용 프로토타입이므로 BPM을 바꾸면 피치도 함께 변합니다.</div>
+                  <h3 className="manual-h3">BPM 측정과 전체 템포 조정</h3>
+                  <p className="manual-p">FocusDAW Studio는 트랙 오디오에서 곡의 BPM(분당 박자 수)을 자동으로 측정하고, 그 값을 기준으로 <strong>전체 음악</strong>의 재생 템포를 조정할 수 있습니다. 새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시되며, 모든 트랙을 지우거나 새 프로젝트를 시작하면 다시 <strong>---</strong>로 초기화됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM 표시기" className="manual-img" />
+                    <div className="manual-figcaption"><strong>158 BPM | 158</strong>처럼 두 숫자가 보이며, 앞은 프로젝트 BPM(기준 템포), 뒤는 재생 BPM(실제 재생 속도)입니다.</div>
+                  </div>
+                  <p className="manual-p">BPM 표시기 오른쪽의 <strong>Vari BPM</strong> 스위치를 <strong>켜야</strong> 재생 BPM으로 곡 속도를 조정합니다(끄면 속도 불변, 기본 OFF). 켠 상태에서 BPM 표시기 위에 마우스 휠을 돌리거나 ▲▼ 버튼을 누르면 <strong>뒤쪽 재생 BPM</strong>이 1씩 바뀌고, 곡 전체가 그 비율(재생 BPM ÷ 프로젝트 BPM)만큼 빨라지거나 느려집니다.</p>
+
+                  <h3 className="manual-h3">① BPM 측정 대상 트랙 선택 (B 버튼)</h3>
+                  <p className="manual-p">트랙 헤더의 <strong>B</strong> 버튼을 누르면 그 트랙이 BPM 측정 소스로 선택되어 배경이 채워지며, B는 한 번에 한 트랙에만 켜집니다. 드럼처럼 박자가 뚜렷한 트랙을 고르면 측정이 더 정확합니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/20-bpm-source-track.png" alt="특정 트랙을 BPM 측정 트랙으로 설정" className="manual-img" />
+                    <div className="manual-figcaption"><strong>B</strong> 버튼이 채워진 트랙이 BPM 측정 소스입니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">② BPM 설정 패널 열기</h3>
+                  <p className="manual-p">BPM 표시기를 클릭하면 설정 패널이 아래로 펼쳐집니다. 다시 누르거나 마우스가 패널 밖으로 나간 채 5초가 지나면 접힙니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM 설정 패널" className="manual-img" />
+                    <div className="manual-figcaption">위쪽 <strong>BPM SOURCE</strong>에 선택된 트랙 이름과 <strong>Track</strong> 번호가 두 열로 표시되고, 그 아래 Detect · 입력칸 · APPLY · TAP 버튼이 있습니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Detect</th><td className="manual-td">B로 선택한 트랙의 오디오를 분석해 BPM을 자동 추정합니다. 추정값이 입력칸에 채워집니다.</td></tr>
+                      <tr><th className="manual-th">직접 입력</th><td className="manual-td">입력칸에 BPM 숫자를 직접 적을 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">TAP</th><td className="manual-td">음악을 들으며 박자에 맞춰 반복해 누르면 BPM을 수동 측정합니다. 누를수록 정확해지고, 버튼에 실시간 BPM과 탭 횟수(TAP · n)가 표시됩니다.</td></tr>
+                      <tr><th className="manual-th">APPLY</th><td className="manual-td">측정/입력한 값을 프로젝트 BPM과 재생 BPM에 모두 적용합니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">③ Detect 분석 중 표시</h3>
+                  <p className="manual-p"><strong>Detect</strong>를 누르면 분석 중에는 버튼이 회전 아이콘과 <strong>Analyzing…</strong>으로 바뀌고, 끝나면 추정 BPM이 입력칸에 강조 효과와 함께 표시됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM 분석 중 화면" className="manual-img" />
+                    <div className="manual-figcaption">Detect 실행 중에는 버튼이 <strong>Analyzing…</strong> 상태로 표시됩니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">④ 전체 음악 템포 바꿔 재생하기</h3>
+                  <p className="manual-p"><strong>Vari BPM</strong> 스위치를 켠 뒤 재생 BPM(뒤 숫자)을 바꾸면 모든 트랙이 같은 비율로 빨라지거나 느려진 상태로 재생됩니다. 예를 들어 프로젝트 BPM이 158일 때 재생 BPM을 180으로 올리면 곡 전체가 약 1.14배 빠르게 재생됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
+                    <div className="manual-figcaption">재생 BPM을 <strong>158 → 180</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>158 BPM | 180</strong>으로 바뀝니다.</div>
+                  </div>
+                  <div className="manual-warning">현재 템포 변경은 Web Audio의 playbackRate 방식이라 속도를 바꾸면 피치(음 높이)도 함께 변합니다. 피치를 유지한 채 템포만 바꾸는 기능은 다음 단계에서 제공될 예정입니다.</div>
 
                   <h3 className="manual-h3">트랙 헤더 컨트롤</h3>
                   <table className="manual-table">
@@ -680,15 +725,50 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">Using the minimap to navigate to the 1-minute mark. Much faster than manual horizontal scrolling.</div>
                   </div>
 
-                  <h3 className="manual-h3">BPM Indicator and Phase 0 Tempo Change</h3>
-                  <p className="manual-p">A new project starts with BPM shown as <strong>---</strong>. Click the BPM indicator to expand the settings panel below it; click it again, or leave it inactive outside the mouse area for 5 seconds, to collapse it.</p>
-                  <ul className="manual-ul">
-                    <li className="manual-li"><strong>B button</strong>: Selects one track as the BPM detection source.</li>
-                    <li className="manual-li"><strong>Detect</strong>: Estimates BPM from the selected B track.</li>
-                    <li className="manual-li"><strong>TAP</strong>: Tap along with the beat to measure BPM manually. You can also type a value and press <strong>APPLY</strong>.</li>
-                    <li className="manual-li">The display format is <strong>120 BPM | 120</strong>. The number after the divider is playback BPM; mouse wheel or the up/down buttons change it by 1, speeding up or slowing down the whole song by that ratio.</li>
-                  </ul>
-                  <div className="manual-warning">Phase 0 tempo changes use Web Audio playbackRate. This is a prototype for speed validation, so changing BPM also changes pitch.</div>
+                  <h3 className="manual-h3">BPM Detection and Whole-Song Tempo</h3>
+                  <p className="manual-p">FocusDAW Studio detects a song's BPM (beats per minute) from a track's audio and lets you adjust the playback tempo of the <strong>whole song</strong> based on it. A new project starts with BPM shown as <strong>---</strong>, and it returns to <strong>---</strong> whenever you clear all tracks or start a new project.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM indicator" className="manual-img" />
+                    <div className="manual-figcaption">The indicator shows two numbers such as <strong>158 BPM | 158</strong>: the front is the project BPM (reference tempo), the back is the playback BPM (actual speed).</div>
+                  </div>
+                  <p className="manual-p">The <strong>Vari BPM</strong> switch to the right of the indicator must be <strong>on</strong> for the playback BPM to change the song speed (off = no speed change; default off). With it on, hover the BPM indicator and scroll the mouse wheel, or use the ▲▼ buttons, to change the <strong>playback BPM</strong> by 1 — the whole song speeds up or slows down by that ratio (playback BPM ÷ project BPM).</p>
+
+                  <h3 className="manual-h3">1. Choose the detection source track (B button)</h3>
+                  <p className="manual-p">Press the <strong>B</strong> button on a track header to mark it as the BPM detection source (its background fills in). Only one track can be the B source at a time. Picking a track with a clear beat (e.g. drums) gives more accurate detection.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/20-bpm-source-track.png" alt="Track set as BPM detection source" className="manual-img" />
+                    <div className="manual-figcaption">The track whose <strong>B</strong> button is filled is the BPM detection source.</div>
+                  </div>
+
+                  <h3 className="manual-h3">2. Open the BPM settings panel</h3>
+                  <p className="manual-p">Click the BPM indicator to expand the settings panel. Click it again, or leave it inactive outside the mouse area for 5 seconds, to collapse it.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM settings panel" className="manual-img" />
+                    <div className="manual-figcaption">The top row shows <strong>BPM SOURCE</strong> (selected track name) and its <strong>Track</strong> number in two columns, with Detect, an input field, APPLY, and TAP below.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Detect</th><td className="manual-td">Analyzes the B-selected track's audio and estimates its BPM, filling the input field.</td></tr>
+                      <tr><th className="manual-th">Manual input</th><td className="manual-td">Type a BPM value directly into the field.</td></tr>
+                      <tr><th className="manual-th">TAP</th><td className="manual-td">Tap along with the beat repeatedly to measure BPM. Accuracy improves the more you tap, and the button shows a live BPM and tap count (TAP · n).</td></tr>
+                      <tr><th className="manual-th">APPLY</th><td className="manual-td">Applies the measured/entered value to <strong>both</strong> the project BPM and the playback BPM.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">3. Detection-in-progress feedback</h3>
+                  <p className="manual-p">While <strong>Detect</strong> runs, the button changes to a spinner with <strong>Analyzing…</strong>. When it finishes, the estimated BPM appears in the input field with a brief highlight.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM analysis in progress" className="manual-img" />
+                    <div className="manual-figcaption">During detection the button shows the <strong>Analyzing…</strong> state.</div>
+                  </div>
+
+                  <h3 className="manual-h3">4. Play back at a changed tempo</h3>
+                  <p className="manual-p">With the <strong>Vari BPM</strong> switch on, changing the playback BPM (the back number) plays every track faster or slower by the same ratio. For example, with a project BPM of 158, raising the playback BPM to 180 plays the whole song about 1.14× faster.</p>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="Playing after a tempo change" className="manual-img" />
+                    <div className="manual-figcaption">Playing after raising the playback BPM <strong>158 → 180</strong>; the indicator reads <strong>158 BPM | 180</strong>.</div>
+                  </div>
+                  <div className="manual-warning">Tempo changes currently use Web Audio's playbackRate, so changing the speed also changes the pitch. Pitch-preserving tempo change is planned for a later stage.</div>
 
                   <h3 className="manual-h3">Track Header Controls</h3>
                   <table className="manual-table">

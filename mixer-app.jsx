@@ -14,6 +14,7 @@ window.DAW = {
   EQ_FREQS: [60, 150, 320, 640, 1200, 2400, 4800, 9000, 15000],
   _levels: {},
   _masterLevel: 0,
+  _masterStereo: { l: 0, r: 0 },
   _masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
   _fftData: [],
   _isPlaying: false,
@@ -27,6 +28,9 @@ window.DAW = {
   },
   getMasterLevel() {
     return this._masterLevel;
+  },
+  getMasterStereoLevels() {
+    return this._masterStereo || { l: this._masterLevel, r: this._masterLevel };
   },
   getMasterBandLevels() {
     return this._masterBandLevels;
@@ -85,6 +89,7 @@ function MixerApp() {
       } else if (msg.type === "LEVEL_METERS") {
         window.DAW._levels = msg.trackLevels;
         window.DAW._masterLevel = msg.masterLevel;
+        window.DAW._masterStereo = msg.masterStereo || { l: msg.masterLevel, r: msg.masterLevel };
         window.DAW._masterBandLevels = msg.masterBandLevels;
         window.DAW._fftData = msg.fftData;
         window.DAW._isPlaying = !!msg.isPlaying;

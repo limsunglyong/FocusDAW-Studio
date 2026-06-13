@@ -217,6 +217,7 @@
   let ctx = null;
   let convolver = null;
   let masterBus, eqNodes = [], masterFade, masterVol, masterMix, masterAnalyser, mRevSend, mEchoSend, mDelay, mFb, mConv;
+  let masterMeterSplit, masterAnalyserL, masterAnalyserR;
   const EQ_FREQS = [60, 150, 320, 640, 1200, 2400, 4800, 9000, 15000]; // 3 low / 3 mid / 3 high
   // recommended 9-band EQ presets (dB per band, range -12..+12), aligned to EQ_FREQS
   const EQ_PRESETS = {
@@ -232,7 +233,7 @@
     EQ_PRESETS,
     tracks: [],
     loopEnabled: true,
-    tempo: { projectBpm: null, playbackBpm: null },
+    tempo: { projectBpm: null, playbackBpm: null, variBpm: false },
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 },
     isPlaying: false,
     _startTime: 0,
@@ -283,6 +284,14 @@
       masterVol.connect(mRevSend); mRevSend.connect(mConv); mConv.connect(masterMix);          // master reverb
       masterVol.connect(mEchoSend); mEchoSend.connect(mDelay); mDelay.connect(mFb); mFb.connect(mDelay); mDelay.connect(masterMix); // master echo
       masterMix.connect(masterComp); masterComp.connect(masterAnalyser); masterAnalyser.connect(ctx.destination);
+
+      // Stereo L/R metering tap (post-pan/comp) — true per-channel levels for the master meter
+      masterMeterSplit = ctx.createChannelSplitter(2);
+      masterAnalyserL = ctx.createAnalyser(); masterAnalyserL.fftSize = 1024;
+      masterAnalyserR = ctx.createAnalyser(); masterAnalyserR.fftSize = 1024;
+      masterComp.connect(masterMeterSplit);
+      masterMeterSplit.connect(masterAnalyserL, 0);
+      masterMeterSplit.connect(masterAnalyserR, 1);
 
       // per-track reverb return (pre-EQ bus)
       const revReturn = ctx.createGain(); revReturn.gain.value = 0.9;
@@ -421,7 +430,7 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
-      this.tempo = { projectBpm: null, playbackBpm: null };
+      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false };
       this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 };
       if (ctx) {
         ramp(masterVol.gain, 0.9);
@@ -505,6 +514,14 @@
       return this.setPlaybackBpm(base + delta);
     },
 
+    // Vari BPM 모드 on/off. on이면 재생 BPM 비율로 곡 전체 속도를 조정한다.
+    setVariBpm(on) {
+      this.tempo.variBpm = !!on;
+      this._restartPlaybackForTempo();
+      this._emit();
+      return this.tempo.variBpm;
+    },
+
     getBpmSourceTrack() {
       return this.tracks.find((t) => t.params && t.params.bpmSource) || null;
     },
@@ -518,6 +535,8 @@
     },
 
     _projectRate() {
+      // Vari BPM 스위치가 꺼져 있으면 재생 BPM으로 곡 속도를 조정하지 않는다.
+      if (!this.tempo.variBpm) return 1;
       const project = this.tempo.projectBpm;
       const playback = this.tempo.playbackBpm || project;
       if (!project || !playback) return 1;
@@ -531,6 +550,10 @@
 
     _restartPlaybackForTempo() {
       if (!ctx || !this.isPlaying) return;
+      // 실제 적용되는 재생 rate가 바뀌지 않으면 재시작하지 않는다.
+      // (예: Vari BPM이 OFF인 상태에서 재생 BPM 값만 스크롤로 바꿀 때 → rate는 계속 1이므로
+      //  소스를 재시작할 필요가 없고, 재시작하면 오히려 클릭/글리치가 발생함.)
+      if (this._projectRate() === this._appliedRate) return;
       const pos = this.getPlayhead();
       this._offset = pos;
       this._stopSources();
@@ -630,6 +653,7 @@
         this.tempo = {
           projectBpm: this._normalizeBpm(snap.tempo.projectBpm),
           playbackBpm: this._normalizeBpm(snap.tempo.playbackBpm),
+          variBpm: !!snap.tempo.variBpm,
         };
       }
       for (const st of snap.tracks) {
@@ -657,6 +681,7 @@
       this.tempo = {
         projectBpm: this._normalizeBpm(json.tempo && json.tempo.projectBpm),
         playbackBpm: this._normalizeBpm(json.tempo && json.tempo.playbackBpm),
+        variBpm: !!(json.tempo && json.tempo.variBpm),
       };
       if (json.master) {
         Object.assign(this.master, json.master);
@@ -871,6 +896,7 @@
       const now = ctx.currentTime + 0.02;
       this._startTime = now;
       this._sources = [];
+      this._appliedRate = this._projectRate(); // 현재 재생에 적용된 전역 템포 rate (재시작 판단용)
       this.tracks.forEach((t) => {
         const src = ctx.createBufferSource();
         src.buffer = t.buffer;
@@ -946,6 +972,21 @@
       let sum = 0;
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
       return Math.min(1, Math.sqrt(sum / buf.length) * 2.0);
+    },
+
+    getMasterStereoLevels() {
+      if (!ctx || !masterAnalyserL || !masterAnalyserR) {
+        const m = this.getMasterLevel();
+        return { l: m, r: m };
+      }
+      const rms = (an) => {
+        const buf = new Float32Array(an.fftSize);
+        an.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        return Math.min(1, Math.sqrt(sum / buf.length) * 2.0);
+      };
+      return { l: rms(masterAnalyserL), r: rms(masterAnalyserR) };
     },
 
     getMasterBandLevels() {
