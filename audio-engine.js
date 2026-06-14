@@ -233,7 +233,7 @@
     EQ_PRESETS,
     tracks: [],
     loopEnabled: true,
-    tempo: { projectBpm: null, playbackBpm: null, variBpm: false },
+    tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false },
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 },
     isPlaying: false,
     _startTime: 0,
@@ -481,7 +481,7 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
-      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false };
+      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false };
       this._renderCacheKey = null;
       this._renderCacheBuffer = null;
       this._stretchPreviewPreparing = false;
@@ -579,6 +579,12 @@
       return this.tempo.variBpm;
     },
 
+    setVariKey(on) {
+      this.tempo.variKey = !!on;
+      this._emit();
+      return this.tempo.variKey;
+    },
+
     getBpmSourceTrack() {
       return this.tracks.find((t) => t.params && t.params.bpmSource) || null;
     },
@@ -586,9 +592,41 @@
     detectBpmFromTrack(id) {
       const t = this.tracks.find((x) => x.id === id);
       if (!t || !t.buffer || t.needsAudio) return null;
-      const estimated = estimateBpm(t.buffer);
-      if (!estimated) return null;
-      return estimated;
+      const bpm = estimateBpm(t.buffer);
+      if (!bpm) return null;
+      // 옥타브(2배) 오검출 보정: 결과가 180 이상으로 의심스러우면 곡 앞 1/3의
+      // 중간 지점(len/6)에서 한 번 더 검출한다. 그 값이 충분히 낮으면(≈절반)
+      // 처음 값의 1/2을 결과로 본다.
+      if (bpm >= 180) {
+        const frontCenter = Math.floor((t.buffer.length || 0) / 6); // 앞 1/3의 중간
+        const frontBpm = estimateBpm(t.buffer, frontCenter);
+        if (frontBpm && frontBpm < bpm * 0.75) {
+          return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(bpm / 2)));
+        }
+      }
+      return bpm;
+    },
+
+    detectKeyFromTrack(id) {
+      const t = this.tracks.find((x) => x.id === id);
+      if (!t || !t.buffer || t.needsAudio) return null;
+      return estimateKey(t.buffer);
+    },
+
+    // 키 검출은 BPM 소스 트랙 선택과 무관하게, 오디오가 있고 mute가 아닌 모든
+    // 트랙의 화성 내용을 신뢰도 가중으로 합산해 추정한다. (mute 트랙은 제외)
+    detectKeyFromAllTracks() {
+      const buffers = this.tracks
+        .filter((t) => t && t.buffer && !t.needsAudio && !(t.params && t.params.mute))
+        .map((t) => t.buffer);
+      if (!buffers.length) return null;
+      return estimateKeyFromBuffers(buffers);
+    },
+
+    setKey(key) {
+      this.tempo.key = key || null;
+      this._emit();
+      return this.tempo.key;
     },
 
     _projectRate() {
@@ -846,6 +884,8 @@
           projectBpm: this._normalizeBpm(snap.tempo.projectBpm),
           playbackBpm: this._normalizeBpm(snap.tempo.playbackBpm),
           variBpm: !!snap.tempo.variBpm,
+          key: snap.tempo.key ?? null,
+          variKey: !!snap.tempo.variKey,
         };
       }
       for (const st of snap.tracks) {
@@ -874,6 +914,8 @@
         projectBpm: this._normalizeBpm(json.tempo && json.tempo.projectBpm),
         playbackBpm: this._normalizeBpm(json.tempo && json.tempo.playbackBpm),
         variBpm: !!(json.tempo && json.tempo.variBpm),
+        key: (json.tempo && json.tempo.key) ?? null,
+        variKey: !!(json.tempo && json.tempo.variKey),
       };
       if (json.master) {
         Object.assign(this.master, json.master);
@@ -1536,16 +1578,17 @@
     return Math.exp(-0.5 * z * z);
   }
 
-  // 곡 중앙의 대표 구간에 대한 onset strength 곡선을 만들고 best tempo를 추정한다.
-  function estimateBpm(buffer) {
+  // 대표 구간에 대한 onset strength 곡선을 만들고 best tempo를 추정한다.
+  // centerSample을 주면 그 지점을 중심으로, 없으면 곡 중앙을 분석한다.
+  function estimateBpm(buffer, centerSample) {
     if (typeof Meyda === "undefined") return null;
     const sr = buffer.sampleRate || 44100;
     const len = buffer.length || 0;
     if (!len) return null;
 
-    // 1) 분석 구간: 곡 중앙의 연속된 최대 75초 (periodicity 증거 보존)
+    // 1) 분석 구간: 지정 지점(기본 곡 중앙) 중심의 연속된 최대 75초 (periodicity 증거 보존)
     const spanLen = Math.min(len, Math.floor(sr * 75));
-    const center = Math.floor(len / 2);
+    const center = (centerSample == null) ? Math.floor(len / 2) : Math.floor(centerSample);
     let rangeStart = Math.max(0, center - Math.floor(spanLen / 2));
     let rangeEnd = Math.min(len, rangeStart + spanLen);
     rangeStart = Math.max(0, rangeEnd - spanLen);
@@ -1559,6 +1602,158 @@
     const bpm = estimateTempoFromOnset(onset.curve, onset.envelopeSR);
     if (!bpm) return null;
     return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(bpm)));
+  }
+
+  // 한 버퍼의 곡 중앙 최대 120초 구간을 분석해 프레임별 정규화한 크로마를 누적 chroma에 더한다.
+  // 여러 트랙을 하나의 chroma에 합산하면 곧 "전체 믹스의 화성 내용"을 분석하는 효과.
+  function accumulateChroma(buffer, chroma) {
+    if (typeof Meyda === "undefined" || !buffer) return false;
+    const sr = buffer.sampleRate || 44100;
+    const len = buffer.length || 0;
+    if (!len) return false;
+
+    // 분석 구간: 곡 중앙의 연속된 최대 120초 (구간이 길수록 으뜸음 통계가 안정적)
+    const spanLen = Math.min(len, Math.floor(sr * 120));
+    const center = Math.floor(len / 2);
+    let rangeStart = Math.max(0, center - Math.floor(spanLen / 2));
+    let rangeEnd = Math.min(len, rangeStart + spanLen);
+    rangeStart = Math.max(0, rangeEnd - spanLen);
+    if ((rangeEnd - rangeStart) / sr < 4) return false;
+
+    const frameSize = 4096;
+    const hopSize = 2048;
+    Meyda.bufferSize = frameSize;
+    Meyda.sampleRate = sr;
+    Meyda.windowingFunction = "hanning";
+
+    const channelData = buffer.getChannelData(0);
+    let frames = 0;
+    for (let i = rangeStart; i <= rangeEnd - frameSize; i += hopSize) {
+      const frame = channelData.slice(i, i + frameSize);
+      const c = Meyda.extract("chroma", frame);
+      if (!c) continue;
+      let sum = 0, max = 0;
+      for (let k = 0; k < 12; k++) { sum += c[k]; if (c[k] > max) max = c[k]; }
+      if (sum < 1e-6) continue; // 거의 무음인 프레임은 건너뛴다
+      // 음정 게이팅: 크로마가 거의 평평한(비음정·타악·노이즈) 프레임은 키 정보가 없고
+      // 노이즈 바닥만 더하므로 버린다. (최댓값 < 평균*1.6 이면 평평한 것으로 간주)
+      if (max * 12 < sum * 1.6) continue;
+      // 프레임별 정규화: 카덴차의 V 화음 같은 짧고 큰 화음이 평균을 지배해
+      // 으뜸음(I) 대신 딸림음(V)이 뽑히는 perfect-fifth 오류를 줄인다.
+      for (let k = 0; k < 12; k++) chroma[k] += c[k] / sum;
+      frames++;
+    }
+    return frames > 0;
+  }
+
+  // 단일 버퍼의 키 추정. 예: "C", "G#m".
+  function estimateKey(buffer) {
+    const chroma = new Float64Array(12);
+    if (!accumulateChroma(buffer, chroma)) return null;
+    return keyFromChroma(chroma);
+  }
+
+  // 신뢰도 가중 결합: 각 트랙의 크로마를 따로 구해 "그 트랙이 어떤 키와 얼마나
+  // 강하게 맞는지(피어슨 최대 상관)"를 신뢰도로 삼고, 그 가중치로 정규화 크로마를
+  // 합산한 뒤 한 번에 키를 추정한다. 음정이 또렷한 트랙(베이스·피아노)은 큰 비중,
+  // 드럼·노이즈처럼 평평한 트랙은 작은 비중을 갖는다.
+  function estimateKeyFromBuffers(buffers) {
+    const combined = new Float64Array(12);
+    let totalWeight = 0;
+    for (const b of buffers) {
+      const c = new Float64Array(12);
+      if (!accumulateChroma(b, c)) continue;
+      let sum = 0;
+      for (let k = 0; k < 12; k++) sum += c[k];
+      if (sum <= 0) continue;
+      const conf = Math.max(0, bestKeyCorrelation(c));
+      const w = conf * conf; // 제곱으로 비음정 트랙을 더 강하게 억제
+      if (w <= 0) continue;
+      for (let k = 0; k < 12; k++) combined[k] += (c[k] / sum) * w; // 정규화 후 가중 합
+      totalWeight += w;
+    }
+    if (totalWeight <= 0) return null;
+    return keyFromChroma(combined);
+  }
+
+  // Albrecht & Shanahan(2013) 키 프로파일. 원래의 Krumhansl-Schmugler 대신 쓰는 이유는
+  // 특성음(4도·이끔음)의 가중 차이가 훨씬 커서 으뜸/딸림(완전5도) 혼동을 크게 줄이기 때문.
+  const KEY_PROFILE_MAJOR = [0.238, 0.006, 0.111, 0.006, 0.137, 0.094, 0.016, 0.214, 0.009, 0.080, 0.008, 0.081];
+  const KEY_PROFILE_MINOR = [0.220, 0.006, 0.104, 0.123, 0.019, 0.103, 0.012, 0.214, 0.062, 0.022, 0.061, 0.052];
+  // 관용적 조표 표기(샤프/플랫): 참조 사이트와 동일하게 읽히도록 장·단조별로 다르게 둔다.
+  const KEY_MAJOR_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+  const KEY_MINOR_NAMES = ["Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm"];
+
+  // chroma를 shift만큼 회전해 후보 으뜸음을 인덱스 0에 정렬한 뒤 프로파일과 피어슨 상관 계산.
+  function chromaCorr(chroma, profile, shift) {
+    let sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
+    for (let i = 0; i < 12; i++) {
+      const x = chroma[(i + shift) % 12];
+      const y = profile[i];
+      sx += x; sy += y; sxy += x * y; sx2 += x * x; sy2 += y * y;
+    }
+    const num = 12 * sxy - sx * sy;
+    const den = Math.sqrt((12 * sx2 - sx * sx) * (12 * sy2 - sy * sy));
+    return den === 0 ? -Infinity : num / den;
+  }
+
+  // 이 크로마가 24개 조성 중 가장 잘 맞는 정도(최대 상관) = 트랙 신뢰도.
+  function bestKeyCorrelation(chroma) {
+    let total = 0;
+    for (let k = 0; k < 12; k++) total += chroma[k];
+    if (total <= 0) return 0;
+    let best = -Infinity;
+    for (let s = 0; s < 12; s++) {
+      const a = chromaCorr(chroma, KEY_PROFILE_MAJOR, s); if (a > best) best = a;
+      const b = chromaCorr(chroma, KEY_PROFILE_MINOR, s); if (b > best) best = b;
+    }
+    return best;
+  }
+
+  // 결합 크로마를 12개 장조/12개 단조 후보와 피어슨 상관 비교해 최적 조성을 고른다.
+  function keyFromChroma(chroma) {
+    const major = KEY_PROFILE_MAJOR, minor = KEY_PROFILE_MINOR;
+    const majorNames = KEY_MAJOR_NAMES, minorNames = KEY_MINOR_NAMES;
+    let total = 0;
+    for (let k = 0; k < 12; k++) total += chroma[k];
+    if (total <= 0) return null;
+
+    const corr = (profile, shift) => chromaCorr(chroma, profile, shift);
+
+    const majScore = new Array(12), minScore = new Array(12);
+    let best = { score: -Infinity, mode: "maj", tonic: 0 };
+    for (let s = 0; s < 12; s++) {
+      majScore[s] = corr(major, s);
+      minScore[s] = corr(minor, s);
+      if (majScore[s] > best.score) best = { score: majScore[s], mode: "maj", tonic: s };
+      if (minScore[s] > best.score) best = { score: minScore[s], mode: "min", tonic: s };
+    }
+
+    // 딸림음 혼동 보정(장조): 검출기는 6/7음을 공유하는 딸림조(으뜸음 +완전5도)를
+    // 으뜸조 대신 고르기 쉽다. 어떤 장조 X와 그 버금딸림조 Y=X+5는 정확히 한 음만 다른데
+    // — X는 이끔음(X+11)을, Y는 X+10을 가진다. 이 두 크로마 빈을 직접 비교해 가린다.
+    // (X가 맞으면 이끔음 X+11이 더 크고, 진짜가 Y면 X+10이 더 커서 안전하게 자기교정)
+    if (best.mode === "maj") {
+      const X = best.tonic;
+      const Y = (X + 5) % 12; // 버금딸림조 으뜸음 (= X - 7)
+      if (majScore[Y] > majScore[X] - 0.2) {
+        const leadX = chroma[(X + 11) % 12]; // X의 이끔음
+        const altY = chroma[(X + 10) % 12];  // Y를 가리키는 특성음
+        if (altY > leadX) best = { score: majScore[Y], mode: "maj", tonic: Y };
+      }
+    } else if (best.mode === "min") {
+      // 단조도 동일한 딸림음 혼동이 생긴다(예: Gm을 Dm으로). 자연단조 X와 그
+      // 버금딸림조 Y=X+5는 한 음만 다르다 — X는 자연2도(X+2), Y는 X+1(b2).
+      const X = best.tonic;
+      const Y = (X + 5) % 12;
+      if (minScore[Y] > minScore[X] - 0.2) {
+        const degX = chroma[(X + 2) % 12]; // X단조의 자연2도 (X를 가리킴)
+        const altY = chroma[(X + 1) % 12]; // Y단조를 가리키는 특성음
+        if (altY > degX) best = { score: minScore[Y], mode: "min", tonic: Y };
+      }
+    }
+
+    return best.mode === "maj" ? majorNames[best.tonic] : minorNames[best.tonic];
   }
 
   // STFT spectral flux → 로그 압축·국소 평균 차감으로 정규화한 onset strength 곡선.
@@ -1649,6 +1844,18 @@
       }
     }
     if (!bestLag) return null;
+
+    // 옥타브 하향 보정: harmonic comb은 배음을 흡수해 빠른 템포를 선호하므로,
+    // 결과가 빠른데(>160bpm) 그 절반 템포(2×lag) 부근의 실제 자기상관 피크가
+    // 충분히(>1.15배) 더 강하면 빠른 값은 잘게 쪼갠 박(subdivision)이고 절반이
+    // 진짜 기본 박이다. → 절반으로 내린다. (예: 185bpm r=22.7 vs 93bpm r=34.1)
+    if (lagToBpm(bestLag) > 160) {
+      const lo = Math.max(lagMin, bestLag * 2 - 2);
+      const hi = Math.min(lagMax, bestLag * 2 + 2);
+      let halfLag = -1, halfR = -Infinity;
+      for (let l = lo; l <= hi; l++) { if (r[l] > halfR) { halfR = r[l]; halfLag = l; } }
+      if (halfLag > 0 && halfR > r[bestLag] * 1.15) bestLag = halfLag;
+    }
 
     // 포물선 보간으로 lag 정밀화
     const refinedLag = parabolicPeakLag(r, bestLag, lagMin, lagMax);

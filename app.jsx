@@ -477,18 +477,113 @@ function ActionBar({ onMixer, mixerOpen, onExport }) {
   );
 }
 
-function VariBpmSwitch({ on, onToggle }) {
+function VariSwitch({ label, title, on, onToggle }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: TOOLBAR_PANEL_H, flex: "0 0 auto" }}>
-      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", lineHeight: 1, whiteSpace: "nowrap", color: on ? "var(--amber)" : "var(--muted)" }}>Vari BPM</span>
-      <button role="switch" aria-checked={on} onClick={onToggle}
-        title="Vari BPM: 켜면 재생(Playback) BPM으로 곡 전체 속도를 조정합니다. 끄면 속도가 변하지 않습니다."
+      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", lineHeight: 1, whiteSpace: "nowrap", color: on ? "var(--amber)" : "var(--muted)" }}>{label}</span>
+      <button role="switch" aria-checked={on} onClick={onToggle} title={title}
         style={{ width: 40, height: 20, padding: 0, borderRadius: 999, position: "relative", cursor: "pointer",
           border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"),
           background: on ? "var(--amber)" : "var(--surface2)", transition: "background .15s, border-color .15s" }}>
         <span style={{ position: "absolute", top: 1.5, left: on ? 21.5 : 1.5, width: 15, height: 15, borderRadius: "50%",
           background: on ? "var(--accent-fg)" : "var(--dim)", boxShadow: "0 1px 2px rgba(0,0,0,.4)", transition: "left .15s, background .15s" }} />
       </button>
+    </div>
+  );
+}
+
+function VariBpmSwitch({ on, onToggle }) {
+  return (
+    <VariSwitch label="Vari BPM" on={on} onToggle={onToggle}
+      title="Vari BPM: 켜면 재생(Playback) BPM으로 곡 전체 속도를 조정합니다. 끄면 속도가 변하지 않습니다." />
+  );
+}
+
+function VariKeySwitch({ on, onToggle }) {
+  return (
+    <VariSwitch label="Vari Key" on={on} onToggle={onToggle}
+      title="Vari Key: 곡의 Key 변경 적용 여부를 전환합니다." />
+  );
+}
+
+// All 24 keys (+ none) for manual override, using the same conventional spelling
+// the detector outputs so a stored value round-trips to the right <option>.
+const KEY_OPTIONS = {
+  major: ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"],
+  minor: ["Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm"],
+};
+
+// Render a key string with the value in Elms Sans and any accidental (sharp "#"
+// or flat "b") in Tai Heritage Pro italic at 60% size. Note letters are uppercase
+// A–G, so a lowercase "b" is always a flat (never the note B) and "m" is minor.
+function renderKeyValue(text) {
+  return Array.from(text).map((ch, i) =>
+    (ch === "#" || ch === "b" || ch === "♯" || ch === "♭")
+      ? <span key={i} style={{ fontFamily: "var(--key-accidental-font)", fontStyle: "italic", fontSize: "60%" }}>{ch}</span>
+      : <React.Fragment key={i}>{ch}</React.Fragment>
+  );
+}
+
+// Read-out of the project's musical key. The narrow readout box (64px) drops a
+// wider setup panel (150px) straight down from its bottom edge — visually
+// connected (no gap), forming a stepped shape so the Detect button fits.
+function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onSetKey }) {
+  const key = (tempo && tempo.key) || null;
+  const isMinor = !!key && key.slice(-1) === "m";
+  const noteText = key ? (isMinor ? key.slice(0, -1) : key) : "--";
+  const modeText = key ? (isMinor ? "Minor" : "Major") : null;
+  const canDetect = hasAudio && !detecting;
+  return (
+    <div onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)}
+      style={{ position: "relative", zIndex: 30, width: 64, height: TOOLBAR_PANEL_H, flex: "0 0 64px" }}>
+      <button title="Project key — click to detect" onClick={onToggle}
+        style={{ position: "relative", zIndex: 1, height: TOOLBAR_PANEL_H, width: 64, padding: 0, cursor: "pointer",
+          border: "1px solid var(--line-strong)", borderBottom: open ? "none" : "1px solid var(--line-strong)",
+          borderRadius: open ? "10px 10px 0 0" : 10,
+          background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))",
+          boxShadow: open ? "inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px rgba(232,176,75,.12)",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
+        <span style={{ fontSize: 6.3, lineHeight: 1, fontWeight: 400, letterSpacing: ".12em", color: "var(--bpm-label-fg, var(--cream-2))" }}>Key</span>
+        <span style={{ fontFamily: "var(--key-number-font)", fontSize: 17, lineHeight: 1, fontWeight: 400, color: "var(--bpm-fg, var(--cream))", textShadow: "0 0 8px var(--amber-soft)" }}>{renderKeyValue(noteText)}</span>
+        {modeText && <span style={{ fontFamily: "var(--ui)", fontStyle: "normal", fontSize: 7.56, lineHeight: 1, fontWeight: 400, letterSpacing: ".06em", color: "var(--bpm-label-fg, var(--cream-2))" }}>{modeText}</span>}
+      </button>
+      {open && (
+        <div onMouseDown={onActivity} onKeyDown={onActivity} onWheel={onActivity}
+          style={{ position: "absolute", left: 0, top: TOOLBAR_PANEL_H, width: 150, overflow: "hidden",
+            padding: "10px 10px 11px", border: "1px solid var(--line-strong)", borderRadius: "0 10px 10px 10px",
+            background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))",
+            boxShadow: "var(--shadow), inset 0 1px 0 rgba(255,255,255,.045)",
+            cursor: "default", animation: "keyPanelDrop .2s ease both" }}>
+          <div style={{ textAlign: "center", fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: "var(--muted)", marginBottom: 10 }}>
+            KEY SETUP
+          </div>
+          <button className="btn" disabled={!canDetect} onClick={onDetect}
+            style={{ width: "100%", height: 30, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", opacity: canDetect || detecting ? 1 : 0.45 }}>
+            {detecting ? (
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <span style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--amber-soft)", borderTopColor: "var(--amber)", animation: "spin .7s linear infinite", display: "inline-block" }} />
+                Analyzing…
+              </span>
+            ) : "Detect"}
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" }}>
+            <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>OR SET</span>
+            <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
+          </div>
+          <select value={key || ""} onChange={(e) => onSetKey(e.target.value || null)}
+            style={{ width: "100%", height: 30, borderRadius: 7, border: "1px solid var(--line-strong)",
+              background: "var(--bg)", color: "var(--cream)", padding: "0 6px", fontSize: 12, cursor: "pointer", fontFamily: "var(--ui)" }}>
+            <option value="">—</option>
+            <optgroup label="Major">
+              {KEY_OPTIONS.major.map((k) => <option key={k} value={k}>{k} major</option>)}
+            </optgroup>
+            <optgroup label="Minor">
+              {KEY_OPTIONS.minor.map((k) => <option key={k} value={k}>{k.slice(0, -1)} minor</option>)}
+            </optgroup>
+          </select>
+        </div>
+      )}
     </div>
   );
 }
@@ -594,10 +689,8 @@ function BpmIndicator({
               </span>
             ) : "Detect"}
           </button>
-          <div style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(0,0,0,.18)", border: "1px solid var(--line)" }}>
-            <div style={{ fontSize: 10.5, lineHeight: 1.45, color: "var(--bpm-label-fg, var(--cream-2))" }}>
-              Vari BPM 재생은 실시간 Time Stretch 프리뷰를 준비해 피치 보존을 우선 적용합니다.
-            </div>
+          <div style={{ textAlign: "center", fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: "var(--muted)" }}>
+            BPM SETUP
           </div>
           <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr", gap: 7, alignItems: "center" }}>
             <input key={detectSeq} className="mono" type="number" min="20" max="300" step="1" value={manualBpm}
@@ -1074,6 +1167,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [bpmOpen, setBpmOpen] = useState(false);
   const [bpmHover, setBpmHover] = useState(false);
   const [bpmTouchedAt, setBpmTouchedAt] = useState(Date.now());
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [keyHover, setKeyHover] = useState(false);
+  const [keyTouchedAt, setKeyTouchedAt] = useState(Date.now());
+  const [detectingKey, setDetectingKey] = useState(false);
   const [manualBpm, setManualBpm] = useState("");
   const [measuredBpm, setMeasuredBpm] = useState(null);
   const [detecting, setDetecting] = useState(false);
@@ -1109,6 +1206,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const selectedBpmTrack = DAW.getBpmSourceTrack ? DAW.getBpmSourceTrack() : null;
   const selectedBpmTrackIndex = selectedBpmTrack ? DAW.tracks.findIndex((t) => t.id === selectedBpmTrack.id) + 1 : null;
   const touchBpmPanel = useCallback(() => setBpmTouchedAt(Date.now()), []);
+  const touchKeyPanel = useCallback(() => setKeyTouchedAt(Date.now()), []);
 
   const updateTimelineView = useCallback(() => {
     const el = arrangeRef.current;
@@ -1179,6 +1277,34 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     force((n) => n + 1);
   }, [selectedBpmTrack, detecting, touchBpmPanel, projectName, projectPath]);
 
+  const detectKey = useCallback(async () => {
+    // Key detection is independent of the BPM source track — it analyses every
+    // audio track's harmonic content together.
+    if (!DAW.detectKeyFromAllTracks || detectingKey) return;
+    touchKeyPanel();
+    setDetectingKey(true);
+    // Yield two frames so "Analyzing…" paints before the synchronous analysis blocks.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let key = null;
+    try {
+      key = DAW.detectKeyFromAllTracks();
+    } finally {
+      setDetectingKey(false);
+    }
+    if (!key) return;
+    if (DAW.setKey) DAW.setKey(key);
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
+  }, [detectingKey, touchKeyPanel, projectName, projectPath]);
+
+  const setKeyManual = useCallback((key) => {
+    if (!DAW.setKey) return;
+    touchKeyPanel();
+    DAW.setKey(key || null);
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
+  }, [touchKeyPanel, projectName, projectPath]);
+
   const tapBpm = useCallback(() => {
     const now = performance.now();
     const taps = tapTimesRef.current;
@@ -1242,6 +1368,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const toggleVariBpm = useCallback(() => {
     if (!DAW.setVariBpm) return;
     DAW.setVariBpm(!(DAW.tempo && DAW.tempo.variBpm));
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
+  }, [projectName, projectPath]);
+
+  const toggleVariKey = useCallback(() => {
+    if (!DAW.setVariKey) return;
+    DAW.setVariKey(!(DAW.tempo && DAW.tempo.variKey));
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   }, [projectName, projectPath]);
@@ -1348,6 +1481,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }, 500);
     return () => clearInterval(timer);
   }, [bpmOpen, bpmHover, bpmTouchedAt]);
+
+  useEffect(() => {
+    if (!keyOpen) return;
+    const timer = setInterval(() => {
+      if (!keyHover && Date.now() - keyTouchedAt >= 5000) setKeyOpen(false);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [keyOpen, keyHover, keyTouchedAt]);
 
   // Reset the TAP tempo session whenever the panel closes, so each open starts fresh.
   useEffect(() => {
@@ -1622,7 +1763,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     DAW._spectrum = null;
     // When the project becomes empty, reset the tempo so Project/Playback BPM
     // return to the uninitialized "---" state (matches a fresh project).
-    if (DAW.tracks.length === 0) DAW.tempo = { projectBpm: null, playbackBpm: null, variBpm: false };
+    if (DAW.tracks.length === 0) DAW.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false };
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
@@ -1705,6 +1846,19 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             onApply={applyBpm}
           />
           <VariBpmSwitch on={!!(DAW.tempo && DAW.tempo.variBpm)} onToggle={toggleVariBpm} />
+          <ToolbarDivider />
+          <KeyIndicator
+            tempo={DAW.tempo}
+            open={keyOpen}
+            detecting={detectingKey}
+            hasAudio={DAW.tracks.some((t) => t && t.buffer && !t.needsAudio && !(t.params && t.params.mute))}
+            onToggle={() => { touchKeyPanel(); setKeyOpen((v) => !v); }}
+            onActivity={touchKeyPanel}
+            onMouseInside={setKeyHover}
+            onDetect={detectKey}
+            onSetKey={setKeyManual}
+          />
+          <VariKeySwitch on={!!(DAW.tempo && DAW.tempo.variKey)} onToggle={toggleVariKey} />
           <ToolbarDivider />
           <ActionBar onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
         </div>
