@@ -493,6 +493,11 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">새 세션 시작 화면입니다. 파일을 끌어다 놓거나 Import Folder, Import Files, Load demo session을 선택해 작업을 시작합니다.</div>
                   </div>
 
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/24-project-menu.png" alt="Project 메뉴" className="manual-img" />
+                    <div className="manual-figcaption">상단 메뉴 막대의 <strong>Project</strong>를 누르면 New / Open / Save, Import, Load Demo, Export 항목이 펼쳐집니다.</div>
+                  </div>
+
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th">New Project</th><td className="manual-td">현재 세션을 비우고 새 프로젝트를 시작합니다.</td></tr>
@@ -524,6 +529,11 @@ function HelpDialog({ onClose, standalone = false }) {
                   <div className="manual-figure">
                     <img src="manual/live-screens/01-empty-start.png" alt="FocusDAW Studio Start Screen" className="manual-img" />
                     <div className="manual-figcaption">Empty startup session. Drop audio files directly or choose an import option to begin working.</div>
+                  </div>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/24-project-menu.png" alt="Project menu" className="manual-img" />
+                    <div className="manual-figcaption">Clicking <strong>Project</strong> in the menu bar reveals New / Open / Save, Import, Load Demo, and Export commands.</div>
                   </div>
 
                   <table className="manual-table">
@@ -637,7 +647,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio는 트랙 오디오에서 곡의 BPM(분당 박자 수)을 자동으로 측정하고, 그 값을 기준으로 <strong>전체 음악</strong>의 재생 템포를 조정할 수 있습니다. 새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시되며, 모든 트랙을 지우거나 새 프로젝트를 시작하면 다시 <strong>---</strong>로 초기화됩니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM 표시기" className="manual-img" />
-                    <div className="manual-figcaption"><strong>158 BPM | 158</strong>처럼 두 숫자가 보이며, 앞은 프로젝트 BPM(기준 템포), 뒤는 재생 BPM(실제 재생 속도)입니다.</div>
+                    <div className="manual-figcaption"><strong>100 BPM | 100</strong>처럼 두 숫자가 보이며, 앞은 프로젝트 BPM(기준 템포), 뒤는 재생 BPM(실제 재생 속도)입니다.</div>
                   </div>
                   <p className="manual-p">BPM 표시기 오른쪽의 <strong>Vari BPM</strong> 스위치를 <strong>켜야</strong> 재생 BPM으로 곡 속도를 조정합니다(끄면 속도 불변, 기본 OFF). 켠 상태에서 BPM 표시기 위에 마우스 휠을 돌리거나 ▲▼ 버튼을 누르면 <strong>뒤쪽 재생 BPM</strong>이 1씩 바뀌고, 곡 전체가 그 비율(재생 BPM ÷ 프로젝트 BPM)만큼 빨라지거나 느려집니다.</p>
 
@@ -671,10 +681,10 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <h3 className="manual-h3">④ 전체 음악 템포 바꿔 재생하기</h3>
-                  <p className="manual-p"><strong>Vari BPM</strong> 스위치를 켠 뒤 재생 BPM(뒤 숫자)을 바꾸면 모든 트랙이 같은 비율로 빨라지거나 느려진 상태로 재생됩니다. 예를 들어 프로젝트 BPM이 158일 때 재생 BPM을 180으로 올리면 곡 전체가 약 1.14배 빠르게 재생됩니다.</p>
+                  <p className="manual-p"><strong>Vari BPM</strong> 스위치를 켠 뒤 재생 BPM(뒤 숫자)을 바꾸면 모든 트랙이 같은 비율로 빨라지거나 느려진 상태로 재생됩니다. 예를 들어 프로젝트 BPM이 100일 때 재생 BPM을 120으로 올리면 곡 전체가 1.2배 빠르게 재생됩니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
-                    <div className="manual-figcaption">재생 BPM을 <strong>158 → 180</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>158 BPM | 180</strong>으로 바뀝니다.</div>
+                    <div className="manual-figcaption">재생 BPM을 <strong>100 → 120</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>100 BPM | 120</strong>으로 바뀝니다.</div>
                   </div>
                   <div className="manual-warning">실시간 재생의 템포 변경은 아직 Web Audio의 playbackRate 방식이라 속도를 바꾸면 피치(음 높이)도 함께 변합니다. Export 창의 Keep pitch 옵션은 피치 보존 Time Stretch를 파일 출력에 먼저 적용하는 1차 프로토타입입니다.</div>
 
@@ -729,7 +739,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio detects a song's BPM (beats per minute) from a track's audio and lets you adjust the playback tempo of the <strong>whole song</strong> based on it. A new project starts with BPM shown as <strong>---</strong>, and it returns to <strong>---</strong> whenever you clear all tracks or start a new project.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM indicator" className="manual-img" />
-                    <div className="manual-figcaption">The indicator shows two numbers such as <strong>158 BPM | 158</strong>: the front is the project BPM (reference tempo), the back is the playback BPM (actual speed).</div>
+                    <div className="manual-figcaption">The indicator shows two numbers such as <strong>100 BPM | 100</strong>: the front is the project BPM (reference tempo), the back is the playback BPM (actual speed).</div>
                   </div>
                   <p className="manual-p">The <strong>Vari BPM</strong> switch to the right of the indicator must be <strong>on</strong> for the playback BPM to change the song speed (off = no speed change; default off). With it on, hover the BPM indicator and scroll the mouse wheel, or use the ▲▼ buttons, to change the <strong>playback BPM</strong> by 1 — the whole song speeds up or slows down by that ratio (playback BPM ÷ project BPM).</p>
 
@@ -763,10 +773,10 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <h3 className="manual-h3">4. Play back at a changed tempo</h3>
-                  <p className="manual-p">With the <strong>Vari BPM</strong> switch on, changing the playback BPM (the back number) plays every track faster or slower by the same ratio. For example, with a project BPM of 158, raising the playback BPM to 180 plays the whole song about 1.14× faster.</p>
+                  <p className="manual-p">With the <strong>Vari BPM</strong> switch on, changing the playback BPM (the back number) plays every track faster or slower by the same ratio. For example, with a project BPM of 100, raising the playback BPM to 120 plays the whole song 1.2× faster.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="Playing after a tempo change" className="manual-img" />
-                    <div className="manual-figcaption">Playing after raising the playback BPM <strong>158 → 180</strong>; the indicator reads <strong>158 BPM | 180</strong>.</div>
+                    <div className="manual-figcaption">Playing after raising the playback BPM <strong>100 → 120</strong>; the indicator reads <strong>100 BPM | 120</strong>.</div>
                   </div>
                   <div className="manual-warning">Realtime tempo changes still use Web Audio's playbackRate, so changing speed also changes pitch. The Export dialog's Keep pitch option is the first pitch-preserving Time Stretch prototype for rendered files.</div>
 
@@ -923,9 +933,14 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Graphic EQ · FFT</th><td className="manual-td">스펙트럼 배경 위에 EQ 곡선을 표시합니다. 각 밴드 포인트를 드래그해 -12dB부터 +12dB까지 조절합니다.</td></tr>
                       <tr><th className="manual-th">Level meter</th><td className="manual-td">주파수 대역별 레벨 미터를 표시합니다. EQ 포인트 오버레이도 함께 조작할 수 있습니다.</td></tr>
                       <tr><th className="manual-th">EQ PRESET</th><td className="manual-td">Flat, Pop, Classic, HipHop 프리셋을 바로 적용합니다.</td></tr>
-                      <tr><th className="manual-th">Output Effects</th><td className="manual-td">최종 출력에 Reverb와 Echo / Delay를 추가합니다.</td></tr>
+                      <tr><th className="manual-th">Output Effects</th><td className="manual-td">최종 출력에 Reverb와 Echo / Delay를 추가합니다. 각 슬라이더로 0~100% 전송량을 조절하며, 켜진 효과는 아이콘에 색이 들어오고 오른쪽에 퍼센트가 표시됩니다.</td></tr>
                     </tbody>
                   </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/26-output-effects-on.png" alt="마스터 Reverb/Echo 적용" className="manual-img" />
+                    <div className="manual-figcaption">OUTPUT EFFECTS의 Reverb와 Echo / Delay를 켜고 전송량을 올린 모습입니다(예: Reverb 32%, Echo 61%).</div>
+                  </div>
 
                   <h3 className="manual-h3">OUTPUT FX 트랙</h3>
                   <p className="manual-p">타임라인 맨 아래의 OUTPUT FX 트랙은 Master 트랙 역할을 하며, 전체 믹스에 적용되는 페이드와 EQ/효과 상태를 보여줍니다. 이 트랙에서 Fade in/out 길이를 직접 조정할 수 있습니다.</p>
@@ -985,9 +1000,14 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Graphic EQ / FFT</th><td className="manual-td">Displays the EQ curve over a real-time FFT spectrum background. Drag points to adjust gain from -12dB to +12dB.</td></tr>
                       <tr><th className="manual-th">Level meters</th><td className="manual-td">Displays real-time level bars for each frequency range alongside EQ controls.</td></tr>
                       <tr><th className="manual-th">EQ PRESETS</th><td className="manual-td">Instantly applies preset curves: Flat, Pop, Classic, and HipHop.</td></tr>
-                      <tr><th className="manual-th">Output Effects</th><td className="manual-td">Applies global Reverb and Echo/Delay to the master stereo bus.</td></tr>
+                      <tr><th className="manual-th">Output Effects</th><td className="manual-td">Applies global Reverb and Echo/Delay to the master stereo bus. Each slider sets the 0–100% send amount; active effects light up and show their percentage on the right.</td></tr>
                     </tbody>
                   </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/26-output-effects-on.png" alt="Master Reverb/Echo enabled" className="manual-img" />
+                    <div className="manual-figcaption">Master OUTPUT EFFECTS with Reverb and Echo/Delay enabled and their send amounts raised (e.g. Reverb 32%, Echo 61%).</div>
+                  </div>
 
                   <h3 className="manual-h3">Master OUTPUT FX Track</h3>
                   <p className="manual-p">Located at the bottom of the timeline, the OUTPUT FX track represents the Master channel. Drag the handles on this track to shape master Fade-in and Fade-out curves directly.</p>
@@ -1026,10 +1046,15 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Format</th><td className="manual-td"><code>MP3</code> 또는 <code>WAV</code>를 선택합니다.</td></tr>
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">MP3 출력 시 192, 256, 320kbps 중에서 선택합니다.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">44.1kHz 또는 48kHz로 렌더링합니다.</td></tr>
-                      <tr><th className="manual-th">Normalize</th><td className="manual-td">최종 출력이 과도하게 커지지 않도록 렌더링 단계에서 정규화/리미팅을 적용합니다.</td></tr>
+                      <tr><th className="manual-th">Normalize</th><td className="manual-td">스위치를 켜면 목표 음량(LUFS)에 맞춰 라우드니스 정규화를 적용합니다. -9(loud master), -12(loud), -14(streaming), -16(podcast), -23(broadcast) LUFS 중에서 목표를 고를 수 있습니다.</td></tr>
                       <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Vari BPM으로 출력 템포를 바꿀 때 Export 파일에 피치 보존 Time Stretch를 적용합니다. 실시간 재생은 아직 기존 playbackRate 방식입니다.</td></tr>
                     </tbody>
                   </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/25-normalize-lufs.png" alt="Normalize LUFS 목표 선택" className="manual-img" />
+                    <div className="manual-figcaption">Normalize를 켜면 목표 LUFS를 고르는 드롭다운이 나타납니다. 스트리밍 발매에는 -14 LUFS가 기본값입니다.</div>
+                  </div>
 
                   <h3 className="manual-h3">Audio info 태그</h3>
                   <p className="manual-p">제목, 아티스트/작곡가, 앨범, 연도, 날짜를 입력할 수 있습니다. MP3 형식에서는 앨범 아트도 함께 넣을 수 있습니다. 프리셋 커버를 선택하거나 이미지 파일을 직접 고를 수 있습니다.</p>
@@ -1059,10 +1084,15 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Format</th><td className="manual-td">Choose <code>MP3</code> or <code>WAV</code> format.</td></tr>
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">Choose 192, 256, or 320kbps for MP3 compression quality.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">Select 44.1kHz or 48kHz for output rendering.</td></tr>
-                      <tr><th className="manual-th">Normalize</th><td className="manual-td">Applies peak normalization and limiting during rendering to maximize volume without clipping.</td></tr>
+                      <tr><th className="manual-th">Normalize</th><td className="manual-td">When enabled, applies loudness normalization to a target LUFS. Choose from -9 (loud master), -12 (loud), -14 (streaming), -16 (podcast), or -23 (broadcast) LUFS.</td></tr>
                       <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Applies pitch-preserving Time Stretch to exported files when Vari BPM changes the output tempo. Realtime playback still uses playbackRate.</td></tr>
                     </tbody>
                   </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/25-normalize-lufs.png" alt="Normalize LUFS target" className="manual-img" />
+                    <div className="manual-figcaption">Enabling Normalize reveals a LUFS target dropdown; -14 LUFS is the default for streaming releases.</div>
+                  </div>
 
                   <h3 className="manual-h3">Audio Info Tags</h3>
                   <p className="manual-p">Enter Title, Artist/Composer, Album, Year, and Date tags. When exporting to MP3, you can embed Cover Art by choosing a preset cover or choosing a custom image file.</p>
@@ -1092,7 +1122,7 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <div className="manual-figure">
                     <img src="manual/live-screens/06-settings-themes.png" alt="색상 테마 및 설정 화면" className="manual-img" />
-                    <div className="manual-figcaption">실제 앱에서 연 Settings 창입니다. 4가지 색상 테마 및 믹서 리셋 항목이 표시됩니다.</div>
+                    <div className="manual-figcaption">실제 앱에서 연 Settings 창입니다. 10가지 색상 테마(Warm Analog, Classical Ivory, Modern Blue 등)와 믹서 리셋 항목이 표시됩니다.</div>
                   </div>
                 </>
               ) : (
@@ -1106,7 +1136,7 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <div className="manual-figure">
                     <img src="manual/live-screens/06-settings-themes.png" alt="Settings Dialog" className="manual-img" />
-                    <div className="manual-figcaption">Settings window. Switch between color themes and reset the Mixer window bounds.</div>
+                    <div className="manual-figcaption">Settings window. Switch between 10 color themes (Warm Analog, Classical Ivory, Modern Blue, and more) and reset the Mixer window bounds.</div>
                   </div>
                 </>
               )}
