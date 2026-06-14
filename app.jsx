@@ -417,7 +417,10 @@ function ZoomBar({ pxPerSec, setPx, ampZoom, setAmp, timeMin }) {
       <ZoomGroup label="TIME"
         onMinus={() => setPx(Math.max(timeMin, pxPerSec / 1.4))} onPlus={() => setPx(Math.min(TIME_ZOOM_MAX, pxPerSec * 1.4))}
         sliderProps={{ value: Math.log(Math.max(0.1, pxPerSec)), min: logMin, max: logMax, step: 0.005,
-          onChange: (v) => setPx(Math.exp(v)), width: 108 }} />
+          onChange: (v) => setPx(Math.exp(v)), width: 108,
+          // log-scale zoom: wheel multiplies px/sec (matches minimap scroll-zoom) so one notch
+          // always clears the "snap to fit-width minimum" deadzone in setPxFromUser.
+          onWheel: (dir) => setPx(Math.max(timeMin, Math.min(TIME_ZOOM_MAX, pxPerSec * (dir > 0 ? 1.18 : 1 / 1.18)))) }} />
       <ZoomGroup label="AMP"
         onMinus={() => setAmp(Math.max(0.4, ampZoom - 0.3))} onPlus={() => setAmp(Math.min(3, ampZoom + 0.3))}
         sliderProps={{ value: ampZoom, min: 0.4, max: 3, step: 0.05, onChange: setAmp, width: 96 }} />
@@ -465,10 +468,9 @@ function ToolIcon({ name, size }) {
   );
   return null;
 }
-function ActionBar({ onAddTrack, onMixer, mixerOpen, onExport }) {
+function ActionBar({ onMixer, mixerOpen, onExport }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" }}>
-      <button className="btn" onClick={onAddTrack}><Icon name="plus" size={15} /> Track</button>
       <button className={"btn" + (mixerOpen ? " primary" : "")} onClick={(e) => { onMixer(); e.currentTarget.blur(); }}><Icon name="mixer" size={15} /> Mixer</button>
       <button className="btn" onClick={onExport} title="Export mixdown (MP3 / WAV)"><Icon name="download" size={15} /> Export</button>
     </div>
@@ -1704,7 +1706,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           />
           <VariBpmSwitch on={!!(DAW.tempo && DAW.tempo.variBpm)} onToggle={toggleVariBpm} />
           <ToolbarDivider />
-          <ActionBar onAddTrack={pickAudioFiles} onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
+          <ActionBar onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
         </div>
       </div>
 
@@ -1716,7 +1718,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           <EmptyState dragOver={dragOver} onPick={pickAudioFiles} onPickFolder={pickAudioFolder} onDemo={loadDemo} />
         ) : (
           <React.Fragment>
-            <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} />
+            <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} />
             {DAW.tracks.map((t, i) => (
               <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                 playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}

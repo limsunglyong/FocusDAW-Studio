@@ -72,11 +72,11 @@ function useWheelStep(ref, onStep) {
   }, []);
 }
 
-/* Nudge a linear gain value by `dir` decibels (1 dB per wheel notch), snapped to
-   the integer-dB grid and clamped to [0, maxGain]. Scrolling below ~-60 dB → 0 (silence). */
-function nudgeGainDb(gain, dir, maxGain) {
+/* Nudge a linear gain value by `dir` notches of `dbStep` decibels, snapped to the
+   dbStep grid and clamped to [0, maxGain]. Scrolling below ~-60 dB → 0 (silence). */
+function nudgeGainDb(gain, dir, maxGain, dbStep = 1) {
   const db = gain <= 0.0001 ? -60 : 20 * Math.log10(gain);
-  const ndb = Math.round(db) + dir;
+  const ndb = Math.round(db / dbStep) * dbStep + dir * dbStep;
   if (ndb <= -60) return 0;
   return Math.max(0, Math.min(maxGain, Math.pow(10, ndb / 20)));
 }
@@ -228,7 +228,7 @@ function fmtTime(s) {
 function fmtDb(g) { if (g <= 0.0001) return "-\u221e"; const db = 20 * Math.log10(g); return (db >= 0 ? "+" : "") + db.toFixed(1); }
 
 /* ---------- sleek horizontal slider ---------- */
-function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeChange, width = 108, ticks = 5 }) {
+function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeChange, width = 108, ticks = 5, onWheel }) {
   const ref = useRef(null);
   const frac = Math.max(0, Math.min(1, (value - min) / (max - min)));
   const set = (clientX) => {
@@ -247,8 +247,10 @@ function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeC
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
-  /* wheel nudges by one `step` per notch (= 1 display unit for percent sliders) */
+  /* wheel nudges by one `step` per notch (= 1 display unit for percent sliders).
+     `onWheel(dir)` overrides this for non-linear sliders (e.g. log-scale zoom). */
   useWheelStep(ref, (dir) => {
+    if (onWheel) { onWheel(dir); return; }
     const st = step || 0.01;
     let nv = value + dir * st;
     nv = Math.round(nv / st) * st; // snap to step grid, avoid float drift

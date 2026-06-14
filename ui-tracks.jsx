@@ -309,8 +309,8 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const volRef = useRef(null);
-  // wheel over the volume fader = 1 dB per notch (display is dB), matching the Fader/knob controls
-  useWheelStep(volRef, (dir) => onParam("volume", nudgeGainDb(p.volume, dir, 2)));
+  // wheel over the volume fader = 0.1 dB per notch (display is dB)
+  useWheelStep(volRef, (dir) => onParam("volume", nudgeGainDb(p.volume, dir, 2, 0.1)));
   const compact = laneH <= 76;
   const medium = laneH <= 104 && !compact;
   const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
@@ -551,7 +551,7 @@ function rulerLabel(t, step) {
   if (step < 1) return `${m}:${String(Math.floor(s)).padStart(2, "0")}.${Math.round((s % 1) * 10)}`;
   return `${m}:${String(Math.floor(s)).padStart(2, "0")}`;
 }
-function Ruler({ pxPerSec, playhead, onSeek }) {
+function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
   const step = STEPS.find((s) => s * pxPerSec >= 76) || STEPS[STEPS.length - 1];
@@ -577,8 +577,16 @@ function Ruler({ pxPerSec, playhead, onSeek }) {
       <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 9,
         background: "var(--bg2)", borderRight: "1px solid var(--line-strong)", borderBottom: "1px solid var(--line-strong)",
         height: 30, display: "flex", alignItems: "center", gap: 7, padding: "0 12px" }}>
-        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".1em", color: "var(--muted)", textTransform: "uppercase" }}>Time</span>
-        <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)", marginLeft: "auto" }}>m:ss</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" }}>Track</span>
+        <button onClick={onAddTrack} title="Add track"
+          style={{ width: 18, height: 18, display: "grid", placeItems: "center", borderRadius: 5, flex: "0 0 auto",
+            background: "var(--surface2)", color: "var(--cream-2)", border: "1px solid var(--line-strong)", cursor: "pointer", padding: 0 }}>
+          <Icon name="plus" size={12} />
+        </button>
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" }}>Time</span>
+          <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)" }}>m:ss</span>
+        </span>
       </div>
       <div onMouseDown={seek} style={{ position: "relative", width: laneW, height: 30, background: "var(--bg2)",
         borderBottom: "1px solid var(--line-strong)", cursor: "text" }}>
