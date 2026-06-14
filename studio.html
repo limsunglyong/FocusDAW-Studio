@@ -248,6 +248,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 /* "punch in" effect for a freshly detected / applied BPM number: expand then settle */
 @keyframes bpmPop{0%{transform:scale(1.4);opacity:.55}55%{transform:scale(.93)}100%{transform:scale(1);opacity:1}}
 .rec-dot{animation:pulse 1.1s ease-in-out infinite}
+/* Vari BPM active tag on track header — smooth red blink */
+@keyframes variBpmBlink{0%,100%{opacity:1;box-shadow:0 0 8px color-mix(in srgb,var(--red) 55%,transparent)}50%{opacity:.32;box-shadow:0 0 2px color-mix(in srgb,var(--red) 15%,transparent)}}
+.vari-bpm-tag{animation:variBpmBlink 1.6s ease-in-out infinite}
 
 /* ---- prominent SAVE button (Mixdown ready) ---- */
 @keyframes saveGlow{

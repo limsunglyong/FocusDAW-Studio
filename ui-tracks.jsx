@@ -288,6 +288,22 @@ function ScrollingTrackTitle({ name, compact }) {
   );
 }
 
+// Vari BPM indicator. The blink is synced across all tracks by aligning each
+// tag's animation to a shared global clock via a negative animation-delay,
+// computed once at mount (recomputing on re-render would break the phase).
+const VARI_BPM_BLINK_MS = 1600;
+function VariBpmTag() {
+  const delayRef = React.useRef(-((performance.now() % VARI_BPM_BLINK_MS) / 1000));
+  return (
+    <span className="vari-bpm-tag" title="Vari BPM active — playback tempo applied to this track"
+      style={{ fontSize: 9, padding: "2px 4px", borderRadius: 4, fontWeight: 400, letterSpacing: ".04em",
+        textTransform: "uppercase", cursor: "default", animationDelay: delayRef.current + "s",
+        background: "rgba(217,106,78,.18)", color: "var(--red)", border: "1px solid rgba(217,106,78,.28)" }}>
+      BPM
+    </span>
+  );
+}
+
 function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
   const p = track.params;
   const [confirmReset, setConfirmReset] = useState(false);
@@ -354,12 +370,13 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
             border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)") }}>
           <Icon name="auto" size={13} /> VOL AUTO
         </button>
+        {DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && <VariBpmTag />}
         <div style={{ flex: 1 }} />
         {track.needsAudio
-          ? <span title="Drop the audio file here to re-link" style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4,
-              fontWeight: 700, letterSpacing: ".04em", background: "rgba(217,106,78,.18)",
+          ? <span title="Drop the audio file here to re-link" style={{ fontSize: 9, padding: "2px 4px", borderRadius: 4,
+              fontWeight: 400, letterSpacing: ".04em", background: "rgba(217,106,78,.18)",
               color: "var(--red)", border: "1px solid rgba(217,106,78,.28)" }}>NO AUDIO</span>
-          : <span className="chip" style={{ fontSize: 9, padding: "2px 5px" }}>{track.type}</span>
+          : <span className="chip" style={{ fontSize: 9, padding: "2px 4px", fontWeight: 400 }}>{track.type}</span>
         }
         {onRemove && <button title="Remove track" onClick={() => setConfirmRemove(true)}
           style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center",
