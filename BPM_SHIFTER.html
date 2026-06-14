@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beat Motion Studio - BPM Shifter</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #09090b; color: #f4f4f5; }
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+    <div class="absolute inset-0 bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none"></div>
+
+    <div class="z-10 w-full max-w-sm space-y-6">
+        <header class="text-center space-y-2">
+            <h1 class="text-2xl font-black tracking-tight text-white italic leading-tight">
+                BEAT <span class="text-blue-500">MOTION</span> STUDIO
+            </h1>
+            <p class="text-zinc-500 text-[10px] uppercase tracking-[0.3em] font-bold">BPM Shifter Pro</p>
+        </header>
+
+        <div class="space-y-6 bg-zinc-900/40 p-8 rounded-[2.5rem] border border-zinc-800 backdrop-blur-2xl shadow-2xl">
+            
+            <!-- Hidden File Input -->
+            <input type="file" id="fileInput" class="hidden" accept="audio/*">
+
+            <!-- Persistent Upload Zone -->
+            <button id="uploadBtn" class="w-full group relative flex flex-col items-center justify-center py-6 border-2 border-dashed border-zinc-700 bg-zinc-950/50 rounded-[2rem] transition-all h-40">
+                <div class="flex items-center gap-3 transition-transform group-hover:scale-105" id="uploadStatusUI">
+                    <div class="w-12 h-12 bg-zinc-800 text-zinc-400 group-hover:text-blue-400 rounded-xl flex items-center justify-center transition-colors">
+                        <i data-lucide="upload" id="uploadIcon"></i>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-sm font-black text-white" id="uploadTitle">Import Master Track</p>
+                        <p class="text-[10px] text-zinc-500 font-bold uppercase truncate max-w-[180px]" id="fileName">MP3, WAV, M4A supported</p>
+                    </div>
+                </div>
+            </button>
+
+            <!-- Control Section -->
+            <div id="controlSection" class="space-y-6 transition-all duration-500 opacity-40 grayscale blur-[1px] pointer-events-none">
+                <div class="flex bg-zinc-950 p-1.5 rounded-2xl border border-zinc-800">
+                    <button id="modeOriginal" class="flex-1 py-3 rounded-xl text-[10px] font-black bg-zinc-800 text-white shadow-lg transition-all">ORIGINAL (1.0x)</button>
+                    <button id="modeShifted" class="flex-1 py-3 rounded-xl text-[10px] font-black text-zinc-600 hover:text-zinc-400 transition-all">SHIFTED (1.00x)</button>
+                </div>
+
+                <div class="flex justify-center items-center gap-8">
+                    <button id="restartBtn" class="w-12 h-12 flex items-center justify-center text-zinc-600 hover:text-white bg-zinc-950 rounded-full border border-zinc-800 transition-colors shadow-lg">
+                        <i data-lucide="rotate-ccw"></i>
+                    </button>
+                    <button id="playPauseBtn" class="w-24 h-24 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_50px_rgba(255,255,255,0.1)]">
+                        <i data-lucide="play" class="ml-1.5 w-10 h-10"></i>
+                    </button>
+                    <button id="downloadBtn" class="w-12 h-12 flex items-center justify-center text-zinc-600 hover:text-blue-400 bg-zinc-950 rounded-full border border-zinc-800 transition-colors shadow-lg">
+                        <i data-lucide="download"></i>
+                    </button>
+                </div>
+
+                <!-- Progress Bar for Export -->
+                <div id="exportProgressUI" class="hidden space-y-2">
+                    <div class="flex justify-between text-[10px] font-black uppercase tracking-widest text-blue-400">
+                        <span>Recording Stream...</span>
+                        <span id="exportPercent">0%</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
+                        <div id="exportBar" class="h-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="space-y-6 pt-6 border-t border-zinc-800/50">
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Original BPM</label>
+                            <input type="number" id="originalBpmInput" value="120" class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 text-lg font-black focus:border-blue-500 outline-none transition-colors shadow-inner">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Target BPM</label>
+                            <input type="number" id="targetBpmInput" value="120" class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 text-lg font-black text-blue-500 focus:border-blue-500 outline-none transition-colors shadow-inner">
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-baseline">
+                            <span class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Fine Tuning</span>
+                            <span id="tempoText" class="text-xl font-black text-blue-400 font-mono">100.0%</span>
+                        </div>
+                        <input type="range" id="tempoSlider" min="0.5" max="2.0" step="0.01" value="1" class="slider-thumb w-full h-2 bg-zinc-950 rounded-lg appearance-none cursor-pointer border border-zinc-800 shadow-inner">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <audio id="audioElement" class="hidden"></audio>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileName = document.getElementById('fileName');
+        const uploadTitle = document.getElementById('uploadTitle');
+        const uploadIcon = document.getElementById('uploadIcon');
+        const controlSection = document.getElementById('controlSection');
+        const audio = document.getElementById('audioElement');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const originalBpmInput = document.getElementById('originalBpmInput');
+        const targetBpmInput = document.getElementById('targetBpmInput');
+        const tempoSlider = document.getElementById('tempoSlider');
+        const tempoText = document.getElementById('tempoText');
+        const modeOriginal = document.getElementById('modeOriginal');
+        const modeShifted = document.getElementById('modeShifted');
+        const exportProgressUI = document.getElementById('exportProgressUI');
+        const exportBar = document.getElementById('exportBar');
+        const exportPercent = document.getElementById('exportPercent');
+
+        let originalBpm = 120;
+        let targetBpm = 120;
+        let tempo = 1;
+        let isOriginalMode = true;
+        let isExporting = false;
+        let currentFile = null;
+
+        // BPM Detection Logic (Autocorrelation)
+        async function detectBPM(buffer) {
+            const sliceDuration = 30;
+            const startSample = Math.floor(Math.max(0, (buffer.duration / 2) - (sliceDuration / 2)) * buffer.sampleRate);
+            const endSample = Math.min(buffer.length, startSample + (sliceDuration * buffer.sampleRate));
+            
+            const offlineCtx = new OfflineAudioContext(1, endSample - startSample, buffer.sampleRate);
+            const source = offlineCtx.createBufferSource();
+            source.buffer = buffer;
+
+            const filter = offlineCtx.createBiquadFilter();
+            filter.type = "lowpass";
+            filter.frequency.value = 150;
+
+            source.connect(filter);
+            filter.connect(offlineCtx.destination);
+            source.start(0, startSample / buffer.sampleRate);
+
+            const renderedBuffer = await offlineCtx.startRendering();
+            const rawData = renderedBuffer.getChannelData(0);
+            const downsampleFactor = Math.round(buffer.sampleRate / 1000);
+            const envelope = [];
+            for (let i = 0; i < rawData.length; i += downsampleFactor) {
+                let sum = 0;
+                for (let j = 0; j < downsampleFactor && (i + j) < rawData.length; j++) {
+                    sum += Math.abs(rawData[i + j]);
+                }
+                envelope.push(sum / downsampleFactor);
+            }
+
+            const minLag = Math.floor(1000 * (60 / 180));
+            const maxLag = Math.floor(1000 * (60 / 60));
+            let bestLag = 0;
+            let maxCorrelation = -1;
+            for (let lag = minLag; lag <= maxLag; lag++) {
+                let correlation = 0;
+                for (let i = 0; i < envelope.length - lag; i++) {
+                    correlation += envelope[i] * envelope[i + lag];
+                }
+                if (correlation > maxCorrelation) {
+                    maxCorrelation = correlation;
+                    bestLag = lag;
+                }
+            }
+            return Math.round(60 / (bestLag / 1000));
+        }
+
+        // Handle File Upload
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            currentFile = file;
+
+            // UI Feedback
+            uploadTitle.innerText = "Analyzing...";
+            fileName.innerText = file.name;
+            uploadIcon.setAttribute('data-lucide', 'zap');
+            uploadIcon.classList.add('animate-pulse', 'text-blue-500');
+            lucide.createIcons();
+
+            // BPM Detection
+            const arrayBuffer = await file.arrayBuffer();
+            const audioCtx = new AudioContext();
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            originalBpm = await detectBPM(audioBuffer);
+            
+            // Set values
+            originalBpmInput.value = originalBpm;
+            targetBpmInput.value = originalBpm;
+            tempo = 1;
+            tempoSlider.value = 1;
+            tempoText.innerText = "100.0%";
+            
+            // Player Init
+            audio.src = URL.createObjectURL(file);
+            audio.load();
+            audio.playbackRate = 1;
+            audio.preservesPitch = true;
+
+            // Enable Controls
+            uploadTitle.innerText = "Change Track";
+            uploadIcon.setAttribute('data-lucide', 'refresh-cw');
+            uploadIcon.classList.remove('animate-pulse');
+            controlSection.classList.remove('opacity-40', 'grayscale', 'blur-[1px]', 'pointer-events-none');
+            lucide.createIcons();
+        });
+
+        // Playback Control
+        playPauseBtn.addEventListener('click', () => {
+            if (audio.paused) {
+                audio.play();
+                playPauseBtn.innerHTML = '<i data-lucide="pause" class="w-10 h-10"></i>';
+            } else {
+                audio.pause();
+                playPauseBtn.innerHTML = '<i data-lucide="play" class="ml-1.5 w-10 h-10"></i>';
+            }
+            lucide.createIcons();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            audio.currentTime = 0;
+        });
+
+        // A/B Mode Toggle
+        modeOriginal.addEventListener('click', () => {
+            isOriginalMode = true;
+            audio.playbackRate = 1;
+            modeOriginal.className = "flex-1 py-3 rounded-xl text-[10px] font-black bg-zinc-800 text-white shadow-lg transition-all";
+            modeShifted.className = "flex-1 py-3 rounded-xl text-[10px] font-black text-zinc-600 hover:text-zinc-400 transition-all";
+        });
+
+        modeShifted.addEventListener('click', () => {
+            isOriginalMode = false;
+            audio.playbackRate = tempo;
+            modeShifted.className = "flex-1 py-3 rounded-xl text-[10px] font-black bg-blue-600 text-white shadow-lg transition-all";
+            modeOriginal.className = "flex-1 py-3 rounded-xl text-[10px] font-black text-zinc-600 hover:text-zinc-400 transition-all";
+        });
+
+        // BPM Change Logic
+        function updateTempo() {
+            tempo = targetBpm / originalBpm;
+            tempo = Math.min(Math.max(tempo, 0.25), 4);
+            tempoSlider.value = tempo;
+            tempoText.innerText = (tempo * 100).toFixed(1) + "%";
+            modeShifted.innerText = `SHIFTED (${tempo.toFixed(2)}x)`;
+            if (!isOriginalMode) audio.playbackRate = tempo;
+        }
+
+        originalBpmInput.addEventListener('change', (e) => {
+            originalBpm = Math.max(1, e.target.value);
+            updateTempo();
+        });
+
+        targetBpmInput.addEventListener('change', (e) => {
+            targetBpm = Math.max(1, e.target.value);
+            updateTempo();
+        });
+
+        tempoSlider.addEventListener('input', (e) => {
+            tempo = parseFloat(e.target.value);
+            targetBpm = Math.round(originalBpm * tempo);
+            targetBpmInput.value = targetBpm;
+            tempoText.innerText = (tempo * 100).toFixed(1) + "%";
+            modeShifted.innerText = `SHIFTED (${tempo.toFixed(2)}x)`;
+            isOriginalMode = false;
+            audio.playbackRate = tempo;
+            modeShifted.className = "flex-1 py-3 rounded-xl text-[10px] font-black bg-blue-600 text-white shadow-lg transition-all";
+            modeOriginal.className = "flex-1 py-3 rounded-xl text-[10px] font-black text-zinc-600 hover:text-zinc-400 transition-all";
+        });
+
+        // Export/Download Logic
+        downloadBtn.addEventListener('click', () => {
+            if (!audio.src || isExporting) return;
+
+            isExporting = true;
+            exportProgressUI.classList.remove('hidden');
+            const chunks = [];
+            const stream = audio.captureStream ? audio.captureStream() : audio.mozCaptureStream();
+            const recorder = new MediaRecorder(stream);
+
+            recorder.ondataavailable = (e) => chunks.push(e.data);
+            recorder.onstop = () => {
+                const extension = currentFile.name.split('.').pop();
+                const blob = new Blob(chunks, { type: `audio/${extension}` });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `shifted_${targetBpm}bpm_${currentFile.name}`;
+                a.click();
+                isExporting = false;
+                exportProgressUI.classList.add('hidden');
+            };
+
+            audio.currentTime = 0;
+            audio.playbackRate = tempo;
+            isOriginalMode = false;
+            recorder.start();
+            audio.play();
+
+            const interval = setInterval(() => {
+                const progress = (audio.currentTime / audio.duration) * 100;
+                exportBar.style.width = progress + "%";
+                exportPercent.innerText = Math.round(progress) + "%";
+                if (audio.ended) {
+                    recorder.stop();
+                    clearInterval(interval);
+                }
+            }, 100);
+        });
+
+        audio.addEventListener('ended', () => {
+            playPauseBtn.innerHTML = '<i data-lucide="play" class="ml-1.5 w-10 h-10"></i>';
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>
