@@ -686,7 +686,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
                     <div className="manual-figcaption">재생 BPM을 <strong>100 → 120</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>100 BPM | 120</strong>으로 바뀝니다.</div>
                   </div>
-                  <div className="manual-warning">실시간 재생의 템포 변경은 아직 Web Audio의 playbackRate 방식이라 속도를 바꾸면 피치(음 높이)도 함께 변합니다. Export 창의 Keep pitch 옵션은 피치 보존 Time Stretch를 파일 출력에 먼저 적용하는 1차 프로토타입입니다.</div>
+                  <div className="manual-warning">실시간 재생의 템포 변경은 Vari BPM이 켜져 있을 때 캐시형 Time Stretch 프리뷰를 준비해 피치 보존을 우선 적용합니다. Export 창의 Keep pitch 옵션은 Electron 데스크톱 Export에서 검증된 단기 안정 Time Stretch 경로를 사용해 파일 출력에 피치 보존을 적용합니다.</div>
 
                   <h3 className="manual-h3">트랙 헤더 컨트롤</h3>
                   <table className="manual-table">
@@ -778,7 +778,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="Playing after a tempo change" className="manual-img" />
                     <div className="manual-figcaption">Playing after raising the playback BPM <strong>100 → 120</strong>; the indicator reads <strong>100 BPM | 120</strong>.</div>
                   </div>
-                  <div className="manual-warning">Realtime tempo changes still use Web Audio's playbackRate, so changing speed also changes pitch. The Export dialog's Keep pitch option is the first pitch-preserving Time Stretch prototype for rendered files.</div>
+                  <div className="manual-warning">Realtime tempo changes prepare a cached Time Stretch preview when Vari BPM is enabled, prioritizing pitch preservation during playback. The Export dialog's Keep pitch option applies pitch preservation through the validated short-term stable Time Stretch path for Electron desktop exports.</div>
 
                   <h3 className="manual-h3">Track Header Controls</h3>
                   <table className="manual-table">
@@ -1047,7 +1047,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">MP3 출력 시 192, 256, 320kbps 중에서 선택합니다.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">44.1kHz 또는 48kHz로 렌더링합니다.</td></tr>
                       <tr><th className="manual-th">Normalize</th><td className="manual-td">스위치를 켜면 목표 음량(LUFS)에 맞춰 라우드니스 정규화를 적용합니다. -9(loud master), -12(loud), -14(streaming), -16(podcast), -23(broadcast) LUFS 중에서 목표를 고를 수 있습니다.</td></tr>
-                      <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Vari BPM으로 출력 템포를 바꿀 때 Export 파일에 피치 보존 Time Stretch를 적용합니다. 실시간 재생은 아직 기존 playbackRate 방식입니다.</td></tr>
+                      <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Vari BPM으로 출력 템포를 바꿀 때 Export 파일에 피치 보존 Time Stretch를 적용합니다. Electron 데스크톱에서는 현재 <code className="manual-code">ffmpeg atempo</code> 기준선을 사용하며, 실시간 재생은 캐시형 Time Stretch 프리뷰를 사용합니다.</td></tr>
                     </tbody>
                   </table>
 
@@ -1085,7 +1085,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">Choose 192, 256, or 320kbps for MP3 compression quality.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">Select 44.1kHz or 48kHz for output rendering.</td></tr>
                       <tr><th className="manual-th">Normalize</th><td className="manual-td">When enabled, applies loudness normalization to a target LUFS. Choose from -9 (loud master), -12 (loud), -14 (streaming), -16 (podcast), or -23 (broadcast) LUFS.</td></tr>
-                      <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Applies pitch-preserving Time Stretch to exported files when Vari BPM changes the output tempo. Realtime playback still uses playbackRate.</td></tr>
+                      <tr><th className="manual-th">Keep pitch</th><td className="manual-td">Applies pitch-preserving Time Stretch to exported files when Vari BPM changes the output tempo. Electron desktop currently uses the <code className="manual-code">ffmpeg atempo</code> baseline; realtime playback uses a cached Time Stretch preview.</td></tr>
                     </tbody>
                   </table>
 

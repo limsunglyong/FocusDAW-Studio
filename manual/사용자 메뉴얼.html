@@ -301,11 +301,11 @@
       </div>
 
       <h1><span class="lang-ko">FocusDAW Studio 사용자 메뉴얼</span><span class="lang-en">FocusDAW Studio User Manual</span></h1>
-      <div class="manual-version"><span class="lang-ko">앱 버전</span><span class="lang-en">App version</span>&nbsp;<span class="appver">v1.2.31</span></div>
+      <div class="manual-version"><span class="lang-ko">앱 버전</span><span class="lang-en">App version</span>&nbsp;<span class="appver">v1.2.40</span></div>
       <p class="lang-ko">스템 오디오를 불러와 트랙별 믹싱, 볼륨 오토메이션, 마스터 EQ, 페이드, MP3/WAV 출력까지 처리하는 데스크톱 DAW 앱입니다.</p>
       <p class="lang-en">A desktop DAW for importing stems and handling per-track mixing, volume automation, master EQ, fades, and MP3/WAV export.</p>
       <div class="meta">
-        <span class="pill"><span class="lang-ko">버전</span><span class="lang-en">Version</span>&nbsp;<span class="appver">v1.2.31</span></span>
+        <span class="pill"><span class="lang-ko">버전</span><span class="lang-en">Version</span>&nbsp;<span class="appver">v1.2.40</span></span>
         <span class="pill">Windows / macOS / Linux</span>
         <span class="pill"><span class="lang-ko">Electron 기반</span><span class="lang-en">Built on Electron</span></span>
         <span class="pill"><span class="lang-ko">MP3 / WAV / AIFF / M4A / OGG / FLAC 입력</span><span class="lang-en">MP3 / WAV / AIFF / M4A / OGG / FLAC input</span></span>
@@ -624,7 +624,7 @@
           <figcaption>재생 BPM을 <strong>100 → 120</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>100 BPM | 120</strong>으로 바뀌고 곡 전체가 그 비율만큼 빠르게 재생됩니다.</figcaption>
         </div>
 
-        <div class="warning">실시간 재생의 템포 변경은 아직 Web Audio의 playbackRate 방식이라 속도를 바꾸면 <strong>피치(음 높이)도 함께 변합니다.</strong> Export 창의 Keep pitch 옵션은 피치 보존 Time Stretch를 파일 출력에 먼저 적용하는 1차 프로토타입입니다.</div>
+        <div class="warning">실시간 재생의 템포 변경은 Vari BPM이 켜져 있을 때 캐시형 Time Stretch 프리뷰를 준비해 <strong>피치 보존을 우선 적용합니다.</strong> Export 창의 Keep pitch 옵션은 Electron 데스크톱 Export에서 검증된 단기 안정 Time Stretch 경로를 사용해 파일 출력에 피치 보존을 적용합니다.</div>
 
         <h3>트랙 헤더 컨트롤</h3>
         <table>
@@ -724,7 +724,7 @@
           <figcaption>Playing after raising the playback BPM <strong>100 → 120</strong>; the indicator reads <strong>100 BPM | 120</strong> and the whole song plays faster by that ratio.</figcaption>
         </div>
 
-        <div class="warning">Realtime tempo changes still use Web Audio's playbackRate, so changing speed also changes <strong>pitch</strong>. The Export dialog's Keep pitch option is the first pitch-preserving Time Stretch prototype for rendered files.</div>
+        <div class="warning">Realtime tempo changes prepare a cached Time Stretch preview when Vari BPM is enabled, prioritizing <strong>pitch preservation</strong> during playback. The Export dialog's Keep pitch option applies pitch preservation through the validated short-term stable Time Stretch path for Electron desktop exports.</div>
 
         <h3>Track Header Controls</h3>
         <table>
@@ -987,7 +987,7 @@
             <tr><th>Bitrate</th><td>MP3 출력 시 192, 256, 320kbps 중에서 선택합니다.</td></tr>
             <tr><th>Sample rate</th><td>44.1kHz 또는 48kHz로 렌더링합니다.</td></tr>
             <tr><th>Normalize</th><td>스위치를 켜면 목표 음량(LUFS)에 맞춰 라우드니스 정규화를 적용합니다. -9(loud master), -12(loud), -14(streaming), -16(podcast), -23(broadcast) LUFS 중에서 목표를 고를 수 있습니다.</td></tr>
-            <tr><th>Keep pitch</th><td>Vari BPM으로 출력 템포를 바꿀 때 Export 파일에 피치 보존 Time Stretch를 적용합니다. 실시간 재생은 아직 기존 playbackRate 방식입니다.</td></tr>
+            <tr><th>Keep pitch</th><td>Vari BPM으로 출력 템포를 바꿀 때 Export 파일에 피치 보존 Time Stretch를 적용합니다. Electron 데스크톱에서는 현재 <code>ffmpeg atempo</code> 기준선을 사용하며, 실시간 재생은 캐시형 Time Stretch 프리뷰를 사용합니다.</td></tr>
           </tbody>
         </table>
 
@@ -1025,7 +1025,7 @@
             <tr><th>Bitrate</th><td>Choose 192, 256, or 320kbps for MP3 compression quality.</td></tr>
             <tr><th>Sample rate</th><td>Select 44.1kHz or 48kHz for output rendering.</td></tr>
             <tr><th>Normalize</th><td>When enabled, applies loudness normalization to a target LUFS. Choose from -9 (loud master), -12 (loud), -14 (streaming), -16 (podcast), or -23 (broadcast) LUFS.</td></tr>
-            <tr><th>Keep pitch</th><td>Applies pitch-preserving Time Stretch to exported files when Vari BPM changes the output tempo. Realtime playback still uses playbackRate.</td></tr>
+            <tr><th>Keep pitch</th><td>Applies pitch-preserving Time Stretch to exported files when Vari BPM changes the output tempo. Electron desktop currently uses the <code>ffmpeg atempo</code> baseline; realtime playback uses a cached Time Stretch preview.</td></tr>
           </tbody>
         </table>
 
@@ -1167,7 +1167,7 @@
 
     <footer>
       <span class="lang-ko">FocusDAW Studio 사용자 메뉴얼 · 작성 기준 버전 <span class="appver">v1.2.31</span></span>
-      <span class="lang-en">FocusDAW Studio User Manual · Written for version <span class="appver">v1.2.31</span></span>
+      <span class="lang-en">FocusDAW Studio User Manual · Written for version <span class="appver">v1.2.40</span></span>
     </footer>
   </div>
 

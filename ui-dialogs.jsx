@@ -471,7 +471,7 @@ function ExportDialog({ projectName, onClose }) {
                 <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(232,176,75,.06)", borderRadius: 9, fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
                   All unmuted tracks with FX, automation, master EQ &amp; fades. Length {fmtTime(exportDuration)}.
                   {normalize && window.electronAPI && window.electronAPI.processAudio ? ` Loudness normalized to ${lufsTarget} LUFS.` : ""}
-                  {preservePitch && tempoChanged ? " Pitch-preserving time stretch is applied after mix render." : ""}
+                  {preservePitch && tempoChanged ? " Keep pitch uses the stable desktop time-stretch path after mix render." : ""}
                 </div>
               </div>
 

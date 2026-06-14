@@ -506,13 +506,14 @@ function BpmIndicator({
   onActivity,
   onMouseInside,
   onPlaybackAdjust,
+  playbackBpmDraft,
   onManualBpm,
   onDetect,
   onTap,
   onApply,
 }) {
   const projectBpm = tempo && tempo.projectBpm;
-  const playbackBpm = (tempo && tempo.playbackBpm) || projectBpm;
+  const playbackBpm = playbackBpmDraft || (tempo && tempo.playbackBpm) || projectBpm;
   const canAdjust = !!projectBpm;
   const canDetect = !!selectedTrack && !selectedTrack.needsAudio && !detecting;
   // Keying these spans by applySeq/detectSeq remounts them on each APPLY / Detect,
@@ -593,7 +594,7 @@ function BpmIndicator({
           </button>
           <div style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(0,0,0,.18)", border: "1px solid var(--line)" }}>
             <div style={{ fontSize: 10.5, lineHeight: 1.45, color: "var(--bpm-label-fg, var(--cream-2))" }}>
-              Phase 0은 playbackRate 방식이라 템포를 바꾸면 피치도 함께 변합니다.
+              Vari BPM 재생은 실시간 Time Stretch 프리뷰를 준비해 피치 보존을 우선 적용합니다.
             </div>
           </div>
           <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr", gap: 7, alignItems: "center" }}>
@@ -738,9 +739,11 @@ function EmptyState({ onPick, onPickFolder, onDemo, dragOver }) {
 
 function LoadingOverlay({ state }) {
   if (!state || !state.active) return null;
+  const indeterminate = !!state.indeterminate;
   const total = Math.max(1, state.total || 1);
   const done = Math.max(0, Math.min(total, state.done || 0));
   const pct = Math.round((done / total) * 100);
+  const title = state.title || (indeterminate ? "Preparing audio" : "Loading audio");
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 120, display: "grid", placeItems: "center",
       background: "rgba(12,10,8,.58)", backdropFilter: "blur(6px)", pointerEvents: "auto" }}>
@@ -755,20 +758,38 @@ function LoadingOverlay({ state }) {
             border: "3px solid var(--line-strong)", borderTopColor: "var(--amber)",
             animation: "spin .9s linear infinite", boxShadow: "0 0 18px var(--amber-soft)" }} />
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--cream)", marginBottom: 5 }}>Loading audio</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--cream)", marginBottom: 5 }}>{title}</div>
         <div style={{ fontSize: 12.5, color: "var(--muted)", minHeight: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {state.label || "Preparing files..."}
         </div>
         <div style={{ marginTop: 17, height: 6, borderRadius: 999, background: "var(--bg)",
           border: "1px solid var(--line)", overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${pct}%`, borderRadius: 999,
+          <div style={{ height: "100%", width: indeterminate ? "48%" : `${pct}%`, borderRadius: 999,
             background: "linear-gradient(90deg,var(--amber-deep),var(--amber))",
-            boxShadow: "0 0 10px var(--amber-soft)", transition: "width .18s ease" }} />
+            boxShadow: "0 0 10px var(--amber-soft)", transition: "width .18s ease",
+            animation: indeterminate ? "loadingSweep 1.15s ease-in-out infinite alternate" : "none" }} />
         </div>
         <div className="mono" style={{ marginTop: 9, fontSize: 10.5, color: "var(--faint)" }}>
-          {done}/{total} files
+          {state.progressText || (indeterminate ? "working..." : `${done}/${total} files`)}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TimeStretchBusyBadge({ active, x, y }) {
+  if (!active) return null;
+  return (
+    <div title="Preparing Time Stretch preview"
+      style={{ position: "absolute", left: x == null ? "50%" : x, top: y == null ? "50%" : y,
+        transform: "translate(-50%, -50%)", zIndex: 35,
+        width: 30, height: 30, borderRadius: "50%",
+        display: "grid", placeItems: "center", pointerEvents: "none",
+        border: "1px solid var(--line-strong)", background: "var(--surface2)",
+        boxShadow: "0 0 12px var(--amber-soft)" }}>
+      <div style={{ width: 18, height: 18, borderRadius: "50%",
+        border: "2px solid var(--line-strong)", borderTopColor: "var(--amber)",
+        animation: "spin .75s linear infinite" }} />
     </div>
   );
 }
@@ -1057,7 +1078,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [detectSeq, setDetectSeq] = useState(0); // bumps on each detect/tap → replays measured-value pop
   const [applySeq, setApplySeq] = useState(0);    // bumps on each APPLY → replays project-BPM pop
   const [tapInfo, setTapInfo] = useState({ bpm: null, count: 0 }); // live TAP readout
+  const [playbackBpmDraft, setPlaybackBpmDraft] = useState(null);
   const tapTimesRef = useRef([]);
+  const playbackBpmDraftRef = useRef(null);
+  const playbackBpmCommitTimer = useRef(null);
   const [, force] = useState(0);
   const fileRef = useRef(null);
   const folderRef = useRef(null);
@@ -1068,6 +1092,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const redoStack = useRef([]);
   const lastUndoKey = useRef(null);
   const MAX_UNDO = 50;
+  const stretchPreparing = !!DAW._stretchPreviewPreparing;
+  const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
+  const arrangeNode = arrangeRef.current;
+  const rulerH = 30;
+  const trackStackTop = rulerH;
+  const trackStackBottom = rulerH + Math.max(1, DAW.tracks.length) * laneH;
+  const visibleTop = arrangeNode ? Math.max(trackStackTop, arrangeNode.scrollTop) : trackStackTop;
+  const visibleBottom = arrangeNode ? Math.min(trackStackBottom, arrangeNode.scrollTop + arrangeNode.clientHeight) : trackStackBottom;
+  const overlayY = visibleBottom > visibleTop ? (visibleTop + visibleBottom) / 2 : (trackStackTop + trackStackBottom) / 2;
+  const overlayX = arrangeNode ? arrangeNode.scrollLeft + (arrangeNode.clientWidth / 2) : null;
   const playhead = DAW.getPlayhead();
   const sessionDuration = DAW.duration;
   const selectedBpmTrack = DAW.getBpmSourceTrack ? DAW.getBpmSourceTrack() : null;
@@ -1175,12 +1209,33 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [touchBpmPanel]);
 
   const adjustPlaybackBpm = useCallback((delta) => {
-    if (!DAW.adjustPlaybackBpm) return;
-    if (DAW.adjustPlaybackBpm(delta)) {
+    if (!DAW.setPlaybackBpm || !(DAW.tempo && DAW.tempo.projectBpm)) return;
+    if (DAW._stretchPreviewPreparing) return;
+    const base = playbackBpmDraftRef.current || DAW.tempo.playbackBpm || DAW.tempo.projectBpm;
+    const next = Math.max(20, Math.min(300, Math.round(base + delta)));
+    playbackBpmDraftRef.current = next;
+    setPlaybackBpmDraft(next);
+    clearTimeout(playbackBpmCommitTimer.current);
+    playbackBpmCommitTimer.current = setTimeout(() => {
+      playbackBpmCommitTimer.current = null;
+      playbackBpmDraftRef.current = null;
+      setPlaybackBpmDraft(null);
+      if (!DAW.setPlaybackBpm(next)) return;
       saveRecentProject(projectName, projectPath);
       force((n) => n + 1);
-    }
+    }, 500);
   }, [projectName, projectPath]);
+
+  useEffect(() => {
+    return () => clearTimeout(playbackBpmCommitTimer.current);
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(playbackBpmCommitTimer.current);
+    playbackBpmCommitTimer.current = null;
+    playbackBpmDraftRef.current = null;
+    setPlaybackBpmDraft(null);
+  }, [stretchDoneSeq]);
 
   const toggleVariBpm = useCallback(() => {
     if (!DAW.setVariBpm) return;
@@ -1641,6 +1696,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             onActivity={touchBpmPanel}
             onMouseInside={setBpmHover}
             onPlaybackAdjust={adjustPlaybackBpm}
+            playbackBpmDraft={playbackBpmDraft}
             onManualBpm={(value) => { touchBpmPanel(); setManualBpm(value); }}
             onDetect={detectBpm}
             onTap={tapBpm}
@@ -1655,6 +1711,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       {/* arrange scroll area (whole area is a dropzone) */}
       <div ref={arrangeRef} data-arrange-scroll="true" onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
         style={{ flex: 1, overflow: "auto", position: "relative", outline: dragOver && !empty ? "2px dashed var(--amber)" : "none", outlineOffset: -4 }}>
+        <TimeStretchBusyBadge active={stretchPreparing} x={overlayX} y={overlayY} />
         {empty ? (
           <EmptyState dragOver={dragOver} onPick={pickAudioFiles} onPickFolder={pickAudioFolder} onDemo={loadDemo} />
         ) : (

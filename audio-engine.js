@@ -246,6 +246,10 @@
     _decodedCacheLimit: 8,
     _renderCacheKey: null,
     _renderCacheBuffer: null,
+    _stretchPreviewPreparing: false,
+    _stretchPreviewDoneSeq: 0,
+    _tempoRestartTimer: null,
+    _playToken: 0,
     _clipCounter: 0,
     _cid() { return 'c' + (++this._clipCounter); },
     _displayName(fileName) {
@@ -399,6 +403,7 @@
       track.peaksCoarse = decoded.peaks.coarse;
       track.needsAudio = false;
       track.audioRev = (track.audioRev || 0) + 1;
+      track._stretchPreview = null;
     },
 
     async addFileBuffer(name, arrayBuffer, options = {}) {
@@ -477,6 +482,11 @@
       this.duration = DURATION;
       this._spectrum = null;
       this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false };
+      this._renderCacheKey = null;
+      this._renderCacheBuffer = null;
+      this._stretchPreviewPreparing = false;
+      clearTimeout(this._tempoRestartTimer);
+      this._tempoRestartTimer = null;
       this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 };
       if (ctx) {
         ramp(masterVol.gain, 0.9);
@@ -595,6 +605,88 @@
       return this._projectRate();
     },
 
+    _shouldUseRealtimeStretch(rate = this._projectRate()) {
+      return this.tempo.variBpm && Math.abs(rate - 1) > 0.001;
+    },
+
+    _stretchPreviewKey(track, rate) {
+      const b = track && track.buffer;
+      if (!b) return "";
+      return [
+        track.id,
+        track.audioRev || 0,
+        b.sampleRate || 0,
+        b.numberOfChannels || 0,
+        b.length || 0,
+        Math.round(rate * 1000000),
+      ].join(":");
+    },
+
+    async _prepareRealtimeStretch(rate = this._projectRate()) {
+      if (!this._shouldUseRealtimeStretch(rate)) return false;
+      this.init();
+      this._stretchPreviewPreparing = true;
+      this._emit();
+      await waitForPaint();
+      try {
+        for (const t of this.tracks) {
+          if (!t || !t.buffer || t.needsAudio) continue;
+          const key = this._stretchPreviewKey(t, rate);
+          if (t._stretchPreview && t._stretchPreview.key === key && t._stretchPreview.buffer) continue;
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          const targetLength = Math.max(1, Math.ceil(t.buffer.length / rate));
+          t._stretchPreview = {
+            key,
+            rate,
+            buffer: timeStretchBuffer(ctx, t.buffer, rate, targetLength),
+          };
+        }
+        return true;
+      } finally {
+        this._stretchPreviewPreparing = false;
+        this._stretchPreviewDoneSeq = (this._stretchPreviewDoneSeq || 0) + 1;
+        this._emit();
+      }
+    },
+
+    _playbackBufferForTrack(track, rate = this._projectRate()) {
+      if (this._shouldUseRealtimeStretch(rate)) {
+        const preview = track._stretchPreview;
+        if (preview && preview.rate === rate && preview.buffer) return preview.buffer;
+      }
+      return track.buffer;
+    },
+
+    _sourceOffsetForTrack(track, sourceBuffer, rate = this._projectRate()) {
+      const offset = Math.max(0, this._offset || 0);
+      if (!sourceBuffer || !sourceBuffer.duration) return 0;
+      if (sourceBuffer !== track.buffer && this._shouldUseRealtimeStretch(rate)) {
+        return Math.min(sourceBuffer.duration - 0.001, (offset / rate) % sourceBuffer.duration);
+      }
+      return offset % sourceBuffer.duration;
+    },
+
+    _scheduleRealtimeStretchRestart(oldRate, nextRate) {
+      clearTimeout(this._tempoRestartTimer);
+      this._stretchPreviewPreparing = true;
+      this._emit();
+      this._tempoRestartTimer = setTimeout(() => {
+        this._tempoRestartTimer = null;
+        if (!ctx || !this.isPlaying) {
+          this._stretchPreviewPreparing = false;
+          this._stretchPreviewDoneSeq = (this._stretchPreviewDoneSeq || 0) + 1;
+          this._emit();
+          return;
+        }
+        const raw = this._projectPositionAt(ctx.currentTime, oldRate);
+        const pos = this.loopEnabled ? raw % this.duration : Math.min(raw, this.duration);
+        this._offset = pos;
+        this._stopSources();
+        this.isPlaying = false;
+        this.play({ skipFade: true });
+      }, 500);
+    },
+
     _activePlaybackRate() {
       const rate = this.isPlaying ? this._appliedRate : this._projectRate();
       return Number.isFinite(rate) && rate > 0 ? rate : 1;
@@ -640,7 +732,19 @@
       //  소스를 재시작할 필요가 없고, 재시작하면 오히려 클릭/글리치가 발생함.)
       const oldRate = this._activePlaybackRate();
       const nextRate = this._projectRate();
-      if (nextRate === oldRate) return;
+      if (nextRate === oldRate) {
+        clearTimeout(this._tempoRestartTimer);
+        this._tempoRestartTimer = null;
+        this._stretchPreviewPreparing = false;
+        return;
+      }
+      if (this._shouldUseRealtimeStretch(nextRate)) {
+        this._scheduleRealtimeStretchRestart(oldRate, nextRate);
+        return;
+      }
+      clearTimeout(this._tempoRestartTimer);
+      this._tempoRestartTimer = null;
+      this._stretchPreviewPreparing = false;
       const raw = this._projectPositionAt(ctx.currentTime, oldRate);
       const pos = this.loopEnabled ? raw % this.duration : Math.min(raw, this.duration);
       this._offset = pos;
@@ -979,24 +1083,35 @@
 
     setLoop(val) { this.loopEnabled = !!val; },
 
-    play(options = {}) {
+    async play(options = {}) {
       this.init();
       if (ctx.state === "suspended") ctx.resume();
       if (this.isPlaying) return;
+      const token = ++this._playToken;
+      const requestedRate = this._projectRate();
+      if (this._shouldUseRealtimeStretch(requestedRate)) {
+        await this._prepareRealtimeStretch(requestedRate);
+        if (token !== this._playToken || this.isPlaying) return;
+      }
       const now = ctx.currentTime + 0.02;
       this._startTime = now;
       this._sources = [];
       this._appliedRate = this._projectRate(); // 현재 재생에 적용된 전역 템포 rate (재시작 판단용)
       this.tracks.forEach((t) => {
         const src = ctx.createBufferSource();
-        src.buffer = t.buffer;
         const rate = this._trackPlaybackRate(t);
+        const sourceBuffer = this._playbackBufferForTrack(t, rate);
+        const usingStretchPreview = sourceBuffer !== t.buffer;
+        src.buffer = sourceBuffer;
         try { src.playbackRate.value = rate; } catch (e) {}
+        if (usingStretchPreview) {
+          try { src.playbackRate.value = 1; } catch (e) {}
+        }
         // Repeat is controlled by the engine at the song boundary so toggling
         // the button during playback does not require rebuilding live sources.
         src.loop = false;
         src.connect(t.nodes.fader);
-        src.start(now, this._offset % t.buffer.duration);
+        src.start(now, this._sourceOffsetForTrack(t, sourceBuffer, rate));
         this._sources.push(src);
       });
       this.isPlaying = true;
@@ -1014,12 +1129,20 @@
 
     pause() {
       if (!ctx || !this.isPlaying) return;
+      this._playToken++;
+      clearTimeout(this._tempoRestartTimer);
+      this._tempoRestartTimer = null;
+      this._stretchPreviewPreparing = false;
       this._offset = this.getPlayhead();
       this._stopSources();
       this.isPlaying = false;
     },
 
     stop() {
+      this._playToken++;
+      clearTimeout(this._tempoRestartTimer);
+      this._tempoRestartTimer = null;
+      this._stretchPreviewPreparing = false;
       this._offset = 0;
       if (ctx) this._stopSources();
       this.isPlaying = false;
@@ -1297,6 +1420,12 @@
     if (fi > 0 && pos < fi) return pos / fi;
     if (fo > 0 && pos > dur - fo) return Math.max(0, (dur - pos) / fo);
     return 1;
+  }
+
+  function waitForPaint() {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
   }
 
   function timeStretchBuffer(context, input, rate, targetLength) {
