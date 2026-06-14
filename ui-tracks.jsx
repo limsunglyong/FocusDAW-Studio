@@ -227,6 +227,67 @@ function AutomationOverlay({ track, pxPerSec, height, onBeforeChange }) {
 }
 
 /* ---------- track header ---------- */
+function ScrollingTrackTitle({ name, compact }) {
+  const wrapRef = useRef(null);
+  const textRef = useRef(null);
+  const [marquee, setMarquee] = useState({ distance: 0, duration: 6 });
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const text = textRef.current;
+    if (!wrap || !text) return;
+
+    const measure = () => {
+      const distance = Math.ceil(text.scrollWidth - wrap.clientWidth);
+      if (distance > 2) {
+        const duration = Math.max(5, Math.min(14, distance / 28 + 4));
+        setMarquee((prev) => (
+          prev.distance === distance && prev.duration === duration ? prev : { distance, duration }
+        ));
+      } else {
+        setMarquee((prev) => (
+          prev.distance === 0 && prev.duration === 6 ? prev : { distance: 0, duration: 6 }
+        ));
+      }
+    };
+
+    measure();
+    let raf = requestAnimationFrame(measure);
+    let ro = null;
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver(() => {
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(measure);
+      });
+      ro.observe(wrap);
+      ro.observe(text);
+    } else {
+      window.addEventListener("resize", measure);
+    }
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      else window.removeEventListener("resize", measure);
+    };
+  }, [name, compact]);
+
+  return (
+    <span
+      ref={wrapRef}
+      className={"track-title-marquee" + (marquee.distance > 0 ? " is-overflowing" : "")}
+      title={name}
+      tabIndex={marquee.distance > 0 ? 0 : undefined}
+      style={{
+        fontWeight: 600,
+        fontSize: compact ? 12.5 : 13.5,
+        "--marquee-distance": marquee.distance + "px",
+        "--marquee-duration": marquee.duration + "s",
+      }}>
+      <span ref={textRef} className="track-title-text">{name}</span>
+    </span>
+  );
+}
+
 function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
   const p = track.params;
   const [confirmReset, setConfirmReset] = useState(false);
@@ -262,7 +323,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
       <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 }}>
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
-        <span style={{ fontWeight: 600, fontSize: compact ? 12.5 : 13.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.name}</span>
+        <ScrollingTrackTitle name={track.name} compact={compact} />
         <button title="Use this track for BPM detection" onClick={() => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>
         <SoloBtn size={buttonSize} on={p.solo} onClick={() => onParam("solo", !p.solo)} />
         <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} onClick={() => onParam("mute", !p.mute)} />

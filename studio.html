@@ -162,6 +162,20 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 button:focus,button:focus-visible,[role=button]:focus,[role=button]:focus-visible,input[type=range]:focus,input[type=range]:focus-visible{outline:none;box-shadow:none}
 ::selection{background:var(--amber-soft)}
 .mono{font-family:var(--mono);font-feature-settings:"tnum"1}
+.track-title-marquee{min-width:0;flex:1;overflow:hidden;white-space:nowrap}
+.track-title-text{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:top}
+.track-title-marquee.is-overflowing:hover .track-title-text,
+.track-title-marquee.is-overflowing:focus-within .track-title-text{max-width:none;
+  animation:trackTitleMarquee var(--marquee-duration,7s) ease-in-out infinite alternate}
+@keyframes trackTitleMarquee{
+  from{transform:translateX(0)}
+  to{transform:translateX(calc(-1 * var(--marquee-distance,0px)))}
+}
+@media (prefers-reduced-motion:reduce){
+  .track-title-marquee.is-overflowing:hover .track-title-text,
+  .track-title-marquee.is-overflowing:focus-within .track-title-text{animation:none;transform:none}
+}
 /* scrollbars */
 ::-webkit-scrollbar{width:11px;height:11px}
 ::-webkit-scrollbar-track{background:transparent}

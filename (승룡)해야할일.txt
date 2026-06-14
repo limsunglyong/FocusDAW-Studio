@@ -1,29 +1,22 @@
-추천 순서는 이렇습니다.
 
-1) Phase 0: BPM 변화 1차 프로토타입
-	프로젝트 BPM 저장
-	트랙별 원본 BPM 저장
-	트랙별 Sync to Project BPM 토글 추가
-	우선 playbackRate 기반으로 템포 변경 동작 확인
-	단, 이 방식은 피치도 같이 변하므로 UI/문서에 한계 명시
 
-2) Phase 1: BPM 측정 기능
-	임포트 오디오 BPM 자동 검출
-	수동 BPM 입력
-	Tap Tempo 버튼
-	트랙 헤더나 인스펙터에 BPM 표시
+다음 진행 시점은 이렇게 잡는 게 좋아요.
+바로 다음 작업
+현재 Export Keep pitch 경로를 “임시 프로토타입” 취급에서 “단기 안정 기능”으로 문서/UI 표현을 정리
+시험.md에 더 이상 Time Stretch 긴급 확인 항목이 없으니, 앱 본류에서 사용성 보강으로 넘어갈 수 있습니다.
 
-TAP 템포 기능 점검... 
+그 다음 Time Stretch 고도화
+SoundTouch/Rubber Band/Phase Vocoder 후보는 지금 바로 교체하지 말고, 나중에 ffmpeg atempo보다 명확히 나은지 비교할 때 진행
+특히 보컬, 어쿠스틱 악기, 복잡한 믹스에서 현재 방식이 아쉽다고 느껴질 때가 적기입니다.
 
-3) Phase 2: Time Stretch / Pitch Shift 검토
-	AudioWorklet 기반 DSP 실험
-	soundtouchjs 같은 JS DSP 라이브러리 포팅 검토
-	WSOLA 또는 Phase Vocoder 방식 비교
-	실시간 품질, CPU, Export 일치성 확인
+실시간 Time Stretch
+Export 품질보다 훨씬 어렵습니다.
+실시간 재생에서도 피치 보존이 꼭 필요하다고 확정될 때 AudioWorklet 쪽으로 들어가는 게 좋습니다.
+지금 바로 들어가면 범위가 커지고, 안정적인 Export 경로까지 흔들릴 수 있습니다.
 
-4) Phase 3: Export 연동
-	renderMix() 오프라인 렌더링에도 BPM/Pitch 편집 반영
-	MP3/WAV 출력 결과가 재생 결과와 일치하는지 검증
+제 추천은: 지금은 ffmpeg atempo 기반 Export Keep pitch를 단기 완료로 정리하고, 
+다음 개발은 UI/Export 사용성 보강 또는 다른 미해결 작업으로 넘어가는 것입니다. \
+Time Stretch 고도화는 “현재 결과가 부족한 실제 케이스가 생겼을 때” 비교 하네스에 후보를 추가하는 순서가 가장 안전합니다.
 
 
 

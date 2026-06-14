@@ -612,7 +612,7 @@
         preservePitch: !!preservePitch,
         duration: this.duration,
         tempo: this.tempo,
-        master: this.master,
+        master: { ...this.master, volume: 1 },
         tracks: this.tracks.map((t) => ({
           id: t.id,
           name: t.name,
@@ -1155,7 +1155,13 @@
         node.connect(b); node = b;
       });
       const fade = off.createGain();
-      const mv = off.createGain(); mv.gain.setValueAtTime(this.master.volume, 0);
+      // Intentional export policy:
+      // Master Volume is a listener-side monitoring control for the user's
+      // speakers/headphones, so it must not attenuate rendered files. Exports
+      // should reflect track gain, automation, pan, master EQ/FX, and fades,
+      // while ignoring only the playback monitoring volume. Do not replace
+      // this with `this.master.volume` unless the export policy changes.
+      const mv = off.createGain(); mv.gain.setValueAtTime(1, 0);
       // master FX
       const mConvO = off.createConvolver(); mConvO.buffer = makeIR(off, 2.8, 3.0);
       const mRev = off.createGain(); mRev.gain.setValueAtTime(this.master.reverb, 0);
