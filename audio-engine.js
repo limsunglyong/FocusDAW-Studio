@@ -529,6 +529,7 @@
     },
 
     _normalizeBpm(bpm) {
+      if (bpm == null || bpm === "") return null;
       const n = Number(bpm);
       if (!Number.isFinite(n)) return null;
       return Math.max(20, Math.min(300, Math.round(n)));

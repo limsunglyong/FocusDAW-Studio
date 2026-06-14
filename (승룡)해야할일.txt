@@ -13,6 +13,8 @@
 	Tap Tempo 버튼
 	트랙 헤더나 인스펙터에 BPM 표시
 
+TAP 템포 기능 점검... 
+
 3) Phase 2: Time Stretch / Pitch Shift 검토
 	AudioWorklet 기반 DSP 실험
 	soundtouchjs 같은 JS DSP 라이브러리 포팅 검토
@@ -42,4 +44,9 @@
 - BPM 설정창에 BPM detection 버튼을 만들고 Track 중 하나가 B 버튼이 눌러져 있다면 available 상태로 바뀌고 그 버튼을 누르면 BPM 을 측정한다.
 - BPM 설정창 하단에 수동으로 측정할 수 있는 큰 TAP 버튼이 있고 TAP 버튼 위에 측정된 BPM을 표시하는 작은 창을 둔다. TAP과 측정 BPM을 표시하는 창 사이에 "APPLY" 버튼을 둔다. 이 APPLY 버튼을 누르면 측정된 BPM을 젤 위의 BPM 표시기에 표시한다.
 - TAP 아래의 BPM 표시기는 측정된 BPM을 표시하기도 하지만 수동으로 BPM을 입력할 수 있도록 한다. (manual 입력)
+
+
+
+
+* Master Volume - 으로 export 볼륨이 결정된다. Export 때 Master Volume 은 내부적으로 1.0으로 적용한다.
 
