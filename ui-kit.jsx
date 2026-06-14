@@ -54,8 +54,35 @@ function useTick(active = true) {
   }, [active]);
 }
 
+/* ---------- wheel-over-control helper ----------
+   Attaches a non-passive native `wheel` listener to ref.current and calls
+   onStep(+1) on scroll-up / onStep(-1) on scroll-down. React 18 registers
+   onWheel as passive at the root (preventDefault would be ignored), so we
+   attach our own listener to stop the surrounding area from scrolling while
+   the user adjusts a knob / slider / fader. */
+function useWheelStep(ref, onStep) {
+  const cb = useRef(onStep);
+  cb.current = onStep; // keep latest closure (fresh value/min/max each render)
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const h = (e) => { e.preventDefault(); cb.current(e.deltaY < 0 ? 1 : -1); };
+    el.addEventListener("wheel", h, { passive: false });
+    return () => el.removeEventListener("wheel", h);
+  }, []);
+}
+
+/* Nudge a linear gain value by `dir` decibels (1 dB per wheel notch), snapped to
+   the integer-dB grid and clamped to [0, maxGain]. Scrolling below ~-60 dB → 0 (silence). */
+function nudgeGainDb(gain, dir, maxGain) {
+  const db = gain <= 0.0001 ? -60 : 20 * Math.log10(gain);
+  const ndb = Math.round(db) + dir;
+  if (ndb <= -60) return 0;
+  return Math.max(0, Math.min(maxGain, Math.pow(10, ndb / 20)));
+}
+
 /* ---------- rotary knob ---------- */
-function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, label, unit, format, color = "var(--amber)", curve = 1 }) {
+function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, label, unit, format, color = "var(--amber)", curve = 1, wheelStep = 0.01 }) {
   const ref = useRef(null);
   const norm = (value - min) / (max - min);
   const ang = -135 + Math.pow(norm, 1 / curve) * 270;
@@ -73,6 +100,15 @@ function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, la
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
+  /* wheel over the knob nudges the value by wheelStep (one display unit) per notch */
+  useWheelStep(ref, (dir) => {
+    let nv = value + dir * wheelStep;
+    nv = Math.round(nv / wheelStep) * wheelStep; // snap to step grid, avoid float drift
+    nv = Math.max(min, Math.min(max, nv));
+    if (nv === value) return;
+    if (onBeforeChange) onBeforeChange();
+    onChange(nv);
+  });
   const onDbl = () => { if (onBeforeChange) onBeforeChange(); onChange((min + max) / 2); };
   const r = size / 2;
   return (
@@ -114,6 +150,13 @@ function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--a
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
+  /* wheel = 1 dB per notch (Fader is always a volume/gain control here) */
+  useWheelStep(ref, (dir) => {
+    const nv = nudgeGainDb(value, dir, max);
+    if (nv === value) return;
+    if (onBeforeChange) onBeforeChange();
+    onChange(nv);
+  });
   const trackH = height - 8;
   return (
     <div ref={ref} onMouseDown={onDown} style={{ width: 26, height, position: "relative", cursor: "ns-resize" }}>
@@ -204,6 +247,16 @@ function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeC
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
+  /* wheel nudges by one `step` per notch (= 1 display unit for percent sliders) */
+  useWheelStep(ref, (dir) => {
+    const st = step || 0.01;
+    let nv = value + dir * st;
+    nv = Math.round(nv / st) * st; // snap to step grid, avoid float drift
+    nv = Math.max(min, Math.min(max, nv));
+    if (nv === value) return;
+    if (onBeforeChange) onBeforeChange();
+    onChange(nv);
+  });
   return (
     <div className="sleek" ref={ref} onMouseDown={onDown} style={{ width }}>
       <div className="strack" />
@@ -217,4 +270,5 @@ function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeC
 }
 
 Object.assign(window, { Icon, IC, useTick, Knob, Fader, Meter, SoloBtn, MuteBtn, Seg, SleekSlider, fmtTime, fmtDb,
+  useWheelStep, nudgeGainDb,
   useState, useEffect, useRef, useCallback, useMemo });

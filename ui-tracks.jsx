@@ -308,6 +308,9 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
   const p = track.params;
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const volRef = useRef(null);
+  // wheel over the volume fader = 1 dB per notch (display is dB), matching the Fader/knob controls
+  useWheelStep(volRef, (dir) => onParam("volume", nudgeGainDb(p.volume, dir, 2)));
   const compact = laneH <= 76;
   const medium = laneH <= 104 && !compact;
   const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
@@ -349,7 +352,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <Icon name="wave" size={compact ? 12 : 13} style={{ color: "var(--muted)", flex: "0 0 auto" }} />
           <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-            <input type="range" min="0" max="2.0" step="0.005" value={p.volume}
+            <input ref={volRef} type="range" min="0" max="2.0" step="0.005" value={p.volume}
               onChange={(e) => onParam("volume", +e.target.value)} style={{ width: "100%", display: "block" }} />
             {/* 0dB tick: value=1.0 is at 1.0/2.0 = 50.0% of slider */}
             <div style={{ position: "absolute", left: "50%", bottom: 0, transform: "translateX(-50%)", width: 1.5, height: 4, background: "var(--muted)", borderRadius: 1, pointerEvents: "none" }} />
