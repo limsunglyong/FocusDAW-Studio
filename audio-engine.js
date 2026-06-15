@@ -538,6 +538,14 @@
       }
     },
 
+    clearAllMuteSolo() {
+      this.tracks.forEach((t) => {
+        t.params.solo = false;
+        t.params.mute = false;
+      });
+      this._applyMix();
+    },
+
     _normalizeBpm(bpm) {
       if (bpm == null || bpm === "") return null;
       const n = Number(bpm);

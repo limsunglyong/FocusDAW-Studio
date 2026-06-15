@@ -5,6 +5,5 @@
 
 브라우저의 debug console이 열리지 않도록 release 시 removeMenu 필요.
 
-Solo Mute 버튼 동작 개선 필요.
 
 

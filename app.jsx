@@ -1756,6 +1756,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
+  const clearMuteSolo = useCallback(() => {
+    pushUndo();
+    DAW.clearAllMuteSolo();
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
+  }, [pushUndo, projectName, projectPath]);
   const removeTrack = (id) => {
     pushUndo();
     const i = DAW.tracks.findIndex((t) => t.id === id);
@@ -1881,7 +1887,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             ))}
             <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
               onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }}
-              onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo} />
+              onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
+              onClearMuteSolo={clearMuteSolo} />
             <div style={{ height: 40 }} />
           </React.Fragment>
         )}
