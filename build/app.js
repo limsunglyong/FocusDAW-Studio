@@ -1311,6 +1311,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [loading, setLoading] = useState(null);
   const [tool, setTool] = useState("select");
   const [timelineView, setTimelineView] = useState({ scrollLeft: 0, clientWidth: 1 });
+  const [vScroll, setVScroll] = useState({ up: false, down: false });
   const [bpmOpen, setBpmOpen] = useState(false);
   const [bpmHover, setBpmHover] = useState(false);
   const [bpmTouchedAt, setBpmTouchedAt] = useState(Date.now());
@@ -1359,6 +1360,20 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (!el) return;
     setTimelineView({ scrollLeft: el.scrollLeft, clientWidth: Math.max(1, el.clientWidth - HEADER_W) });
   }, []);
+  const updateVScroll = useCallback(() => {
+    const el = arrangeRef.current;
+    if (!el) {
+      setVScroll({ up: false, down: false });
+      return;
+    }
+    const max = el.scrollHeight - el.clientHeight;
+    setVScroll({ up: el.scrollTop > 1, down: el.scrollTop < max - 1 });
+  }, []);
+  const scrollArrangeV = useCallback((dir) => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    el.scrollBy({ top: dir * Math.max(laneH, el.clientHeight * 0.6), behavior: "smooth" });
+  }, [laneH]);
   const updateTimeMin = useCallback(() => {
     const next = timelineMinPx(arrangeRef.current && arrangeRef.current.clientWidth);
     setTimeMinPx(next);
@@ -1670,6 +1685,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         case "BEFORE_CHANGE":
           pushUndo();
           break;
+        case "REQUEST_PLAY_PAUSE":
+          DAW.isPlaying ? DAW.pause() : DAW.play();
+          force((n) => n + 1);
+          break;
         case "REQUEST_UNDO":
           undo();
           break;
@@ -1724,26 +1743,34 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const next = updateTimeMin();
       setPx((px) => fitTimelineRef.current ? next : Math.max(next, Math.min(TIME_ZOOM_MAX, px)));
       updateTimelineView();
+      updateVScroll();
     };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [updateTimeMin, updateTimelineView]);
+  }, [updateTimeMin, updateTimelineView, updateVScroll]);
   useEffect(() => {
     const el = arrangeRef.current;
     if (!el) return;
     let raf = 0;
     const onScroll = () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(updateTimelineView);
+      raf = requestAnimationFrame(() => {
+        updateTimelineView();
+        updateVScroll();
+      });
     };
     updateTimelineView();
+    updateVScroll();
     el.addEventListener("scroll", onScroll);
     return () => {
       cancelAnimationFrame(raf);
       el.removeEventListener("scroll", onScroll);
     };
-  }, [updateTimelineView, pxPerSec, sessionDuration]);
+  }, [updateTimelineView, updateVScroll, pxPerSec, sessionDuration]);
+  useEffect(() => {
+    updateVScroll();
+  }, [updateVScroll, laneH, DAW.tracks.length]);
   useEffect(() => {
     const next = updateTimeMin();
     setPx((px) => fitTimelineRef.current ? next : Math.max(next, Math.min(TIME_ZOOM_MAX, px)));
@@ -2274,7 +2301,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         onOpenAdvancedPan: openAdvancedPan
       }
     ), /* @__PURE__ */ React.createElement("div", { style: { height: 40 } }))
-  ), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), /* @__PURE__ */ React.createElement(LoadingOverlay, { state: loading }));
+  ), !empty && vScroll.up && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow up", onClick: () => scrollArrangeV(-1), title: "Scroll up", "aria-label": "Scroll tracks up" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 15 12 7 20 15", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), !empty && vScroll.down && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow down", onClick: () => scrollArrangeV(1), title: "Scroll down", "aria-label": "Scroll tracks down" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 9 12 17 20 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), /* @__PURE__ */ React.createElement(LoadingOverlay, { state: loading }));
 }
 function App() {
   const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);

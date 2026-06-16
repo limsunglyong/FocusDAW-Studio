@@ -560,7 +560,7 @@ let initialContentHeight = 0;
 
 const MIXER_HEIGHT = 490;
 const ADVANCED_PAN_WIDTH = 1162;
-const ADVANCED_PAN_HEIGHT = 820;
+const ADVANCED_PAN_HEIGHT = 770;
 
 function sendMixerState(isOpen) {
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {

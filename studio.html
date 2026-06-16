@@ -292,6 +292,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
   transform:translate(-50%,-50%);transition:width .12s,height .12s,box-shadow .12s}
 .sleek:hover .sthumb{width:14px;height:14px;box-shadow:0 1px 5px rgba(0,0,0,.6),0 0 0 4px rgba(232,176,75,.16)}
 .sleek:active .sthumb{box-shadow:0 1px 5px rgba(0,0,0,.6),0 0 0 5px rgba(232,176,75,.22)}
+/* vertical track-list scroll arrows (overlay on the arrange area) */
+.arrange-scroll-arrow{position:absolute;left:50%;transform:translateX(-50%);width:auto;display:grid;place-items:center;border:none;background:transparent;padding:0;z-index:20;cursor:pointer}
+.arrange-scroll-arrow.up{top:78px}
+.arrange-scroll-arrow.down{bottom:16px}
+.arrange-scroll-disc{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;color:var(--cream-2);background:color-mix(in srgb,var(--surface3) 90%,transparent);border:1px solid var(--line-strong);box-shadow:0 6px 16px -6px #000,inset 0 1px 0 rgba(255,242,214,.06);transition:color .15s,border-color .15s,box-shadow .15s,transform .15s}
+.arrange-scroll-disc svg{width:26px;height:26px}
+.arrange-scroll-arrow:hover .arrange-scroll-disc{color:var(--amber);border-color:var(--amber);box-shadow:0 0 22px var(--amber-soft),0 0 9px var(--amber-soft),inset 0 0 8px var(--amber-soft);transform:scale(1.08)}
+.arrange-scroll-arrow:active .arrange-scroll-disc{transform:scale(.95)}
+.arrange-scroll-arrow:focus,.arrange-scroll-arrow:focus-visible{outline:none}
 </style>
 </head>
 <body>

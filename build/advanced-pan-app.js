@@ -2,6 +2,10 @@ const advancedChannel = new BroadcastChannel("focusdaw-advanced-effects-sync");
 const ROOM = { w: 1102, h: 472, lx: 551, ly: 439, near: 70, far: 392, angle: 72 };
 const TRACK_VOLUME_MIN = 0;
 const TRACK_VOLUME_MAX = 2;
+const KNOB_BASE_WIDTH = 140;
+const KNOB_GAP = 6;
+const KNOB_ROW_PADDING = 28;
+const KNOB_MIN_SCALE = 0.42;
 const INSTRUMENTS = {
   piano: { label: "Piano", color: "var(--cream-2)", icon: "piano" },
   percussion: { label: "Percussion", color: "var(--amber)", icon: "perc" },
@@ -108,10 +112,19 @@ function pt(angle, r) {
   const a = angle * Math.PI / 180;
   return { x: ROOM.lx + r * Math.sin(a), y: ROOM.ly - r * Math.cos(a) };
 }
+function roomTransform(width, height) {
+  const scale = Math.min(width / ROOM.w, height / ROOM.h);
+  return {
+    scale,
+    offsetX: (width - ROOM.w * scale) / 2,
+    offsetY: height - ROOM.h * scale
+  };
+}
 function mapPointer(clientX, clientY, roomEl) {
   const rect = roomEl.getBoundingClientRect();
-  const x = (clientX - rect.left) * (ROOM.w / rect.width);
-  const y = (clientY - rect.top) * (ROOM.h / rect.height);
+  const { scale, offsetX, offsetY } = roomTransform(rect.width, rect.height);
+  const x = (clientX - rect.left - offsetX) / scale;
+  const y = (clientY - rect.top - offsetY) / scale;
   const dx = x - ROOM.lx;
   const dy = ROOM.ly - y;
   const radius = Math.hypot(dx, dy);
@@ -209,9 +222,8 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
   const selectedType = selectedTrack ? matchInstrument(selectedTrack.name || selectedTrack.fileName) : null;
   const selectedInst = selectedType ? INSTRUMENTS[selectedType] : null;
   const selectedPos = selectedTrack ? place((selectedTrack.params || {}).pan || 0, distFromGain((selectedTrack.params || {}).volume ?? 1)) : null;
-  const scaleX = roomSize.width / ROOM.w;
-  const scaleY = roomSize.height / ROOM.h;
-  return /* @__PURE__ */ React.createElement("div", { className: "aef-room", ref: roomRef }, /* @__PURE__ */ React.createElement("svg", { width: "100%", height: "100%", viewBox: "0 0 1102 472", preserveAspectRatio: "none", style: { position: "absolute", inset: 0, display: "block" } }, /* @__PURE__ */ React.createElement("rect", { x: "0", y: "0", width: "1102", height: "472", fill: "url(#g-floor)" }), /* @__PURE__ */ React.createElement("path", { d: cone, fill: "url(#g-stage)" }), rings.map((ring) => /* @__PURE__ */ React.createElement("g", { key: ring.label }, /* @__PURE__ */ React.createElement("path", { d: ring.d, fill: "none", stroke: ring.isZeroDb ? "var(--amber-soft-strong)" : "var(--line-strong)", strokeWidth: ring.isZeroDb ? "2.4" : "1.2" }), /* @__PURE__ */ React.createElement("text", { x: ring.lx, y: ring.ly, fontFamily: "var(--mono)", fontSize: "10", letterSpacing: "1.5", fill: ring.isZeroDb ? "var(--amber-deep)" : "var(--faint)", textAnchor: "end", dominantBaseline: "middle" }, ring.label))), spokes.map((spoke) => /* @__PURE__ */ React.createElement("g", { key: spoke.pan }, /* @__PURE__ */ React.createElement("line", { x1: "551", y1: "439", x2: spoke.e.x, y2: spoke.e.y, stroke: spoke.center ? "var(--amber-soft-strong)" : "var(--line)", strokeWidth: spoke.center ? 1.4 : 1, strokeDasharray: spoke.center ? "6 5" : "2 6" }), /* @__PURE__ */ React.createElement("text", { x: spoke.l.x, y: spoke.l.y + 3, fontFamily: "var(--mono)", fontSize: "10.5", letterSpacing: "0.5", fill: spoke.center ? "var(--amber-deep)" : "var(--faint)", textAnchor: "middle" }, panLabel(spoke.pan)))), selectedPos && /* @__PURE__ */ React.createElement("line", { x1: "551", y1: "439", x2: selectedPos.x, y2: selectedPos.y, stroke: selectedInst ? selectedInst.color : "var(--amber)", strokeWidth: "1.6", strokeDasharray: "3 4", opacity: "0.9" }), /* @__PURE__ */ React.createElement("circle", { cx: "551", cy: "439", r: "22", fill: "none", stroke: "var(--amber-soft-strong)", strokeWidth: "1.2" }), /* @__PURE__ */ React.createElement("circle", { cx: "551", cy: "439", r: "13", fill: "var(--surface)", stroke: "var(--amber)", strokeWidth: "1.6" }), /* @__PURE__ */ React.createElement("path", { d: "M551 428 l5 8 -10 0 z", fill: "var(--amber)" }), /* @__PURE__ */ React.createElement("circle", { cx: "539", cy: "441", r: "3.4", fill: "none", stroke: "var(--amber)", strokeWidth: "1.4" }), /* @__PURE__ */ React.createElement("circle", { cx: "563", cy: "441", r: "3.4", fill: "none", stroke: "var(--amber)", strokeWidth: "1.4" }), /* @__PURE__ */ React.createElement("text", { x: "551", y: "462", fontFamily: "var(--mono)", fontSize: "9.5", letterSpacing: "1.5", fill: "var(--muted)", textAnchor: "middle" }, "LISTENER")), tracks.map((track, index) => {
+  const { scale: roomScale, offsetX: roomOffsetX, offsetY: roomOffsetY } = roomTransform(roomSize.width, roomSize.height);
+  return /* @__PURE__ */ React.createElement("div", { className: "aef-room", ref: roomRef }, /* @__PURE__ */ React.createElement("svg", { width: "100%", height: "100%", viewBox: "0 0 1102 472", preserveAspectRatio: "xMidYMax meet", style: { position: "absolute", inset: 0, display: "block" } }, /* @__PURE__ */ React.createElement("rect", { x: "0", y: "0", width: "1102", height: "472", fill: "url(#g-floor)" }), /* @__PURE__ */ React.createElement("path", { d: cone, fill: "url(#g-stage)" }), rings.map((ring) => /* @__PURE__ */ React.createElement("g", { key: ring.label }, /* @__PURE__ */ React.createElement("path", { d: ring.d, fill: "none", stroke: ring.isZeroDb ? "var(--amber-soft-strong)" : "var(--line-strong)", strokeWidth: ring.isZeroDb ? "2.4" : "1.2" }), /* @__PURE__ */ React.createElement("text", { x: ring.lx, y: ring.ly, fontFamily: "var(--mono)", fontSize: "10", letterSpacing: "1.5", fill: ring.isZeroDb ? "var(--amber-deep)" : "var(--faint)", textAnchor: "end", dominantBaseline: "middle" }, ring.label))), spokes.map((spoke) => /* @__PURE__ */ React.createElement("g", { key: spoke.pan }, /* @__PURE__ */ React.createElement("line", { x1: "551", y1: "439", x2: spoke.e.x, y2: spoke.e.y, stroke: spoke.center ? "var(--amber-soft-strong)" : "var(--line)", strokeWidth: spoke.center ? 1.4 : 1, strokeDasharray: spoke.center ? "6 5" : "2 6" }), /* @__PURE__ */ React.createElement("text", { x: spoke.l.x, y: spoke.l.y + 3, fontFamily: "var(--mono)", fontSize: "10.5", letterSpacing: "0.5", fill: spoke.center ? "var(--amber-deep)" : "var(--faint)", textAnchor: "middle" }, panLabel(spoke.pan)))), selectedPos && /* @__PURE__ */ React.createElement("line", { x1: "551", y1: "439", x2: selectedPos.x, y2: selectedPos.y, stroke: selectedInst ? selectedInst.color : "var(--amber)", strokeWidth: "1.6", strokeDasharray: "3 4", opacity: "0.9" }), /* @__PURE__ */ React.createElement("circle", { cx: "551", cy: "439", r: "22", fill: "none", stroke: "var(--amber-soft-strong)", strokeWidth: "1.2" }), /* @__PURE__ */ React.createElement("circle", { cx: "551", cy: "439", r: "13", fill: "var(--surface)", stroke: "var(--amber)", strokeWidth: "1.6" }), /* @__PURE__ */ React.createElement("path", { d: "M551 428 l5 8 -10 0 z", fill: "var(--amber)" }), /* @__PURE__ */ React.createElement("circle", { cx: "539", cy: "441", r: "3.4", fill: "none", stroke: "var(--amber)", strokeWidth: "1.4" }), /* @__PURE__ */ React.createElement("circle", { cx: "563", cy: "441", r: "3.4", fill: "none", stroke: "var(--amber)", strokeWidth: "1.4" }), /* @__PURE__ */ React.createElement("text", { x: "551", y: "462", fontFamily: "var(--mono)", fontSize: "9.5", letterSpacing: "1.5", fill: "var(--muted)", textAnchor: "middle" }, "LISTENER")), tracks.map((track, index) => {
     const params = track.params || {};
     const type = matchInstrument(track.name || track.fileName);
     const inst = INSTRUMENTS[type] || INSTRUMENTS.unknown;
@@ -226,7 +238,7 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
         key: track.id,
         className: "aef-node",
         onPointerDown: startNode(track),
-        style: { left: pos.x * scaleX, top: pos.y * scaleY, zIndex: z }
+        style: { left: roomOffsetX + pos.x * roomScale, top: roomOffsetY + pos.y * roomScale, zIndex: z }
       },
       /* @__PURE__ */ React.createElement("div", { className: "aef-node-label" + (selected ? " selected" : "") }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, index + 1), " ", shortTrackName(track.name || track.fileName)),
       /* @__PURE__ */ React.createElement(
@@ -295,7 +307,7 @@ function MiniTrackMeter({ level, height = 58, width = 6 }) {
   }
   return /* @__PURE__ */ React.createElement("div", { className: "aef-track-meter", style: { width, height } }, cells);
 }
-function PanKnob({ track, index, selected, level, onSelect, onBeforeChange, onParam }) {
+function PanKnob({ track, index, selected, level, scale = 1, onSelect, onBeforeChange, onParam }) {
   const params = track.params || {};
   const pan = params.pan || 0;
   const type = matchInstrument(track.name || track.fileName);
@@ -328,14 +340,14 @@ function PanKnob({ track, index, selected, level, onSelect, onBeforeChange, onPa
   };
   const knobDeg = pan * 135;
   const dotPos = 50 + pan * 48;
-  return /* @__PURE__ */ React.createElement("div", { className: "aef-knob-cell" + (selected ? " selected" : ""), onClick: () => onSelect(track.id) }, /* @__PURE__ */ React.createElement("div", { className: "aef-knob-title" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, index + 1), /* @__PURE__ */ React.createElement("span", null, shortTrackName(track.name || track.fileName))), /* @__PURE__ */ React.createElement("div", { className: "aef-knob-body" }, /* @__PURE__ */ React.createElement("svg", { width: "100", height: "100", viewBox: "0 0 104 104", onPointerDown: startKnob, onDoubleClick: reset, className: "aef-pan-svg" }, /* @__PURE__ */ React.createElement("path", { d: TICKS.minor, stroke: "var(--faint)", strokeWidth: "1.4", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("path", { d: TICKS.major, stroke: "var(--muted)", strokeWidth: "2", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("path", { d: TICKS.center, stroke: "var(--amber)", strokeWidth: "2.4", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("text", { x: "14", y: "84", fontFamily: "var(--mono)", fontSize: "9", letterSpacing: "0.5", fill: "var(--faint)", textAnchor: "middle" }, "L"), /* @__PURE__ */ React.createElement("text", { x: "52", y: "11.5", fontFamily: "var(--mono)", fontSize: "9", letterSpacing: "0.5", fill: "var(--muted)", textAnchor: "middle" }, "C"), /* @__PURE__ */ React.createElement("text", { x: "90", y: "84", fontFamily: "var(--mono)", fontSize: "9", letterSpacing: "0.5", fill: "var(--faint)", textAnchor: "middle" }, "R"), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "38", fill: "url(#g-bezel)", stroke: "rgba(0,0,0,0.45)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "36.5", fill: "none", stroke: "rgba(0,0,0,0.38)", strokeWidth: "3.2", strokeDasharray: "1.5 2.6" }), /* @__PURE__ */ React.createElement("g", { transform: `rotate(${knobDeg.toFixed(2)} 52 52)`, className: "aef-knob-pointer" }, /* @__PURE__ */ React.createElement("path", { d: "M52 15 L57.6 30.5 L46.4 30.5 Z", fill: "url(#g-cap)", stroke: "rgba(0,0,0,0.55)", strokeWidth: "0.8", strokeLinejoin: "round" }), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "25", fill: "url(#g-cap)", stroke: "rgba(255,242,214,0.12)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement("ellipse", { cx: "52", cy: "45", rx: "18", ry: "10", fill: "rgba(255,242,214,0.05)" }), /* @__PURE__ */ React.createElement("line", { x1: "52", y1: "31", x2: "52", y2: "47", stroke: "var(--cream)", strokeWidth: "2.6", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "21.5", r: "2.6", fill: inst.color, className: "aef-led" })), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "3.2", fill: "var(--bg)", stroke: "rgba(255,242,214,0.14)", strokeWidth: "1" })), /* @__PURE__ */ React.createElement(MiniTrackMeter, { level })), /* @__PURE__ */ React.createElement("div", { className: "aef-pan-readout", style: { color: inst.color } }, panLabel(pan)), /* @__PURE__ */ React.createElement("div", { className: "aef-mini-bar" }, /* @__PURE__ */ React.createElement("div", { className: "aef-mini-center" }), /* @__PURE__ */ React.createElement("div", { className: "aef-mini-dot", style: { left: `${dotPos.toFixed(2)}%`, background: inst.color, boxShadow: `0 0 7px ${inst.color}` } })), /* @__PURE__ */ React.createElement("div", { className: "aef-pan-caption" }, "PAN"));
+  return /* @__PURE__ */ React.createElement("div", { className: "aef-knob-cell" + (selected ? " selected" : ""), style: { "--ks": scale }, onClick: () => onSelect(track.id) }, /* @__PURE__ */ React.createElement("div", { className: "aef-knob-title" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, index + 1), /* @__PURE__ */ React.createElement("span", null, shortTrackName(track.name || track.fileName))), /* @__PURE__ */ React.createElement("div", { className: "aef-knob-body" }, /* @__PURE__ */ React.createElement("svg", { width: "100", height: "100", viewBox: "0 0 104 104", onPointerDown: startKnob, onDoubleClick: reset, className: "aef-pan-svg" }, /* @__PURE__ */ React.createElement("path", { d: TICKS.minor, stroke: "var(--faint)", strokeWidth: "1.4", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("path", { d: TICKS.major, stroke: "var(--muted)", strokeWidth: "2", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("path", { d: TICKS.center, stroke: "var(--amber)", strokeWidth: "2.4", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("text", { x: "14", y: "84", fontFamily: "var(--mono)", fontSize: "9", letterSpacing: "0.5", fill: "var(--faint)", textAnchor: "middle" }, "L"), /* @__PURE__ */ React.createElement("text", { x: "52", y: "11.5", fontFamily: "var(--mono)", fontSize: "9", letterSpacing: "0.5", fill: "var(--muted)", textAnchor: "middle" }, "C"), /* @__PURE__ */ React.createElement("text", { x: "90", y: "84", fontFamily: "var(--mono)", fontSize: "9", letterSpacing: "0.5", fill: "var(--faint)", textAnchor: "middle" }, "R"), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "38", fill: "url(#g-bezel)", stroke: "rgba(0,0,0,0.45)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "36.5", fill: "none", stroke: "rgba(0,0,0,0.38)", strokeWidth: "3.2", strokeDasharray: "1.5 2.6" }), /* @__PURE__ */ React.createElement("g", { transform: `rotate(${knobDeg.toFixed(2)} 52 52)`, className: "aef-knob-pointer" }, /* @__PURE__ */ React.createElement("path", { d: "M52 15 L57.6 30.5 L46.4 30.5 Z", fill: "url(#g-cap)", stroke: "rgba(0,0,0,0.55)", strokeWidth: "0.8", strokeLinejoin: "round" }), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "25", fill: "url(#g-cap)", stroke: "rgba(255,242,214,0.12)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement("ellipse", { cx: "52", cy: "45", rx: "18", ry: "10", fill: "rgba(255,242,214,0.05)" }), /* @__PURE__ */ React.createElement("line", { x1: "52", y1: "31", x2: "52", y2: "47", stroke: "var(--cream)", strokeWidth: "2.6", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "21.5", r: "2.6", fill: inst.color, className: "aef-led" })), /* @__PURE__ */ React.createElement("circle", { cx: "52", cy: "52", r: "3.2", fill: "var(--bg)", stroke: "rgba(255,242,214,0.14)", strokeWidth: "1" })), /* @__PURE__ */ React.createElement(MiniTrackMeter, { level, height: Math.round(58 * scale), width: Math.max(4, Math.round(6 * scale)) })), /* @__PURE__ */ React.createElement("div", { className: "aef-pan-readout", style: { color: inst.color } }, panLabel(pan)), /* @__PURE__ */ React.createElement("div", { className: "aef-mini-bar" }, /* @__PURE__ */ React.createElement("div", { className: "aef-mini-center" }), /* @__PURE__ */ React.createElement("div", { className: "aef-mini-dot", style: { left: `${dotPos.toFixed(2)}%`, background: inst.color, boxShadow: `0 0 7px ${inst.color}` } })), /* @__PURE__ */ React.createElement("div", { className: "aef-pan-caption" }, "PAN"));
 }
 function AdvancedPanApp() {
   const [tracks, setTracks] = useState([]);
   const [theme, setTheme] = useState("default");
   const [selectedId, setSelectedId] = useState(null);
   const [levels, setLevels] = useState({});
-  const selectedTrack = tracks.find((t) => t.id === selectedId) || tracks[0] || null;
+  const selectedTrack = tracks.find((t) => t.id === selectedId) || null;
   useEffect(() => {
     advancedChannel.postMessage({ type: "ADVANCED_READY" });
     const handleMessage = (e) => {
@@ -346,10 +358,7 @@ function AdvancedPanApp() {
         setTracks(nextTracks);
         if (msg.trackLevels) setLevels(msg.trackLevels);
         if (msg.theme) setTheme(msg.theme);
-        setSelectedId((cur) => {
-          if (cur && nextTracks.some((t) => t.id === cur)) return cur;
-          return nextTracks[0] && nextTracks[0].id || null;
-        });
+        setSelectedId((cur) => cur && nextTracks.some((t) => t.id === cur) ? cur : null);
       } else if (msg.type === "LEVEL_METERS") {
         setLevels(msg.trackLevels || {});
       }
@@ -369,6 +378,11 @@ function AdvancedPanApp() {
         if (window.electronAPI && window.electronAPI.winAction) window.electronAPI.winAction("close");
         else window.close();
       }
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (!e.repeat) advancedChannel.postMessage({ type: "REQUEST_PLAY_PAUSE" });
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
@@ -381,6 +395,66 @@ function AdvancedPanApp() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+  const knobsRef = useRef(null);
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
+  const [knobScale, setKnobScale] = useState(1);
+  const trackCount = tracks.length;
+  const trackCountRef = useRef(trackCount);
+  trackCountRef.current = trackCount;
+  const recomputeScale = useCallback(() => {
+    const el = knobsRef.current;
+    if (!el) return;
+    const n = trackCountRef.current;
+    if (n <= 0) {
+      setKnobScale(1);
+      return;
+    }
+    const avail = el.clientWidth - KNOB_ROW_PADDING;
+    const fit = (avail - (n - 1) * KNOB_GAP) / (n * KNOB_BASE_WIDTH);
+    setKnobScale(clamp(fit, KNOB_MIN_SCALE, 1));
+  }, []);
+  const recomputeEdges = useCallback(() => {
+    const el = knobsRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setScrollEdges({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 });
+  }, []);
+  useEffect(() => {
+    const el = knobsRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    const onScroll = () => recomputeEdges();
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(() => {
+      recomputeScale();
+      recomputeEdges();
+    });
+    ro.observe(el);
+    recomputeScale();
+    recomputeEdges();
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [recomputeScale, recomputeEdges]);
+  useEffect(() => {
+    recomputeScale();
+  }, [trackCount, recomputeScale]);
+  useEffect(() => {
+    recomputeEdges();
+  }, [trackCount, knobScale, recomputeEdges]);
+  const scrollKnobs = useCallback((dir) => {
+    const el = knobsRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(160, el.clientWidth * 0.7), behavior: "smooth" });
   }, []);
   const beforeChange = useCallback(() => {
     advancedChannel.postMessage({ type: "BEFORE_CHANGE" });
@@ -399,19 +473,24 @@ function AdvancedPanApp() {
   }, [beforeChange, setParam, tracks]);
   const selectedParams = selectedTrack && selectedTrack.params || {};
   const selectedLine = selectedTrack ? `${selectedTrack.name || selectedTrack.fileName || "Track"}  -  ${panLabel(selectedParams.pan || 0)}  -  ${gainLabel(selectedParams.volume ?? 1)}` : "Select a track to inspect";
-  return /* @__PURE__ */ React.createElement("div", { className: "aef-backdrop" }, /* @__PURE__ */ React.createElement(SvgDefs, null), /* @__PURE__ */ React.createElement("div", { className: "aef-shell" }, /* @__PURE__ */ React.createElement("div", { className: "aef-window" }, /* @__PURE__ */ React.createElement("div", { className: "aef-titlebar" }, /* @__PURE__ */ React.createElement("div", { className: "title-c" }, "FocusDAW Studio ", /* @__PURE__ */ React.createElement("b", null, "Advanced Pan")), /* @__PURE__ */ React.createElement(WindowControlsAef, null)), /* @__PURE__ */ React.createElement("div", { className: "aef-toolbar" }, /* @__PURE__ */ React.createElement("span", { className: "aef-toolbar-label" }, "SPATIAL FIELD"), /* @__PURE__ */ React.createElement("div", { className: "aef-tabs" }, /* @__PURE__ */ React.createElement("span", { className: "aef-tab active" }, "Soundstage"), /* @__PURE__ */ React.createElement("span", { className: "aef-tab" }, "Distance - Vol")), /* @__PURE__ */ React.createElement("div", { className: "aef-flex" }), /* @__PURE__ */ React.createElement("span", { className: "aef-selected-line mono" }, selectedLine), /* @__PURE__ */ React.createElement("button", { onClick: resetAll, className: "aef-reset" }, "Reset Pan")), /* @__PURE__ */ React.createElement(Stage, { tracks, selectedId: selectedTrack && selectedTrack.id, onSelect: setSelectedId, onBeforeChange: beforeChange, onParam: setParam }), /* @__PURE__ */ React.createElement("div", { className: "aef-knobs" }, /* @__PURE__ */ React.createElement("div", { className: "aef-knob-row" }, tracks.length ? tracks.map((track, index) => /* @__PURE__ */ React.createElement(
+  const onBackdropClick = (e) => {
+    if (e.target.closest(".aef-knob-cell, .aef-node, .aef-tab, button")) return;
+    setSelectedId(null);
+  };
+  return /* @__PURE__ */ React.createElement("div", { className: "aef-backdrop", onClick: onBackdropClick }, /* @__PURE__ */ React.createElement(SvgDefs, null), /* @__PURE__ */ React.createElement("div", { className: "aef-shell" }, /* @__PURE__ */ React.createElement("div", { className: "aef-window" }, /* @__PURE__ */ React.createElement("div", { className: "aef-titlebar" }, /* @__PURE__ */ React.createElement("span", { className: "aef-toolbar-label" }, "SPATIAL FIELD"), /* @__PURE__ */ React.createElement("div", { className: "aef-tabs" }, /* @__PURE__ */ React.createElement("span", { className: "aef-tab active" }, "Soundstage"), /* @__PURE__ */ React.createElement("span", { className: "aef-tab" }, "Distance - Vol")), /* @__PURE__ */ React.createElement("div", { className: "title-c", style: { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", flex: "none" } }, "FocusDAW Studio ", /* @__PURE__ */ React.createElement("b", null, "Advanced Pan")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginLeft: "auto", minWidth: 0 } }, /* @__PURE__ */ React.createElement("span", { className: "aef-selected-line mono" }, selectedLine), /* @__PURE__ */ React.createElement("button", { onClick: resetAll, className: "aef-reset" }, "Reset Pan")), /* @__PURE__ */ React.createElement(WindowControlsAef, null)), /* @__PURE__ */ React.createElement(Stage, { tracks, selectedId: selectedTrack && selectedTrack.id, onSelect: setSelectedId, onBeforeChange: beforeChange, onParam: setParam }), /* @__PURE__ */ React.createElement("div", { className: "aef-knobs-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "aef-knobs", ref: knobsRef }, /* @__PURE__ */ React.createElement("div", { className: "aef-knob-row" }, tracks.length ? tracks.map((track, index) => /* @__PURE__ */ React.createElement(
     PanKnob,
     {
       key: track.id,
       track,
       index,
+      scale: knobScale,
       selected: selectedTrack && selectedTrack.id === track.id,
       level: levels[track.id] || 0,
       onSelect: setSelectedId,
       onBeforeChange: beforeChange,
       onParam: setParam
     }
-  )) : /* @__PURE__ */ React.createElement("div", { className: "aef-empty" }, "Load tracks in FocusDAW Studio to place instruments on the soundstage."))), /* @__PURE__ */ React.createElement("div", { className: "aef-footer" }, /* @__PURE__ */ React.createElement("span", null, "Drag an instrument across the stage, or turn a knob - pan stays in sync"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, tracks.length, " tracks - spatialized")))));
+  )) : /* @__PURE__ */ React.createElement("div", { className: "aef-empty" }, "Load tracks in FocusDAW Studio to place instruments on the soundstage."))), scrollEdges.left && /* @__PURE__ */ React.createElement("button", { className: "aef-scroll-arrow left", onClick: () => scrollKnobs(-1), "aria-label": "Scroll knobs left", title: "Scroll left" }, /* @__PURE__ */ React.createElement("span", { className: "aef-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "15 4 7 12 15 20", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), scrollEdges.right && /* @__PURE__ */ React.createElement("button", { className: "aef-scroll-arrow right", onClick: () => scrollKnobs(1), "aria-label": "Scroll knobs right", title: "Scroll right" }, /* @__PURE__ */ React.createElement("span", { className: "aef-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "9 4 17 12 9 20", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" }))))), /* @__PURE__ */ React.createElement("div", { className: "aef-footer" }, /* @__PURE__ */ React.createElement("span", null, "Drag an instrument across the stage, or turn a knob - pan stays in sync"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, tracks.length, " tracks - spatialized")))));
 }
 ReactDOM.render(/* @__PURE__ */ React.createElement(AdvancedPanApp, null), document.getElementById("root"));
 

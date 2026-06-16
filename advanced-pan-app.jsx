@@ -4,6 +4,12 @@ const ROOM = { w: 1102, h: 472, lx: 551, ly: 439, near: 70, far: 392, angle: 72 
 const TRACK_VOLUME_MIN = 0;
 const TRACK_VOLUME_MAX = 2;
 
+// Knob cell sizing (must match advanced-pan.html .aef-knob-cell / .aef-knob-row / .aef-knobs).
+const KNOB_BASE_WIDTH = 140; // full-size (max) knob cell footprint in px
+const KNOB_GAP = 6;          // gap between knob cells
+const KNOB_ROW_PADDING = 28; // .aef-knobs horizontal padding (14 + 14)
+const KNOB_MIN_SCALE = 0.42; // smallest knob size relative to max (0.6 baseline × 70%)
+
 const INSTRUMENTS = {
   piano: { label: "Piano", color: "var(--cream-2)", icon: "piano" },
   percussion: { label: "Percussion", color: "var(--amber)", icon: "perc" },
@@ -88,10 +94,22 @@ function pt(angle, r) {
   return { x: ROOM.lx + r * Math.sin(a), y: ROOM.ly - r * Math.cos(a) };
 }
 
+// Uniform (1:1) mapping of the ROOM viewBox into a WxH box, matching the SVG's
+// preserveAspectRatio="xMidYMax meet" so the listener circle stays circular.
+function roomTransform(width, height) {
+  const scale = Math.min(width / ROOM.w, height / ROOM.h);
+  return {
+    scale,
+    offsetX: (width - ROOM.w * scale) / 2,
+    offsetY: height - ROOM.h * scale,
+  };
+}
+
 function mapPointer(clientX, clientY, roomEl) {
   const rect = roomEl.getBoundingClientRect();
-  const x = (clientX - rect.left) * (ROOM.w / rect.width);
-  const y = (clientY - rect.top) * (ROOM.h / rect.height);
+  const { scale, offsetX, offsetY } = roomTransform(rect.width, rect.height);
+  const x = (clientX - rect.left - offsetX) / scale;
+  const y = (clientY - rect.top - offsetY) / scale;
   const dx = x - ROOM.lx;
   const dy = ROOM.ly - y;
   const radius = Math.hypot(dx, dy);
@@ -291,12 +309,11 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
   const selectedType = selectedTrack ? matchInstrument(selectedTrack.name || selectedTrack.fileName) : null;
   const selectedInst = selectedType ? INSTRUMENTS[selectedType] : null;
   const selectedPos = selectedTrack ? place((selectedTrack.params || {}).pan || 0, distFromGain((selectedTrack.params || {}).volume ?? 1)) : null;
-  const scaleX = roomSize.width / ROOM.w;
-  const scaleY = roomSize.height / ROOM.h;
+  const { scale: roomScale, offsetX: roomOffsetX, offsetY: roomOffsetY } = roomTransform(roomSize.width, roomSize.height);
 
   return (
     <div className="aef-room" ref={roomRef}>
-      <svg width="100%" height="100%" viewBox="0 0 1102 472" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, display: "block" }}>
+      <svg width="100%" height="100%" viewBox="0 0 1102 472" preserveAspectRatio="xMidYMax meet" style={{ position: "absolute", inset: 0, display: "block" }}>
         <rect x="0" y="0" width="1102" height="472" fill="url(#g-floor)" />
         <path d={cone} fill="url(#g-stage)" />
         {rings.map((ring) => (
@@ -335,7 +352,7 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
             key={track.id}
             className="aef-node"
             onPointerDown={startNode(track)}
-            style={{ left: pos.x * scaleX, top: pos.y * scaleY, zIndex: z }}
+            style={{ left: roomOffsetX + pos.x * roomScale, top: roomOffsetY + pos.y * roomScale, zIndex: z }}
           >
             <div className={"aef-node-label" + (selected ? " selected" : "")}>
               <span className="mono">{index + 1}</span> {shortTrackName(track.name || track.fileName)}
@@ -410,7 +427,7 @@ function MiniTrackMeter({ level, height = 58, width = 6 }) {
   return <div className="aef-track-meter" style={{ width, height }}>{cells}</div>;
 }
 
-function PanKnob({ track, index, selected, level, onSelect, onBeforeChange, onParam }) {
+function PanKnob({ track, index, selected, level, scale = 1, onSelect, onBeforeChange, onParam }) {
   const params = track.params || {};
   const pan = params.pan || 0;
   const type = matchInstrument(track.name || track.fileName);
@@ -450,7 +467,7 @@ function PanKnob({ track, index, selected, level, onSelect, onBeforeChange, onPa
   const dotPos = 50 + pan * 48;
 
   return (
-    <div className={"aef-knob-cell" + (selected ? " selected" : "")} onClick={() => onSelect(track.id)}>
+    <div className={"aef-knob-cell" + (selected ? " selected" : "")} style={{ "--ks": scale }} onClick={() => onSelect(track.id)}>
       <div className="aef-knob-title">
         <span className="mono">{index + 1}</span>
         <span>{shortTrackName(track.name || track.fileName)}</span>
@@ -474,7 +491,7 @@ function PanKnob({ track, index, selected, level, onSelect, onBeforeChange, onPa
           </g>
           <circle cx="52" cy="52" r="3.2" fill="var(--bg)" stroke="rgba(255,242,214,0.14)" strokeWidth="1" />
         </svg>
-        <MiniTrackMeter level={level} />
+        <MiniTrackMeter level={level} height={Math.round(58 * scale)} width={Math.max(4, Math.round(6 * scale))} />
       </div>
       <div className="aef-pan-readout" style={{ color: inst.color }}>{panLabel(pan)}</div>
       <div className="aef-mini-bar">
@@ -491,7 +508,7 @@ function AdvancedPanApp() {
   const [theme, setTheme] = useState("default");
   const [selectedId, setSelectedId] = useState(null);
   const [levels, setLevels] = useState({});
-  const selectedTrack = tracks.find((t) => t.id === selectedId) || tracks[0] || null;
+  const selectedTrack = tracks.find((t) => t.id === selectedId) || null;
 
   useEffect(() => {
     advancedChannel.postMessage({ type: "ADVANCED_READY" });
@@ -503,10 +520,8 @@ function AdvancedPanApp() {
         setTracks(nextTracks);
         if (msg.trackLevels) setLevels(msg.trackLevels);
         if (msg.theme) setTheme(msg.theme);
-        setSelectedId((cur) => {
-          if (cur && nextTracks.some((t) => t.id === cur)) return cur;
-          return (nextTracks[0] && nextTracks[0].id) || null;
-        });
+        // Keep current selection if it still exists; never auto-select (start with none).
+        setSelectedId((cur) => (cur && nextTracks.some((t) => t.id === cur)) ? cur : null);
       } else if (msg.type === "LEVEL_METERS") {
         setLevels(msg.trackLevels || {});
       }
@@ -528,6 +543,12 @@ function AdvancedPanApp() {
         if (window.electronAPI && window.electronAPI.winAction) window.electronAPI.winAction("close");
         else window.close();
       }
+      if (e.code === "Space") {
+        // Toggle transport even when this window has focus (don't also activate a focused button).
+        e.preventDefault();
+        if (!e.repeat) advancedChannel.postMessage({ type: "REQUEST_PLAY_PAUSE" });
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
@@ -540,6 +561,65 @@ function AdvancedPanApp() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
+  const knobsRef = useRef(null);
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
+  const [knobScale, setKnobScale] = useState(1);
+  const trackCount = tracks.length;
+  const trackCountRef = useRef(trackCount);
+  trackCountRef.current = trackCount;
+
+  // Scale knobs down (to KNOB_MIN_SCALE at most) so they fit the window without
+  // scrolling when possible. The track-name font stays fixed (see CSS).
+  const recomputeScale = useCallback(() => {
+    const el = knobsRef.current;
+    if (!el) return;
+    const n = trackCountRef.current;
+    if (n <= 0) { setKnobScale(1); return; }
+    const avail = el.clientWidth - KNOB_ROW_PADDING; // usable width inside the panel
+    const fit = (avail - (n - 1) * KNOB_GAP) / (n * KNOB_BASE_WIDTH);
+    setKnobScale(clamp(fit, KNOB_MIN_SCALE, 1));
+  }, []);
+
+  const recomputeEdges = useCallback(() => {
+    const el = knobsRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setScrollEdges({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 });
+  }, []);
+
+  useEffect(() => {
+    const el = knobsRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (el.scrollWidth <= el.clientWidth) return; // nothing to scroll
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // already a horizontal gesture
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    const onScroll = () => recomputeEdges();
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(() => { recomputeScale(); recomputeEdges(); });
+    ro.observe(el);
+    recomputeScale();
+    recomputeEdges();
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [recomputeScale, recomputeEdges]);
+
+  // Recompute scale when the track count changes; edges after scale/layout settles.
+  useEffect(() => { recomputeScale(); }, [trackCount, recomputeScale]);
+  useEffect(() => { recomputeEdges(); }, [trackCount, knobScale, recomputeEdges]);
+
+  const scrollKnobs = useCallback((dir) => {
+    const el = knobsRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(160, el.clientWidth * 0.7), behavior: "smooth" });
   }, []);
 
   const beforeChange = useCallback(() => {
@@ -565,46 +645,72 @@ function AdvancedPanApp() {
     ? `${selectedTrack.name || selectedTrack.fileName || "Track"}  -  ${panLabel(selectedParams.pan || 0)}  -  ${gainLabel(selectedParams.volume ?? 1)}`
     : "Select a track to inspect";
 
+  // Clicking empty/meaningless space clears the selection.
+  const onBackdropClick = (e) => {
+    if (e.target.closest(".aef-knob-cell, .aef-node, .aef-tab, button")) return;
+    setSelectedId(null);
+  };
+
   return (
-    <div className="aef-backdrop">
+    <div className="aef-backdrop" onClick={onBackdropClick}>
       <SvgDefs />
       <div className="aef-shell">
         <div className="aef-window">
           <div className="aef-titlebar">
-            <div className="title-c">FocusDAW Studio <b>Advanced Pan</b></div>
-            <WindowControlsAef />
-          </div>
-
-          <div className="aef-toolbar">
+            {/* Left: spatial field label + tabs */}
             <span className="aef-toolbar-label">SPATIAL FIELD</span>
             <div className="aef-tabs">
               <span className="aef-tab active">Soundstage</span>
               <span className="aef-tab">Distance - Vol</span>
             </div>
-            <div className="aef-flex" />
-            <span className="aef-selected-line mono">{selectedLine}</span>
-            <button onClick={resetAll} className="aef-reset">Reset Pan</button>
+
+            {/* Center: window title (centered relative to titlebar) */}
+            <div className="title-c" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", flex: "none" }}>FocusDAW Studio <b>Advanced Pan</b></div>
+
+            {/* Right: selected track line + reset, just left of window controls */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto", minWidth: 0 }}>
+              <span className="aef-selected-line mono">{selectedLine}</span>
+              <button onClick={resetAll} className="aef-reset">Reset Pan</button>
+            </div>
+            <WindowControlsAef />
           </div>
 
           <Stage tracks={tracks} selectedId={selectedTrack && selectedTrack.id} onSelect={setSelectedId} onBeforeChange={beforeChange} onParam={setParam} />
 
-          <div className="aef-knobs">
-            <div className="aef-knob-row">
-              {tracks.length ? tracks.map((track, index) => (
-                <PanKnob
-                  key={track.id}
-                  track={track}
-                  index={index}
-                  selected={selectedTrack && selectedTrack.id === track.id}
-                  level={levels[track.id] || 0}
-                  onSelect={setSelectedId}
-                  onBeforeChange={beforeChange}
-                  onParam={setParam}
-                />
-              )) : (
-                <div className="aef-empty">Load tracks in FocusDAW Studio to place instruments on the soundstage.</div>
-              )}
+          <div className="aef-knobs-wrap">
+            <div className="aef-knobs" ref={knobsRef}>
+              <div className="aef-knob-row">
+                {tracks.length ? tracks.map((track, index) => (
+                  <PanKnob
+                    key={track.id}
+                    track={track}
+                    index={index}
+                    scale={knobScale}
+                    selected={selectedTrack && selectedTrack.id === track.id}
+                    level={levels[track.id] || 0}
+                    onSelect={setSelectedId}
+                    onBeforeChange={beforeChange}
+                    onParam={setParam}
+                  />
+                )) : (
+                  <div className="aef-empty">Load tracks in FocusDAW Studio to place instruments on the soundstage.</div>
+                )}
+              </div>
             </div>
+            {scrollEdges.left && (
+              <button className="aef-scroll-arrow left" onClick={() => scrollKnobs(-1)} aria-label="Scroll knobs left" title="Scroll left">
+                <span className="aef-scroll-disc">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 4 7 12 15 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </span>
+              </button>
+            )}
+            {scrollEdges.right && (
+              <button className="aef-scroll-arrow right" onClick={() => scrollKnobs(1)} aria-label="Scroll knobs right" title="Scroll right">
+                <span className="aef-scroll-disc">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 4 17 12 9 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="aef-footer">

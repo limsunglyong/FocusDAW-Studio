@@ -1181,6 +1181,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [loading, setLoading] = useState(null);
   const [tool, setTool] = useState("select");
   const [timelineView, setTimelineView] = useState({ scrollLeft: 0, clientWidth: 1 });
+  const [vScroll, setVScroll] = useState({ up: false, down: false });
   const [bpmOpen, setBpmOpen] = useState(false);
   const [bpmHover, setBpmHover] = useState(false);
   const [bpmTouchedAt, setBpmTouchedAt] = useState(Date.now());
@@ -1230,6 +1231,19 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (!el) return;
     setTimelineView({ scrollLeft: el.scrollLeft, clientWidth: Math.max(1, el.clientWidth - HEADER_W) });
   }, []);
+
+  const updateVScroll = useCallback(() => {
+    const el = arrangeRef.current;
+    if (!el) { setVScroll({ up: false, down: false }); return; }
+    const max = el.scrollHeight - el.clientHeight;
+    setVScroll({ up: el.scrollTop > 1, down: el.scrollTop < max - 1 });
+  }, []);
+
+  const scrollArrangeV = useCallback((dir) => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    el.scrollBy({ top: dir * Math.max(laneH, el.clientHeight * 0.6), behavior: "smooth" });
+  }, [laneH]);
 
   const updateTimeMin = useCallback(() => {
     const next = timelineMinPx(arrangeRef.current && arrangeRef.current.clientWidth);
@@ -1585,6 +1599,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         case "BEFORE_CHANGE":
           pushUndo();
           break;
+        case "REQUEST_PLAY_PAUSE":
+          DAW.isPlaying ? DAW.pause() : DAW.play();
+          force((n) => n + 1);
+          break;
         case "REQUEST_UNDO":
           undo();
           break;
@@ -1649,11 +1667,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         ? next
         : Math.max(next, Math.min(TIME_ZOOM_MAX, px)));
       updateTimelineView();
+      updateVScroll();
     };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [updateTimeMin, updateTimelineView]);
+  }, [updateTimeMin, updateTimelineView, updateVScroll]);
 
   useEffect(() => {
     const el = arrangeRef.current;
@@ -1661,12 +1680,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     let raf = 0;
     const onScroll = () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(updateTimelineView);
+      raf = requestAnimationFrame(() => { updateTimelineView(); updateVScroll(); });
     };
     updateTimelineView();
+    updateVScroll();
     el.addEventListener("scroll", onScroll);
     return () => { cancelAnimationFrame(raf); el.removeEventListener("scroll", onScroll); };
-  }, [updateTimelineView, pxPerSec, sessionDuration]);
+  }, [updateTimelineView, updateVScroll, pxPerSec, sessionDuration]);
+
+  // Recompute vertical-scroll edges when the track count or lane height changes.
+  useEffect(() => { updateVScroll(); }, [updateVScroll, laneH, DAW.tracks.length]);
 
   useEffect(() => {
     const next = updateTimeMin();
@@ -2117,6 +2140,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         )}
       </div>
 
+      {/* vertical scroll arrows — appear only when the track list overflows */}
+      {!empty && vScroll.up && (
+        <button className="arrange-scroll-arrow up" onClick={() => scrollArrangeV(-1)} title="Scroll up" aria-label="Scroll tracks up">
+          <span className="arrange-scroll-disc">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 15 12 7 20 15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </span>
+        </button>
+      )}
+      {!empty && vScroll.down && (
+        <button className="arrange-scroll-arrow down" onClick={() => scrollArrangeV(1)} title="Scroll down" aria-label="Scroll tracks down">
+          <span className="arrange-scroll-disc">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 9 12 17 20 9" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </span>
+        </button>
+      )}
 
       {showExport && <ExportDialog projectName={projectName} onClose={() => setShowExport(false)} />}
       <LoadingOverlay state={loading} />

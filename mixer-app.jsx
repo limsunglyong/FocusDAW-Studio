@@ -171,7 +171,44 @@ function MixerApp() {
     <div className="mixer-app">
       {/* Custom Titlebar */}
       <div className="mixer-titlebar" style={{ position: "relative" }}>
-        <div className="title-c">FocusDAW Studio <b>Mixer</b></div>
+        {/* Left: console label */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+          <Icon name="mixer" size={14} style={{ color: "var(--amber)" }} />
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".06em", color: "var(--cream-2)" }}>MIXER CONSOLE</span>
+        </div>
+
+        {/* Center: window title + transport (centered relative to titlebar) */}
+        <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+          display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="title-c" style={{ flex: "none" }}>FocusDAW Studio <b>Mixer</b></div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 4px",
+            borderRadius: 999, background: "linear-gradient(180deg,var(--bg2),var(--bg))",
+            border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)" }}>
+            <button
+              title="Stop"
+              onClick={(e) => { channel.postMessage({ type: "REQUEST_STOP" }); e.currentTarget.blur(); }}
+              style={{ width: 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+                outline: "none", color: "var(--cream-2)",
+                background: "linear-gradient(180deg,var(--surface3),var(--surface2))",
+                border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+              <Icon name="stop" size={11} fill />
+            </button>
+            <button
+              title="Play / Pause"
+              onClick={(e) => { channel.postMessage({ type: "REQUEST_PLAY_PAUSE" }); e.currentTarget.blur(); }}
+              style={{ width: 34, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+                outline: "none", color: playing ? "#241a0a" : "var(--cream-2)",
+                background: playing
+                  ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
+                  : "linear-gradient(180deg,var(--surface3),var(--surface2))",
+                border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"),
+                boxShadow: playing ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+              <Icon name={playing ? "pause" : "play"} size={14} fill />
+            </button>
+          </div>
+        </div>
+
+        {/* Right: window controls */}
         {(!isMac && window.electronAPI) ? (
           <div className="window-controls" style={{ marginLeft: "auto" }}>
             <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "minimize")} title="Minimize" aria-label="Minimize"><span aria-hidden="true">-</span></button>
@@ -181,38 +218,6 @@ function MixerApp() {
         ) : (
           <div style={{ width: 80, marginLeft: "auto" }} />
         )}
-      </div>
-
-      <div className="mixer-toolbar">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon name="mixer" size={14} style={{ color: "var(--amber)" }} />
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".06em", color: "var(--cream-2)" }}>MIXER CONSOLE</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 4px",
-          borderRadius: 999, background: "linear-gradient(180deg,var(--bg2),var(--bg))",
-          border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)" }}>
-          <button
-            title="Stop"
-            onClick={(e) => { channel.postMessage({ type: "REQUEST_STOP" }); e.currentTarget.blur(); }}
-            style={{ width: 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
-              outline: "none", color: "var(--cream-2)",
-              background: "linear-gradient(180deg,var(--surface3),var(--surface2))",
-              border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
-            <Icon name="stop" size={11} fill />
-          </button>
-          <button
-            title="Play / Pause"
-            onClick={(e) => { channel.postMessage({ type: "REQUEST_PLAY_PAUSE" }); e.currentTarget.blur(); }}
-            style={{ width: 34, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
-              outline: "none", color: playing ? "#241a0a" : "var(--cream-2)",
-              background: playing
-                ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
-                : "linear-gradient(180deg,var(--surface3),var(--surface2))",
-              border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"),
-              boxShadow: playing ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)" }}>
-            <Icon name={playing ? "pause" : "play"} size={14} fill />
-          </button>
-        </div>
       </div>
 
       {/* Mixer Console Container */}

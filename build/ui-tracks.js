@@ -358,7 +358,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
     position: "sticky",
     left: 0,
     zIndex: 6,
-    background: "linear-gradient(180deg,var(--surface),var(--bg2))",
+    background: p.solo ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))" : "linear-gradient(180deg,var(--surface),var(--bg2))",
     borderRight: "1px solid var(--line-strong)",
     borderBottom: "1px solid var(--line)",
     padding: pad,
