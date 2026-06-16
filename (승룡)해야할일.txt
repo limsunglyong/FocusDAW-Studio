@@ -8,6 +8,9 @@
 EQ 프리셋 저장 기능? 
 Custom.
 
+EQ 저장시 그래프를 간단히 목록으로 보여줌. 이름지정 가능.
+
+
 
 2. Track별 (개별 Stems) 추천 기능
 Suno stems은 artifact(잡음), bleed(누출), muddy low-end이 흔하니 클린업 + 균형 위주로.
@@ -82,3 +85,11 @@ Ears + Reference: 앱에 "Reference tracks 듣고 비교하세요" 팁 넣기.
 테스트: 다양한 Suno 장르로 테스트. Drums/Bass/Vocals 클린업이 핵심.
 
 이 정도면 초보자도 "프로처럼 들리는" 결과물을 쉽게 만들 수 있어요. 앱이 재미있고 직관적이면 더 좋을 거예요 — sliders 크게, preset 많게, visual feedback 강하게!
+
+
+
+
+Output Fx 트랙에 모든 effect 끄기 버튼 추가 필요. (기존 reverb, echo 버튼은 제거 할까?)
+
+
+
