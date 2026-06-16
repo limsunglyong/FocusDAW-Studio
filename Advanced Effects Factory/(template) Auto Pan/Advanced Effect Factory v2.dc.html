@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  html,body{margin:0;height:100%}
+  body{background:#100c08;font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  @keyframes aefPulse{0%,100%{opacity:.5}50%{opacity:.85}}
+  .aef-node:active{cursor:grabbing}
+  .aef-room *{user-select:none}
+</style>
+</helmet>
+
+<!-- ====== shared defs: gradients + instrument symbols ====== -->
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <radialGradient id="g-bezel" cx="0.5" cy="0.4" r="0.62">
+      <stop offset="0" stop-color="#39332b" /><stop offset="0.55" stop-color="#221d16" /><stop offset="1" stop-color="#0e0b07" />
+    </radialGradient>
+    <radialGradient id="g-cap" cx="0.5" cy="0.32" r="0.78">
+      <stop offset="0" stop-color="#4c443a" /><stop offset="0.5" stop-color="#2e2820" /><stop offset="1" stop-color="#1a160f" />
+    </radialGradient>
+    <radialGradient id="g-stage" cx="0.5" cy="0.96" r="0.85">
+      <stop offset="0" stop-color="rgba(232,176,75,0.16)" /><stop offset="0.45" stop-color="rgba(232,176,75,0.04)" /><stop offset="1" stop-color="rgba(232,176,75,0)" />
+    </radialGradient>
+    <linearGradient id="g-floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#171109" /><stop offset="1" stop-color="#100c07" />
+    </linearGradient>
+    <symbol id="ic-piano" viewBox="0 0 24 24">
+      <rect x="3" y="6" width="18" height="12" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path d="M7.5 6v12M12 6v12M16.5 6v12" stroke="currentColor" stroke-width="1" opacity="0.45" />
+      <rect x="6" y="6" width="2" height="7" rx="0.5" fill="currentColor" /><rect x="10.6" y="6" width="2" height="7" rx="0.5" fill="currentColor" /><rect x="15.2" y="6" width="2" height="7" rx="0.5" fill="currentColor" />
+    </symbol>
+    <symbol id="ic-perc" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="8" rx="7.6" ry="2.9" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path d="M4.4 8v5.8c0 1.6 3.4 2.9 7.6 2.9s7.6-1.3 7.6-2.9V8" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path d="M5.2 9.6l2 3.6M18.8 9.6l-2 3.6M9.4 10.8l1.1 3.6M14.6 10.8l-1.1 3.6" stroke="currentColor" stroke-width="0.9" opacity="0.5" />
+      <path d="M6.5 3l4 5M17.5 3l-4 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+    </symbol>
+    <symbol id="ic-organ" viewBox="0 0 24 24">
+      <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+        <line x1="4.5" y1="19" x2="4.5" y2="10" /><line x1="8.4" y1="19" x2="8.4" y2="5.5" /><line x1="12" y1="19" x2="12" y2="8" /><line x1="15.6" y1="19" x2="15.6" y2="4.5" /><line x1="19.5" y1="19" x2="19.5" y2="11" />
+      </g>
+      <line x1="2.5" y1="20.4" x2="21.5" y2="20.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+    </symbol>
+    <symbol id="ic-guitar" viewBox="0 0 24 24">
+      <circle cx="8.4" cy="15.6" r="5.6" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="8.4" cy="15.6" r="1.7" fill="currentColor" />
+      <path d="M12.4 11.6 19.6 4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M18.7 3.1l2.2 2.2-1.3 1.3-2.2-2.2z" fill="currentColor" />
+    </symbol>
+    <symbol id="ic-bass" viewBox="0 0 24 24">
+      <ellipse cx="7.4" cy="16.4" rx="4.6" ry="5.4" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="7.4" cy="16.4" r="1.3" fill="currentColor" />
+      <path d="M10.6 12.6 20.6 2.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M19.8 1.7h2.4v2.4l-2 2-2-2z" fill="currentColor" />
+      <path d="M18.4 5.4l1.6 1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+    </symbol>
+    <symbol id="ic-strings" viewBox="0 0 24 24">
+      <path d="M8.5 21c-2.2 0-3.9-1.5-3.9-3.6 0-1.4 1-2.2 1-3.3 0-1-1-1.8-1-3.2 0-2 1.7-3.5 3.9-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+      <path d="M8.5 21c2.2 0 3.9-1.5 3.9-3.6 0-1.4-1-2.2-1-3.3 0-1 1-1.8 1-3.2 0-2-1.7-3.5-3.9-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+      <path d="M8.5 7.4V3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+      <circle cx="8.5" cy="2.4" r="1.3" fill="none" stroke="currentColor" stroke-width="1.2" />
+      <path d="M6.9 12.6l3.2 3.2M10.1 12.6l-3.2 3.2" stroke="currentColor" stroke-width="0.8" opacity="0.55" />
+    </symbol>
+    <symbol id="ic-brass" viewBox="0 0 24 24">
+      <path d="M3 8.2v7.4l5-1.6V9.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+      <path d="M8 9.8h9.4c1.5 0 2.6 1 2.6 2.2 0 1.2-1.1 2.2-2.6 2.2H8" fill="none" stroke="currentColor" stroke-width="1.4" />
+      <path d="M11 9.8V6.6M14 9.8V6.6M17 9.8V6.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+    </symbol>
+    <symbol id="ic-reed" viewBox="0 0 24 24">
+      <path d="M15.4 3.2h2.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M15.4 3.4v7.8c0 3.6-2.9 6.5-6.5 6.5-2 0-3.5-1.5-3.5-3.4 0-1.4 1-2.4 2.3-2.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M5.5 14.4c1.2-.3 2.4.4 2.9 1.8l.5 1.9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      <circle cx="13.6" cy="7" r="0.8" fill="currentColor" /><circle cx="12.5" cy="10" r="0.8" fill="currentColor" /><circle cx="10.8" cy="12.6" r="0.8" fill="currentColor" />
+    </symbol>
+    <symbol id="ic-pipe" viewBox="0 0 24 24">
+      <g transform="rotate(-21 12 12)">
+        <rect x="2.6" y="9.8" width="18.8" height="4.4" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="6.6" cy="12" r="0.9" fill="currentColor" /><circle cx="10.1" cy="12" r="0.9" fill="currentColor" /><circle cx="13.6" cy="12" r="0.9" fill="currentColor" /><circle cx="17.1" cy="12" r="0.9" fill="currentColor" />
+        <circle cx="4.4" cy="12" r="0.7" fill="none" stroke="currentColor" stroke-width="0.9" />
+      </g>
+    </symbol>
+    <symbol id="ic-synth" viewBox="0 0 24 24">
+      <rect x="3" y="5" width="18" height="14" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path d="M5.6 15.2l3-6 0 6 3-6 0 6 3-6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="17.6" cy="8.4" r="1.4" fill="currentColor" />
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ====== studio backdrop ====== -->
+<div style="position:fixed;inset:0;background:radial-gradient(120% 120% at 50% -10%,#1b150d 0%,#100c08 60%,#0a0805 100%);display:flex;align-items:center;justify-content:center;padding:30px">
+  <div style="position:absolute;inset:0;opacity:0.5;background:repeating-linear-gradient(90deg,transparent 0 78px,rgba(232,212,170,0.025) 78px 79px)"></div>
+
+  <!-- ====== WINDOW ====== -->
+  <div style="{{ winStyle }}">
+    <div style="width:1102px;background:#1b1712;border:1px solid rgba(0,0,0,0.4);border-radius:13px;box-shadow:0 40px 90px -30px rgba(0,0,0,0.85),0 0 0 1px rgba(232,212,170,0.05);overflow:hidden">
+
+      <!-- title bar -->
+      <div onPointerDown="{{ onTitleDown }}" style="height:46px;display:flex;align-items:center;gap:11px;padding:0 14px;background:linear-gradient(180deg,#2a2520,#211c16);border-bottom:1px solid rgba(0,0,0,0.4);cursor:default">
+        <svg width="19" height="19" viewBox="0 0 24 24" style="flex:none">
+          <path d="M3 18a9 9 0 0 1 18 0" fill="none" stroke="#e8b04b" stroke-width="1.7" />
+          <path d="M7 18a5 5 0 0 1 10 0" fill="none" stroke="#e8b04b" stroke-width="1.7" opacity="0.55" />
+          <circle cx="12" cy="18" r="2" fill="#e8b04b" />
+        </svg>
+        <span style="font-size:12.5px;font-weight:700;letter-spacing:0.14em;color:#efe6d4">ADVANCED EFFECT FACTORY</span>
+        <span style="flex:1;text-align:center;font-size:12px;color:#857c6b;font-weight:500">FocusDAW Studio · <span style="color:#b0a690">Spatial Panner</span></span>
+        <div class="tb-win" style="display:flex;align-items:center;gap:9px;color:#857c6b">
+          <div style="width:26px;height:22px;border-radius:6px;display:grid;place-items:center;background:#2a2520;border:1px solid rgba(232,212,170,0.1)"><div style="width:9px;height:1.6px;background:#b0a690;border-radius:1px"></div></div>
+          <div style="width:26px;height:22px;border-radius:6px;display:grid;place-items:center;background:#2a2520;border:1px solid rgba(232,212,170,0.1)"><div style="width:9px;height:9px;border:1.4px solid #b0a690;border-radius:2px"></div></div>
+          <div style="width:26px;height:22px;border-radius:6px;display:grid;place-items:center;background:#2a2520;border:1px solid rgba(232,212,170,0.1);font-size:13px;color:#b0a690">×</div>
+        </div>
+      </div>
+
+      <!-- toolbar -->
+      <div style="height:48px;display:flex;align-items:center;gap:14px;padding:0 18px;background:#221d17;border-bottom:1px solid rgba(232,212,170,0.08)">
+        <span style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#857c6b">SPATIAL FIELD</span>
+        <div style="display:flex;gap:6px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#241a0a;background:#e8b04b;padding:4px 9px;border-radius:6px;box-shadow:0 0 10px rgba(232,176,75,0.35)">Soundstage</span>
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#b0a690;background:#2a2520;padding:4px 9px;border-radius:6px;border:1px solid rgba(232,212,170,0.1)">Distance · Vol</span>
+        </div>
+        <div style="flex:1"></div>
+        <span style="font-family:'Space Mono',monospace;font-size:11.5px;color:#b0a690">{{ selLine }}</span>
+        <button onClick="{{ resetAll }}" style="font-family:inherit;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#d8cdb6;background:#2a2520;border:1px solid rgba(232,212,170,0.14);border-radius:7px;padding:7px 12px;cursor:pointer">Reset Pan</button>
+      </div>
+
+      <!-- listening room -->
+      <div class="aef-room" ref="{{ setRoomRef }}" style="position:relative;width:1102px;height:472px;background:#100c07;overflow:hidden">
+        <svg width="1102" height="472" viewBox="0 0 1102 472" style="position:absolute;inset:0;display:block">
+          <rect x="0" y="0" width="1102" height="472" fill="url(#g-floor)" />
+          <path d="{{ cone }}" fill="url(#g-stage)" />
+          <sc-for list="{{ rings }}" as="r" hint-placeholder-count="4">
+            <path d="{{ r.d }}" fill="none" stroke="rgba(232,212,170,0.13)" stroke-width="1.2" />
+            <text x="{{ r.lx }}" y="{{ r.ly }}" font-family="Space Mono, monospace" font-size="10" letter-spacing="1.5" fill="#5f574a" text-anchor="end" dominant-baseline="middle">{{ r.label }}</text>
+          </sc-for>
+          <sc-for list="{{ spokes }}" as="s" hint-placeholder-count="5">
+            <line x1="551" y1="439" x2="{{ s.x2 }}" y2="{{ s.y2 }}" stroke="{{ s.stroke }}" stroke-width="{{ s.w }}" stroke-dasharray="{{ s.dash }}" />
+            <text x="{{ s.lx }}" y="{{ s.ly }}" font-family="Space Mono, monospace" font-size="10.5" letter-spacing="0.5" fill="{{ s.lcolor }}" text-anchor="middle">{{ s.label }}</text>
+          </sc-for>
+          <line x1="551" y1="439" x2="{{ guide.x }}" y2="{{ guide.y }}" stroke="{{ guide.color }}" stroke-width="1.6" stroke-dasharray="3 4" style="{{ guide.style }}" />
+          <!-- listener -->
+          <circle cx="551" cy="439" r="22" fill="none" stroke="rgba(232,176,75,0.22)" stroke-width="1.2" />
+          <circle cx="551" cy="439" r="13" fill="#2a2520" stroke="#e8b04b" stroke-width="1.6" />
+          <path d="M551 428 l5 8 -10 0 z" fill="#e8b04b" />
+          <circle cx="539" cy="441" r="3.4" fill="none" stroke="#e8b04b" stroke-width="1.4" /><circle cx="563" cy="441" r="3.4" fill="none" stroke="#e8b04b" stroke-width="1.4" />
+          <text x="551" y="462" font-family="Space Mono, monospace" font-size="9.5" letter-spacing="1.5" fill="#857c6b" text-anchor="middle">LISTENER</text>
+        </svg>
+
+        <!-- instrument tokens -->
+        <sc-for list="{{ tracks }}" as="t" hint-placeholder-count="8">
+          <div class="aef-node" onPointerDown="{{ t.onNodeDown }}" style="{{ t.nodeStyle }}">
+            <div style="{{ t.labelStyle }}"><span style="font-family:'Space Mono',monospace;opacity:0.7">{{ t.num }}</span> {{ t.shortName }}</div>
+            <div style="{{ t.tokenStyle }}">
+              <svg width="30" height="30" viewBox="0 0 24 24" style="overflow:visible;pointer-events:none"><use href="#ic-{{ t.iconId }}"></use></svg>
+            </div>
+            <div style="{{ t.volStyle }}">{{ t.volLabel }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- knob rack -->
+      <div style="background:linear-gradient(180deg,#211c16,#1b1712);border-top:1px solid rgba(232,212,170,0.08);padding:16px 14px 18px;overflow-x:auto">
+        <div style="display:flex;gap:6px;min-width:max-content;justify-content:center">
+          <sc-for list="{{ tracks }}" as="t" hint-placeholder-count="8">
+            <div onClick="{{ t.onSelect }}" style="{{ t.cellStyle }}">
+              <div style="display:flex;align-items:baseline;gap:6px;max-width:122px">
+                <span style="font-family:'Space Mono',monospace;font-size:10px;color:#5f574a">{{ t.num }}</span>
+                <span style="font-size:11.5px;font-weight:600;color:#d8cdb6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.shortName }}</span>
+              </div>
+              <svg width="100" height="100" viewBox="0 0 104 104" onPointerDown="{{ t.onKnobDown }}" onDoubleClick="{{ t.onReset }}" style="{{ t.knobStyle }}">
+                <path d="{{ ticks.minor }}" stroke="#5f574a" stroke-width="1.4" stroke-linecap="round" />
+                <path d="{{ ticks.major }}" stroke="#9e927c" stroke-width="2" stroke-linecap="round" />
+                <path d="{{ ticks.center }}" stroke="{{ accent }}" stroke-width="2.4" stroke-linecap="round" />
+                <text x="14" y="84" font-family="Space Mono, monospace" font-size="9" letter-spacing="0.5" fill="#6b6048" text-anchor="middle">L</text>
+                <text x="52" y="11.5" font-family="Space Mono, monospace" font-size="9" letter-spacing="0.5" fill="#857c6b" text-anchor="middle">C</text>
+                <text x="90" y="84" font-family="Space Mono, monospace" font-size="9" letter-spacing="0.5" fill="#6b6048" text-anchor="middle">R</text>
+                <circle cx="52" cy="52" r="38" fill="url(#g-bezel)" stroke="rgba(0,0,0,0.6)" stroke-width="1" />
+                <circle cx="52" cy="52" r="36.5" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="3.2" stroke-dasharray="1.5 2.6" />
+                <g transform="rotate({{ t.knobDeg }} 52 52)" style="{{ t.pointerStyle }}">
+                  <path d="M52 15 L57.6 30.5 L46.4 30.5 Z" fill="url(#g-cap)" stroke="rgba(0,0,0,0.55)" stroke-width="0.8" stroke-linejoin="round" />
+                  <circle cx="52" cy="52" r="25" fill="url(#g-cap)" stroke="rgba(255,242,214,0.12)" stroke-width="1" />
+                  <ellipse cx="52" cy="45" rx="18" ry="10" fill="rgba(255,242,214,0.05)" />
+                  <line x1="52" y1="31" x2="52" y2="47" stroke="#f3ead8" stroke-width="2.6" stroke-linecap="round" />
+                  <circle cx="52" cy="21.5" r="2.6" fill="{{ t.color }}" style="{{ t.litStyle }}" />
+                </g>
+                <circle cx="52" cy="52" r="3.2" fill="#15110c" stroke="rgba(255,242,214,0.14)" stroke-width="1" />
+              </svg>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;letter-spacing:0.04em;color:{{ t.color }}">{{ t.panLabel }}</div>
+                <div style="position:relative;width:92px;height:9px;display:flex;align-items:center">
+                  <div style="position:absolute;left:0;right:0;top:50%;height:2px;transform:translateY(-50%);background:#332e27;border-radius:2px"></div>
+                  <div style="position:absolute;left:50%;top:1px;bottom:1px;width:1px;background:#5f574a"></div>
+                  <div style="{{ t.barDotStyle }}"></div>
+                </div>
+                <div style="font-size:8.5px;font-weight:700;letter-spacing:0.12em;color:#5f574a;text-transform:uppercase">PAN</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- footer -->
+      <div style="height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#15110c;border-top:1px solid rgba(0,0,0,0.4)">
+        <span style="font-size:10.5px;color:#5f574a">Drag an instrument across the stage, or turn a knob — pan stays in sync</span>
+        <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:#5f574a">{{ trackCount }} tracks · spatialized</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1162,&quot;height&quot;:820},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#e8b04b&quot;},&quot;soundstage&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:50,&quot;max&quot;:85},&quot;showGuides&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const INST = {
+      piano:{label:'Piano',color:'#d8cdb6',icon:'piano'},
+      percussion:{label:'Percussion',color:'#e8b04b',icon:'perc'},
+      organ:{label:'Organ',color:'#c79bd6',icon:'organ'},
+      guitar:{label:'Guitar',color:'#94c06a',icon:'guitar'},
+      bass:{label:'Bass',color:'#7fb0c4',icon:'bass'},
+      strings:{label:'Strings',color:'#d96a4e',icon:'strings'},
+      brass:{label:'Brass',color:'#d99a3f',icon:'brass'},
+      reed:{label:'Reed',color:'#8bbf9e',icon:'reed'},
+      pipe:{label:'Pipe',color:'#8fb6c9',icon:'pipe'},
+      synth:{label:'Synth',color:'#c98fb0',icon:'synth'},
+    };
+    this.INST = INST;
+    const seed = [
+      {num:0,name:'Drums',pan:0,dist:0.26},
+      {num:1,name:'Bass',pan:-6,dist:0.46},
+      {num:2,name:'Electric Guitar',pan:42,dist:0.5},
+      {num:3,name:'Strings',pan:-58,dist:0.7},
+      {num:4,name:'Synth Lead',pan:64,dist:0.58},
+      {num:5,name:'Grand Piano',pan:-30,dist:0.46},
+      {num:6,name:'Brass Section',pan:24,dist:0.74},
+      {num:7,name:'Tenor Sax',pan:-76,dist:0.6},
+    ];
+    this.state = {
+      tracks: seed.map(t => ({...t, id:'t'+t.num, inst:this.matchInstrument(t.name)})),
+      sel: null, active: null, winX: 0, winY: 0,
+    };
+    // geometry constants
+    this.RW = 1102; this.RH = 472; this.LX = 551; this.LY = 439;
+    this.RNEAR = 70; this.RFAR = 392;
+  }
+
+  matchInstrument(name) {
+    const n = name.toLowerCase();
+    const tests = [
+      ['perc','percussion'],['drum','percussion'],['kit','percussion'],['snare','percussion'],
+      ['bass','bass'],
+      ['guitar','guitar'],['gtr','guitar'],
+      ['string','strings'],['violin','strings'],['cello','strings'],['orchestr','strings'],['viola','strings'],
+      ['synth','synth'],['lead','synth'],['pad','synth'],['saw','synth'],['arp','synth'],
+      ['piano','piano'],['keys','piano'],['rhodes','piano'],['wurli','piano'],['key','piano'],
+      ['organ','organ'],['hammond','organ'],
+      ['brass','brass'],['trumpet','brass'],['horn','brass'],['trombone','brass'],['tuba','brass'],
+      ['sax','reed'],['reed','reed'],['clarinet','reed'],['oboe','reed'],['bassoon','reed'],
+      ['flute','pipe'],['pipe','pipe'],['recorder','pipe'],['whistle','pipe'],['piccolo','pipe'],
+    ];
+    for (const [k,inst] of tests) if (n.includes(k)) return inst;
+    return 'synth';
+  }
+  shortName(name){
+    const w = name.trim().split(/\s+/);
+    return (w.length > 1 && name.length > 8) ? w[0] : name;
+  }
+  hexA(hex,a){
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  maxAngle(){ return this.props.soundstage || 72; }
+  panLabel(pan){ const p = Math.round(pan); if (Math.abs(p) <= 2) return 'C'; return (p<0?'L':'R') + Math.abs(p); }
+  place(pan,dist){
+    const a = (pan/100) * this.maxAngle() * Math.PI/180;
+    const r = this.RNEAR + dist*(this.RFAR-this.RNEAR);
+    return { x: this.LX + r*Math.sin(a), y: this.LY - r*Math.cos(a) };
+  }
+  ringR(d){ return this.RNEAR + d*(this.RFAR-this.RNEAR); }
+  pt(ang,r){ const a = ang*Math.PI/180; return { x: this.LX + r*Math.sin(a), y: this.LY - r*Math.cos(a) }; }
+
+  // ---- interactions ----
+  setRoomRef = (el) => { this.roomEl = el; };
+  find(id){ return this.state.tracks.find(t => t.id === id); }
+  updateTrack(id,patch){ this.setState(s => ({ tracks: s.tracks.map(t => t.id===id ? {...t,...patch} : t) })); }
+  resetAll = () => { this.setState(s => ({ tracks: s.tracks.map(t => ({...t, pan:0})) })); };
+
+  mapPointer(cx,cy){
+    const rect = this.roomEl.getBoundingClientRect();
+    const lx = (cx-rect.left) * (this.RW/rect.width);
+    const ly = (cy-rect.top) * (this.RH/rect.height);
+    const dx = lx-this.LX, dy = this.LY-ly;
+    const r = Math.hypot(dx,dy);
+    const ang = Math.atan2(dx,dy)*180/Math.PI;
+    const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+    return {
+      pan: clamp(ang/this.maxAngle()*100,-100,100),
+      dist: clamp((r-this.RNEAR)/(this.RFAR-this.RNEAR),0,1),
+    };
+  }
+  onMove = (e) => {
+    if (!this._drag) return;
+    const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+    if (this._drag.type === 'node') {
+      const v = this.mapPointer(e.clientX,e.clientY);
+      this.updateTrack(this._drag.id, v);
+    } else {
+      const dp = (this._drag.startY - e.clientY) * 0.7;
+      this.updateTrack(this._drag.id, { pan: clamp(this._drag.startPan + dp, -100, 100) });
+    }
+  };
+  onUp = () => {
+    this._drag = null;
+    this.setState({ active: null });
+    window.removeEventListener('pointermove', this.onMove);
+    window.removeEventListener('pointerup', this.onUp);
+  };
+  startNode = (id, e) => {
+    e.preventDefault(); e.stopPropagation();
+    this._drag = { type:'node', id };
+    this.setState({ sel:id, active:id });
+    window.addEventListener('pointermove', this.onMove);
+    window.addEventListener('pointerup', this.onUp);
+  };
+  startKnob = (id, e) => {
+    e.preventDefault();
+    const t = this.find(id);
+    this._drag = { type:'knob', id, startY:e.clientY, startPan:t.pan };
+    this.setState({ sel:id, active:id });
+    window.addEventListener('pointermove', this.onMove);
+    window.addEventListener('pointerup', this.onUp);
+  };
+  onTitleDown = (e) => {
+    if (e.target.closest && e.target.closest('.tb-win')) return;
+    const sx=e.clientX, sy=e.clientY, ox=this.state.winX, oy=this.state.winY;
+    const mv = (ev)=>this.setState({ winX:ox+ev.clientX-sx, winY:oy+ev.clientY-sy });
+    const up = ()=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); };
+    window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up);
+  };
+
+  renderVals(){
+    const accent = this.props.accent || '#e8b04b';
+    const showGuides = this.props.showGuides !== false;
+    const ma = this.maxAngle();
+    const { sel, active } = this.state;
+
+    // distance rings
+    const ringDefs = [[0.16,'NEAR'],[0.42,'MID'],[0.68,'FAR'],[0.94,'BACK']];
+    const rings = ringDefs.map(([d,label]) => {
+      const r = this.ringR(d);
+      const s = this.pt(-ma, r), e = this.pt(ma, r);
+      return {
+        d: `M ${s.x.toFixed(1)} ${s.y.toFixed(1)} A ${r.toFixed(1)} ${r.toFixed(1)} 0 0 1 ${e.x.toFixed(1)} ${e.y.toFixed(1)}`,
+        lx: (s.x-8).toFixed(1), ly: s.y.toFixed(1), label: showGuides ? label : '',
+      };
+    });
+
+    // pan spokes
+    const spokeDefs = [-100,-50,0,50,100];
+    const spokes = spokeDefs.map(pan => {
+      const ang = pan/100*ma;
+      const e = this.pt(ang, this.RFAR+16);
+      const l = this.pt(ang, this.RFAR+30);
+      const center = pan === 0;
+      return {
+        x2: e.x.toFixed(1), y2: e.y.toFixed(1),
+        lx: l.x.toFixed(1), ly: (l.y+3).toFixed(1),
+        label: showGuides ? this.panLabel(pan) : '',
+        stroke: center ? 'rgba(232,176,75,0.28)' : 'rgba(232,212,170,0.08)',
+        w: center ? 1.4 : 1, dash: center ? '6 5' : '2 6',
+        lcolor: center ? '#c8893a' : '#5f574a',
+      };
+    });
+
+    // cone
+    const c1 = this.pt(-ma, this.RFAR), c2 = this.pt(ma, this.RFAR);
+    const cone = `M ${this.LX} ${this.LY} L ${c1.x.toFixed(1)} ${c1.y.toFixed(1)} A ${this.RFAR} ${this.RFAR} 0 0 1 ${c2.x.toFixed(1)} ${c2.y.toFixed(1)} Z`;
+
+    // CLASSIC knob: engraved tick scale (shared by every knob)
+    const rOut = 47;
+    const seg = (a,len) => {
+      const rad = a*Math.PI/180;
+      const x1 = 52 + rOut*Math.sin(rad), y1 = 52 - rOut*Math.cos(rad);
+      const x2 = 52 + (rOut-len)*Math.sin(rad), y2 = 52 - (rOut-len)*Math.cos(rad);
+      return `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+    };
+    let minorD = '', majorD = '', centerD = '';
+    for (let k = 0; k <= 20; k++) {
+      const a = -135 + k*13.5;
+      const isMajor = [-135,-67.5,67.5,135].some(m => Math.abs(m-a) < 0.6);
+      if (Math.abs(a) < 0.6) centerD += seg(a,9) + ' ';
+      else if (isMajor) majorD += seg(a,7) + ' ';
+      else minorD += seg(a,4.5) + ' ';
+    }
+    const ticks = { minor: minorD.trim(), major: majorD.trim(), center: centerD.trim() };
+
+    const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+    const tracks = this.state.tracks.map(t => {
+      const meta = this.INST[t.inst];
+      const col = meta.color;
+      const pos = this.place(t.pan, t.dist);
+      const scale = clamp(1.16 - t.dist*0.46, 0.7, 1.2);
+      const z = Math.round((1-t.dist)*200) + 10;
+      const isSel = sel === t.id;
+      const knobDeg = (t.pan/100)*135;
+
+      // LED lit arc from top (12 o'clock) to pointer
+      let litPath = '';
+      if (Math.abs(knobDeg) >= 2) {
+        const rad = knobDeg*Math.PI/180;
+        const ex = (52 + 44*Math.sin(rad)).toFixed(2);
+        const ey = (52 - 44*Math.cos(rad)).toFixed(2);
+        const sweep = knobDeg >= 0 ? 1 : 0;
+        litPath = `M 52 8 A 44 44 0 0 ${sweep} ${ex} ${ey}`;
+      }
+      const centered = Math.abs(Math.round(t.pan)) <= 2;
+      const vol = -(t.dist*9);
+
+      const tokenStyle = `width:54px;height:54px;border-radius:50%;display:grid;place-items:center;color:${col};`
+        + `background:radial-gradient(circle at 50% 36%,#2e2820,#16120c);`
+        + `border:${isSel?2:1.5}px solid ${col};transform:scale(${scale.toFixed(3)});transform-origin:center;`
+        + (isSel
+            ? `box-shadow:0 10px 24px -6px #000,0 0 22px ${this.hexA(col,0.55)},0 0 0 5px ${this.hexA(accent,0.22)},inset 0 1px 0 rgba(255,240,210,0.08);`
+            : `box-shadow:0 7px 18px -7px #000,0 0 0 4px ${this.hexA(col,0.08)},inset 0 1px 0 rgba(255,240,210,0.06);`)
+        + `cursor:grab;`;
+
+      const labelStyle = `position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:7px;white-space:nowrap;`
+        + `font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;`
+        + (isSel
+            ? `color:#241a0a;background:${accent};box-shadow:0 0 10px ${this.hexA(accent,0.4)};`
+            : `color:#d8cdb6;background:rgba(20,16,11,0.82);border:1px solid rgba(232,212,170,0.12);`);
+
+      const volStyle = `position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:6px;white-space:nowrap;`
+        + `font-family:'Space Mono',monospace;font-size:9.5px;color:${isSel?'#b0a690':'#5f574a'};`
+        + (isSel ? 'opacity:1;' : 'opacity:0.65;');
+
+      const cellStyle = `display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 9px 11px;border-radius:11px;cursor:pointer;`
+        + (isSel ? `background:rgba(232,176,75,0.07);box-shadow:inset 0 0 0 1px ${this.hexA(accent,0.25)};` : `background:transparent;box-shadow:inset 0 0 0 1px transparent;`);
+
+      const dotPos = 50 + (t.pan/100)*48;
+
+      return {
+        ...t,
+        shortName: this.shortName(t.name),
+        iconId: meta.icon, color: col,
+        panLabel: this.panLabel(t.pan),
+        volLabel: (vol>-0.05?'0.0':vol.toFixed(1)) + ' dB',
+        knobDeg: knobDeg.toFixed(2),
+        litPath,
+        litStyle: `filter:drop-shadow(0 0 3px ${col})`,
+        detentColor: centered ? accent : '#4a4338',
+        pointerStyle: 'filter:drop-shadow(0 0 4px rgba(243,234,216,0.5))',
+        knobStyle: `cursor:ns-resize;touch-action:none;` + (active===t.id ? `filter:drop-shadow(0 0 12px ${this.hexA(accent,0.4)})` : ''),
+        barDotStyle: `position:absolute;top:50%;left:${dotPos.toFixed(2)}%;width:9px;height:9px;border-radius:50%;background:${col};transform:translate(-50%,-50%);box-shadow:0 0 7px ${col}`,
+        nodeStyle: `position:absolute;left:${pos.x.toFixed(1)}px;top:${pos.y.toFixed(1)}px;transform:translate(-50%,-50%);z-index:${isSel?400:z};touch-action:none`,
+        tokenStyle, labelStyle, volStyle, cellStyle,
+        onNodeDown: (e)=>this.startNode(t.id,e),
+        onKnobDown: (e)=>this.startKnob(t.id,e),
+        onReset: ()=>this.updateTrack(t.id,{pan:0}),
+        onSelect: ()=>this.setState({sel:t.id}),
+      };
+    });
+
+    // selection HUD + guide line
+    let selLine = 'Select a track to inspect';
+    let guide = { x:this.LX, y:this.LY, color:accent, style:'opacity:0' };
+    if (sel) {
+      const t = this.state.tracks.find(x => x.id===sel);
+      if (t) {
+        const pos = this.place(t.pan,t.dist);
+        const vol = -(t.dist*9);
+        const distName = t.dist<0.33?'near':t.dist<0.66?'mid':'far';
+        selLine = `${t.name}  ·  ${this.panLabel(t.pan)}  ·  ${distName} ${(vol>-0.05?'0.0':vol.toFixed(1))}dB`;
+        guide = { x:pos.x.toFixed(1), y:pos.y.toFixed(1), color:this.hexA(this.INST[t.inst].color,0.7), style:'opacity:0.9' };
+      }
+    }
+
+    return {
+      tracks, rings, spokes, cone, guide, selLine, ticks, accent,
+      trackCount: this.state.tracks.length,
+      resetAll: this.resetAll,
+      onTitleDown: this.onTitleDown,
+      setRoomRef: this.setRoomRef,
+      winStyle: `transform:translate(${this.state.winX}px,${this.state.winY}px)`,
+    };
+  }
+}
+</script>
+</body>
+</html>

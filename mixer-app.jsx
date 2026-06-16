@@ -171,48 +171,48 @@ function MixerApp() {
     <div className="mixer-app">
       {/* Custom Titlebar */}
       <div className="mixer-titlebar" style={{ position: "relative" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon name="mixer" size={14} style={{ color: "var(--amber)" }} />
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".06em", color: "var(--cream-2)" }}>MIXER CONSOLE</span>
-        </div>
-        <div className="title-c" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "auto", whiteSpace: "nowrap" }}>
-          <span>FocusDAW Studio <b>Mixer</b></span>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 4px",
-            borderRadius: 999, background: "linear-gradient(180deg,var(--bg2),var(--bg))",
-            border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)" }}>
-            <button
-              title="Stop"
-              onClick={(e) => { channel.postMessage({ type: "REQUEST_STOP" }); e.currentTarget.blur(); }}
-              style={{ width: 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
-                outline: "none", color: "var(--cream-2)",
-                background: "linear-gradient(180deg,var(--surface3),var(--surface2))",
-                border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
-              <Icon name="stop" size={11} fill />
-            </button>
-            <button
-              title="Play / Pause"
-              onClick={(e) => { channel.postMessage({ type: "REQUEST_PLAY_PAUSE" }); e.currentTarget.blur(); }}
-              style={{ width: 34, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
-                outline: "none", color: playing ? "#241a0a" : "var(--cream-2)",
-                background: playing
-                  ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
-                  : "linear-gradient(180deg,var(--surface3),var(--surface2))",
-                border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"),
-                boxShadow: playing ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)" }}>
-              <Icon name={playing ? "pause" : "play"} size={14} fill />
-            </button>
-          </div>
-        </div>
+        <div className="title-c">FocusDAW Studio <b>Mixer</b></div>
         {(!isMac && window.electronAPI) ? (
           <div className="window-controls" style={{ marginLeft: "auto" }}>
-            <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "minimize")} title="Minimize">—</button>
-            <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "maximize")} title="Maximize">▢</button>
-            <button className="window-control close" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "close")} title="Close">×</button>
+            <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "minimize")} title="Minimize" aria-label="Minimize"><span aria-hidden="true">-</span></button>
+            <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "maximize")} title="Maximize" aria-label="Maximize"><span aria-hidden="true">□</span></button>
+            <button className="window-control close" onMouseDown={suppressFocus} onClick={(e) => handleWindowButton(e, "close")} title="Close" aria-label="Close"><span aria-hidden="true">×</span></button>
           </div>
         ) : (
           <div style={{ width: 80, marginLeft: "auto" }} />
         )}
+      </div>
+
+      <div className="mixer-toolbar">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Icon name="mixer" size={14} style={{ color: "var(--amber)" }} />
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".06em", color: "var(--cream-2)" }}>MIXER CONSOLE</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 4px",
+          borderRadius: 999, background: "linear-gradient(180deg,var(--bg2),var(--bg))",
+          border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)" }}>
+          <button
+            title="Stop"
+            onClick={(e) => { channel.postMessage({ type: "REQUEST_STOP" }); e.currentTarget.blur(); }}
+            style={{ width: 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+              outline: "none", color: "var(--cream-2)",
+              background: "linear-gradient(180deg,var(--surface3),var(--surface2))",
+              border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+            <Icon name="stop" size={11} fill />
+          </button>
+          <button
+            title="Play / Pause"
+            onClick={(e) => { channel.postMessage({ type: "REQUEST_PLAY_PAUSE" }); e.currentTarget.blur(); }}
+            style={{ width: 34, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
+              outline: "none", color: playing ? "#241a0a" : "var(--cream-2)",
+              background: playing
+                ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
+                : "linear-gradient(180deg,var(--surface3),var(--surface2))",
+              border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"),
+              boxShadow: playing ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+            <Icon name={playing ? "pause" : "play"} size={14} fill />
+          </button>
+        </div>
       </div>
 
       {/* Mixer Console Container */}
@@ -242,6 +242,7 @@ function MixerApp() {
             force(n => n + 1);
           }}
           onBeforeChange={() => channel.postMessage({ type: "BEFORE_CHANGE" })}
+          onOpenAdvancedPan={() => channel.postMessage({ type: "REQUEST_ADVANCED_PAN" })}
         />
       </div>
     </div>

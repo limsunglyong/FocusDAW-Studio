@@ -12,6 +12,7 @@ const jsxFiles = [
   "ui-mixer.jsx",
   "ui-dialogs.jsx",
   "ui-help.jsx",
+  "advanced-pan-app.jsx",
   "app.jsx",
   "mixer-app.jsx",
 ];

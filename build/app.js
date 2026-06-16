@@ -206,7 +206,7 @@ function recentDateLabel(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedPan, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -254,11 +254,14 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
     { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo }
   ];
+  const advancedItems = [
+    { label: "Auto Panning", icon: "auto", onClick: onAdvancedPan }
+  ];
   const helpItems = [
     { label: "Manual", icon: "book", onClick: onHelpManual },
     { label: "About", icon: "info", onClick: onHelpAbout }
   ];
-  return /* @__PURE__ */ React.createElement("div", { className: "menubar" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingRight: 6 } }, /* @__PURE__ */ React.createElement(Logo, { size: 30 })), /* @__PURE__ */ React.createElement(Dropdown, { label: "Project", items: projectItems, accent: true }), /* @__PURE__ */ React.createElement(Dropdown, { label: "Edit", items: editItems }), /* @__PURE__ */ React.createElement("div", { className: "menu-item", onClick: onSettings, style: { cursor: "pointer" } }, "Settings"), /* @__PURE__ */ React.createElement(Dropdown, { label: "Help", items: helpItems }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 } }, /* @__PURE__ */ React.createElement(MenuTransport, null)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), editing ? /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "menubar" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingRight: 6 } }, /* @__PURE__ */ React.createElement(Logo, { size: 30 })), /* @__PURE__ */ React.createElement(Dropdown, { label: "Project", items: projectItems, accent: true }), /* @__PURE__ */ React.createElement(Dropdown, { label: "Edit", items: editItems }), /* @__PURE__ */ React.createElement(Dropdown, { label: "Advanced Effects", items: advancedItems }), /* @__PURE__ */ React.createElement("div", { className: "menu-item", onClick: onSettings, style: { cursor: "pointer" } }, "Settings"), /* @__PURE__ */ React.createElement(Dropdown, { label: "Help", items: helpItems }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 } }, /* @__PURE__ */ React.createElement(MenuTransport, null)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), editing ? /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "project-name-edit",
@@ -1118,7 +1121,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
   const [ampZoom, setAmp] = useState(1);
   const [showMixer, setShowMixer] = useState(false);
+  const [showAdvancedPan, setShowAdvancedPan] = useState(false);
   const mixerChannelRef = useRef(null);
+  const advancedChannelRef = useRef(null);
   useEffect(() => {
     if (showMixer && mixerChannelRef.current) {
       const trackLevels = {};
@@ -1182,6 +1187,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       });
     }
   }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme]);
+  useEffect(() => {
+    if (showAdvancedPan && advancedChannelRef.current) {
+      advancedChannelRef.current.postMessage({
+        type: "SYNC_STATE",
+        tracks: DAW.tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          fileName: t.fileName,
+          color: t.color,
+          params: { ...t.params }
+        })),
+        theme
+      });
+    }
+  }, [showAdvancedPan, currentTracksStateStr, theme]);
   useEffect(() => {
     if (showMixer && window.electronAPI && window.electronAPI.resizeMixer) {
       window.electronAPI.resizeMixer(DAW.tracks.length);
@@ -1258,6 +1278,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const openMixerIfClosed = useCallback(() => {
     if (!showMixer) toggleMixer();
   }, [showMixer, toggleMixer]);
+  const openAdvancedPan = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.openAdvancedPan) {
+      window.electronAPI.openAdvancedPan();
+      return;
+    }
+    const features = "width=1120,height=760,resizable=yes,scrollbars=no";
+    const popup = window.open("advanced-pan.html", "FocusDAWAdvancedPan", features);
+    if (popup) setShowAdvancedPan(true);
+  }, []);
   useEffect(() => {
     if (!showMixer) {
       if (document.activeElement && typeof document.activeElement.blur === "function") {
@@ -1562,6 +1591,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           DAW.stop();
           force((n) => n + 1);
           break;
+        case "REQUEST_ADVANCED_PAN":
+          openAdvancedPan();
+          break;
         case "SET_TRACK_PARAM":
           DAW.setTrackParam(msg.id, msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
@@ -1598,6 +1630,61 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       channel.close();
       mixerChannelRef.current = null;
       if (unsubMixerState) unsubMixerState();
+    };
+  }, [projectName, projectPath, pushUndo, undo, redo, openAdvancedPan]);
+  useEffect(() => {
+    const channel = new BroadcastChannel("focusdaw-advanced-effects-sync");
+    advancedChannelRef.current = channel;
+    const sendInit = () => {
+      channel.postMessage({
+        type: "INIT_STATE",
+        tracks: DAW.tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          fileName: t.fileName,
+          color: t.color,
+          params: { ...t.params }
+        })),
+        theme: localStorage.getItem("focusdaw-theme") || "default"
+      });
+    };
+    const handleMessage = (e) => {
+      const msg = e.data;
+      if (!msg) return;
+      switch (msg.type) {
+        case "ADVANCED_READY":
+          sendInit();
+          break;
+        case "BEFORE_CHANGE":
+          pushUndo();
+          break;
+        case "REQUEST_UNDO":
+          undo();
+          break;
+        case "REQUEST_REDO":
+          redo();
+          break;
+        case "SET_TRACK_PARAM":
+          DAW.setTrackParam(msg.id, msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        default:
+          break;
+      }
+    };
+    channel.addEventListener("message", handleMessage);
+    let unsubAdvancedPanState = null;
+    if (window.electronAPI && window.electronAPI.onAdvancedPanState) {
+      unsubAdvancedPanState = window.electronAPI.onAdvancedPanState((state) => {
+        setShowAdvancedPan(state);
+      });
+    }
+    return () => {
+      channel.removeEventListener("message", handleMessage);
+      channel.close();
+      advancedChannelRef.current = null;
+      if (unsubAdvancedPanState) unsubAdvancedPanState();
     };
   }, [projectName, projectPath, pushUndo, undo, redo]);
   const scrollArrangeTo = useCallback((sl) => {
@@ -1953,10 +2040,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onSave: saveProject,
       onOpenProject: window.electronAPI ? () => openProjectFile(null) : () => focusRef.current && focusRef.current.click(),
       onOpenRecentProject: (json, path) => loadProjectJson(json, path || null),
+      onOpenAdvancedPan: openAdvancedPan,
       onUndo: undo,
       onRedo: redo
     });
-  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, undo, redo]);
+  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedPan, undo, redo]);
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) {
@@ -2170,7 +2258,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         },
         onOpenMixer: openMixerIfClosed,
         onBeforeChange: pushUndo,
-        onClearMuteSolo: clearMuteSolo
+        onClearMuteSolo: clearMuteSolo,
+        onOpenAdvancedPan: openAdvancedPan
       }
     ), /* @__PURE__ */ React.createElement("div", { style: { height: 40 } }))
   ), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), /* @__PURE__ */ React.createElement(LoadingOverlay, { state: loading }));
@@ -2244,6 +2333,7 @@ function App() {
       onOpenProject: () => H.onOpenProject && H.onOpenProject(),
       onOpenRecentProject: (json, path) => H.onOpenRecentProject && H.onOpenRecentProject(json, path),
       onSettings: () => setShowSettings(true),
+      onAdvancedPan: () => H.onOpenAdvancedPan && H.onOpenAdvancedPan(),
       onUndo: () => H.onUndo && H.onUndo(),
       onRedo: () => H.onRedo && H.onRedo(),
       canUndo: undoState.canUndo,

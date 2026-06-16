@@ -319,7 +319,7 @@ const EQ_PRESET_BTNS = [
   ["Classic", "Classic", "var(--blue)"],
   ["HIP HOP", "HipHop", "var(--violet)"],
 ];
-function MasterPanel({ level, master, onMaster, onBeforeChange }) {
+function MasterPanel({ level, master, onMaster, onBeforeChange, onOpenAdvancedPan }) {
   const [view, setView] = useState("eq");
   const [, force] = useState(0);
   const stereo = DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : { l: level, r: level };
@@ -371,6 +371,10 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: "var(--muted)", textTransform: "uppercase" }}>Output Effects</span>
         <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+        <button onClick={(e) => { onOpenAdvancedPan && onOpenAdvancedPan(); e.currentTarget.blur(); }} className="chip"
+          style={{ fontSize: 9, cursor: "pointer", color: "var(--amber)", background: "var(--amber-soft)", border: "1px solid var(--line)" }}>
+          Advanced
+        </button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
         <FxCard icon="disc" name="Reverb" paramKey="reverb" color="var(--violet)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} sliderWidth={64} />
@@ -429,7 +433,7 @@ function MixerWindow({ onClose, onBeforeChange }) {
 }
 
 /* ---------- output effect track (master fade + EQ overlay on timeline) ---------- */
-function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo }) {
+function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo, onOpenAdvancedPan }) {
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const m = DAW.master;
@@ -473,6 +477,11 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
         <div style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
           <Icon name="eq" size={15} style={{ color: "var(--outfx-fg)", flex: "0 0 auto" }} />
           <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: ".05em", color: "var(--outfx-fg)" }}>OUTPUT&nbsp;FX</span>
+          <button className="chip" onClick={onOpenAdvancedPan} style={{ fontSize: 9, cursor: "pointer", color: "var(--amber)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cream)"; e.currentTarget.style.background = "var(--surface3)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--amber)"; e.currentTarget.style.background = "var(--surface2)"; }}>
+            Advanced
+          </button>
           <button className="chip" onClick={onClearMuteSolo} style={{ fontSize: 9, marginLeft: "auto", cursor: "pointer" }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cream)"; e.currentTarget.style.background = "var(--surface3)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--dim)"; e.currentTarget.style.background = "var(--surface2)"; }}>

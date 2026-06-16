@@ -202,7 +202,7 @@ function recentDateLabel(ms) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedPan, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -253,6 +253,9 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
     { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo },
   ];
+  const advancedItems = [
+    { label: "Auto Panning", icon: "auto", onClick: onAdvancedPan },
+  ];
   const helpItems = [
     { label: "Manual", icon: "book", onClick: onHelpManual },
     { label: "About", icon: "info", onClick: onHelpAbout },
@@ -262,6 +265,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
       <div style={{ display: "flex", alignItems: "center", paddingRight: 6 }}><Logo size={30} /></div>
       <Dropdown label="Project" items={projectItems} accent />
       <Dropdown label="Edit" items={editItems} />
+      <Dropdown label="Advanced Effects" items={advancedItems} />
       <div className="menu-item" onClick={onSettings} style={{ cursor: "pointer" }}>Settings</div>
       <Dropdown label="Help" items={helpItems} />
       <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 }}>
@@ -965,7 +969,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
   const [ampZoom, setAmp] = useState(1);
   const [showMixer, setShowMixer] = useState(false);
+  const [showAdvancedPan, setShowAdvancedPan] = useState(false);
   const mixerChannelRef = useRef(null);
+  const advancedChannelRef = useRef(null);
 
   // Broadcast real-time level meter and FFT spectrum data to mixer window (runs every frame via useTick)
   useEffect(() => {
@@ -1035,6 +1041,22 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       });
     }
   }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme]);
+
+  useEffect(() => {
+    if (showAdvancedPan && advancedChannelRef.current) {
+      advancedChannelRef.current.postMessage({
+        type: "SYNC_STATE",
+        tracks: DAW.tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          fileName: t.fileName,
+          color: t.color,
+          params: { ...t.params },
+        })),
+        theme,
+      });
+    }
+  }, [showAdvancedPan, currentTracksStateStr, theme]);
 
   // Resize the Electron mixer window only when the channel COUNT changes.
   // Previously this lived in the SYNC_STATE effect (keyed on theme/params too),
@@ -1121,6 +1143,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const openMixerIfClosed = useCallback(() => {
     if (!showMixer) toggleMixer();
   }, [showMixer, toggleMixer]);
+
+  const openAdvancedPan = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.openAdvancedPan) {
+      window.electronAPI.openAdvancedPan();
+      return;
+    }
+    const features = "width=1120,height=760,resizable=yes,scrollbars=no";
+    const popup = window.open("advanced-pan.html", "FocusDAWAdvancedPan", features);
+    if (popup) setShowAdvancedPan(true);
+  }, []);
 
   useEffect(() => {
     if (!showMixer) {
@@ -1459,6 +1491,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           force((n) => n + 1);
           break;
 
+        case "REQUEST_ADVANCED_PAN":
+          openAdvancedPan();
+          break;
+
         case "SET_TRACK_PARAM":
           DAW.setTrackParam(msg.id, msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
@@ -1502,6 +1538,69 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       channel.close();
       mixerChannelRef.current = null;
       if (unsubMixerState) unsubMixerState();
+    };
+  }, [projectName, projectPath, pushUndo, undo, redo, openAdvancedPan]);
+
+  // BroadcastChannel for Advanced Effect Factory windows.
+  useEffect(() => {
+    const channel = new BroadcastChannel("focusdaw-advanced-effects-sync");
+    advancedChannelRef.current = channel;
+
+    const sendInit = () => {
+      channel.postMessage({
+        type: "INIT_STATE",
+        tracks: DAW.tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          fileName: t.fileName,
+          color: t.color,
+          params: { ...t.params },
+        })),
+        theme: localStorage.getItem("focusdaw-theme") || "default",
+      });
+    };
+
+    const handleMessage = (e) => {
+      const msg = e.data;
+      if (!msg) return;
+
+      switch (msg.type) {
+        case "ADVANCED_READY":
+          sendInit();
+          break;
+        case "BEFORE_CHANGE":
+          pushUndo();
+          break;
+        case "REQUEST_UNDO":
+          undo();
+          break;
+        case "REQUEST_REDO":
+          redo();
+          break;
+        case "SET_TRACK_PARAM":
+          DAW.setTrackParam(msg.id, msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        default:
+          break;
+      }
+    };
+
+    channel.addEventListener("message", handleMessage);
+
+    let unsubAdvancedPanState = null;
+    if (window.electronAPI && window.electronAPI.onAdvancedPanState) {
+      unsubAdvancedPanState = window.electronAPI.onAdvancedPanState((state) => {
+        setShowAdvancedPan(state);
+      });
+    }
+
+    return () => {
+      channel.removeEventListener("message", handleMessage);
+      channel.close();
+      advancedChannelRef.current = null;
+      if (unsubAdvancedPanState) unsubAdvancedPanState();
     };
   }, [projectName, projectPath, pushUndo, undo, redo]);
 
@@ -1850,10 +1949,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         ? () => openProjectFile(null)
         : () => focusRef.current && focusRef.current.click(),
       onOpenRecentProject: (json, path) => loadProjectJson(json, path || null),
+      onOpenAdvancedPan: openAdvancedPan,
       onUndo: undo,
       onRedo: redo,
     });
-  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, undo, redo]);
+  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedPan, undo, redo]);
 
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
@@ -1996,7 +2096,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
               onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }}
               onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
-              onClearMuteSolo={clearMuteSolo} />
+              onClearMuteSolo={clearMuteSolo}
+              onOpenAdvancedPan={openAdvancedPan} />
             <div style={{ height: 40 }} />
           </React.Fragment>
         )}
@@ -2077,6 +2178,7 @@ function App() {
         onOpenProject={() => H.onOpenProject && H.onOpenProject()}
         onOpenRecentProject={(json, path) => H.onOpenRecentProject && H.onOpenRecentProject(json, path)}
         onSettings={() => setShowSettings(true)}
+        onAdvancedPan={() => H.onOpenAdvancedPan && H.onOpenAdvancedPan()}
         onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
         canUndo={undoState.canUndo} canRedo={undoState.canRedo}
         onHelpManual={openHelpManual}

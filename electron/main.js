@@ -95,8 +95,10 @@ function buildLoudnormFilter(ln, measured, printFormat) {
 
 let mainWindow = null;
 let mixerWindow = null;
+let advancedPanWindow = null;
 let helpWindow = null;
 let forceCloseMixerWindow = false;
+let forceCloseAdvancedPanWindow = false;
 
 function createWindow() {
   const isMac = process.platform === 'darwin';
@@ -136,6 +138,10 @@ function createWindow() {
     if (mixerWindow && !mixerWindow.isDestroyed()) {
       forceCloseMixerWindow = true;
       mixerWindow.close();
+    }
+    if (advancedPanWindow && !advancedPanWindow.isDestroyed()) {
+      forceCloseAdvancedPanWindow = true;
+      advancedPanWindow.close();
     }
     if (helpWindow && !helpWindow.isDestroyed()) {
       helpWindow.close();
@@ -543,6 +549,7 @@ ipcMain.handle('open-help', async () => {
 // By using delta-based calculations relative to the initial loaded size, we isolate
 // and eliminate the OS-level frameless resize-hit inset (#51679) feedback loop.
 let mixerWinBounds = null;   // { x, y, width, height }
+let advancedPanWinBounds = null; // { x, y, width, height }
 let isMixerBoundsReset = false;
 let isMixerFullyLoaded = false;
 
@@ -552,10 +559,18 @@ let initialContentWidth = 0;
 let initialContentHeight = 0;
 
 const MIXER_HEIGHT = 490;
+const ADVANCED_PAN_WIDTH = 1162;
+const ADVANCED_PAN_HEIGHT = 820;
 
 function sendMixerState(isOpen) {
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.send('mixer-state', isOpen);
+  }
+}
+
+function sendAdvancedPanState(isOpen) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send('advanced-pan-state', isOpen);
   }
 }
 
@@ -570,6 +585,17 @@ function hideMixerWindow() {
   }
   mixerWindow.hide();
   sendMixerState(false);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.focus();
+  }
+}
+
+function hideAdvancedPanWindow() {
+  if (!advancedPanWindow || advancedPanWindow.isDestroyed()) return;
+  const cb = advancedPanWindow.getContentBounds();
+  advancedPanWinBounds = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+  advancedPanWindow.hide();
+  sendAdvancedPanState(false);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.focus();
   }
@@ -687,6 +713,77 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   });
 
   sendMixerState(true);
+});
+
+ipcMain.handle('open-advanced-pan', async () => {
+  if (advancedPanWindow && !advancedPanWindow.isDestroyed()) {
+    const cb = advancedPanWindow.getContentBounds();
+    if (cb.width < ADVANCED_PAN_WIDTH || cb.height < ADVANCED_PAN_HEIGHT) {
+      advancedPanWindow.setContentSize(Math.max(cb.width, ADVANCED_PAN_WIDTH), Math.max(cb.height, ADVANCED_PAN_HEIGHT));
+    }
+    advancedPanWindow.show();
+    advancedPanWindow.focus();
+    sendAdvancedPanState(true);
+    return;
+  }
+
+  const isMac = process.platform === 'darwin';
+  const savedBounds = advancedPanWinBounds
+    ? {
+        ...advancedPanWinBounds,
+        width: Math.max(ADVANCED_PAN_WIDTH, advancedPanWinBounds.width || 0),
+        height: Math.max(ADVANCED_PAN_HEIGHT, advancedPanWinBounds.height || 0),
+      }
+    : null;
+  const bounds = savedBounds
+    ? clampMixerBounds(savedBounds)
+    : null;
+
+  advancedPanWindow = new BrowserWindow({
+    width: bounds ? bounds.width : ADVANCED_PAN_WIDTH,
+    height: bounds ? bounds.height : ADVANCED_PAN_HEIGHT,
+    useContentSize: true,
+    minWidth: Math.min(ADVANCED_PAN_WIDTH, screen.getPrimaryDisplay().workArea.width),
+    minHeight: Math.min(ADVANCED_PAN_HEIGHT, screen.getPrimaryDisplay().workArea.height),
+    parent: mainWindow || undefined,
+    icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+    backgroundColor: '#1b1712',
+    title: 'FocusDAW Advanced Effect Factory',
+  });
+
+  advancedPanWindow.loadFile(path.join(__dirname, '..', 'advanced-pan.html'));
+  if (bounds) advancedPanWindow.setContentBounds(bounds);
+
+  const captureBounds = () => {
+    if (advancedPanWindow && !advancedPanWindow.isDestroyed()) {
+      const cb = advancedPanWindow.getContentBounds();
+      advancedPanWinBounds = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+    }
+  };
+  advancedPanWindow.on('moved', captureBounds);
+  advancedPanWindow.on('resized', captureBounds);
+
+  advancedPanWindow.on('close', (event) => {
+    if (!forceCloseAdvancedPanWindow) {
+      event.preventDefault();
+      hideAdvancedPanWindow();
+    }
+  });
+
+  advancedPanWindow.on('closed', () => {
+    forceCloseAdvancedPanWindow = false;
+    advancedPanWindow = null;
+    sendAdvancedPanState(false);
+  });
+
+  sendAdvancedPanState(true);
 });
 
 ipcMain.handle('close-mixer', async () => {

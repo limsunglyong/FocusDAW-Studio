@@ -340,7 +340,7 @@ const EQ_PRESET_BTNS = [
   ["Classic", "Classic", "var(--blue)"],
   ["HIP HOP", "HipHop", "var(--violet)"]
 ];
-function MasterPanel({ level, master, onMaster, onBeforeChange }) {
+function MasterPanel({ level, master, onMaster, onBeforeChange, onOpenAdvancedPan }) {
   const [view, setView] = useState("eq");
   const [, force] = useState(0);
   const stereo = DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : { l: level, r: level };
@@ -395,7 +395,18 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
     },
     /* @__PURE__ */ React.createElement("span", { style: { width: 6, height: 6, borderRadius: 2, background: col } }),
     lbl
-  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: "var(--muted)", textTransform: "uppercase" } }, "Output Effects"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 1, background: "var(--line)" } })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 } }, /* @__PURE__ */ React.createElement(FxCard, { icon: "disc", name: "Reverb", paramKey: "reverb", color: "var(--violet)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement(FxCard, { icon: "loop", name: "Delay", paramKey: "echo", color: "var(--blue)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement(FxCard, { icon: "wave", name: "Saturation", paramKey: "saturation", color: "var(--red)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement(FxCard, { icon: "auto", name: "Widener", paramKey: "widener", color: "var(--amber)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "span 2" } }, /* @__PURE__ */ React.createElement(FxCard, { icon: "eq", name: "Exciter / Enhancer", paramKey: "exciter", color: "var(--green)", master, onMaster, onBeforeChange, sliderWidth: 250 }))));
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: "var(--muted)", textTransform: "uppercase" } }, "Output Effects"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 1, background: "var(--line)" } }), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: (e) => {
+        onOpenAdvancedPan && onOpenAdvancedPan();
+        e.currentTarget.blur();
+      },
+      className: "chip",
+      style: { fontSize: 9, cursor: "pointer", color: "var(--amber)", background: "var(--amber-soft)", border: "1px solid var(--line)" }
+    },
+    "Advanced"
+  )), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 } }, /* @__PURE__ */ React.createElement(FxCard, { icon: "disc", name: "Reverb", paramKey: "reverb", color: "var(--violet)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement(FxCard, { icon: "loop", name: "Delay", paramKey: "echo", color: "var(--blue)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement(FxCard, { icon: "wave", name: "Saturation", paramKey: "saturation", color: "var(--red)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement(FxCard, { icon: "auto", name: "Widener", paramKey: "widener", color: "var(--amber)", master, onMaster, onBeforeChange, sliderWidth: 64 }), /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "span 2" } }, /* @__PURE__ */ React.createElement(FxCard, { icon: "eq", name: "Exciter / Enhancer", paramKey: "exciter", color: "var(--green)", master, onMaster, onBeforeChange, sliderWidth: 250 }))));
 }
 function MixerWindow({ onClose, onBeforeChange }) {
   useTick();
@@ -469,7 +480,7 @@ function MixerWindow({ onClose, onBeforeChange }) {
     "\xD7"
   )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", overflowX: "auto", maxWidth: "100%", background: "var(--bg)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flex: "0 0 auto" } }, DAW.tracks.map((t) => /* @__PURE__ */ React.createElement(ChannelStrip, { key: t.id, track: t, level: DAW.getTrackLevel(t.id), onParam: param(t.id), onBeforeChange }))), /* @__PURE__ */ React.createElement(MasterPanel, { level: DAW.getMasterLevel(), master: DAW.master, onMaster: (k, v) => DAW.setMaster(k, v), onBeforeChange })));
 }
-function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo }) {
+function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo, onOpenAdvancedPan }) {
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const m = DAW.master;
@@ -523,6 +534,22 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
     flexDirection: "column",
     gap: 8
   } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement(Icon, { name: "eq", size: 15, style: { color: "var(--outfx-fg)", flex: "0 0 auto" } }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 12, letterSpacing: ".05em", color: "var(--outfx-fg)" } }, "OUTPUT\xA0FX"), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "chip",
+      onClick: onOpenAdvancedPan,
+      style: { fontSize: 9, cursor: "pointer", color: "var(--amber)" },
+      onMouseEnter: (e) => {
+        e.currentTarget.style.color = "var(--cream)";
+        e.currentTarget.style.background = "var(--surface3)";
+      },
+      onMouseLeave: (e) => {
+        e.currentTarget.style.color = "var(--amber)";
+        e.currentTarget.style.background = "var(--surface2)";
+      }
+    },
+    "Advanced"
+  ), /* @__PURE__ */ React.createElement(
     "button",
     {
       className: "chip",

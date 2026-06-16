@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   winAction:      (action)        => ipcRenderer.invoke('win-action', action),
   onWinState:     (cb)            => ipcRenderer.on('win-state', (_, s) => cb(s)),
   openHelp:       ()              => ipcRenderer.invoke('open-help'),
+  openAdvancedPan: ()             => ipcRenderer.invoke('open-advanced-pan'),
 
   // Mixer window controls
   openMixer:      (tracksCount)   => ipcRenderer.invoke('open-mixer', tracksCount),
@@ -39,5 +40,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_, state) => cb(state);
     ipcRenderer.on('mixer-state', listener);
     return () => ipcRenderer.removeListener('mixer-state', listener);
+  },
+  onAdvancedPanState: (cb)        => {
+    const listener = (_, state) => cb(state);
+    ipcRenderer.on('advanced-pan-state', listener);
+    return () => ipcRenderer.removeListener('advanced-pan-state', listener);
   }
 });
