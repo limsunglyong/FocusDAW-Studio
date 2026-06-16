@@ -620,6 +620,7 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
   return /* @__PURE__ */ React.createElement(
     "div",
     {
+      className: "key-indicator",
       onMouseEnter: () => onMouseInside(true),
       onMouseLeave: () => onMouseInside(false),
       style: { position: "relative", zIndex: 30, width: 64, height: TOOLBAR_PANEL_H, flex: "0 0 64px" }
@@ -760,6 +761,7 @@ function BpmIndicator({
   return /* @__PURE__ */ React.createElement(
     "div",
     {
+      className: "bpm-indicator",
       onMouseEnter: () => onMouseInside(true),
       onMouseLeave: () => onMouseInside(false),
       onWheel,
@@ -1796,17 +1798,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   useEffect(() => {
     if (!bpmOpen) return;
     const timer = setInterval(() => {
-      if (!bpmHover && Date.now() - bpmTouchedAt >= 5e3) setBpmOpen(false);
+      const el = document.querySelector(".bpm-indicator");
+      const hovered = el ? el.matches(":hover") : false;
+      if (!hovered && Date.now() - bpmTouchedAt >= 5e3) setBpmOpen(false);
     }, 500);
     return () => clearInterval(timer);
-  }, [bpmOpen, bpmHover, bpmTouchedAt]);
+  }, [bpmOpen, bpmTouchedAt]);
   useEffect(() => {
     if (!keyOpen) return;
     const timer = setInterval(() => {
-      if (!keyHover && Date.now() - keyTouchedAt >= 5e3) setKeyOpen(false);
+      const el = document.querySelector(".key-indicator");
+      const hovered = el ? el.matches(":hover") : false;
+      if (!hovered && Date.now() - keyTouchedAt >= 5e3) setKeyOpen(false);
     }, 500);
     return () => clearInterval(timer);
-  }, [keyOpen, keyHover, keyTouchedAt]);
+  }, [keyOpen, keyTouchedAt]);
   useEffect(() => {
     if (!bpmOpen) {
       tapTimesRef.current = [];

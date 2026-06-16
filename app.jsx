@@ -583,7 +583,7 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
   const shiftText = pitchShift > 0 ? `+${pitchShift}` : `${pitchShift}`;
 
   return (
-    <div onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)}
+    <div className="key-indicator" onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)}
       style={{ position: "relative", zIndex: 30, width: 64, height: TOOLBAR_PANEL_H, flex: "0 0 64px" }}>
       <button title="Project key — click to detect" onClick={onToggle}
         style={{ position: "relative", zIndex: 1, height: TOOLBAR_PANEL_H, width: 64, padding: 0, cursor: "pointer",
@@ -708,7 +708,7 @@ function BpmIndicator({
     adjust(e.deltaY < 0 ? 1 : -1, e);
   };
   return (
-    <div onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)} onWheel={onWheel}
+    <div className="bpm-indicator" onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)} onWheel={onWheel}
       style={{ position: "relative", zIndex: 30, width: 150, height: TOOLBAR_PANEL_H, flex: "0 0 150px" }}>
       <div style={{ position: "absolute", right: 0, top: 0, width: 150, maxHeight: open ? 410 : TOOLBAR_PANEL_H,
         overflow: "hidden", borderRadius: 10, border: "1px solid var(--line-strong)",
@@ -1718,19 +1718,32 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   useEffect(() => {
     if (!bpmOpen) return;
+    // Use the live DOM `:hover` state rather than the React `bpmHover` flag — Detect
+    // blocks the main thread during analysis, so a `mouseleave` fired meanwhile is
+    // swallowed and the flag can get stuck `true` (same issue as the Key panel).
     const timer = setInterval(() => {
-      if (!bpmHover && Date.now() - bpmTouchedAt >= 5000) setBpmOpen(false);
+      const el = document.querySelector(".bpm-indicator");
+      const hovered = el ? el.matches(":hover") : false;
+      if (!hovered && Date.now() - bpmTouchedAt >= 5000) setBpmOpen(false);
     }, 500);
     return () => clearInterval(timer);
-  }, [bpmOpen, bpmHover, bpmTouchedAt]);
+  }, [bpmOpen, bpmTouchedAt]);
 
   useEffect(() => {
     if (!keyOpen) return;
+    // Same rule as the BPM panel: stay open while the cursor is over it, close ~5s
+    // after the mouse leaves. NOTE: we can't rely on the React `keyHover` flag here —
+    // key detection blocks the main thread for several seconds (it STFT-analyses every
+    // track), so a `mouseleave` fired while "Analyzing…" is swallowed and keyHover gets
+    // stuck `true`, preventing the panel from ever closing. Querying the live DOM
+    // `:hover` state reflects the real pointer position even after such a block.
     const timer = setInterval(() => {
-      if (!keyHover && Date.now() - keyTouchedAt >= 5000) setKeyOpen(false);
+      const el = document.querySelector(".key-indicator");
+      const hovered = el ? el.matches(":hover") : false;
+      if (!hovered && Date.now() - keyTouchedAt >= 5000) setKeyOpen(false);
     }, 500);
     return () => clearInterval(timer);
-  }, [keyOpen, keyHover, keyTouchedAt]);
+  }, [keyOpen, keyTouchedAt]);
 
   // Reset the TAP tempo session whenever the panel closes, so each open starts fresh.
   useEffect(() => {

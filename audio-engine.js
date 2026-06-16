@@ -1771,6 +1771,12 @@
     Meyda.bufferSize = frameSize;
     Meyda.sampleRate = sr;
     Meyda.windowingFunction = "hanning";
+    // Meyda caches the chroma filter bank for whatever bufferSize it first built it
+    // with and never rebuilds it on a bufferSize change. If BPM detection ran earlier
+    // (amplitudeSpectrum @ bufferSize 2048), the first chroma extract here would build
+    // a stale 2048-sized bank → dimension mismatch → NaN/flat chroma → key always "C".
+    // Clearing it forces a rebuild for the current frameSize/sampleRate.
+    Meyda.chromaFilterBank = undefined;
 
     const channelData = buffer.getChannelData(0);
     let frames = 0;
