@@ -119,6 +119,7 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '..', 'studio.html'));
 
+
   // Forward close/minimize/maximize to renderer for custom title bar buttons
   win.on('maximize',   () => win.webContents.send('win-state', 'maximized'));
   win.on('unmaximize', () => win.webContents.send('win-state', 'normal'));

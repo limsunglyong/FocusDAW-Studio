@@ -1744,7 +1744,8 @@
     let rangeStart = Math.max(0, center - Math.floor(spanLen / 2));
     let rangeEnd = Math.min(len, rangeStart + spanLen);
     rangeStart = Math.max(0, rangeEnd - spanLen);
-    if ((rangeEnd - rangeStart) / sr < 4) return false;
+    // 0.5초 이상의 짧은 루프/샘플도 분석할 수 있도록 한도를 4초 -> 0.5초로 하향 조정
+    if ((rangeEnd - rangeStart) / sr < 0.5) return false;
 
     const frameSize = 4096;
     const hopSize = 2048;
@@ -1784,22 +1785,58 @@
   // 합산한 뒤 한 번에 키를 추정한다. 음정이 또렷한 트랙(베이스·피아노)은 큰 비중,
   // 드럼·노이즈처럼 평평한 트랙은 작은 비중을 갖는다.
   function estimateKeyFromBuffers(buffers) {
+    console.log("[KeyDetection] Starting key estimation on", buffers.length, "buffers");
     const combined = new Float64Array(12);
     let totalWeight = 0;
-    for (const b of buffers) {
+    let validBuffers = [];
+
+    for (let i = 0; i < buffers.length; i++) {
+      const b = buffers[i];
       const c = new Float64Array(12);
-      if (!accumulateChroma(b, c)) continue;
+      if (!accumulateChroma(b, c)) {
+        console.log(`[KeyDetection] Buffer ${i}: accumulateChroma returned false (too short or silent)`);
+        continue;
+      }
       let sum = 0;
       for (let k = 0; k < 12; k++) sum += c[k];
-      if (sum <= 0) continue;
+      if (sum <= 0) {
+        console.log(`[KeyDetection] Buffer ${i}: sum of chroma is 0`);
+        continue;
+      }
+      
+      validBuffers.push({ index: i, buffer: b, chroma: c, sum });
       const conf = Math.max(0, bestKeyCorrelation(c));
       const w = conf * conf; // 제곱으로 비음정 트랙을 더 강하게 억제
+      console.log(`[KeyDetection] Buffer ${i}: max template correlation = ${conf.toFixed(4)}, weight = ${w.toFixed(4)}`);
+      
       if (w <= 0) continue;
       for (let k = 0; k < 12; k++) combined[k] += (c[k] / sum) * w; // 정규화 후 가중 합
       totalWeight += w;
     }
-    if (totalWeight <= 0) return null;
-    return keyFromChroma(combined);
+
+    if (totalWeight <= 0) {
+      if (validBuffers.length === 0) {
+        console.warn("[KeyDetection] Key estimation failed: no valid buffers to analyze.");
+        return null;
+      }
+      
+      // Fallback: Weighted summation failed because all correlations were <= 0 (e.g. noisy/percussive tracks only,
+      // or low-correlation melodic tracks). Use unweighted sum of normalized chromas so we still produce a best guess.
+      console.log(`[KeyDetection] Weighted sum totalWeight is 0. Falling back to unweighted sum of ${validBuffers.length} valid buffers.`);
+      const fallbackCombined = new Float64Array(12);
+      for (const item of validBuffers) {
+        for (let k = 0; k < 12; k++) {
+          fallbackCombined[k] += item.chroma[k] / item.sum;
+        }
+      }
+      const finalKey = keyFromChroma(fallbackCombined);
+      console.log("[KeyDetection] Fallback detected key:", finalKey);
+      return finalKey;
+    }
+
+    const finalKey = keyFromChroma(combined);
+    console.log(`[KeyDetection] Successful key estimation: ${finalKey} (totalWeight = ${totalWeight.toFixed(4)})`);
+    return finalKey;
   }
 
   // Albrecht & Shanahan(2013) 키 프로파일. 원래의 Krumhansl-Schmugler 대신 쓰는 이유는

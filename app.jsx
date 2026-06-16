@@ -661,6 +661,8 @@ function BpmIndicator({
   tapInfo,
   selectedTrack,
   selectedTrackIndex,
+  hasOnlyOneTrack,
+  onlyTrack,
   onToggle,
   onActivity,
   onMouseInside,
@@ -674,7 +676,10 @@ function BpmIndicator({
   const projectBpm = tempo && tempo.projectBpm;
   const playbackBpm = playbackBpmDraft || (tempo && tempo.playbackBpm) || projectBpm;
   const canAdjust = !!projectBpm;
-  const canDetect = !!selectedTrack && !selectedTrack.needsAudio && !detecting;
+  const canDetect = !detecting && (
+    (!!selectedTrack && !selectedTrack.needsAudio) ||
+    (hasOnlyOneTrack && onlyTrack && !onlyTrack.needsAudio)
+  );
   // Keying these spans by applySeq/detectSeq remounts them on each APPLY / Detect,
   // which replays the bpmPop "punch" animation so a fresh value is clearly noticeable.
   const display = projectBpm ? (
@@ -742,15 +747,17 @@ function BpmIndicator({
             </div>
           </div>
           {/* Full-width Detect button, centered label */}
-          <button className="btn" disabled={!canDetect} onClick={onDetect}
-            style={{ width: "100%", height: 30, padding: "0 8px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", opacity: canDetect || detecting ? 1 : 0.45 }}>
-            {detecting ? (
-              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                <span style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--amber-soft)", borderTopColor: "var(--amber)", animation: "spin .7s linear infinite", display: "inline-block" }} />
-                Analyzing…
-              </span>
-            ) : "Detect"}
-          </button>
+          <div title={!canDetect ? "If there are more two tracks, please select one track for BPM measurement." : undefined} style={{ width: "100%", marginBottom: 10 }}>
+            <button className="btn" disabled={!canDetect} onClick={onDetect}
+              style={{ width: "100%", height: 30, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", opacity: canDetect || detecting ? 1 : 0.45, pointerEvents: !canDetect ? "none" : "auto" }}>
+              {detecting ? (
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--amber-soft)", borderTopColor: "var(--amber)", animation: "spin .7s linear infinite", display: "inline-block" }} />
+                  Analyzing…
+                </span>
+              ) : "Detect"}
+            </button>
+          </div>
           <div style={{ textAlign: "center", fontSize: 11, fontWeight: 700, letterSpacing: ".12em", color: "var(--muted)" }}>
             BPM SETUP
           </div>
@@ -1319,7 +1326,18 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [manualBpm, measuredBpm, touchBpmPanel, setProjectBpmFromInput]);
 
   const detectBpm = useCallback(async () => {
-    if (!selectedBpmTrack || !DAW.detectBpmFromTrack || detecting) return;
+    let targetTrack = selectedBpmTrack;
+    if (!targetTrack && DAW.tracks.length === 1) {
+      const onlyTrack = DAW.tracks[0];
+      if (onlyTrack && !onlyTrack.needsAudio) {
+        pushUndo();
+        DAW.setTrackParam(onlyTrack.id, "bpmSource", true);
+        saveRecentProject(projectName, projectPath);
+        force((n) => n + 1);
+        targetTrack = onlyTrack;
+      }
+    }
+    if (!targetTrack || !DAW.detectBpmFromTrack || detecting) return;
     touchBpmPanel();
     setDetecting(true);
     // Yield two frames so the "Analyzing…" state actually paints before the
@@ -1327,7 +1345,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     let bpm = null;
     try {
-      bpm = DAW.detectBpmFromTrack(selectedBpmTrack.id);
+      bpm = DAW.detectBpmFromTrack(targetTrack.id);
     } finally {
       setDetecting(false);
     }
@@ -1337,7 +1355,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     setDetectSeq((n) => n + 1);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
-  }, [selectedBpmTrack, detecting, touchBpmPanel, projectName, projectPath]);
+  }, [selectedBpmTrack, detecting, touchBpmPanel, projectName, projectPath, pushUndo]);
 
   const detectKey = useCallback(async () => {
     // Key detection is independent of the BPM source track — it analyses every
@@ -1904,6 +1922,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             tapInfo={tapInfo}
             selectedTrack={selectedBpmTrack}
             selectedTrackIndex={selectedBpmTrackIndex}
+            hasOnlyOneTrack={DAW.tracks.length === 1}
+            onlyTrack={DAW.tracks[0] || null}
             onToggle={() => { touchBpmPanel(); setBpmOpen((v) => !v); }}
             onActivity={touchBpmPanel}
             onMouseInside={setBpmHover}
