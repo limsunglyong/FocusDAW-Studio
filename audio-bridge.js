@@ -57,30 +57,26 @@
 
     getMasterLevel() {
       if (!this.isNative) return LocalDAW.getMasterLevel();
-      return (nativeState.masterStereo.l + nativeState.masterStereo.r) / 2;
+      const nativeLevel = (nativeState.masterStereo.l + nativeState.masterStereo.r) / 2;
+      return nativeLevel > 0.0001 ? nativeLevel : LocalDAW.getMasterLevel();
     },
 
     getMasterStereoLevels() {
       if (!this.isNative) return LocalDAW.getMasterStereoLevels();
-      return nativeState.masterStereo;
+      const nativeLevel = (nativeState.masterStereo.l + nativeState.masterStereo.r) / 2;
+      return nativeLevel > 0.0001 ? nativeState.masterStereo : LocalDAW.getMasterStereoLevels();
     },
 
     getMasterBandLevels() {
       if (!this.isNative) return LocalDAW.getMasterBandLevels();
-      return nativeState.masterBandLevels;
+      const hasNativeBands = nativeState.masterBandLevels.some((v) => v > 0.0001);
+      return hasNativeBands ? nativeState.masterBandLevels : LocalDAW.getMasterBandLevels();
     },
 
     // Command forwarders
     play(options) {
       LocalDAW.play(options); // Keep LocalDAW state in sync
       if (this.isNative) {
-        // Silence Web Audio output
-        if (LocalDAW.ctx) {
-          try {
-            // Disconnect or mute local master gain so Web Audio is silent
-            LocalDAW.setMaster("volume", 0);
-          } catch(e){}
-        }
         sendToNative({ command: "play", options });
         nativeState.isPlaying = true;
         nativeState.startTime = Date.now();
@@ -187,8 +183,7 @@
 
     setMaster(key, val) {
       if (key === "volume" && this.isNative) {
-        // In native mode, we keep LocalDAW volume muted/silent, but send the real volume to C++
-        LocalDAW.master.volume = val;
+        LocalDAW.setMaster(key, val);
         sendToNative({ command: "setMaster", key, value: val });
       } else {
         LocalDAW.setMaster(key, val);

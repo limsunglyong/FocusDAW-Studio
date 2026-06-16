@@ -96,6 +96,7 @@ function buildLoudnormFilter(ln, measured, printFormat) {
 let mainWindow = null;
 let mixerWindow = null;
 let helpWindow = null;
+let forceCloseMixerWindow = false;
 
 function createWindow() {
   const isMac = process.platform === 'darwin';
@@ -127,6 +128,7 @@ function createWindow() {
   win.on('closed', () => {
     mainWindow = null;
     if (mixerWindow && !mixerWindow.isDestroyed()) {
+      forceCloseMixerWindow = true;
       mixerWindow.close();
     }
     if (helpWindow && !helpWindow.isDestroyed()) {
@@ -488,7 +490,13 @@ ipcMain.handle('win-action', (_, action) => {
   if (!win) return;
   if (action === 'minimize') win.minimize();
   else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
-  else if (action === 'close') win.close();
+  else if (action === 'close') {
+    if (win === mixerWindow) {
+      hideMixerWindow();
+    } else {
+      win.close();
+    }
+  }
 });
 
 ipcMain.handle('open-help', async () => {
@@ -539,6 +547,28 @@ let initialContentHeight = 0;
 
 const MIXER_HEIGHT = 490;
 
+function sendMixerState(isOpen) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send('mixer-state', isOpen);
+  }
+}
+
+function hideMixerWindow() {
+  if (!mixerWindow || mixerWindow.isDestroyed()) return;
+  const cb = mixerWindow.getContentBounds();
+  if (mixerWinBounds) {
+    mixerWinBounds.x = cb.x;
+    mixerWinBounds.y = cb.y;
+  } else {
+    mixerWinBounds = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+  }
+  mixerWindow.hide();
+  sendMixerState(false);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.focus();
+  }
+}
+
 function preferredMixerWidth(tracksCount) {
   const channelW = 92;
   const masterW = 400;
@@ -561,7 +591,16 @@ function clampMixerBounds(b) {
 // Mixer window control actions
 ipcMain.handle('open-mixer', async (_, tracksCount) => {
   if (mixerWindow && !mixerWindow.isDestroyed()) {
+    const nextWidth = preferredMixerWidth(tracksCount);
+    const currentContent = mixerWindow.getContentBounds();
+    if (nextWidth > currentContent.width) {
+      mixerWindow.setContentSize(nextWidth, currentContent.height);
+      requestedWidth = nextWidth;
+      if (mixerWinBounds) mixerWinBounds.width = nextWidth;
+    }
+    mixerWindow.show();
     mixerWindow.focus();
+    sendMixerState(true);
     return;
   }
 
@@ -623,29 +662,29 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   mixerWindow.on('moved', captureMixerPos);
   mixerWindow.on('resized', captureMixerPos);
 
-  mixerWindow.on('close', () => {
+  mixerWindow.on('close', (event) => {
     if (isMixerBoundsReset) {
       mixerWinBounds = null;
       isMixerBoundsReset = false;
+      forceCloseMixerWindow = true;
+    }
+    if (!forceCloseMixerWindow) {
+      event.preventDefault();
+      hideMixerWindow();
     }
   });
 
   mixerWindow.on('closed', () => {
+    forceCloseMixerWindow = false;
     mixerWindow = null;
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('mixer-state', false);
-    }
+    sendMixerState(false);
   });
 
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('mixer-state', true);
-  }
+  sendMixerState(true);
 });
 
 ipcMain.handle('close-mixer', async () => {
-  if (mixerWindow && !mixerWindow.isDestroyed()) {
-    mixerWindow.close();
-  }
+  hideMixerWindow();
 });
 
 ipcMain.handle('resize-mixer', async (_, tracksCount) => {
@@ -702,6 +741,7 @@ ipcMain.handle('reset-mixer-bounds', () => {
   initialContentWidth = 0;
   initialContentHeight = 0;
   if (mixerWindow && !mixerWindow.isDestroyed()) {
+    forceCloseMixerWindow = true;
     mixerWindow.close();
   }
 });
