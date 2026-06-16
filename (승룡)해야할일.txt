@@ -10,7 +10,7 @@ Custom.
 
 EQ 저장시 그래프를 간단히 목록으로 보여줌. 이름지정 가능.
 
-
+mixer 창 30fps -> 60fps 로 올리면 무슨문제가? (지금은 살짝 버벅이는듯?)
 
 2. Track별 (개별 Stems) 추천 기능
 Suno stems은 artifact(잡음), bleed(누출), muddy low-end이 흔하니 클린업 + 균형 위주로.

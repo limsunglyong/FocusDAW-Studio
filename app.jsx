@@ -973,14 +973,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const mixerChannelRef = useRef(null);
   const advancedChannelRef = useRef(null);
 
-  // Broadcast real-time level meter and FFT spectrum data to mixer window (runs every frame via useTick)
+  // Broadcast real-time level meter and FFT spectrum data to mixer / advanced windows (runs every frame via useTick)
   useEffect(() => {
-    if (showMixer && mixerChannelRef.current) {
-      const trackLevels = {};
-      DAW.tracks.forEach((t) => {
-        trackLevels[t.id] = DAW.getTrackLevel(t.id);
-      });
+    const needsLevels = (showMixer && mixerChannelRef.current) || (showAdvancedPan && advancedChannelRef.current);
+    if (!needsLevels) return;
 
+    const trackLevels = {};
+    DAW.tracks.forEach((t) => {
+      trackLevels[t.id] = DAW.getTrackLevel(t.id);
+    });
+
+    if (showMixer && mixerChannelRef.current) {
       mixerChannelRef.current.postMessage({
         type: "LEVEL_METERS",
         trackLevels,
@@ -988,6 +991,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         masterStereo: DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : null,
         masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
         fftData: DAW.computeSpectrum(),
+        isPlaying: DAW.isPlaying,
+        playhead: DAW.getPlayhead(),
+      });
+    }
+
+    if (showAdvancedPan && advancedChannelRef.current) {
+      advancedChannelRef.current.postMessage({
+        type: "LEVEL_METERS",
+        trackLevels,
         isPlaying: DAW.isPlaying,
         playhead: DAW.getPlayhead(),
       });
@@ -1053,6 +1065,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           color: t.color,
           params: { ...t.params },
         })),
+        trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme,
       });
     }
@@ -1556,6 +1569,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           color: t.color,
           params: { ...t.params },
         })),
+        trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme: localStorage.getItem("focusdaw-theme") || "default",
       });
     };

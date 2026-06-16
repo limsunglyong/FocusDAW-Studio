@@ -381,7 +381,36 @@ function makeTicks() {
 
 const TICKS = makeTicks();
 
-function PanKnob({ track, index, selected, onSelect, onBeforeChange, onParam }) {
+function MiniTrackMeter({ level, height = 58, width = 6 }) {
+  const gap = 1.5;
+  const segs = Math.max(6, Math.min(22, Math.round((height - gap) / 3.5)));
+  const lit = Math.round(clamp(level || 0, 0, 1) * segs);
+  const cells = [];
+  for (let i = 0; i < segs; i += 1) {
+    const frac = i / segs;
+    const on = i < lit;
+    let col = "var(--green)";
+    if (frac > 0.82) col = "var(--red)";
+    else if (frac > 0.62) col = "var(--amber)";
+    cells.push(
+      <div
+        key={i}
+        style={{
+          flex: 1,
+          minHeight: 1,
+          background: on ? col : "rgba(0,0,0,.32)",
+          borderRadius: 1,
+          opacity: on ? 1 : .85,
+          boxShadow: on ? `0 0 4px ${col}` : "none",
+          transition: "opacity .05s",
+        }}
+      />
+    );
+  }
+  return <div className="aef-track-meter" style={{ width, height }}>{cells}</div>;
+}
+
+function PanKnob({ track, index, selected, level, onSelect, onBeforeChange, onParam }) {
   const params = track.params || {};
   const pan = params.pan || 0;
   const type = matchInstrument(track.name || track.fileName);
@@ -426,24 +455,27 @@ function PanKnob({ track, index, selected, onSelect, onBeforeChange, onParam }) 
         <span className="mono">{index + 1}</span>
         <span>{shortTrackName(track.name || track.fileName)}</span>
       </div>
-      <svg width="100" height="100" viewBox="0 0 104 104" onPointerDown={startKnob} onDoubleClick={reset} className="aef-pan-svg">
-        <path d={TICKS.minor} stroke="var(--faint)" strokeWidth="1.4" strokeLinecap="round" />
-        <path d={TICKS.major} stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" />
-        <path d={TICKS.center} stroke="var(--amber)" strokeWidth="2.4" strokeLinecap="round" />
-        <text x="14" y="84" fontFamily="var(--mono)" fontSize="9" letterSpacing="0.5" fill="var(--faint)" textAnchor="middle">L</text>
-        <text x="52" y="11.5" fontFamily="var(--mono)" fontSize="9" letterSpacing="0.5" fill="var(--muted)" textAnchor="middle">C</text>
-        <text x="90" y="84" fontFamily="var(--mono)" fontSize="9" letterSpacing="0.5" fill="var(--faint)" textAnchor="middle">R</text>
-        <circle cx="52" cy="52" r="38" fill="url(#g-bezel)" stroke="rgba(0,0,0,0.45)" strokeWidth="1" />
-        <circle cx="52" cy="52" r="36.5" fill="none" stroke="rgba(0,0,0,0.38)" strokeWidth="3.2" strokeDasharray="1.5 2.6" />
-        <g transform={`rotate(${knobDeg.toFixed(2)} 52 52)`} className="aef-knob-pointer">
-          <path d="M52 15 L57.6 30.5 L46.4 30.5 Z" fill="url(#g-cap)" stroke="rgba(0,0,0,0.55)" strokeWidth="0.8" strokeLinejoin="round" />
-          <circle cx="52" cy="52" r="25" fill="url(#g-cap)" stroke="rgba(255,242,214,0.12)" strokeWidth="1" />
-          <ellipse cx="52" cy="45" rx="18" ry="10" fill="rgba(255,242,214,0.05)" />
-          <line x1="52" y1="31" x2="52" y2="47" stroke="var(--cream)" strokeWidth="2.6" strokeLinecap="round" />
-          <circle cx="52" cy="21.5" r="2.6" fill={inst.color} className="aef-led" />
-        </g>
-        <circle cx="52" cy="52" r="3.2" fill="var(--bg)" stroke="rgba(255,242,214,0.14)" strokeWidth="1" />
-      </svg>
+      <div className="aef-knob-body">
+        <svg width="100" height="100" viewBox="0 0 104 104" onPointerDown={startKnob} onDoubleClick={reset} className="aef-pan-svg">
+          <path d={TICKS.minor} stroke="var(--faint)" strokeWidth="1.4" strokeLinecap="round" />
+          <path d={TICKS.major} stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" />
+          <path d={TICKS.center} stroke="var(--amber)" strokeWidth="2.4" strokeLinecap="round" />
+          <text x="14" y="84" fontFamily="var(--mono)" fontSize="9" letterSpacing="0.5" fill="var(--faint)" textAnchor="middle">L</text>
+          <text x="52" y="11.5" fontFamily="var(--mono)" fontSize="9" letterSpacing="0.5" fill="var(--muted)" textAnchor="middle">C</text>
+          <text x="90" y="84" fontFamily="var(--mono)" fontSize="9" letterSpacing="0.5" fill="var(--faint)" textAnchor="middle">R</text>
+          <circle cx="52" cy="52" r="38" fill="url(#g-bezel)" stroke="rgba(0,0,0,0.45)" strokeWidth="1" />
+          <circle cx="52" cy="52" r="36.5" fill="none" stroke="rgba(0,0,0,0.38)" strokeWidth="3.2" strokeDasharray="1.5 2.6" />
+          <g transform={`rotate(${knobDeg.toFixed(2)} 52 52)`} className="aef-knob-pointer">
+            <path d="M52 15 L57.6 30.5 L46.4 30.5 Z" fill="url(#g-cap)" stroke="rgba(0,0,0,0.55)" strokeWidth="0.8" strokeLinejoin="round" />
+            <circle cx="52" cy="52" r="25" fill="url(#g-cap)" stroke="rgba(255,242,214,0.12)" strokeWidth="1" />
+            <ellipse cx="52" cy="45" rx="18" ry="10" fill="rgba(255,242,214,0.05)" />
+            <line x1="52" y1="31" x2="52" y2="47" stroke="var(--cream)" strokeWidth="2.6" strokeLinecap="round" />
+            <circle cx="52" cy="21.5" r="2.6" fill={inst.color} className="aef-led" />
+          </g>
+          <circle cx="52" cy="52" r="3.2" fill="var(--bg)" stroke="rgba(255,242,214,0.14)" strokeWidth="1" />
+        </svg>
+        <MiniTrackMeter level={level} />
+      </div>
       <div className="aef-pan-readout" style={{ color: inst.color }}>{panLabel(pan)}</div>
       <div className="aef-mini-bar">
         <div className="aef-mini-center" />
@@ -458,6 +490,7 @@ function AdvancedPanApp() {
   const [tracks, setTracks] = useState([]);
   const [theme, setTheme] = useState("default");
   const [selectedId, setSelectedId] = useState(null);
+  const [levels, setLevels] = useState({});
   const selectedTrack = tracks.find((t) => t.id === selectedId) || tracks[0] || null;
 
   useEffect(() => {
@@ -468,11 +501,14 @@ function AdvancedPanApp() {
       if (msg.type === "INIT_STATE" || msg.type === "SYNC_STATE") {
         const nextTracks = msg.tracks || [];
         setTracks(nextTracks);
+        if (msg.trackLevels) setLevels(msg.trackLevels);
         if (msg.theme) setTheme(msg.theme);
         setSelectedId((cur) => {
           if (cur && nextTracks.some((t) => t.id === cur)) return cur;
           return (nextTracks[0] && nextTracks[0].id) || null;
         });
+      } else if (msg.type === "LEVEL_METERS") {
+        setLevels(msg.trackLevels || {});
       }
     };
     advancedChannel.addEventListener("message", handleMessage);
@@ -560,6 +596,7 @@ function AdvancedPanApp() {
                   track={track}
                   index={index}
                   selected={selectedTrack && selectedTrack.id === track.id}
+                  level={levels[track.id] || 0}
                   onSelect={setSelectedId}
                   onBeforeChange={beforeChange}
                   onParam={setParam}
