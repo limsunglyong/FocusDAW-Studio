@@ -134,7 +134,71 @@ function createWindow() {
   });
 }
 
+let audioEngineProc = null;
+
+function startAudioEngine() {
+  const isWin = process.platform === 'win32';
+  const binName = isWin ? 'FocusDAW-AudioEngine.exe' : 'FocusDAW-AudioEngine';
+  
+  const rawPaths = [
+    path.join(__dirname, '..', 'bin', binName),
+    path.join(__dirname, '..', binName),
+    path.join(app.getAppPath(), 'bin', binName)
+  ];
+  
+  const pathsToTry = rawPaths.map(p => {
+    const normalized = String(p);
+    const unpacked = normalized.replace(/([\\/])app\.asar([\\/])/i, '$1app.asar.unpacked$2');
+    return unpacked;
+  });
+  
+  let binaryPath = null;
+  for (const p of pathsToTry) {
+    if (fs.existsSync(p)) {
+      binaryPath = p;
+      break;
+    }
+  }
+  
+  if (!binaryPath) {
+    console.warn('[FocusDAW] JUCE Native Audio Engine binary not found. Falling back to Web Audio API.');
+    return;
+  }
+  
+  console.log(`[FocusDAW] Spawning JUCE Audio Engine: ${binaryPath}`);
+  try {
+    audioEngineProc = spawn(binaryPath, ['--port', '8082'], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    
+    audioEngineProc.stdout.on('data', (data) => {
+      console.log(`[AudioEngine Out] ${data.toString().trim()}`);
+    });
+    
+    audioEngineProc.stderr.on('data', (data) => {
+      console.error(`[AudioEngine Err] ${data.toString().trim()}`);
+    });
+    
+    audioEngineProc.on('close', (code) => {
+      console.log(`[AudioEngine] Process exited with code ${code}`);
+      audioEngineProc = null;
+    });
+  } catch (err) {
+    console.error('[FocusDAW] Failed to spawn JUCE Audio Engine:', err);
+  }
+}
+
+function stopAudioEngine() {
+  if (audioEngineProc) {
+    console.log('[FocusDAW] Killing JUCE Audio Engine process...');
+    audioEngineProc.kill();
+    audioEngineProc = null;
+  }
+}
+
 app.whenReady().then(() => {
+  startAudioEngine();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -143,6 +207,10 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  stopAudioEngine();
 });
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
@@ -175,6 +243,14 @@ ipcMain.handle('select-files', async () => {
 ipcMain.handle('read-audio-file', async (_, filePath) => {
   const buf = fs.readFileSync(filePath);
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+});
+
+// Write a temporary WAV file from raw bytes (used for demo tracks sync to native engine)
+ipcMain.handle('write-temp-audio', async (_, wavBuffer, fileName) => {
+  const base = path.basename(fileName, path.extname(fileName)) + `_${Date.now()}`;
+  const tmpWav = path.join(os.tmpdir(), base + '.wav');
+  fs.writeFileSync(tmpWav, Buffer.from(wavBuffer));
+  return tmpWav;
 });
 
 // Save project via native Save dialog
@@ -338,6 +414,71 @@ ipcMain.handle('save-audio', async (_, buffer, defaultName) => {
   if (canceled || !filePath) return { saved: false };
   fs.writeFileSync(filePath, Buffer.from(buffer));
   return { saved: true };
+});
+
+// Save natively rendered audio file (supports WAV copy and MP3 encoding with tags/cover)
+ipcMain.handle('save-native-audio', async (_, tempFilePath, format, options, defaultName) => {
+  const ext = format === 'mp3' ? 'mp3' : 'wav';
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    defaultPath: defaultName,
+    filters: [{ name: ext.toUpperCase() + ' Audio', extensions: [ext] }],
+    title: 'Save Audio File',
+  });
+  if (canceled || !filePath) return { saved: false };
+
+  try {
+    if (format === 'wav') {
+      fs.copyFileSync(tempFilePath, filePath);
+      try { fs.unlinkSync(tempFilePath); } catch (e) {}
+      return { saved: true };
+    } else {
+      const resolvedFfmpegPath = resolveFfmpegPath();
+      if (!resolvedFfmpegPath) throw new Error('ffmpeg-static not installed. Run: npm install');
+      if (!fs.existsSync(resolvedFfmpegPath)) throw new Error(`ffmpeg executable not found: ${resolvedFfmpegPath}`);
+      
+      const { bitrate = 320, sampleRate = 44100, meta = {}, cover = null } = options || {};
+      
+      let tmpCover = null;
+      if (cover && cover.data) {
+        const base = `focusdaw_cover_${Date.now()}`;
+        const extCover = cover.mime === 'image/png' ? 'png'
+          : cover.mime === 'image/webp' ? 'webp'
+          : cover.mime === 'image/gif' ? 'gif'
+          : 'jpg';
+        tmpCover = path.join(os.tmpdir(), base + '.' + extCover);
+        fs.writeFileSync(tmpCover, Buffer.from(cover.data, 'base64'));
+      }
+
+      const args = ['-y', '-i', tempFilePath];
+      if (tmpCover) {
+        args.push('-i', tmpCover,
+          '-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-c:v', 'copy',
+          '-disposition:v:0', 'attached_pic',
+          '-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)');
+      } else {
+        args.push('-c:a', 'libmp3lame');
+      }
+      args.push('-b:a', `${bitrate}k`, '-ar', String(sampleRate), '-id3v2_version', '3');
+
+      const addMeta = (k, v) => { if (v != null && String(v).length) args.push('-metadata', `${k}=${v}`); };
+      addMeta('title', meta.title);
+      addMeta('artist', meta.artist);
+      addMeta('album_artist', meta.artist);
+      addMeta('composer', meta.artist);
+      addMeta('album', meta.album);
+      addMeta('date', meta.date || meta.year);
+
+      args.push(filePath);
+
+      await runFfmpeg(resolvedFfmpegPath, args);
+
+      try { fs.unlinkSync(tempFilePath); if (tmpCover) fs.unlinkSync(tmpCover); } catch (e) {}
+      return { saved: true };
+    }
+  } catch (err) {
+    console.error('[FocusDAW] save-native-audio error:', err);
+    throw err;
+  }
 });
 
 // Window control actions (for custom title bar on Windows/Linux)

@@ -1,6 +1,6 @@
 {
   "name": "focusdaw-studio",
-  "version": "1.4.1",
+  "version": "1.4.3",
   "description": "Stem mixing DAW — Electron desktop app",
   "main": "electron/main.js",
   "scripts": {
@@ -29,19 +29,22 @@
       "help.html",
       "version.js",
       "audio-engine.js",
+      "audio-bridge.js",
       "ui-kit.jsx",
       "ui-tracks.jsx",
       "ui-mixer.jsx",
       "ui-dialogs.jsx",
       "ui-help.jsx",
       "app.jsx",
-      "mixer-app.jsx"
+      "mixer-app.jsx",
+      "bin/**/*"
     ],
     "directories": {
       "output": "dist"
     },
     "asarUnpack": [
-      "**/node_modules/ffmpeg-static/**"
+      "**/node_modules/ffmpeg-static/**",
+      "bin/**/*"
     ],
     "mac": {
       "category": "public.app-category.music",

@@ -5,5 +5,80 @@
 
 브라우저의 debug console이 열리지 않도록 release 시 removeMenu 필요.
 
+EQ 프리셋 저장 기능? 
+Custom.
 
 
+2. Track별 (개별 Stems) 추천 기능
+Suno stems은 artifact(잡음), bleed(누출), muddy low-end이 흔하니 클린업 + 균형 위주로.
+
+Volume / Gain: 슬라이더로 기본 볼륨 조절. Auto-level (전체 트랙 peak를 -6dB 정도로 맞춤) 버튼 필수.
+Pan (좌우): 간단 슬라이더 (-100 ~ 100). 드럼/보컬은 중앙, 기타/신스는 살짝 좌우로.
+EQ (Equalizer): 가장 중요! 3~5밴드 parametric EQ로 충분.
+Low Cut (High-pass filter): 80-150Hz 아래 컷 (베이스/드럼 제외, muddy 제거).
+Mid Cut: 문제 주파수 (200-500Hz mud, 2-5kHz harsh) notch.
+High Shelf: 밝기 추가.
+추천 UI: 그래픽 EQ (드래그로曲线) + preset (Vocal Bright, Drum Punch, Bass Clean 등).
+
+Compression: 다이나믹스(크고 작은 소리 차이) 줄여 안정감 주기.
+Threshold, Ratio(2:1~4:1), Attack/Release 간단 슬라이더.
+Preset: Vocal Glue, Drum Punch, Bass Tight.
+
+Gate / Noise Reduction: Suno artifact 제거에 좋음. Threshold로 낮은 noise 컷.
+Reverb / Delay: 공간감.
+Reverb: Room/Small, Medium Hall preset (Wet/Dry mix).
+Delay: Echo (tempo sync 옵션).
+Send 방식 (Aux bus)으로 여러 트랙 공유 추천.
+
+Saturation / Exciter (선택): 약간의 warmth/harmonics 추가. 과도하지 않게.
+
+트랙 타입별 팁 (앱에 tooltip으로 넣기 좋음):
+
+Vocals: De-esser (sibilance 's' 소리 줄임), Compression 강하게, EQ로 200-400Hz cut + 3-6kHz boost.
+Drums: Transient boost (펀치), Low Cut on overheads, Compression으로 glue.
+Bass: Low-end mono, Mid/High cut으로 clarity.
+Instruments: 불필요 freq cut, panning.
+
+3. Master Bus (전체 마스터링) 추천 기능
+최종 polish 단계. 과도한 처리 피하고 투명하게.
+
+Master EQ: 전체 tonal balance. Low/High shelf + broad mid cuts.
+Multiband Compression (선택, 2-3밴드): Low/Mid/High 별도 제어. 초보자는 single compressor로 충분.
+Limiter / Maximizer: Loudness 올리기. Ceiling -0.5dB, Threshold로 push. True Peak 옵션.
+Stereo Imaging: Width 조절 (너무 넓히지 말기).
+Metering: Peak, RMS, LUFS (loudness) 미터 표시 — 초보자가 "얼마나 loud한지" 알게.
+Quick Master Presets: "Pop Bright", "EDM Punchy", "Ballad Warm" 등. Ozone-style one-click 느낌으로.
+
+Mastering 체크리스트 (앱 내 가이드로 제공):
+
+Balance (트랙 볼륨 먼저).
+Clarity (EQ로 mud/harsh 제거).
+Dynamics (compression).
+Loudness (limiter, -14 ~ -9 LUFS 목표 for streaming).
+Mono compatibility 확인 (bass 중심).
+
+4. 추가하면 좋은 초보자 친화적 기능
+
+Auto Suggest / AI Assist: stems 분석해서 추천 EQ/compression 설정 (Web Audio API + 간단 ML or rule-based).
+A/B 비교: Original vs Processed.
+Reference Track Upload: 유명 곡 불러와 loudness/EQ match (visualizer).
+Undo/History, Solo/Mute, Track Grouping (Drums bus 등).
+Export Options: MP3 (192-320kbps), WAV, normalized.
+Visual Aids: Spectrum Analyzer, Waveform, Correlation Meter (간단 버전).
+Preset Library: Genre-based (K-pop, Hip-hop 등) 전체 체인.
+
+기술 구현 팁 (당신의 Web Audio API + Tone.js 앱 기반):
+
+Tone.js: EQ, Compressor, Reverb, Limiter 내장 강력.
+추가: Web Audio API Filter, DynamicsCompressor.
+Beat detection 이미 있으니, tempo-sync delay/reverb 좋음.
+Performance: Offline AudioContext로 render/export.
+
+5. 주의사항 & Best Practices
+
+Over-processing 피하기: Suno stems은 이미 compressed 경향 → 너무 많이 하면 squashed/artifacts 증가.
+Gain Staging: 각 단계에서 peak -6~-12dB 유지.
+Ears + Reference: 앱에 "Reference tracks 듣고 비교하세요" 팁 넣기.
+테스트: 다양한 Suno 장르로 테스트. Drums/Bass/Vocals 클린업이 핵심.
+
+이 정도면 초보자도 "프로처럼 들리는" 결과물을 쉽게 만들 수 있어요. 앱이 재미있고 직관적이면 더 좋을 거예요 — sliders 크게, preset 많게, visual feedback 강하게!

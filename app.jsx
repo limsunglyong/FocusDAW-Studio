@@ -524,15 +524,60 @@ function renderKeyValue(text) {
   );
 }
 
+function getSemitoneDifference(origKey, targetKey) {
+  const getPitchClass = (k) => {
+    if (!k) return -1;
+    let name = k;
+    if (name.endsWith("m")) name = name.slice(0, -1);
+    
+    switch (name) {
+      case "C": return 0;
+      case "C#": case "Db": return 1;
+      case "D": return 2;
+      case "D#": case "Eb": return 3;
+      case "E": return 4;
+      case "F": return 5;
+      case "F#": case "Gb": return 6;
+      case "G": return 7;
+      case "G#": case "Ab": return 8;
+      case "A": return 9;
+      case "A#": case "Bb": return 10;
+      case "B": return 11;
+      default: return -1;
+    }
+  };
+  
+  const orig = getPitchClass(origKey);
+  const target = getPitchClass(targetKey);
+  if (orig === -1 || target === -1) return 0;
+  
+  let diff = target - orig;
+  while (diff > 6) diff -= 12;
+  while (diff < -6) diff += 12;
+  return diff;
+}
+
 // Read-out of the project's musical key. The narrow readout box (64px) drops a
 // wider setup panel (150px) straight down from its bottom edge — visually
 // connected (no gap), forming a stepped shape so the Detect button fits.
 function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onSetKey }) {
   const key = (tempo && tempo.key) || null;
-  const isMinor = !!key && key.slice(-1) === "m";
-  const noteText = key ? (isMinor ? key.slice(0, -1) : key) : "--";
-  const modeText = key ? (isMinor ? "Minor" : "Major") : null;
+  const detectedKey = (tempo && tempo.detectedKey) || null;
+  const variKey = !!(tempo && tempo.variKey);
+  
+  // When Vari Key is off, display the original (detected) key. Otherwise, display the selected project key.
+  const displayKey = variKey ? (key || detectedKey || null) : (detectedKey || key || null);
+  const isMinor = !!displayKey && displayKey.slice(-1) === "m";
+  const noteText = displayKey ? (isMinor ? displayKey.slice(0, -1) : displayKey) : "--";
+  const modeText = displayKey ? (isMinor ? "Minor" : "Major") : null;
   const canDetect = hasAudio && !detecting;
+
+  let pitchShift = 0;
+  if (variKey && detectedKey && key) {
+    pitchShift = getSemitoneDifference(detectedKey, key);
+  }
+  const shiftText = pitchShift > 0 ? `+${pitchShift}` : `${pitchShift}`;
+
   return (
     <div onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)}
       style={{ position: "relative", zIndex: 30, width: 64, height: TOOLBAR_PANEL_H, flex: "0 0 64px" }}>
@@ -544,7 +589,24 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
           boxShadow: open ? "inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px rgba(232,176,75,.12)",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
         <span style={{ fontSize: 6.3, lineHeight: 1, fontWeight: 400, letterSpacing: ".12em", color: "var(--bpm-label-fg, var(--cream-2))" }}>Key</span>
-        <span style={{ fontFamily: "var(--key-number-font)", fontSize: 17, lineHeight: 1, fontWeight: 400, color: "var(--bpm-fg, var(--cream))", textShadow: "0 0 8px var(--amber-soft)" }}>{renderKeyValue(noteText)}</span>
+        <span style={{ 
+          fontFamily: "var(--key-number-font)", 
+          fontSize: 17, 
+          lineHeight: 1, 
+          fontWeight: 400, 
+          color: "var(--bpm-fg, var(--cream))", 
+          textShadow: "0 0 8px var(--amber-soft)",
+          position: "relative"
+        }}>
+          {renderKeyValue(noteText)}
+          {variKey && pitchShift !== 0 && (
+            pitchShift > 0 ? (
+              <sup style={{ fontSize: "9px", color: "var(--amber)", position: "absolute", top: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" }}>{shiftText}</sup>
+            ) : (
+              <sub style={{ fontSize: "9px", color: "var(--amber)", position: "absolute", bottom: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" }}>{shiftText}</sub>
+            )
+          )}
+        </span>
         {modeText && <span style={{ fontFamily: "var(--ui)", fontStyle: "normal", fontSize: 7.56, lineHeight: 1, fontWeight: 400, letterSpacing: ".06em", color: "var(--bpm-label-fg, var(--cream-2))" }}>{modeText}</span>}
       </button>
       {open && (
@@ -1292,6 +1354,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       setDetectingKey(false);
     }
     if (!key) return;
+    if (DAW.setDetectedKey) DAW.setDetectedKey(key);
     if (DAW.setKey) DAW.setKey(key);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);

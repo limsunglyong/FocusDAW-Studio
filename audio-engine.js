@@ -217,6 +217,9 @@
   let ctx = null;
   let convolver = null;
   let masterBus, eqNodes = [], masterFade, masterVol, masterMix, masterAnalyser, mRevSend, mEchoSend, mDelay, mFb, mConv;
+  let mSatDry, mSatWet, mSatShaper, mSatOut;
+  let mWidSplit, mWidMerge, mWidLL, mWidRL, mWidLR, mWidRR, mWidOut;
+  let mExcHPF, mExcShaper, mExcWet, mExcOut;
   let masterMeterSplit, masterAnalyserL, masterAnalyserR;
   const EQ_FREQS = [60, 150, 320, 640, 1200, 2400, 4800, 9000, 15000]; // 3 low / 3 mid / 3 high
   // recommended 9-band EQ presets (dB per band, range -12..+12), aligned to EQ_FREQS
@@ -233,8 +236,8 @@
     EQ_PRESETS,
     tracks: [],
     loopEnabled: true,
-    tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false },
-    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 },
+    tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null },
+    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0 },
     isPlaying: false,
     _startTime: 0,
     _offset: 0,
@@ -280,6 +283,75 @@
       mFb = ctx.createGain(); mFb.gain.value = 0.36;
       mEchoSend = ctx.createGain(); mEchoSend.gain.value = this.master.echo;
       masterMix = ctx.createGain();
+      
+      // ==========================================
+      // Tape Saturation Nodes
+      // ==========================================
+      mSatDry = ctx.createGain(); mSatDry.gain.value = 1.0;
+      mSatWet = ctx.createGain(); mSatWet.gain.value = 0.0;
+      mSatShaper = ctx.createWaveShaper();
+      mSatOut = ctx.createGain();
+      
+      const satCurve = new Float32Array(44100);
+      const satK = 4.0;
+      const satComp = 1.0 / Math.tanh(satK);
+      for (let i = 0; i < 44100; ++i) {
+          const x = (i * 2) / 44099 - 1;
+          satCurve[i] = Math.tanh(satK * x) * satComp;
+      }
+      mSatShaper.curve = satCurve;
+      mSatShaper.connect(mSatWet);
+      
+      // ==========================================
+      // Stereo Widener Nodes
+      // ==========================================
+      mWidSplit = ctx.createChannelSplitter(2);
+      mWidMerge = ctx.createChannelMerger(2);
+      mWidLL = ctx.createGain();
+      mWidRL = ctx.createGain();
+      mWidLR = ctx.createGain();
+      mWidRR = ctx.createGain();
+      mWidOut = ctx.createGain();
+      
+      mWidSplit.connect(mWidLL, 0);
+      mWidSplit.connect(mWidLR, 0);
+      mWidSplit.connect(mWidRL, 1);
+      mWidSplit.connect(mWidRR, 1);
+      
+      mWidLL.connect(mWidMerge, 0, 0);
+      mWidRL.connect(mWidMerge, 0, 0);
+      mWidLR.connect(mWidMerge, 0, 1);
+      mWidRR.connect(mWidMerge, 0, 1);
+      mWidMerge.connect(mWidOut);
+      
+      const wInit = 1.0;
+      mWidLL.gain.value = 0.5 * (1.0 + wInit);
+      mWidRR.gain.value = 0.5 * (1.0 + wInit);
+      mWidRL.gain.value = 0.5 * (1.0 - wInit);
+      mWidLR.gain.value = 0.5 * (1.0 - wInit);
+      
+      // ==========================================
+      // Exciter / Enhancer Nodes
+      // ==========================================
+      mExcHPF = ctx.createBiquadFilter();
+      mExcHPF.type = "highpass";
+      mExcHPF.frequency.value = 3000;
+      mExcHPF.Q.value = 0.707;
+      
+      mExcShaper = ctx.createWaveShaper();
+      const excCurve = new Float32Array(44100);
+      for (let i = 0; i < 44100; ++i) {
+          const x = (i * 2) / 44099 - 1;
+          excCurve[i] = x + 0.35 * x * x;
+      }
+      mExcShaper.curve = excCurve;
+      
+      mExcWet = ctx.createGain(); mExcWet.gain.value = 0.0;
+      mExcOut = ctx.createGain();
+      
+      mExcHPF.connect(mExcShaper);
+      mExcShaper.connect(mExcWet);
+
       const masterComp = ctx.createDynamicsCompressor();
       masterComp.threshold.value = -2; masterComp.knee.value = 4; masterComp.ratio.value = 12;
       masterComp.attack.value = 0.003; masterComp.release.value = 0.18;
@@ -292,7 +364,22 @@
       masterVol.connect(masterMix);                                                            // dry
       masterVol.connect(mRevSend); mRevSend.connect(mConv); mConv.connect(masterMix);          // master reverb
       masterVol.connect(mEchoSend); mEchoSend.connect(mDelay); mDelay.connect(mFb); mFb.connect(mDelay); mDelay.connect(masterMix); // master echo
-      masterMix.connect(masterComp); masterComp.connect(masterAnalyser); masterAnalyser.connect(ctx.destination);
+      
+      // Route through Saturation -> Widener -> Exciter -> Compressor
+      masterMix.connect(mSatDry);
+      masterMix.connect(mSatShaper);
+      mSatDry.connect(mSatOut);
+      mSatWet.connect(mSatOut);
+      
+      mSatOut.connect(mWidSplit);
+      
+      mWidOut.connect(mExcOut);
+      mWidOut.connect(mExcHPF);
+      mExcWet.connect(mExcOut);
+      
+      mExcOut.connect(masterComp);
+      masterComp.connect(masterAnalyser);
+      masterAnalyser.connect(ctx.destination);
 
       // Stereo L/R metering tap (post-pan/comp) — true per-channel levels for the master meter
       masterMeterSplit = ctx.createChannelSplitter(2);
@@ -481,17 +568,25 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
-      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false };
+      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null };
       this._renderCacheKey = null;
       this._renderCacheBuffer = null;
       this._stretchPreviewPreparing = false;
       clearTimeout(this._tempoRestartTimer);
       this._tempoRestartTimer = null;
-      this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, fadeIn: 0.0, fadeOut: 0.0 };
+      this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0 };
       if (ctx) {
         ramp(masterVol.gain, 0.9);
         ramp(mRevSend.gain, 0);
         ramp(mEchoSend.gain, 0);
+        ramp(mSatWet.gain, 0);
+        ramp(mSatDry.gain, 1.0);
+        ramp(mExcWet.gain, 0);
+        const wInit = 1.0;
+        ramp(mWidLL.gain, 0.5 * (1.0 + wInit));
+        ramp(mWidRR.gain, 0.5 * (1.0 + wInit));
+        ramp(mWidRL.gain, 0.5 * (1.0 - wInit));
+        ramp(mWidLR.gain, 0.5 * (1.0 - wInit));
         if (masterFade) {
           try {
             masterFade.gain.cancelScheduledValues(ctx.currentTime);
@@ -635,6 +730,11 @@
       this.tempo.key = key || null;
       this._emit();
       return this.tempo.key;
+    },
+    setDetectedKey(key) {
+      this.tempo.detectedKey = key || null;
+      this._emit();
+      return this.tempo.detectedKey;
     },
 
     _projectRate() {
@@ -805,6 +905,20 @@
       if (key === "volume") ramp(masterVol.gain, val);
       if (key === "reverb") ramp(mRevSend.gain, val);
       if (key === "echo") ramp(mEchoSend.gain, val);
+      if (key === "widener") {
+        const w = 1.0 + val * 1.5;
+        ramp(mWidLL.gain, 0.5 * (1.0 + w));
+        ramp(mWidRR.gain, 0.5 * (1.0 + w));
+        ramp(mWidRL.gain, 0.5 * (1.0 - w));
+        ramp(mWidLR.gain, 0.5 * (1.0 - w));
+      }
+      if (key === "saturation") {
+        ramp(mSatWet.gain, val * 0.8);
+        ramp(mSatDry.gain, 1.0 - val * 0.4);
+      }
+      if (key === "exciter") {
+        ramp(mExcWet.gain, val * 0.5);
+      }
       if ((key === "fadeIn" || key === "fadeOut") && this.isPlaying) this._scheduleFade();
     },
 
@@ -924,12 +1038,16 @@
         variBpm: !!(json.tempo && json.tempo.variBpm),
         key: (json.tempo && json.tempo.key) ?? null,
         variKey: !!(json.tempo && json.tempo.variKey),
+        detectedKey: (json.tempo && json.tempo.detectedKey) ?? null,
       };
       if (json.master) {
         Object.assign(this.master, json.master);
         ramp(masterVol.gain, this.master.volume);
         ramp(mRevSend.gain, this.master.reverb || 0);
         ramp(mEchoSend.gain, this.master.echo || 0);
+        if (this.master.widener !== undefined) this.setMaster("widener", this.master.widener);
+        if (this.master.saturation !== undefined) this.setMaster("saturation", this.master.saturation);
+        if (this.master.exciter !== undefined) this.setMaster("exciter", this.master.exciter);
         if (this.master.bands) this.master.bands.forEach((db, i) => this.setMasterBand(i, db));
       }
       (json.tracks || []).forEach(td => {

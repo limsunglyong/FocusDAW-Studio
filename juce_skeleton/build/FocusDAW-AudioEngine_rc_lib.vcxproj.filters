@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\roseWorks\programming\FocusDAW-Studio\juce_skeleton\build\CMakeFiles\8f336b7f7026d2599a0860d549c9020d\FocusDAW-AudioEngine_resources.rc.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="D:\roseWorks\programming\FocusDAW-Studio\juce_skeleton\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="D:\roseWorks\programming\FocusDAW-Studio\juce_skeleton\build\FocusDAW-AudioEngine_artefacts\JuceLibraryCode\FocusDAW-AudioEngine_resources.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{0B5ED4A1-974C-3855-94BC-ED5151AA280B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{01C41C5F-9BB6-383C-A83D-7854A3AAA496}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

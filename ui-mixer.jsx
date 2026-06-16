@@ -267,7 +267,7 @@ function FxChip({ label, active, color, onClick, canEnable = true }) {
 /* ---------- master effect card ----------
    Icon doubles as an on/off (bypass) button. The slider amount is remembered in
    `<paramKey>Stored` on the master object so toggling off→on instantly restores it. */
-function FxCard({ icon, name, paramKey, color, master, onMaster, onBeforeChange }) {
+function FxCard({ icon, name, paramKey, color, master, onMaster, onBeforeChange, sliderWidth = 120 }) {
   const value = master[paramKey] || 0;
   const on = value > 0.001;
   const storedKey = paramKey + "Stored";
@@ -305,7 +305,7 @@ function FxCard({ icon, name, paramKey, color, master, onMaster, onBeforeChange 
       </button>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: on ? "var(--cream)" : "var(--dim)" }}>{name}</div>
-        <SleekSlider value={value} min={0} max={1} step={0.01} onBeforeChange={onBeforeChange} onChange={setAmount} width={120} ticks={4} />
+        <SleekSlider value={value} min={0} max={1} step={0.01} onBeforeChange={onBeforeChange} onChange={setAmount} width={sliderWidth} ticks={4} />
       </div>
       <span className="mono" style={{ fontSize: 10, color: on ? "var(--cream-2)" : "var(--faint)", width: 30, textAlign: "right" }}>{Math.round(value * 100)}%</span>
     </div>
@@ -372,12 +372,14 @@ function MasterPanel({ level, master, onMaster, onBeforeChange }) {
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: "var(--muted)", textTransform: "uppercase" }}>Output Effects</span>
         <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <FxCard icon="disc" name="Reverb" paramKey="reverb" color="var(--violet)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} />
-        <FxCard icon="loop" name="Echo / Delay" paramKey="echo" color="var(--blue)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} />
-        <button style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 9, border: "1px dashed var(--line-strong)", color: "var(--muted)", fontSize: 11.5, justifyContent: "center", background: "transparent" }}>
-          <Icon name="plus" size={13} /> Add effect
-        </button>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+        <FxCard icon="disc" name="Reverb" paramKey="reverb" color="var(--violet)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} sliderWidth={64} />
+        <FxCard icon="loop" name="Delay" paramKey="echo" color="var(--blue)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} sliderWidth={64} />
+        <FxCard icon="wave" name="Saturation" paramKey="saturation" color="var(--red)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} sliderWidth={64} />
+        <FxCard icon="auto" name="Widener" paramKey="widener" color="var(--amber)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} sliderWidth={64} />
+        <div style={{ gridColumn: "span 2" }}>
+          <FxCard icon="eq" name="Exciter / Enhancer" paramKey="exciter" color="var(--green)" master={master} onMaster={onMaster} onBeforeChange={onBeforeChange} sliderWidth={250} />
+        </div>
       </div>
     </div>
   );

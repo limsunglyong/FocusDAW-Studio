@@ -1,0 +1,12 @@
+# CMake generation dependency list for this directory.
+C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/BasicConfigVersion-ExactVersion.cmake.in
+C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeDependentOption.cmake
+C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakePackageConfigHelpers.cmake
+C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/WriteBasicConfigVersionFile.cmake
+D:/roseWorks/programming/FocusDAW-Studio/juce_skeleton/build/CMakeFiles/cmake.verify_globs
+d:/roseWorks/programming/JUCE/CMakeLists.txt
+d:/roseWorks/programming/JUCE/extras/Build/CMake/JUCECheckAtomic.cmake
+d:/roseWorks/programming/JUCE/extras/Build/CMake/JUCEConfig.cmake.in
+d:/roseWorks/programming/JUCE/extras/Build/CMake/JUCEHelperTargets.cmake
+d:/roseWorks/programming/JUCE/extras/Build/CMake/JUCEModuleSupport.cmake
+d:/roseWorks/programming/JUCE/extras/Build/CMake/JUCEUtils.cmake

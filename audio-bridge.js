@@ -1,0 +1,563 @@
+/* ============================================================
+   FocusDAW — Audio Engine Bridge (Hybrid Web Audio / JUCE)
+   ============================================================ */
+(function () {
+  "use strict";
+
+  const wsUrl = "ws://localhost:8082";
+  let socket = null;
+  let connectionState = "connecting"; // "connecting", "connected", "failed"
+  let fallbackTimer = null;
+  let retryCount = 0;
+  const maxRetries = 5;
+
+  // Native Engine State Cache
+  const nativeState = {
+    isPlaying: false,
+    startTime: 0,
+    offset: 0,
+    trackLevels: {},
+    masterStereo: { l: 0, r: 0 },
+    masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    stretchPreviewPreparing: false
+  };
+
+  // We capture the original DAW engine (Web Audio API)
+  const LocalDAW = window.DAW;
+  window.LocalDAW = LocalDAW;
+
+  // Audio Bridge Adapter
+  const Bridge = {
+    isNative: false,
+    
+    init() {
+      // Always initialize LocalDAW so that the context and demo tracks are ready for fallback
+      LocalDAW.init();
+      
+      // If we are in Electron and not connected yet, try connecting
+      if (window.electronAPI && connectionState === "connecting" && !socket) {
+        setupWebSocket();
+      }
+    },
+
+    // Native State getters
+    getPlayhead() {
+      if (!this.isNative) return LocalDAW.getPlayhead();
+      if (!nativeState.isPlaying) return nativeState.offset;
+      const rate = LocalDAW._projectRate();
+      const elapsed = (Date.now() - nativeState.startTime) / 1000;
+      const raw = nativeState.offset + elapsed * rate;
+      return LocalDAW.loopEnabled ? (raw % LocalDAW.duration) : Math.min(raw, LocalDAW.duration);
+    },
+
+    getTrackLevel(id) {
+      if (!this.isNative) return LocalDAW.getTrackLevel(id);
+      return nativeState.trackLevels[id] || 0;
+    },
+
+    getMasterLevel() {
+      if (!this.isNative) return LocalDAW.getMasterLevel();
+      return (nativeState.masterStereo.l + nativeState.masterStereo.r) / 2;
+    },
+
+    getMasterStereoLevels() {
+      if (!this.isNative) return LocalDAW.getMasterStereoLevels();
+      return nativeState.masterStereo;
+    },
+
+    getMasterBandLevels() {
+      if (!this.isNative) return LocalDAW.getMasterBandLevels();
+      return nativeState.masterBandLevels;
+    },
+
+    // Command forwarders
+    play(options) {
+      LocalDAW.play(options); // Keep LocalDAW state in sync
+      if (this.isNative) {
+        // Silence Web Audio output
+        if (LocalDAW.ctx) {
+          try {
+            // Disconnect or mute local master gain so Web Audio is silent
+            LocalDAW.setMaster("volume", 0);
+          } catch(e){}
+        }
+        sendToNative({ command: "play", options });
+        nativeState.isPlaying = true;
+        nativeState.startTime = Date.now();
+        startLocalTickLoop();
+      }
+    },
+
+    pause() {
+      LocalDAW.pause();
+      if (this.isNative) {
+        sendToNative({ command: "pause" });
+        nativeState.isPlaying = false;
+        nativeState.offset = this.getPlayhead();
+      }
+    },
+
+    stop() {
+      LocalDAW.stop();
+      if (this.isNative) {
+        sendToNative({ command: "stop" });
+        nativeState.isPlaying = false;
+        nativeState.offset = 0;
+      }
+    },
+
+    seek(t) {
+      LocalDAW.seek(t);
+      if (this.isNative) {
+        sendToNative({ command: "seek", positionSeconds: t });
+        nativeState.offset = Math.max(0, Math.min(t, LocalDAW.duration));
+        nativeState.startTime = Date.now();
+      }
+    },
+
+    setTrackParam(id, key, val) {
+      LocalDAW.setTrackParam(id, key, val);
+      if (this.isNative) {
+        sendToNative({ command: "setTrackParam", trackId: id, key, value: val });
+      }
+    },
+
+    clearAllMuteSolo() {
+      LocalDAW.clearAllMuteSolo();
+      if (this.isNative) {
+        sendToNative({ command: "clearAllMuteSolo" });
+      }
+    },
+
+    setProjectBpm(bpm) {
+      const res = LocalDAW.setProjectBpm(bpm);
+      if (this.isNative && res) {
+        sendToNative({ command: "setProjectBpm", bpm: LocalDAW.tempo.projectBpm });
+      }
+      return res;
+    },
+
+    setPlaybackBpm(bpm) {
+      const res = LocalDAW.setPlaybackBpm(bpm);
+      if (this.isNative && res) {
+        sendToNative({ command: "setPlaybackBpm", bpm: LocalDAW.tempo.playbackBpm });
+      }
+      return res;
+    },
+
+    adjustPlaybackBpm(delta) {
+      const res = LocalDAW.adjustPlaybackBpm(delta);
+      if (this.isNative && res) {
+        sendToNative({ command: "setPlaybackBpm", bpm: LocalDAW.tempo.playbackBpm });
+      }
+      return res;
+    },
+
+    setVariBpm(on) {
+      const res = LocalDAW.setVariBpm(on);
+      if (this.isNative) {
+        sendToNative({ command: "setVariBpm", on: !!on });
+      }
+      return res;
+    },
+
+    setVariKey(on) {
+      const res = LocalDAW.setVariKey(on);
+      if (this.isNative) {
+        sendToNative({ command: "setVariKey", on: !!on });
+      }
+      return res;
+    },
+
+    setKey(key) {
+      const res = LocalDAW.setKey(key);
+      if (this.isNative) {
+        sendToNative({ command: "setKey", key: key });
+      }
+      return res;
+    },
+
+    setDetectedKey(key) {
+      const res = LocalDAW.setDetectedKey(key);
+      if (this.isNative) {
+        sendToNative({ command: "setDetectedKey", key: key });
+      }
+      return res;
+    },
+
+    setMaster(key, val) {
+      if (key === "volume" && this.isNative) {
+        // In native mode, we keep LocalDAW volume muted/silent, but send the real volume to C++
+        LocalDAW.master.volume = val;
+        sendToNative({ command: "setMaster", key, value: val });
+      } else {
+        LocalDAW.setMaster(key, val);
+        if (this.isNative) {
+          sendToNative({ command: "setMaster", key, value: val });
+        }
+      }
+    },
+
+    setMasterBand(i, db) {
+      LocalDAW.setMasterBand(i, db);
+      if (this.isNative) {
+        sendToNative({ command: "setMasterBand", index: i, db });
+      }
+    },
+
+    setMasterGroup(group, db) {
+      LocalDAW.setMasterGroup(group, db);
+      if (this.isNative) {
+        sendToNative({ command: "setMasterGroup", group, db });
+      }
+    },
+
+    setMasterBands(arr) {
+      LocalDAW.setMasterBands(arr);
+      if (this.isNative) {
+        sendToNative({ command: "setMasterBands", bands: arr });
+      }
+    },
+
+    applyEQPreset(name) {
+      LocalDAW.applyEQPreset(name);
+      if (this.isNative) {
+        sendToNative({ command: "applyEQPreset", name });
+      }
+    },
+
+    // Track addition: run locally (for waveforms) and sync with JUCE
+    async addFileBuffer(name, arrayBuffer, options = {}) {
+      const track = await LocalDAW.addFileBuffer(name, arrayBuffer, options);
+      if (this.isNative && track) {
+        syncTrackToNative(track);
+      }
+      return track;
+    },
+
+    async addFile(file) {
+      const track = await LocalDAW.addFile(file);
+      if (this.isNative && track) {
+        syncTrackToNative(track);
+      }
+      return track;
+    },
+
+    addDemoTracks() {
+      LocalDAW.addDemoTracks();
+      if (this.isNative) {
+        LocalDAW.tracks.forEach(track => {
+          syncTrackToNative(track);
+        });
+      }
+    },
+
+    clearTracks() {
+      LocalDAW.clearTracks();
+      if (this.isNative) {
+        sendToNative({ command: "clearTracks" });
+        nativeState.offset = 0;
+        nativeState.isPlaying = false;
+      }
+    },
+
+    importProject(json) {
+      LocalDAW.importProject(json);
+      if (this.isNative) {
+        // Send full sync project configuration to native C++ engine
+        sendToNative({ command: "importProject", project: json });
+        // Since JUCE engine needs actual files, let's trigger loading for any files that have filePath
+        LocalDAW.tracks.forEach(track => {
+          if (track.filePath) {
+            sendToNative({ command: "loadTrack", trackId: track.id, filePath: track.filePath });
+          }
+        });
+      }
+    },
+
+    async renderMix(onProgress, options = {}) {
+      if (!this.isNative) {
+        return LocalDAW.renderMix(onProgress, options);
+      }
+      return new Promise((resolve, reject) => {
+        const exportId = "exp_" + Date.now();
+        window._activeExport = {
+          exportId,
+          onProgress,
+          resolve,
+          reject
+        };
+        sendToNative({
+          command: "export",
+          exportId,
+          format: options.format || "wav",
+          sampleRate: options.sampleRate || 44100,
+          bitrate: options.bitrate || 320,
+          normalize: options.normalize !== false,
+          lufsTarget: options.lufsTarget || -14.0,
+          preservePitch: !!options.preservePitch,
+          duration: LocalDAW.duration
+        });
+      });
+    }
+  };
+
+  // Setup WebSocket connection to JUCE Audio Engine
+  function setupWebSocket() {
+    console.log(`[AudioBridge] Connecting to JUCE Audio Engine at ${wsUrl}... (Attempt ${retryCount + 1}/${maxRetries + 1})`);
+    
+    socket = new WebSocket(wsUrl);
+    
+    fallbackTimer = setTimeout(() => {
+      if (connectionState === "connecting") {
+        console.warn("[AudioBridge] JUCE Engine WebSocket connection timeout.");
+        handleConnectionFailure();
+      }
+    }, 3000); // 3000ms connect timeout
+
+    socket.onopen = () => {
+      clearTimeout(fallbackTimer);
+      connectionState = "connected";
+      Bridge.isNative = true;
+      retryCount = 0;
+      console.log("[AudioBridge] Connected to JUCE Native Audio Engine!");
+      
+      // Send initial handshake/init command
+      sendToNative({ command: "init", sampleRate: LocalDAW.ctx ? LocalDAW.ctx.sampleRate : 44100 });
+      
+      // Sync current tempo & key settings
+      if (LocalDAW.tempo) {
+        if (LocalDAW.tempo.projectBpm) sendToNative({ command: "setProjectBpm", bpm: LocalDAW.tempo.projectBpm });
+        if (LocalDAW.tempo.playbackBpm) sendToNative({ command: "setPlaybackBpm", bpm: LocalDAW.tempo.playbackBpm });
+        sendToNative({ command: "setVariBpm", on: !!LocalDAW.tempo.variBpm });
+        sendToNative({ command: "setVariKey", on: !!LocalDAW.tempo.variKey });
+        if (LocalDAW.tempo.key) sendToNative({ command: "setKey", key: LocalDAW.tempo.key });
+        if (LocalDAW.tempo.detectedKey) sendToNative({ command: "setDetectedKey", key: LocalDAW.tempo.detectedKey });
+      }
+
+      // Sync current track layout if already loaded
+      if (LocalDAW.tracks.length > 0) {
+        LocalDAW.tracks.forEach(track => syncTrackToNative(track));
+      }
+      
+      LocalDAW._emit();
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleNativeMessage(msg);
+      } catch (err) {
+        console.error("[AudioBridge] Error parsing native message:", err);
+      }
+    };
+
+    socket.onerror = (err) => {
+      console.warn("[AudioBridge] WebSocket error:", err);
+      if (connectionState === "connecting") {
+        clearTimeout(fallbackTimer);
+        handleConnectionFailure();
+      }
+    };
+
+    socket.onclose = () => {
+      if (connectionState === "connected") {
+        console.warn("[AudioBridge] JUCE Engine connection closed. Falling back to Local Web Audio.");
+        switchToLocal();
+      }
+    };
+  }
+
+  function handleConnectionFailure() {
+    if (socket) {
+      try { socket.close(); } catch(e){}
+      socket = null;
+    }
+    if (retryCount < maxRetries) {
+      retryCount++;
+      connectionState = "connecting";
+      console.log(`[AudioBridge] Connection failed. Retrying in 1000ms...`);
+      setTimeout(setupWebSocket, 1000);
+    } else {
+      console.warn("[AudioBridge] JUCE Engine connection failed after max retries. Falling back to Local Web Audio.");
+      switchToLocal();
+    }
+  }
+
+  function switchToLocal() {
+    connectionState = "failed";
+    Bridge.isNative = false;
+    socket = null;
+    // Restore master volume to what it was
+    if (LocalDAW.ctx) {
+      try { LocalDAW.setMaster("volume", LocalDAW.master.volume); } catch(e){}
+    }
+    LocalDAW._emit();
+  }
+
+  function sendToNative(obj) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(obj));
+    }
+  }
+
+  // Handle incoming status messages from the JUCE C++ engine
+  function handleNativeMessage(msg) {
+    if (!msg || !msg.event) return;
+
+    if (msg.event === "playbackPosition") {
+      nativeState.offset = msg.positionSeconds;
+      nativeState.startTime = Date.now();
+      LocalDAW._emit();
+    } else if (msg.event === "levels") {
+      if (msg.tracks) nativeState.trackLevels = msg.tracks;
+      if (msg.master) nativeState.masterStereo = msg.master;
+      if (msg.masterBands) nativeState.masterBandLevels = msg.masterBands;
+      // Do not call _emit on every level message to avoid React overload, React uses useTick polling
+    } else if (msg.event === "stretchPreviewPreparing") {
+      nativeState.stretchPreviewPreparing = !!msg.preparing;
+      LocalDAW._emit();
+    } else if (msg.event === "exportProgress") {
+      if (window._activeExport && window._activeExport.exportId === msg.exportId) {
+        if (window._activeExport.onProgress) {
+          window._activeExport.onProgress(msg.progress);
+        }
+      }
+    } else if (msg.event === "exportDone") {
+      if (window._activeExport && window._activeExport.exportId === msg.exportId) {
+        const resolve = window._activeExport.resolve;
+        window._activeExport = null;
+        resolve({ isNative: true, tempFilePath: msg.tempFilePath });
+      }
+    } else if (msg.event === "exportError") {
+      if (window._activeExport && window._activeExport.exportId === msg.exportId) {
+        const reject = window._activeExport.reject;
+        window._activeExport = null;
+        reject(new Error(msg.error || "Native export failed"));
+      }
+    }
+  }
+
+  // Helper to synchronize a newly added track to JUCE C++ engine
+  function syncTrackToNative(track) {
+    if (!track) return;
+    if (track.filePath) {
+      sendToNative({
+        command: "loadTrack",
+        trackId: track.id,
+        filePath: track.filePath,
+        type: track.type,
+        color: track.color
+      });
+    } else {
+      // If it's a demo or synthesized track, we need its PCM data.
+      // We convert it to WAV locally and save as temporary file.
+      const wavBytes = bufferToWav(track.buffer);
+      if (window.electronAPI && window.electronAPI.writeTempAudio) {
+        window.electronAPI.writeTempAudio(wavBytes, track.name).then((tmpPath) => {
+          sendToNative({
+            command: "loadTrack",
+            trackId: track.id,
+            filePath: tmpPath,
+            type: track.type,
+            color: track.color
+          });
+        });
+      }
+    }
+    
+    // Sync current params
+    sendToNative({ command: "setTrackParam", trackId: track.id, key: "volume", value: track.params.volume });
+    sendToNative({ command: "setTrackParam", trackId: track.id, key: "pan", value: track.params.pan });
+    sendToNative({ command: "setTrackParam", trackId: track.id, key: "mute", value: track.params.mute });
+    sendToNative({ command: "setTrackParam", trackId: track.id, key: "solo", value: track.params.solo });
+  }
+
+  // Convert AudioBuffer to WAV ArrayBuffer
+  function bufferToWav(buffer) {
+    const numOfChan = buffer.numberOfChannels,
+      length = buffer.length * numOfChan * 2 + 44,
+      bufferArr = new ArrayBuffer(length),
+      view = new DataView(bufferArr),
+      channels = [],
+      sampleRate = buffer.sampleRate;
+    let i, sample, offset = 0, pos = 0;
+
+    // write WAV header
+    setUint32(0x46464952); // "RIFF"
+    setUint32(length - 8); // file length - 8
+    setUint32(0x45564157); // "WAVE"
+    setUint32(0x20746d66); // "fmt " chunk
+    setUint32(16);         // chunk length
+    setUint16(1);          // sample format (raw PCM)
+    setUint16(numOfChan);
+    setUint32(sampleRate);
+    setUint32(sampleRate * numOfChan * 2); // byte rate
+    setUint16(numOfChan * 2);              // block align
+    setUint16(16);                         // bits per sample
+    setUint32(0x61746164); // "data" chunk
+    setUint32(length - pos - 4); // chunk length
+
+    for (i = 0; i < numOfChan; i++) channels.push(buffer.getChannelData(i));
+
+    while (pos < length) {
+      for (i = 0; i < numOfChan; i++) {
+        sample = Math.max(-1, Math.min(1, channels[i][offset])); // clamp
+        sample = (sample < 0 ? sample * 0x8000 : sample * 0x7fff) | 0; // scale to 16-bit
+        view.setInt16(pos, sample, true);
+        pos += 2;
+      }
+      offset++;
+    }
+
+    return bufferArr;
+
+    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+  }
+
+  // Periodic tick loop to update UI playhead while playing in C++ mode
+  let localTickInterval = null;
+  function startLocalTickLoop() {
+    if (localTickInterval) clearInterval(localTickInterval);
+    localTickInterval = setInterval(() => {
+      if (!nativeState.isPlaying) {
+        clearInterval(localTickInterval);
+        return;
+      }
+      LocalDAW._emit();
+    }, 30);
+  }
+
+  // Construct Proxy to transparently forward all other properties/methods of DAW to LocalDAW
+  const DAWProxy = new Proxy(Bridge, {
+    get(target, prop, receiver) {
+      if (prop in target) {
+        return Reflect.get(target, prop, receiver);
+      }
+      // Delegate to LocalDAW
+      const val = LocalDAW[prop];
+      if (typeof val === "function") {
+        return function (...args) {
+          return val.apply(LocalDAW, args);
+        };
+      }
+      return val;
+    },
+    set(target, prop, value, receiver) {
+      if (prop in target) {
+        return Reflect.set(target, prop, value, receiver);
+      }
+      return Reflect.set(LocalDAW, prop, value);
+    }
+  });
+
+  window.DAW = DAWProxy;
+
+  // Auto initialize on script load
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    Bridge.init();
+  } else {
+    window.addEventListener("DOMContentLoaded", () => Bridge.init());
+  }
+})();

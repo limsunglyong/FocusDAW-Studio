@@ -1,0 +1,10 @@
+^D:\ROSEWORKS\PROGRAMMING\FOCUSDAW-STUDIO\JUCE_SKELETON\BUILD\CMAKEFILES\5E66213F7ACB5C48819C59A1825CD1F6\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -SD:/roseWorks/programming/FocusDAW-Studio/juce_skeleton -BD:/roseWorks/programming/FocusDAW-Studio/juce_skeleton/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/roseWorks/programming/FocusDAW-Studio/juce_skeleton/build/FocusDAW-AudioEngine.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

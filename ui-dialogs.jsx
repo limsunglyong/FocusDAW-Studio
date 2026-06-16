@@ -340,6 +340,26 @@ function ExportDialog({ projectName, onClose }) {
     try {
       setErrorMsg("");
       setStage("rendering"); setProg(0); setLabel("Rendering mix…");
+
+      if (DAW && DAW.isNative) {
+        const nativeResult = await DAW.renderMix((p) => setProg(p), {
+          format,
+          bitrate,
+          sampleRate: sr,
+          normalize,
+          lufsTarget,
+          preservePitch,
+        });
+
+        setAudioBlob({
+          isNative: true,
+          tempFilePath: nativeResult.tempFilePath,
+        });
+        setProg(1);
+        setStage("done");
+        return;
+      }
+
       const ratio = format === "mp3" ? 0.75 : 1;
       const tempoRate = DAW && DAW._projectRate ? DAW._projectRate() : 1;
       const tempoChanged = Math.abs(tempoRate - 1) > 0.001;
@@ -546,10 +566,29 @@ function ExportDialog({ projectName, onClose }) {
             {window.electronAPI ? (
               <button className="btn-save" disabled={saving} onClick={async () => {
                 setSaving(true);
-                const ab = await audioBlob.arrayBuffer();
-                const result = await window.electronAPI.saveAudio(ab, fileName);
-                setSaving(false);
-                if (result && result.saved) onClose();
+                if (audioBlob && audioBlob.isNative) {
+                  const yr = String(year || "").trim();
+                  const dt = String(mdate || "").trim();
+                  let tagDate = dt;
+                  if (/^\d{4}$/.test(yr)) tagDate = /^\d{4}-\d{2}-\d{2}/.test(dt) ? (yr + dt.slice(4)) : yr;
+                  const meta = { title, artist, album, year: yr, date: tagDate };
+                  const coverParts = cover ? _dataUrlParts(cover.dataUrl) : null;
+                  const coverArg = coverParts ? { data: coverParts.base64, mime: coverParts.mime } : null;
+
+                  const result = await window.electronAPI.saveNativeAudio(
+                    audioBlob.tempFilePath,
+                    format,
+                    { bitrate, sampleRate: sr, meta, cover: coverArg },
+                    fileName
+                  );
+                  setSaving(false);
+                  if (result && result.saved) onClose();
+                } else {
+                  const ab = await audioBlob.arrayBuffer();
+                  const result = await window.electronAPI.saveAudio(ab, fileName);
+                  setSaving(false);
+                  if (result && result.saved) onClose();
+                }
               }}><Icon name="download" size={18} /> {saving ? "Saving…" : "Save file"}</button>
             ) : (
               <>

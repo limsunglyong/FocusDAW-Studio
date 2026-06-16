@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder:     ()              => ipcRenderer.invoke('open-folder'),
   selectFiles:    ()              => ipcRenderer.invoke('select-files'),
   readAudioFile:  (filePath)      => ipcRenderer.invoke('read-audio-file', filePath),
+  writeTempAudio: (wavBuf, fileName) => ipcRenderer.invoke('write-temp-audio', wavBuf, fileName),
 
   // Project persistence
   saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),
@@ -21,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Save rendered audio via native OS dialog (with overwrite confirmation)
   saveAudio:      (buf, name)     => ipcRenderer.invoke('save-audio', buf, name),
+  saveNativeAudio: (tempPath, format, opts, name) => ipcRenderer.invoke('save-native-audio', tempPath, format, opts, name),
 
   // Window controls (Windows / Linux custom title bar)
   winAction:      (action)        => ipcRenderer.invoke('win-action', action),
