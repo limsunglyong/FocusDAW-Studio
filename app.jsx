@@ -967,109 +967,6 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [showMixer, setShowMixer] = useState(false);
   const mixerChannelRef = useRef(null);
 
-  // BroadcastChannel for Mixer Window sync
-  useEffect(() => {
-    const channel = new BroadcastChannel("focusdaw-mixer-sync");
-    mixerChannelRef.current = channel;
-
-    const handleMessage = (e) => {
-      const msg = e.data;
-      if (!msg) return;
-
-      switch (msg.type) {
-        case "MIXER_READY":
-          channel.postMessage({
-            type: "INIT_STATE",
-            tracks: DAW.tracks.map((t) => ({
-              id: t.id,
-              name: t.name,
-              color: t.color,
-              params: { ...t.params },
-            })),
-            master: {
-              volume: DAW.master.volume,
-              reverb: DAW.master.reverb,
-              echo: DAW.master.echo,
-              reverbStored: DAW.master.reverbStored,
-              echoStored: DAW.master.echoStored,
-              bands: [...DAW.master.bands],
-              fadeIn: DAW.master.fadeIn,
-              fadeOut: DAW.master.fadeOut,
-            },
-            theme: localStorage.getItem("focusdaw-theme") || "default",
-            isPlaying: DAW.isPlaying,
-            playhead: DAW.getPlayhead(),
-          });
-          break;
-
-        case "BEFORE_CHANGE":
-          pushUndo();
-          break;
-
-        case "REQUEST_UNDO":
-          undo();
-          break;
-
-        case "REQUEST_REDO":
-          redo();
-          break;
-
-        case "REQUEST_PLAY_PAUSE":
-          DAW.isPlaying ? DAW.pause() : DAW.play();
-          force((n) => n + 1);
-          break;
-
-        case "REQUEST_STOP":
-          DAW.stop();
-          force((n) => n + 1);
-          break;
-
-        case "SET_TRACK_PARAM":
-          DAW.setTrackParam(msg.id, msg.k, msg.v);
-          saveRecentProject(projectName, projectPath);
-          force((n) => n + 1);
-          break;
-
-        case "SET_MASTER_PARAM":
-          DAW.setMaster(msg.k, msg.v);
-          saveRecentProject(projectName, projectPath);
-          force((n) => n + 1);
-          break;
-
-        case "SET_MASTER_BAND":
-          DAW.setMasterBand(msg.i, msg.v);
-          saveRecentProject(projectName, projectPath);
-          force((n) => n + 1);
-          break;
-
-        case "APPLY_EQ_PRESET":
-          DAW.applyEQPreset(msg.name);
-          saveRecentProject(projectName, projectPath);
-          force((n) => n + 1);
-          break;
-
-        default:
-          break;
-      }
-    };
-
-    channel.addEventListener("message", handleMessage);
-
-    let unsubMixerState = null;
-    if (window.electronAPI && window.electronAPI.onMixerState) {
-      unsubMixerState = window.electronAPI.onMixerState((state) => {
-        setShowMixer(state);
-      });
-    }
-
-    return () => {
-      channel.removeEventListener("message", handleMessage);
-      channel.close();
-      mixerChannelRef.current = null;
-      if (unsubMixerState) unsubMixerState();
-    };
-  }, [projectName, projectPath, pushUndo, undo, redo]);
-
   // Broadcast real-time level meter and FFT spectrum data to mixer window (runs every frame via useTick)
   useEffect(() => {
     if (showMixer && mixerChannelRef.current) {
@@ -1101,6 +998,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     echo: DAW.master.echo,
     reverbStored: DAW.master.reverbStored,
     echoStored: DAW.master.echoStored,
+    saturation: DAW.master.saturation,
+    widener: DAW.master.widener,
+    exciter: DAW.master.exciter,
     bands: DAW.master.bands,
     fadeIn: DAW.master.fadeIn,
     fadeOut: DAW.master.fadeOut,
@@ -1122,6 +1022,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           echo: DAW.master.echo,
           reverbStored: DAW.master.reverbStored,
           echoStored: DAW.master.echoStored,
+          saturation: DAW.master.saturation,
+          widener: DAW.master.widener,
+          exciter: DAW.master.exciter,
           bands: [...DAW.master.bands],
           fadeIn: DAW.master.fadeIn,
           fadeOut: DAW.master.fadeOut,
@@ -1362,6 +1265,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // audio track's harmonic content together.
     if (!DAW.detectKeyFromAllTracks || detectingKey) return;
     touchKeyPanel();
+    const anySolo = DAW._anySolo ? DAW._anySolo() : false;
+    const analyzedTracks = DAW.tracks
+      .filter((t) => {
+        const p = t && t.params ? t.params : {};
+        return t && t.buffer && !t.needsAudio && !p.mute && !(anySolo && !p.solo);
+      })
+      .map((t) => t.name || t.fileName || t.id);
+    console.log("[KeyDetection] UI analyze request:", analyzedTracks.length, analyzedTracks);
     setDetectingKey(true);
     // Yield two frames so "Analyzing…" paints before the synchronous analysis blocks.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -1371,7 +1282,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     } finally {
       setDetectingKey(false);
     }
-    if (!key) return;
+    if (!key) {
+      console.warn("[KeyDetection] UI detection returned no key; clearing stale detected key.");
+      if (DAW.setDetectedKey) DAW.setDetectedKey(null);
+      if (DAW.setKey) DAW.setKey(null);
+      saveRecentProject(projectName, projectPath);
+      force((n) => n + 1);
+      return;
+    }
+    console.log("[KeyDetection] UI detected key:", key);
     if (DAW.setDetectedKey) DAW.setDetectedKey(key);
     if (DAW.setKey) DAW.setKey(key);
     saveRecentProject(projectName, projectPath);
@@ -1479,6 +1398,112 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(projectName, projectPath);
     force(n => n + 1);
   }, [onUndoStateChange, projectName, projectPath]);
+
+  // BroadcastChannel for Mixer Window sync
+  useEffect(() => {
+    const channel = new BroadcastChannel("focusdaw-mixer-sync");
+    mixerChannelRef.current = channel;
+
+    const handleMessage = (e) => {
+      const msg = e.data;
+      if (!msg) return;
+
+      switch (msg.type) {
+        case "MIXER_READY":
+          channel.postMessage({
+            type: "INIT_STATE",
+            tracks: DAW.tracks.map((t) => ({
+              id: t.id,
+              name: t.name,
+              color: t.color,
+              params: { ...t.params },
+            })),
+            master: {
+              volume: DAW.master.volume,
+              reverb: DAW.master.reverb,
+              echo: DAW.master.echo,
+              reverbStored: DAW.master.reverbStored,
+              echoStored: DAW.master.echoStored,
+              saturation: DAW.master.saturation,
+              widener: DAW.master.widener,
+              exciter: DAW.master.exciter,
+              bands: [...DAW.master.bands],
+              fadeIn: DAW.master.fadeIn,
+              fadeOut: DAW.master.fadeOut,
+            },
+            theme: localStorage.getItem("focusdaw-theme") || "default",
+            isPlaying: DAW.isPlaying,
+            playhead: DAW.getPlayhead(),
+          });
+          break;
+
+        case "BEFORE_CHANGE":
+          pushUndo();
+          break;
+
+        case "REQUEST_UNDO":
+          undo();
+          break;
+
+        case "REQUEST_REDO":
+          redo();
+          break;
+
+        case "REQUEST_PLAY_PAUSE":
+          DAW.isPlaying ? DAW.pause() : DAW.play();
+          force((n) => n + 1);
+          break;
+
+        case "REQUEST_STOP":
+          DAW.stop();
+          force((n) => n + 1);
+          break;
+
+        case "SET_TRACK_PARAM":
+          DAW.setTrackParam(msg.id, msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        case "SET_MASTER_PARAM":
+          DAW.setMaster(msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        case "SET_MASTER_BAND":
+          DAW.setMasterBand(msg.i, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        case "APPLY_EQ_PRESET":
+          DAW.applyEQPreset(msg.name);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    channel.addEventListener("message", handleMessage);
+
+    let unsubMixerState = null;
+    if (window.electronAPI && window.electronAPI.onMixerState) {
+      unsubMixerState = window.electronAPI.onMixerState((state) => {
+        setShowMixer(state);
+      });
+    }
+
+    return () => {
+      channel.removeEventListener("message", handleMessage);
+      channel.close();
+      mixerChannelRef.current = null;
+      if (unsubMixerState) unsubMixerState();
+    };
+  }, [projectName, projectPath, pushUndo, undo, redo]);
 
   // Scroll the arrange area AND update timelineView in the same React render — no rAF lag.
   const scrollArrangeTo = useCallback((sl) => {

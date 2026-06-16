@@ -118,6 +118,12 @@ function createWindow() {
 
   mainWindow = win;
 
+  win.webContents.on('console-message', (_event, _level, message) => {
+    if (typeof message === 'string' && message.startsWith('[KeyDetection]')) {
+      console.log(message);
+    }
+  });
+
   win.loadFile(path.join(__dirname, '..', 'studio.html'));
 
 

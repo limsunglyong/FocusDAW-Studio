@@ -7,6 +7,9 @@ window.DAW = {
     volume: 1,
     reverb: 0,
     echo: 0,
+    saturation: 0,
+    widener: 0,
+    exciter: 0,
     bands: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     fadeIn: 0,
     fadeOut: 0

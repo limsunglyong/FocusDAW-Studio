@@ -3,7 +3,7 @@
 
 
 
-브라우저의 debug console이 열리지 않도록 release 시 removeMenu 필요.
+// 브라우저의 debug console이 열리지 않도록 release 시 removeMenu 필요.
 
 EQ 프리셋 저장 기능? 
 Custom.

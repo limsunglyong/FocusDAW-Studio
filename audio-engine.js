@@ -719,11 +719,30 @@
     // 키 검출은 BPM 소스 트랙 선택과 무관하게, 오디오가 있고 mute가 아닌 모든
     // 트랙의 화성 내용을 신뢰도 가중으로 합산해 추정한다. (mute 트랙은 제외)
     detectKeyFromAllTracks() {
-      const buffers = this.tracks
-        .filter((t) => t && t.buffer && !t.needsAudio && !(t.params && t.params.mute))
-        .map((t) => t.buffer);
+      const included = [];
+      const excluded = [];
+      const anySolo = this._anySolo();
+      this.tracks.forEach((t, i) => {
+        const name = (t && (t.name || t.fileName || t.id)) || `Track ${i + 1}`;
+        const p = t && t.params ? t.params : {};
+        if (!t || !t.buffer) {
+          excluded.push(`${name} (no audio)`);
+        } else if (t.needsAudio) {
+          excluded.push(`${name} (needs audio)`);
+        } else if (p.mute) {
+          excluded.push(`${name} (muted)`);
+        } else if (anySolo && !p.solo) {
+          excluded.push(`${name} (solo-muted)`);
+        } else {
+          included.push(t);
+        }
+      });
+      console.log("[KeyDetection] Included tracks:", included.map((t) => t.name || t.fileName || t.id));
+      console.log("[KeyDetection] Excluded tracks:", excluded);
+      const buffers = included.map((t) => t.buffer);
+      const labels = included.map((t) => t.name || t.fileName || t.id);
       if (!buffers.length) return null;
-      return estimateKeyFromBuffers(buffers);
+      return estimateKeyFromBuffers(buffers, labels);
     },
 
     setKey(key) {
@@ -1784,8 +1803,8 @@
   // 강하게 맞는지(피어슨 최대 상관)"를 신뢰도로 삼고, 그 가중치로 정규화 크로마를
   // 합산한 뒤 한 번에 키를 추정한다. 음정이 또렷한 트랙(베이스·피아노)은 큰 비중,
   // 드럼·노이즈처럼 평평한 트랙은 작은 비중을 갖는다.
-  function estimateKeyFromBuffers(buffers) {
-    console.log("[KeyDetection] Starting key estimation on", buffers.length, "buffers");
+  function estimateKeyFromBuffers(buffers, labels = []) {
+    console.log("[KeyDetection] Starting key estimation on", buffers.length, "included buffers");
     const combined = new Float64Array(12);
     let totalWeight = 0;
     let validBuffers = [];
@@ -1793,21 +1812,22 @@
     for (let i = 0; i < buffers.length; i++) {
       const b = buffers[i];
       const c = new Float64Array(12);
+      const label = labels[i] || `Buffer ${i}`;
       if (!accumulateChroma(b, c)) {
-        console.log(`[KeyDetection] Buffer ${i}: accumulateChroma returned false (too short or silent)`);
+        console.log(`[KeyDetection] Buffer ${i} (${label}): accumulateChroma returned false (too short or silent)`);
         continue;
       }
       let sum = 0;
       for (let k = 0; k < 12; k++) sum += c[k];
       if (sum <= 0) {
-        console.log(`[KeyDetection] Buffer ${i}: sum of chroma is 0`);
+        console.log(`[KeyDetection] Buffer ${i} (${label}): sum of chroma is 0`);
         continue;
       }
       
       validBuffers.push({ index: i, buffer: b, chroma: c, sum });
       const conf = Math.max(0, bestKeyCorrelation(c));
       const w = conf * conf; // 제곱으로 비음정 트랙을 더 강하게 억제
-      console.log(`[KeyDetection] Buffer ${i}: max template correlation = ${conf.toFixed(4)}, weight = ${w.toFixed(4)}`);
+      console.log(`[KeyDetection] Buffer ${i} (${label}): max template correlation = ${conf.toFixed(4)}, weight = ${w.toFixed(4)}`);
       
       if (w <= 0) continue;
       for (let k = 0; k < 12; k++) combined[k] += (c[k] / sum) * w; // 정규화 후 가중 합
