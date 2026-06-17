@@ -206,7 +206,7 @@ function recentDateLabel(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedPan, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -255,7 +255,10 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo }
   ];
   const advancedItems = [
-    { label: "Auto Panning", icon: "auto", onClick: onAdvancedPan }
+    { label: "Ambience", icon: "disc", onClick: onAdvancedAmbience },
+    { label: "Auto Panning", icon: "auto", onClick: onAdvancedPan },
+    { sep: true },
+    { label: "Equalizer Setup", icon: "eq", onClick: onAdvancedEq }
   ];
   const helpItems = [
     { label: "Manual", icon: "book", onClick: onHelpManual },
@@ -1166,6 +1169,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     echoStored: DAW.master.echoStored,
     saturation: DAW.master.saturation,
     widener: DAW.master.widener,
+    widenerStored: DAW.master.widenerStored,
     exciter: DAW.master.exciter,
     bands: DAW.master.bands,
     fadeIn: DAW.master.fadeIn,
@@ -1189,6 +1193,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           echoStored: DAW.master.echoStored,
           saturation: DAW.master.saturation,
           widener: DAW.master.widener,
+          widenerStored: DAW.master.widenerStored,
           exciter: DAW.master.exciter,
           bands: [...DAW.master.bands],
           fadeIn: DAW.master.fadeIn,
@@ -1212,10 +1217,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           params: { ...t.params }
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
-        theme
+        theme,
+        master: { ...DAW.master, bands: [...DAW.master.bands] }
       });
     }
-  }, [showAdvancedPan, currentTracksStateStr, theme]);
+  }, [showAdvancedPan, currentTracksStateStr, currentMasterStateStr, theme]);
   useEffect(() => {
     if (showMixer && window.electronAPI && window.electronAPI.resizeMixer) {
       window.electronAPI.resizeMixer(DAW.tracks.length);
@@ -1294,11 +1300,29 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [showMixer, toggleMixer]);
   const openAdvancedPan = useCallback(() => {
     if (window.electronAPI && window.electronAPI.openAdvancedPan) {
-      window.electronAPI.openAdvancedPan();
+      window.electronAPI.openAdvancedPan("pan");
       return;
     }
     const features = "width=1120,height=760,resizable=yes,scrollbars=no";
     const popup = window.open("advanced-pan.html", "FocusDAWAdvancedPan", features);
+    if (popup) setShowAdvancedPan(true);
+  }, []);
+  const openAdvancedAmbience = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.openAdvancedPan) {
+      window.electronAPI.openAdvancedPan("ambience");
+      return;
+    }
+    const features = "width=1120,height=760,resizable=yes,scrollbars=no";
+    const popup = window.open("advanced-ambience.html", "FocusDAWAdvancedAmbience", features);
+    if (popup) setShowAdvancedPan(true);
+  }, []);
+  const openAdvancedEq = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.openAdvancedPan) {
+      window.electronAPI.openAdvancedPan("eq");
+      return;
+    }
+    const features = "width=1120,height=760,resizable=yes,scrollbars=no";
+    const popup = window.open("advanced-eq.html", "FocusDAWAdvancedEq", features);
     if (popup) setShowAdvancedPan(true);
   }, []);
   useEffect(() => {
@@ -1598,6 +1622,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               echoStored: DAW.master.echoStored,
               saturation: DAW.master.saturation,
               widener: DAW.master.widener,
+              widenerStored: DAW.master.widenerStored,
               exciter: DAW.master.exciter,
               bands: [...DAW.master.bands],
               fadeIn: DAW.master.fadeIn,
@@ -1681,6 +1706,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme: localStorage.getItem("focusdaw-theme") || "default",
+        master: { ...DAW.master, bands: [...DAW.master.bands] },
         room: DAW.master.room || "none",
         roomParams: { ...DAW.master.roomParams }
       });
@@ -1721,6 +1747,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           break;
         case "SET_ROOM_PARAM":
           DAW.setRoomParam(msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_MASTER_PARAM":
+          DAW.setMaster(msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
           break;
@@ -2105,11 +2136,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onSave: saveProject,
       onOpenProject: window.electronAPI ? () => openProjectFile(null) : () => focusRef.current && focusRef.current.click(),
       onOpenRecentProject: (json, path) => loadProjectJson(json, path || null),
+      onOpenAdvancedAmbience: openAdvancedAmbience,
       onOpenAdvancedPan: openAdvancedPan,
+      onOpenAdvancedEq: openAdvancedEq,
       onUndo: undo,
       onRedo: redo
     });
-  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedPan, undo, redo]);
+  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo]);
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) {
@@ -2323,8 +2356,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         },
         onOpenMixer: openMixerIfClosed,
         onBeforeChange: pushUndo,
-        onClearMuteSolo: clearMuteSolo,
-        onOpenAdvancedPan: openAdvancedPan
+        onClearMuteSolo: clearMuteSolo
       }
     ), /* @__PURE__ */ React.createElement("div", { style: { height: 40 } }))
   ), !empty && vScroll.up && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow up", onClick: () => scrollArrangeV(-1), title: "Scroll up", "aria-label": "Scroll tracks up" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 15 12 7 20 15", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), !empty && vScroll.down && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow down", onClick: () => scrollArrangeV(1), title: "Scroll down", "aria-label": "Scroll tracks down" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 9 12 17 20 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), /* @__PURE__ */ React.createElement(LoadingOverlay, { state: loading }));
@@ -2398,7 +2430,9 @@ function App() {
       onOpenProject: () => H.onOpenProject && H.onOpenProject(),
       onOpenRecentProject: (json, path) => H.onOpenRecentProject && H.onOpenRecentProject(json, path),
       onSettings: () => setShowSettings(true),
+      onAdvancedAmbience: () => H.onOpenAdvancedAmbience && H.onOpenAdvancedAmbience(),
       onAdvancedPan: () => H.onOpenAdvancedPan && H.onOpenAdvancedPan(),
+      onAdvancedEq: () => H.onOpenAdvancedEq && H.onOpenAdvancedEq(),
       onUndo: () => H.onUndo && H.onUndo(),
       onRedo: () => H.onRedo && H.onRedo(),
       canUndo: undoState.canUndo,

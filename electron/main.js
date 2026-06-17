@@ -715,12 +715,16 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   sendMixerState(true);
 });
 
-ipcMain.handle('open-advanced-pan', async () => {
+const advancedFiles = { ambience: 'advanced-ambience.html', eq: 'advanced-eq.html', pan: 'advanced-pan.html' };
+
+ipcMain.handle('open-advanced-pan', async (_, target = 'pan') => {
+  const targetFile = advancedFiles[target] || advancedFiles.pan;
   if (advancedPanWindow && !advancedPanWindow.isDestroyed()) {
     const cb = advancedPanWindow.getContentBounds();
     if (cb.width < ADVANCED_PAN_WIDTH || cb.height < ADVANCED_PAN_HEIGHT) {
       advancedPanWindow.setContentSize(Math.max(cb.width, ADVANCED_PAN_WIDTH), Math.max(cb.height, ADVANCED_PAN_HEIGHT));
     }
+    advancedPanWindow.loadFile(path.join(__dirname, '..', targetFile));
     advancedPanWindow.show();
     advancedPanWindow.focus();
     sendAdvancedPanState(true);
@@ -758,7 +762,7 @@ ipcMain.handle('open-advanced-pan', async () => {
     title: 'FocusDAW Advanced Effect Factory',
   });
 
-  advancedPanWindow.loadFile(path.join(__dirname, '..', 'advanced-pan.html'));
+  advancedPanWindow.loadFile(path.join(__dirname, '..', targetFile));
   if (bounds) advancedPanWindow.setContentBounds(bounds);
 
   const captureBounds = () => {
@@ -790,8 +794,7 @@ ipcMain.handle('open-advanced-pan', async () => {
 // recreating the window — keeps bounds, hide/close behaviour, and state intact.
 ipcMain.handle('navigate-advanced', (_, target) => {
   if (!advancedPanWindow || advancedPanWindow.isDestroyed()) return;
-  const files = { ambience: 'advanced-ambience.html', eq: 'advanced-eq.html' };
-  const file = files[target] || 'advanced-pan.html';
+  const file = advancedFiles[target] || advancedFiles.pan;
   advancedPanWindow.loadFile(path.join(__dirname, '..', file));
 });
 

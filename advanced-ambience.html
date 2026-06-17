@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
 :root{
   --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
@@ -16,7 +16,7 @@
   --amber:#e8b04b; --amber-deep:#c8893a; --amber-soft:rgba(232,176,75,.16);
   --green:#94c06a; --green-deep:#6e9a48; --red:#d96a4e; --blue:#7fb0c4; --violet:#c98fb0;
   --shadow:0 18px 50px -18px rgba(0,0,0,.7);
-  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace;
+  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace; --title:"Cinzel",serif;
   --r:10px; --mixer-bar-bg:linear-gradient(#efe7d6,#e3d8c0); --mixer-bar-fg:#241a0a;
 }
 :root[data-theme="ivory"]{
@@ -132,49 +132,99 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .aef-room{position:relative;width:100%;min-height:320px;flex:1 1 auto;background:var(--bg);overflow:hidden}
 .aef-empty{width:100%;min-width:520px;padding:32px;text-align:center;color:var(--muted);font-size:12px}
 /* Sound Environment preset picker */
-.amb-room{display:flex;flex-direction:column;gap:14px;padding:18px 22px;overflow-y:auto}
-.amb-section-label{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--muted);display:flex;align-items:center;gap:10px}
+.amb-room{height:100%;display:flex;flex-direction:column;gap:16px;padding:18px 22px 26px;overflow-y:auto;scrollbar-width:none}
+.amb-room::-webkit-scrollbar{display:none}
+.amb-section{display:flex;flex-direction:column;gap:13px}
+.amb-section-title{margin:0;text-align:center;font-family:var(--title);font-size:20px;line-height:1.12;font-weight:400;letter-spacing:.16em;text-transform:uppercase;color:var(--cream-2)}
+.amb-preset-label,.amb-finetune-head{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--muted);display:flex;align-items:center;gap:10px}
 .amb-finetune-current{font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--surface2);border:1px solid var(--line-strong);border-radius:5px;padding:2px 7px;text-transform:none}
-/* cards fixed at the current default footprint (no stretch) */
-.amb-grid{display:grid;grid-template-columns:repeat(auto-fill,118px);justify-content:start;gap:10px;align-content:start}
-.amb-card{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:5px;padding:6px;background:var(--surface);border:1px solid var(--line-strong);border-radius:9px;transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease}
-.amb-card:hover{border-color:var(--amber);transform:translateY(-2px)}
+.amb-divider{height:1px;width:100%;background:linear-gradient(90deg,transparent,var(--line-strong),transparent)}
+.amb-output-divider{margin:18px 0 14px;background:linear-gradient(90deg,transparent,var(--line-strong) 9%,var(--line-strong) 91%,transparent)}
+.amb-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));justify-content:stretch;gap:12px;align-content:start}
+.amb-card{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:7px;min-width:0;padding:8px;background:var(--surface);border:1px solid var(--line-strong);border-radius:9px;transition:border-color .15s ease,box-shadow .15s ease,transform .14s ease;transform-origin:center center}
+.amb-card:hover{border-color:var(--amber);transform:translateY(-6px) scale(1.06);box-shadow:0 14px 28px -16px var(--amber-soft);z-index:2}
 .amb-card.active{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber),0 8px 18px -10px var(--amber-soft)}
 .amb-card:focus,.amb-card:focus-visible{outline:none}
 .amb-card-img{position:relative;width:100%;aspect-ratio:16/10;border-radius:6px;overflow:hidden;background:var(--bg2)}
 .amb-card-img img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.96)}
-.amb-card-name{font-size:11px;font-weight:600;color:var(--cream)}
+.amb-card-name{font-size:12px;font-weight:600;color:var(--cream)}
 .amb-card.active .amb-card-name{color:var(--amber)}
-.amb-card-desc{font-size:9.5px;color:var(--dim)}
+.amb-card-desc{font-size:10px;color:var(--dim)}
 /* Reset card — vector icon instead of a photo */
 .amb-reset-img{display:grid;place-items:center;color:var(--dim)}
 .amb-reset-img svg{width:42%;height:42%}
-.amb-card.amb-card-reset:hover .amb-reset-img,.amb-card-reset.active .amb-reset-img{color:var(--amber)}
-/* Fine-tune panel */
-.amb-finetune{display:flex;flex-direction:column;gap:10px;padding-top:6px;border-top:1px solid var(--line)}
-.amb-finetune-body{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
-.amb-graph-wrap{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
-.amb-graph{width:536px;max-width:100%;height:192px;background:var(--bg2);border:1px solid var(--line-strong);border-radius:8px}
+.amb-custom-img{display:grid;place-items:center;color:var(--dim)}
+.amb-custom-img svg{width:48%;height:48%}
+.amb-card.amb-card-reset:hover .amb-reset-img,.amb-card-reset.active .amb-reset-img,.amb-card.amb-card-custom:hover .amb-custom-img,.amb-card-custom.active .amb-custom-img{color:var(--amber)}
+@media (max-width:980px){
+  .amb-grid{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}
+}
+.amb-finetune-body{display:grid;grid-template-columns:94px minmax(360px,1fr) minmax(320px,390px);gap:18px;align-items:start}
+.amb-graph-wrap{min-width:0;display:flex;flex-direction:column;gap:8px}
+.amb-graph{width:100%;height:300px;background:var(--bg2);border:1px solid var(--line-strong);border-radius:8px}
 .amb-graph-grid line{stroke:var(--line-strong);stroke-width:.8;stroke-dasharray:2 4}
 .amb-graph-axis{stroke:var(--faint);stroke-width:1.4}
 .amb-graph-pre{stroke:var(--faint);stroke-width:1.4;stroke-dasharray:3 4}
 .amb-graph-fill{fill:var(--amber-soft)}
 .amb-graph-line{fill:none;stroke:var(--amber);stroke-width:2.6;stroke-linejoin:round}
 .amb-graph-echo{stroke:var(--cream);stroke-width:2.6;stroke-linecap:round}
-.amb-graph-hf{fill:none;stroke:var(--blue);stroke-width:2;stroke-dasharray:5 4;stroke-linejoin:round;opacity:.9}
-.amb-graph-hf-lbl{fill:var(--blue);font-family:var(--mono);font-size:10px;opacity:.9}
-.amb-graph-width{stroke:var(--green);stroke-width:2.4;stroke-linecap:round}
-.amb-graph-wdot{fill:var(--faint)}
 .amb-graph-tick{fill:var(--faint);font-family:var(--mono);font-size:11px}
-.amb-graph-caption{font-size:9px;letter-spacing:.04em;color:var(--faint);text-align:center;max-width:536px}
-/* fine-tune LED-ring rotary knobs (value above, name below) — 2 rows */
-.amb-knobs{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,84px);gap:14px 16px;align-content:flex-start}
+.amb-graph-caption{font-size:9px;letter-spacing:.04em;color:var(--faint);text-align:center}
+.amb-meters{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+.amb-meter{height:34px;display:grid;grid-template-columns:62px 1fr 58px;align-items:center;gap:8px;padding:6px 9px;background:var(--bg2);border:1px solid var(--line);border-radius:7px}
+.amb-meter-name{font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--muted)}
+.amb-meter-value{font-size:10px;color:var(--cream-2);text-align:right}
+.amb-width-meter,.amb-damp-meter{position:relative;height:8px;border-radius:999px;background:rgba(255,255,255,.05);overflow:hidden}
+.amb-width-line{position:absolute;top:2px;bottom:2px;border-radius:999px;background:var(--green)}
+.amb-width-center{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--faint)}
+.amb-damp-fill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--amber))}
+/* fine-tune controls: amount knobs + time/space sliders */
+.amb-knobs{display:grid;grid-template-columns:1fr;gap:14px;align-content:flex-start;justify-items:center;padding-top:4px}
 .amb-knob{display:flex;flex-direction:column;align-items:center;gap:3px;width:84px}
 .amb-knob-val{font-size:11px;color:var(--cream-2);min-height:14px}
 .amb-knob-dial{cursor:ns-resize;line-height:0}
 .amb-knob-name{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:center}
 .amb-led{fill:var(--faint);opacity:.55}
 .amb-led.on{fill:var(--amber);opacity:1}
+.amb-sliders{width:100%;height:300px;display:flex;flex-direction:column;justify-content:space-between;gap:0}
+.amb-slider{display:flex;flex-direction:column;gap:5px;padding:8px 10px;background:var(--bg2);border:1px solid var(--line);border-radius:8px}
+.amb-slider-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.amb-slider-name{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.amb-slider-val{font-size:11px;color:var(--cream-2)}
+.amb-slider-input{width:100%;height:18px;margin:0;appearance:none;background:transparent;cursor:pointer}
+.amb-slider-input::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:linear-gradient(90deg,var(--amber) 0 var(--amb-slider-pct),rgba(255,255,255,.08) var(--amb-slider-pct) 100%)}
+.amb-slider-input::-webkit-slider-thumb{appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;background:var(--cream);border:2px solid var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}
+.amb-slider-input:focus,.amb-slider-input:focus-visible{outline:none}
+.amb-slider-scale{display:flex;align-items:center;justify-content:space-between;font-size:9px;color:var(--faint);letter-spacing:.04em}
+.amb-output-section{padding-bottom:10px}
+.amb-output-section .amb-section-title{margin-bottom:8px}
+.amb-output-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;max-width:760px;margin:0 auto;width:100%}
+.amb-output-wide{grid-column:span 2}
+.amb-fx-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.018);border:1px solid var(--line)}
+.amb-fx-toggle{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;flex:0 0 auto;padding:0;outline:none;background:var(--surface2);color:var(--muted);border:1px solid var(--line-strong);transition:background .15s,color .15s,box-shadow .15s}
+.amb-fx-toggle.on{background:var(--amb-fx-color);color:#15110b;border-color:var(--amb-fx-color);box-shadow:0 0 8px color-mix(in srgb,var(--amb-fx-color) 45%,transparent)}
+.amb-fx-main{flex:1;min-width:0}
+.amb-fx-name{font-size:12px;font-weight:600;color:var(--cream-2);margin-bottom:2px}
+.amb-fx-val{font-size:10px;color:var(--cream-2);width:32px;text-align:right}
+.amb-fx-slider{width:100%;height:20px;margin:0;appearance:none;background:transparent;cursor:pointer}
+.amb-fx-slider::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:linear-gradient(90deg,var(--amb-fx-color) 0 var(--amb-fx-pct),rgba(255,255,255,.09) var(--amb-fx-pct) 100%)}
+.amb-fx-slider::-webkit-slider-thumb{appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;background:var(--cream);border:2px solid var(--amb-fx-color);box-shadow:0 0 0 3px color-mix(in srgb,var(--amb-fx-color) 18%,transparent)}
+.amb-fx-slider:focus,.amb-fx-slider:focus-visible{outline:none}
+.amb-scroll-arrow{position:absolute;left:50%;z-index:8;width:44px;height:44px;margin-left:-22px;border-radius:50%;background:var(--surface2);border:2px solid var(--amber);color:var(--amber);display:grid;place-items:center;box-shadow:0 10px 24px rgba(0,0,0,.38)}
+.amb-scroll-arrow:hover{background:var(--surface3)}
+.amb-arrow-glyph{width:0;height:0;display:block}
+.amb-arrow-glyph.up{border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:13px solid currentColor}
+.amb-arrow-glyph.down{border-left:9px solid transparent;border-right:9px solid transparent;border-top:13px solid currentColor}
+.amb-scroll-up{top:46px}
+.amb-scroll-down{bottom:42px}
+@media (max-width:980px){
+  .amb-finetune-body{grid-template-columns:minmax(0,1fr)}
+  .amb-knobs{grid-template-columns:repeat(3,minmax(72px,1fr))}
+  .amb-graph{height:260px}
+  .amb-sliders{height:auto;gap:9px}
+  .amb-output-grid{grid-template-columns:minmax(0,1fr)}
+  .amb-output-wide{grid-column:auto}
+}
 .aef-footer{height:30px;flex:0 0 30px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--bg);border-top:1px solid rgba(0,0,0,.4);font-size:10.5px;color:var(--faint)}
 </style>
 </head>

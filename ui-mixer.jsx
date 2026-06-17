@@ -247,7 +247,7 @@ function MiniEQGraph({ width = 116, height = 30 }) {
   );
 }
 
-/* ---------- fx on/off chip-button (REV / ECHO bypass toggle) ---------- */
+/* ---------- fx on/off chip-button (REV / WIDE bypass toggle) ---------- */
 function FxChip({ label, active, color, onClick, canEnable = true }) {
   return (
     <button onClick={onClick} onMouseDown={(e) => e.preventDefault()}
@@ -433,11 +433,11 @@ function MixerWindow({ onClose, onBeforeChange }) {
 }
 
 /* ---------- output effect track (master fade + EQ overlay on timeline) ---------- */
-function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo, onOpenAdvancedPan }) {
+function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo }) {
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const m = DAW.master;
-  // REV / ECHO bypass toggle — mirrors the mixer FxCard: remember amount on off, restore on on.
+  // REV / WIDE bypass toggle — mirrors the mixer FxCard: remember amount on off, restore on on.
   // If the amount was zeroed via the mixer slider (stored===0), enabling is a no-op.
   const fxCanEnable = (key) => { const s = m[key + "Stored"]; return s === undefined || s > 0.001; };
   const toggleFx = (key) => () => {
@@ -477,11 +477,6 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
         <div style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
           <Icon name="eq" size={15} style={{ color: "var(--outfx-fg)", flex: "0 0 auto" }} />
           <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: ".05em", color: "var(--outfx-fg)" }}>OUTPUT&nbsp;FX</span>
-          <button className="chip" onClick={onOpenAdvancedPan} style={{ fontSize: 9, cursor: "pointer", color: "var(--amber)" }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cream)"; e.currentTarget.style.background = "var(--surface3)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--amber)"; e.currentTarget.style.background = "var(--surface2)"; }}>
-            Advanced
-          </button>
           <button className="chip" onClick={onClearMuteSolo} style={{ fontSize: 9, marginLeft: "auto", cursor: "pointer" }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cream)"; e.currentTarget.style.background = "var(--surface3)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--dim)"; e.currentTarget.style.background = "var(--surface2)"; }}>
@@ -494,7 +489,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
             <MiniEQGraph width={112} height={30} />
           </div>
           <FxChip label="REV" active={m.reverb > 0.001} canEnable={fxCanEnable("reverb")} color="var(--violet)" onClick={toggleFx("reverb")} />
-          <FxChip label="ECHO" active={m.echo > 0.001} canEnable={fxCanEnable("echo")} color="var(--blue)" onClick={toggleFx("echo")} />
+          <FxChip label="WIDE" active={m.widener > 0.001} canEnable={fxCanEnable("widener")} color="var(--amber)" onClick={toggleFx("widener")} />
           <div style={{ flex: 1 }} />
           <Meter level={DAW.getMasterLevel()} height={46} width={7} />
         </div>

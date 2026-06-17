@@ -202,7 +202,7 @@ function recentDateLabel(ms) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedPan, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -254,7 +254,10 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo },
   ];
   const advancedItems = [
+    { label: "Ambience", icon: "disc", onClick: onAdvancedAmbience },
     { label: "Auto Panning", icon: "auto", onClick: onAdvancedPan },
+    { sep: true },
+    { label: "Equalizer Setup", icon: "eq", onClick: onAdvancedEq },
   ];
   const helpItems = [
     { label: "Manual", icon: "book", onClick: onHelpManual },
@@ -1019,6 +1022,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     echoStored: DAW.master.echoStored,
     saturation: DAW.master.saturation,
     widener: DAW.master.widener,
+    widenerStored: DAW.master.widenerStored,
     exciter: DAW.master.exciter,
     bands: DAW.master.bands,
     fadeIn: DAW.master.fadeIn,
@@ -1043,6 +1047,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           echoStored: DAW.master.echoStored,
           saturation: DAW.master.saturation,
           widener: DAW.master.widener,
+          widenerStored: DAW.master.widenerStored,
           exciter: DAW.master.exciter,
           bands: [...DAW.master.bands],
           fadeIn: DAW.master.fadeIn,
@@ -1068,9 +1073,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme,
+        master: { ...DAW.master, bands: [...DAW.master.bands] },
       });
     }
-  }, [showAdvancedPan, currentTracksStateStr, theme]);
+  }, [showAdvancedPan, currentTracksStateStr, currentMasterStateStr, theme]);
 
   // Resize the Electron mixer window only when the channel COUNT changes.
   // Previously this lived in the SYNC_STATE effect (keyed on theme/params too),
@@ -1160,11 +1166,31 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   const openAdvancedPan = useCallback(() => {
     if (window.electronAPI && window.electronAPI.openAdvancedPan) {
-      window.electronAPI.openAdvancedPan();
+      window.electronAPI.openAdvancedPan("pan");
       return;
     }
     const features = "width=1120,height=760,resizable=yes,scrollbars=no";
     const popup = window.open("advanced-pan.html", "FocusDAWAdvancedPan", features);
+    if (popup) setShowAdvancedPan(true);
+  }, []);
+
+  const openAdvancedAmbience = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.openAdvancedPan) {
+      window.electronAPI.openAdvancedPan("ambience");
+      return;
+    }
+    const features = "width=1120,height=760,resizable=yes,scrollbars=no";
+    const popup = window.open("advanced-ambience.html", "FocusDAWAdvancedAmbience", features);
+    if (popup) setShowAdvancedPan(true);
+  }, []);
+
+  const openAdvancedEq = useCallback(() => {
+    if (window.electronAPI && window.electronAPI.openAdvancedPan) {
+      window.electronAPI.openAdvancedPan("eq");
+      return;
+    }
+    const features = "width=1120,height=760,resizable=yes,scrollbars=no";
+    const popup = window.open("advanced-eq.html", "FocusDAWAdvancedEq", features);
     if (popup) setShowAdvancedPan(true);
   }, []);
 
@@ -1491,6 +1517,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               echoStored: DAW.master.echoStored,
               saturation: DAW.master.saturation,
               widener: DAW.master.widener,
+              widenerStored: DAW.master.widenerStored,
               exciter: DAW.master.exciter,
               bands: [...DAW.master.bands],
               fadeIn: DAW.master.fadeIn,
@@ -1591,6 +1618,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme: localStorage.getItem("focusdaw-theme") || "default",
+        master: { ...DAW.master, bands: [...DAW.master.bands] },
         room: DAW.master.room || "none",
         roomParams: { ...DAW.master.roomParams },
       });
@@ -1635,6 +1663,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           // Fine-tune a single ambience param. Undo is captured via BEFORE_CHANGE
           // (sent on slider grab), so we don't pushUndo per drag event here.
           DAW.setRoomParam(msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_MASTER_PARAM":
+          DAW.setMaster(msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
           break;
@@ -2021,11 +2054,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         ? () => openProjectFile(null)
         : () => focusRef.current && focusRef.current.click(),
       onOpenRecentProject: (json, path) => loadProjectJson(json, path || null),
+      onOpenAdvancedAmbience: openAdvancedAmbience,
       onOpenAdvancedPan: openAdvancedPan,
+      onOpenAdvancedEq: openAdvancedEq,
       onUndo: undo,
       onRedo: redo,
     });
-  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedPan, undo, redo]);
+  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo]);
 
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
@@ -2168,8 +2203,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
               onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }}
               onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
-              onClearMuteSolo={clearMuteSolo}
-              onOpenAdvancedPan={openAdvancedPan} />
+              onClearMuteSolo={clearMuteSolo} />
             <div style={{ height: 40 }} />
           </React.Fragment>
         )}
@@ -2265,7 +2299,9 @@ function App() {
         onOpenProject={() => H.onOpenProject && H.onOpenProject()}
         onOpenRecentProject={(json, path) => H.onOpenRecentProject && H.onOpenRecentProject(json, path)}
         onSettings={() => setShowSettings(true)}
+        onAdvancedAmbience={() => H.onOpenAdvancedAmbience && H.onOpenAdvancedAmbience()}
         onAdvancedPan={() => H.onOpenAdvancedPan && H.onOpenAdvancedPan()}
+        onAdvancedEq={() => H.onOpenAdvancedEq && H.onOpenAdvancedEq()}
         onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
         canUndo={undoState.canUndo} canRedo={undoState.canRedo}
         onHelpManual={openHelpManual}

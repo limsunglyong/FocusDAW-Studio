@@ -480,7 +480,7 @@ function MixerWindow({ onClose, onBeforeChange }) {
     "\xD7"
   )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", overflowX: "auto", maxWidth: "100%", background: "var(--bg)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flex: "0 0 auto" } }, DAW.tracks.map((t) => /* @__PURE__ */ React.createElement(ChannelStrip, { key: t.id, track: t, level: DAW.getTrackLevel(t.id), onParam: param(t.id), onBeforeChange }))), /* @__PURE__ */ React.createElement(MasterPanel, { level: DAW.getMasterLevel(), master: DAW.master, onMaster: (k, v) => DAW.setMaster(k, v), onBeforeChange })));
 }
-function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo, onOpenAdvancedPan }) {
+function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo }) {
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const m = DAW.master;
@@ -537,22 +537,6 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
     "button",
     {
       className: "chip",
-      onClick: onOpenAdvancedPan,
-      style: { fontSize: 9, cursor: "pointer", color: "var(--amber)" },
-      onMouseEnter: (e) => {
-        e.currentTarget.style.color = "var(--cream)";
-        e.currentTarget.style.background = "var(--surface3)";
-      },
-      onMouseLeave: (e) => {
-        e.currentTarget.style.color = "var(--amber)";
-        e.currentTarget.style.background = "var(--surface2)";
-      }
-    },
-    "Advanced"
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      className: "chip",
       onClick: onClearMuteSolo,
       style: { fontSize: 9, marginLeft: "auto", cursor: "pointer" },
       onMouseEnter: (e) => {
@@ -565,7 +549,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
       }
     },
     "MUTE Clr"
-  ), /* @__PURE__ */ React.createElement("span", { className: "chip", style: { fontSize: 9 } }, "master")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { onClick: onOpenMixer, title: "Open mixer", style: { cursor: "pointer", display: "flex", borderRadius: 5 } }, /* @__PURE__ */ React.createElement(MiniEQGraph, { width: 112, height: 30 })), /* @__PURE__ */ React.createElement(FxChip, { label: "REV", active: m.reverb > 1e-3, canEnable: fxCanEnable("reverb"), color: "var(--violet)", onClick: toggleFx("reverb") }), /* @__PURE__ */ React.createElement(FxChip, { label: "ECHO", active: m.echo > 1e-3, canEnable: fxCanEnable("echo"), color: "var(--blue)", onClick: toggleFx("echo") }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), /* @__PURE__ */ React.createElement(Meter, { level: DAW.getMasterLevel(), height: 46, width: 7 }))), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("span", { className: "chip", style: { fontSize: 9 } }, "master")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { onClick: onOpenMixer, title: "Open mixer", style: { cursor: "pointer", display: "flex", borderRadius: 5 } }, /* @__PURE__ */ React.createElement(MiniEQGraph, { width: 112, height: 30 })), /* @__PURE__ */ React.createElement(FxChip, { label: "REV", active: m.reverb > 1e-3, canEnable: fxCanEnable("reverb"), color: "var(--violet)", onClick: toggleFx("reverb") }), /* @__PURE__ */ React.createElement(FxChip, { label: "WIDE", active: m.widener > 1e-3, canEnable: fxCanEnable("widener"), color: "var(--amber)", onClick: toggleFx("widener") }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), /* @__PURE__ */ React.createElement(Meter, { level: DAW.getMasterLevel(), height: 46, width: 7 }))), /* @__PURE__ */ React.createElement(
     "div",
     {
       className: "outlane",
