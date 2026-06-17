@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onWinState:     (cb)            => ipcRenderer.on('win-state', (_, s) => cb(s)),
   openHelp:       ()              => ipcRenderer.invoke('open-help'),
   openAdvancedPan: ()             => ipcRenderer.invoke('open-advanced-pan'),
+  navigateAdvanced: (target)      => ipcRenderer.invoke('navigate-advanced', target),
 
   // Mixer window controls
   openMixer:      (tracksCount)   => ipcRenderer.invoke('open-mixer', tracksCount),

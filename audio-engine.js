@@ -174,6 +174,65 @@
     return ir;
   }
 
+  // Procedural impulse response for the Ambience (Sound Environment / room type)
+  // bus. Builds pre-delay + a diffuse decaying tail with HF damping (distance /
+  // material absorption) + a few early reflections, with controllable stereo
+  // width. Shared by realtime playback and offline (Export) render so both
+  // reflect the chosen room identically. `spec` = a ROOM_PRESETS entry.
+  // Slap-echo tap times (seconds, relative to pre-delay end) for a given size —
+  // shared by the engine IR and the UI graph so both agree. base ~90ms × size.
+  function roomEchoTaps(spec) {
+    const echo = spec.echo || 0;
+    if (echo <= 0) return [];
+    const base = 0.09 * (0.5 + (spec.size == null ? 0.5 : spec.size)); // ~45..135ms
+    const taps = [];
+    for (let n = 1; n <= 3; n++) taps.push({ t: base * n, g: echo * Math.pow(0.55, n - 1) });
+    return taps;
+  }
+
+  function makeRoomIR(ctx, spec) {
+    const sr = ctx.sampleRate;
+    const sizeScale = 0.5 + (spec.size == null ? 0.5 : spec.size); // 0.5..1.5 spatial scale
+    const pre = Math.max(0, Math.floor(((spec.preDelay || 0) / 1000) * sr));
+    const tail = Math.max(1, Math.floor((spec.decay || 0.001) * sr));
+    const taps = roomEchoTaps(spec);
+    const echoSpan = taps.length ? Math.ceil((taps[taps.length - 1].t + 0.02) * sr) : 0;
+    const len = pre + Math.max(tail, echoSpan);
+    const ir = ctx.createBuffer(2, len, sr);
+    const damp = Math.min(spec.damp || 20000, sr / 2);
+    const lpCoef = Math.exp(-2 * Math.PI * damp / sr);          // 1-pole LP retention
+    const width = spec.width == null ? 1 : spec.width;
+    const stereo = Math.max(0, Math.min(1, width / 1.5));        // 0 = mono .. 1 = decorrelated
+    const L = ir.getChannelData(0), R = ir.getChannelData(1);
+    let lpM = 0, lpL = 0, lpR = 0;
+    for (let i = 0; i < tail; i++) {
+      const env = Math.pow(1 - i / tail, spec.shape || 2);
+      const nM = (Math.random() * 2 - 1) * env;
+      const nL = (Math.random() * 2 - 1) * env;
+      const nR = (Math.random() * 2 - 1) * env;
+      lpM = lpCoef * lpM + (1 - lpCoef) * nM;
+      lpL = lpCoef * lpL + (1 - lpCoef) * nL;
+      lpR = lpCoef * lpR + (1 - lpCoef) * nR;
+      L[pre + i] = (1 - stereo) * lpM + stereo * lpL;
+      R[pre + i] = (1 - stereo) * lpM + stereo * lpR;
+    }
+    // early reflections (discrete taps) — give the space its initial signature.
+    // Tap times scale with room size; erGain scales their prominence (lower for
+    // distant/diffuse spaces so the tail reads as "distance").
+    const er = spec.erGain == null ? 1 : spec.erGain;
+    const earlies = [[0.007, 0.8], [0.013, -0.6], [0.019, 0.5], [0.029, -0.4], [0.041, 0.3]];
+    for (const [t, g] of earlies) {
+      const idx = pre + Math.floor(t * sizeScale * sr);
+      if (idx < len) { L[idx] += g * er; R[idx] += g * er * (0.85 + 0.3 * stereo); }
+    }
+    // discrete slap echo(es) — distinct repeats independent of the diffuse tail
+    for (const tap of taps) {
+      const idx = pre + Math.floor(tap.t * sr);
+      if (idx < len) { L[idx] += tap.g; R[idx] += tap.g * (0.9 + 0.2 * stereo); }
+    }
+    return ir;
+  }
+
   // ---------- peaks for waveform drawing -----------------------
   function computePeaks(buffer, buckets) {
     const ch = buffer.getChannelData(0);
@@ -217,6 +276,7 @@
   let ctx = null;
   let convolver = null;
   let masterBus, eqNodes = [], masterFade, masterVol, masterMix, masterAnalyser, mRevSend, mEchoSend, mDelay, mFb, mConv;
+  let ambSend, ambConv; // dedicated Ambience (room type) bus
   let mSatDry, mSatWet, mSatShaper, mSatOut;
   let mWidSplit, mWidMerge, mWidLL, mWidRL, mWidLR, mWidRR, mWidOut;
   let mExcHPF, mExcShaper, mExcWet, mExcOut;
@@ -229,15 +289,30 @@
     Classic: [3, 2, 1, 0, 0, -1, -0.5, 2, 3],
     HipHop:  [6, 4, 2, 0.5, -0.5, 0, 0.5, 1.5, 2.5],
   };
+  // Ambience (Sound Environment / room type) presets — drive the dedicated
+  // ambience convolver bus. decay(s) · shape(decay curve) · preDelay(ms) ·
+  // wet(send gain 0..1) · damp(HF absorption LP Hz) · width(stereo spread) ·
+  // echo(discrete slap level 0..1) · size(room size 0..1; scales ER/echo spacing).
+  // `none` = dry (default; existing projects unaffected).
+  const ROOM_PRESETS = {
+    none:    { decay: 0.001, shape: 1,   preDelay: 0,  wet: 0,    damp: 20000, width: 1.0, echo: 0,    size: 0.30 },
+    studio:  { decay: 0.35,  shape: 1.6, preDelay: 5,  wet: 0.12, damp: 9000,  width: 0.8, echo: 0.05, size: 0.18 },
+    home:    { decay: 0.7,   shape: 2.2, preDelay: 8,  wet: 0.20, damp: 5500,  width: 0.9, echo: 0.07, size: 0.32 },
+    concert: { decay: 3.0,   shape: 2.8, preDelay: 40, wet: 0.38, damp: 7000,  width: 1.4, echo: 0.10, size: 0.85 },
+    // Far field — distant source: almost no reverb tail, just a light slap echo.
+    far:     { decay: 0.35,  shape: 3.0, preDelay: 60, wet: 0.32, damp: 3500,  width: 1.2, echo: 0.14, size: 0.70, erGain: 0.30 },
+    tunnel:  { decay: 2.6,   shape: 1.4, preDelay: 30, wet: 0.45, damp: 4000,  width: 0.7, echo: 0.24, size: 0.60 },
+  };
   const Engine = {
     ctx: null,
     duration: DURATION,
     EQ_FREQS,
     EQ_PRESETS,
+    ROOM_PRESETS,
     tracks: [],
     loopEnabled: true,
     tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null },
-    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0 },
+    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0, room: 'none', roomParams: { ...ROOM_PRESETS.none } },
     isPlaying: false,
     _startTime: 0,
     _offset: 0,
@@ -364,7 +439,12 @@
       masterVol.connect(masterMix);                                                            // dry
       masterVol.connect(mRevSend); mRevSend.connect(mConv); mConv.connect(masterMix);          // master reverb
       masterVol.connect(mEchoSend); mEchoSend.connect(mDelay); mDelay.connect(mFb); mFb.connect(mDelay); mDelay.connect(masterMix); // master echo
-      
+      // dedicated Ambience (Sound Environment / room type) bus — independent of master reverb
+      const _room0 = this.master.roomParams || ROOM_PRESETS[this.master.room] || ROOM_PRESETS.none;
+      ambConv = ctx.createConvolver(); ambConv.buffer = makeRoomIR(ctx, _room0);
+      ambSend = ctx.createGain(); ambSend.gain.value = _room0.wet;
+      masterVol.connect(ambSend); ambSend.connect(ambConv); ambConv.connect(masterMix);        // ambience
+
       // Route through Saturation -> Widener -> Exciter -> Compressor
       masterMix.connect(mSatDry);
       masterMix.connect(mSatShaper);
@@ -574,11 +654,12 @@
       this._stretchPreviewPreparing = false;
       clearTimeout(this._tempoRestartTimer);
       this._tempoRestartTimer = null;
-      this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0 };
+      this.master = { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0, room: 'none', roomParams: { ...ROOM_PRESETS.none } };
       if (ctx) {
         ramp(masterVol.gain, 0.9);
         ramp(mRevSend.gain, 0);
         ramp(mEchoSend.gain, 0);
+        if (ambConv) { ambConv.buffer = makeRoomIR(ctx, ROOM_PRESETS.none); ramp(ambSend.gain, 0); }
         ramp(mSatWet.gain, 0);
         ramp(mSatDry.gain, 1.0);
         ramp(mExcWet.gain, 0);
@@ -941,6 +1022,34 @@
       if ((key === "fadeIn" || key === "fadeOut") && this.isPlaying) this._scheduleFade();
     },
 
+    // Ambience (Sound Environment / room type) — the dedicated bus IR + wet send
+    // are driven by `master.roomParams` (effective spec). Reflected in realtime
+    // and Export (both share makeRoomIR + roomParams).
+    _applyRoom() {
+      if (!ctx || !ambConv) return;
+      const spec = this.master.roomParams || ROOM_PRESETS.none;
+      ambConv.buffer = makeRoomIR(ctx, spec);
+      ramp(ambSend.gain, spec.wet);
+    },
+    // Select a named preset — resets fine-tune params to that preset's values.
+    setRoom(key) {
+      const room = ROOM_PRESETS[key] ? key : 'none';
+      this.master.room = room;
+      this.master.roomParams = { ...ROOM_PRESETS[room] };
+      this._applyRoom();
+    },
+    // Fine-tune a single ambience parameter (Mix/Pre-delay/Decay/Damping/Width).
+    // Marks the room as 'custom'. `wet` only re-ramps the send (cheap); other
+    // params rebuild the IR.
+    setRoomParam(k, v) {
+      const base = this.master.roomParams || ROOM_PRESETS[this.master.room] || ROOM_PRESETS.none;
+      this.master.roomParams = { ...base, [k]: v };
+      this.master.room = 'custom';
+      if (!ctx || !ambConv) return;
+      if (k === 'wet') ramp(ambSend.gain, v);
+      else this._applyRoom();
+    },
+
     setMasterBand(i, db) {
       this.master.bands[i] = db;
       if (eqNodes[i]) ramp(eqNodes[i].gain, db);
@@ -996,6 +1105,8 @@
           echo: this.master.echo,
           fadeIn: this.master.fadeIn,
           fadeOut: this.master.fadeOut,
+          room: this.master.room,
+          roomParams: { ...this.master.roomParams },
         },
         eqBands: [...this.master.bands],
         tempo: { ...this.tempo },
@@ -1018,6 +1129,13 @@
         this.setMaster("echo", snap.master.echo ?? this.master.echo);
         this.setMaster("fadeIn", snap.master.fadeIn ?? this.master.fadeIn);
         this.setMaster("fadeOut", snap.master.fadeOut ?? this.master.fadeOut);
+        if (snap.master.roomParams) {
+          this.master.room = snap.master.room ?? this.master.room;
+          this.master.roomParams = { ...snap.master.roomParams };
+          this._applyRoom();
+        } else {
+          this.setRoom(snap.master.room ?? this.master.room);
+        }
       }
       if (snap.eqBands) this.setMasterBands(snap.eqBands);
       if (snap.tempo) {
@@ -1068,6 +1186,8 @@
         if (this.master.saturation !== undefined) this.setMaster("saturation", this.master.saturation);
         if (this.master.exciter !== undefined) this.setMaster("exciter", this.master.exciter);
         if (this.master.bands) this.master.bands.forEach((db, i) => this.setMasterBand(i, db));
+        if (this.master.roomParams) this._applyRoom();
+        else this.setRoom(this.master.room || 'none');
       }
       (json.tracks || []).forEach(td => {
         const isAudioPlaceholder = !td.isDemo && (!!td.fileName || !!td.filePath);
@@ -1480,10 +1600,16 @@
       const mEch = off.createGain(); mEch.gain.setValueAtTime(this.master.echo, 0);
       const mMix = off.createGain();
 
+      // Ambience (room type) bus — mirror the realtime graph so Export matches playback
+      const ambSpec = this.master.roomParams || ROOM_PRESETS[this.master.room] || ROOM_PRESETS.none;
+      const ambCO = off.createConvolver(); ambCO.buffer = makeRoomIR(off, ambSpec);
+      const ambSO = off.createGain(); ambSO.gain.setValueAtTime(ambSpec.wet, 0);
+
       node.connect(fade); fade.connect(mv);
       mv.connect(mMix);
       mv.connect(mRev); mRev.connect(mConvO); mConvO.connect(mMix);
       mv.connect(mEch); mEch.connect(mDel); mDel.connect(mFbO); mFbO.connect(mDel); mDel.connect(mMix);
+      mv.connect(ambSO); ambSO.connect(ambCO); ambCO.connect(mMix);
 
       const useLimiter = options.normalize !== false;
       if (useLimiter) {

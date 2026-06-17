@@ -1674,7 +1674,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           params: { ...t.params }
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
-        theme: localStorage.getItem("focusdaw-theme") || "default"
+        theme: localStorage.getItem("focusdaw-theme") || "default",
+        room: DAW.master.room || "none",
+        roomParams: { ...DAW.master.roomParams }
       });
     };
     const handleMessage = (e) => {
@@ -1693,12 +1695,26 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           break;
         case "REQUEST_UNDO":
           undo();
+          sendInit();
           break;
         case "REQUEST_REDO":
           redo();
+          sendInit();
           break;
         case "SET_TRACK_PARAM":
           DAW.setTrackParam(msg.id, msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_ROOM_PRESET":
+          pushUndo();
+          DAW.setRoom(msg.room);
+          sendInit();
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_ROOM_PARAM":
+          DAW.setRoomParam(msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
           break;

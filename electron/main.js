@@ -786,6 +786,15 @@ ipcMain.handle('open-advanced-pan', async () => {
   sendAdvancedPanState(true);
 });
 
+// Switch the (shared) advanced-effect window between its modules without
+// recreating the window — keeps bounds, hide/close behaviour, and state intact.
+ipcMain.handle('navigate-advanced', (_, target) => {
+  if (!advancedPanWindow || advancedPanWindow.isDestroyed()) return;
+  const files = { ambience: 'advanced-ambience.html', eq: 'advanced-eq.html' };
+  const file = files[target] || 'advanced-pan.html';
+  advancedPanWindow.loadFile(path.join(__dirname, '..', file));
+});
+
 ipcMain.handle('close-mixer', async () => {
   hideMixerWindow();
 });

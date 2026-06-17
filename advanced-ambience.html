@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Advanced Effect Factory-FocusDAW Studio</title>
+<title>Advanced Effect Factory - Ambience - FocusDAW Studio</title>
 <link rel="icon" type="image/png" href="assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -100,7 +100,8 @@ body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased
 button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
 button:focus,button:focus-visible{outline:none;box-shadow:none}
 .mono{font-family:var(--mono);font-feature-settings:"tnum"1}
-:root{--amber-soft-strong:color-mix(in srgb,var(--amber) 28%,transparent)}
+
+/* --- Window frame (shared with advanced-pan.html) --- */
 .aef-backdrop{position:fixed;inset:0;background:var(--bg2);display:flex;align-items:stretch;justify-content:stretch;padding:0}
 .aef-backdrop::before{content:"";position:absolute;inset:0;opacity:.5;background:repeating-linear-gradient(90deg,transparent 0 78px,var(--line) 78px 79px);pointer-events:none}
 .aef-shell{position:relative;z-index:1;width:100%;height:100%;overflow-x:hidden;overflow-y:auto}
@@ -128,51 +129,52 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .aef-viewmenu-item:hover{background:var(--surface2);color:var(--cream)}
 .aef-viewmenu-item.active{color:var(--mixer-bar-fg);background:var(--amber)}
 .aef-viewmenu-item:focus,.aef-viewmenu-item:focus-visible{outline:none}
-.aef-selected-line{font-size:11.5px;color:var(--dim);max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.aef-reset{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--cream-2);background:var(--surface2);border:1px solid var(--line-strong);border-radius:7px;padding:7px 12px}
-.aef-reset:hover{border-color:var(--amber);color:var(--cream)}
 .aef-room{position:relative;width:100%;min-height:320px;flex:1 1 auto;background:var(--bg);overflow:hidden}
-.aef-room *{user-select:none}
-.aef-node{position:absolute;transform:translate(-50%,-50%);touch-action:none;cursor:grab}
-.aef-node:active{cursor:grabbing}
-.aef-node-label{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:7px;max-width:132px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;color:var(--cream-2);background:rgba(20,16,11,.82);border:1px solid var(--line);pointer-events:none}
-.aef-node-label.selected{color:var(--mixer-bar-fg);background:var(--amber);box-shadow:0 0 10px var(--amber-soft);border-color:var(--amber)}
-.aef-token{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 50% 36%,var(--surface2),var(--bg));border:1.5px solid currentColor;box-shadow:0 7px 18px -7px #000,0 0 0 4px color-mix(in srgb,currentColor 8%,transparent),inset 0 1px 0 rgba(255,240,210,.06);transform-origin:center}
-.aef-token.selected{border-width:2px;box-shadow:0 10px 24px -6px #000,0 0 22px color-mix(in srgb,currentColor 55%,transparent),0 0 0 5px var(--amber-soft),inset 0 1px 0 rgba(255,240,210,.08)}
-.aef-token.active{filter:drop-shadow(0 0 12px var(--amber-soft))}
-.aef-vol{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:6px;white-space:nowrap;font-family:var(--mono);font-size:9.5px;color:var(--faint);opacity:.65}
-.aef-vol.selected{color:var(--dim);opacity:1}
-.aef-knobs-wrap{position:relative;flex:0 0 auto}
-.aef-knobs{background:linear-gradient(180deg,var(--surface),var(--bg2));border-top:1px solid var(--line);padding:16px 14px 18px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none}
-.aef-knobs::-webkit-scrollbar{display:none}
-.aef-scroll-arrow{position:absolute;top:0;bottom:0;width:78px;display:grid;place-items:center;border:none;background:transparent;padding:0;z-index:6;cursor:pointer}
-.aef-scroll-arrow.left{left:0;justify-items:start;padding-left:8px;background:linear-gradient(90deg,var(--surface) 12%,transparent)}
-.aef-scroll-arrow.right{right:0;justify-items:end;padding-right:8px;background:linear-gradient(270deg,var(--surface) 12%,transparent)}
-.aef-scroll-disc{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:var(--cream-2);background:color-mix(in srgb,var(--surface3) 88%,transparent);border:1px solid var(--line-strong);box-shadow:0 6px 16px -6px #000,inset 0 1px 0 rgba(255,242,214,.06);transition:color .15s,border-color .15s,box-shadow .15s,transform .15s}
-.aef-scroll-disc svg{width:30px;height:30px}
-.aef-scroll-arrow:hover .aef-scroll-disc{color:var(--amber);border-color:var(--amber);box-shadow:0 0 22px var(--amber-soft),0 0 9px var(--amber-soft),inset 0 0 8px var(--amber-soft);transform:scale(1.06)}
-.aef-scroll-arrow:active .aef-scroll-disc{transform:scale(.96)}
-.aef-scroll-arrow:focus,.aef-scroll-arrow:focus-visible{outline:none}
-.aef-knob-row{display:flex;gap:6px;min-width:max-content;justify-content:safe center}
-/* --ks: knob scale (set inline per cell, 0.6..1). Track-name font stays fixed. */
-.aef-knob-cell{width:calc(140px*var(--ks,1));flex:0 0 calc(140px*var(--ks,1));display:flex;flex-direction:column;align-items:center;gap:calc(7px*var(--ks,1));padding:calc(12px*var(--ks,1)) calc(9px*var(--ks,1)) calc(11px*var(--ks,1));border-radius:11px;cursor:pointer;box-shadow:inset 0 0 0 1px transparent}
-.aef-knob-cell.selected{background:var(--amber-soft);box-shadow:inset 0 0 0 1px var(--amber-soft-strong)}
-.aef-knob-title{display:flex;align-items:baseline;gap:6px;max-width:100%;width:100%;min-width:0}
-.aef-knob-title .mono{font-size:10px;color:var(--faint)}
-.aef-knob-title span:last-child{font-size:11.5px;font-weight:600;color:var(--cream-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.aef-knob-body{display:flex;align-items:center;justify-content:center;gap:calc(5px*var(--ks,1));width:100%;padding-left:calc(6px*var(--ks,1))}
-.aef-pan-svg{cursor:ns-resize;touch-action:none;width:calc(100px*var(--ks,1));height:calc(100px*var(--ks,1))}
-.aef-track-meter{display:flex;flex-direction:column-reverse;gap:1.5px;flex:0 0 auto}
-.aef-knob-pointer{filter:drop-shadow(0 0 4px rgba(243,234,216,.4)); transition:filter 0.15s ease}
-.aef-pan-svg:hover .aef-knob-pointer{filter:drop-shadow(0 0 8px var(--amber))}
-.aef-led{filter:drop-shadow(0 0 3px currentColor)}
-.aef-pan-readout{font-family:var(--mono);font-size:calc(13px*var(--ks,1));font-weight:700;letter-spacing:.04em}
-.aef-mini-bar{position:relative;width:calc(92px*var(--ks,1));height:calc(9px*var(--ks,1));display:flex;align-items:center}
-.aef-mini-bar::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;transform:translateY(-50%);background:var(--surface2);border-radius:2px}
-.aef-mini-center{position:absolute;left:50%;top:1px;bottom:1px;width:1px;background:var(--faint)}
-.aef-mini-dot{position:absolute;top:50%;width:calc(9px*var(--ks,1));height:calc(9px*var(--ks,1));border-radius:50%;transform:translate(-50%,-50%)}
-.aef-pan-caption{font-size:calc(8.5px*var(--ks,1));font-weight:700;letter-spacing:.12em;color:var(--faint);text-transform:uppercase}
 .aef-empty{width:100%;min-width:520px;padding:32px;text-align:center;color:var(--muted);font-size:12px}
+/* Sound Environment preset picker */
+.amb-room{display:flex;flex-direction:column;gap:14px;padding:18px 22px;overflow-y:auto}
+.amb-section-label{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--muted);display:flex;align-items:center;gap:10px}
+.amb-finetune-current{font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--surface2);border:1px solid var(--line-strong);border-radius:5px;padding:2px 7px;text-transform:none}
+/* cards fixed at the current default footprint (no stretch) */
+.amb-grid{display:grid;grid-template-columns:repeat(auto-fill,118px);justify-content:start;gap:10px;align-content:start}
+.amb-card{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:5px;padding:6px;background:var(--surface);border:1px solid var(--line-strong);border-radius:9px;transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease}
+.amb-card:hover{border-color:var(--amber);transform:translateY(-2px)}
+.amb-card.active{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber),0 8px 18px -10px var(--amber-soft)}
+.amb-card:focus,.amb-card:focus-visible{outline:none}
+.amb-card-img{position:relative;width:100%;aspect-ratio:16/10;border-radius:6px;overflow:hidden;background:var(--bg2)}
+.amb-card-img img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.96)}
+.amb-card-name{font-size:11px;font-weight:600;color:var(--cream)}
+.amb-card.active .amb-card-name{color:var(--amber)}
+.amb-card-desc{font-size:9.5px;color:var(--dim)}
+/* Reset card — vector icon instead of a photo */
+.amb-reset-img{display:grid;place-items:center;color:var(--dim)}
+.amb-reset-img svg{width:42%;height:42%}
+.amb-card.amb-card-reset:hover .amb-reset-img,.amb-card-reset.active .amb-reset-img{color:var(--amber)}
+/* Fine-tune panel */
+.amb-finetune{display:flex;flex-direction:column;gap:10px;padding-top:6px;border-top:1px solid var(--line)}
+.amb-finetune-body{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.amb-graph-wrap{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
+.amb-graph{width:536px;max-width:100%;height:192px;background:var(--bg2);border:1px solid var(--line-strong);border-radius:8px}
+.amb-graph-grid line{stroke:var(--line-strong);stroke-width:.8;stroke-dasharray:2 4}
+.amb-graph-axis{stroke:var(--faint);stroke-width:1.4}
+.amb-graph-pre{stroke:var(--faint);stroke-width:1.4;stroke-dasharray:3 4}
+.amb-graph-fill{fill:var(--amber-soft)}
+.amb-graph-line{fill:none;stroke:var(--amber);stroke-width:2.6;stroke-linejoin:round}
+.amb-graph-echo{stroke:var(--cream);stroke-width:2.6;stroke-linecap:round}
+.amb-graph-hf{fill:none;stroke:var(--blue);stroke-width:2;stroke-dasharray:5 4;stroke-linejoin:round;opacity:.9}
+.amb-graph-hf-lbl{fill:var(--blue);font-family:var(--mono);font-size:10px;opacity:.9}
+.amb-graph-width{stroke:var(--green);stroke-width:2.4;stroke-linecap:round}
+.amb-graph-wdot{fill:var(--faint)}
+.amb-graph-tick{fill:var(--faint);font-family:var(--mono);font-size:11px}
+.amb-graph-caption{font-size:9px;letter-spacing:.04em;color:var(--faint);text-align:center;max-width:536px}
+/* fine-tune LED-ring rotary knobs (value above, name below) — 2 rows */
+.amb-knobs{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,84px);gap:14px 16px;align-content:flex-start}
+.amb-knob{display:flex;flex-direction:column;align-items:center;gap:3px;width:84px}
+.amb-knob-val{font-size:11px;color:var(--cream-2);min-height:14px}
+.amb-knob-dial{cursor:ns-resize;line-height:0}
+.amb-knob-name{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:center}
+.amb-led{fill:var(--faint);opacity:.55}
+.amb-led.on{fill:var(--amber);opacity:1}
 .aef-footer{height:30px;flex:0 0 30px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--bg);border-top:1px solid rgba(0,0,0,.4);font-size:10.5px;color:var(--faint)}
 </style>
 </head>
@@ -181,6 +183,6 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 <script src="build/vendor/react.production.min.js"></script>
 <script src="build/vendor/react-dom.production.min.js"></script>
 <script src="build/ui-kit.js"></script>
-<script src="build/advanced-pan-app.js"></script>
+<script src="build/advanced-ambience-app.js"></script>
 </body>
 </html>

@@ -302,6 +302,47 @@ function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeC
   });
   return /* @__PURE__ */ React.createElement("div", { className: "sleek", ref, onMouseDown: onDown, style: { width } }, /* @__PURE__ */ React.createElement("div", { className: "strack" }), Array.from({ length: ticks }).map((_, i) => /* @__PURE__ */ React.createElement("span", { key: i, className: "stick", style: { left: `${i / (ticks - 1) * 100}%` } })), /* @__PURE__ */ React.createElement("div", { className: "sfill", style: { width: `${frac * 100}%` } }), /* @__PURE__ */ React.createElement("div", { className: "sthumb", style: { left: `${frac * 100}%` } }));
 }
+const ADVANCED_VIEWS = [
+  { key: "pan", label: "Spatial Field" },
+  { key: "ambience", label: "Ambience" },
+  { key: "eq", label: "Equalizer" }
+];
+function AdvancedViewMenu({ current }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const currentLabel = (ADVANCED_VIEWS.find((v) => v.key === current) || ADVANCED_VIEWS[0]).label;
+  const choose = (key) => {
+    setOpen(false);
+    if (key === current) return;
+    if (window.electronAPI && window.electronAPI.navigateAdvanced) window.electronAPI.navigateAdvanced(key);
+  };
+  return /* @__PURE__ */ React.createElement("div", { className: "aef-viewmenu", ref }, /* @__PURE__ */ React.createElement("button", { className: "aef-viewmenu-btn" + (open ? " open" : ""), onClick: () => setOpen((o) => !o), "aria-haspopup": "listbox", "aria-expanded": open }, /* @__PURE__ */ React.createElement("span", null, currentLabel), /* @__PURE__ */ React.createElement("svg", { className: "aef-viewmenu-caret", width: "12", height: "12", viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" }))), open && /* @__PURE__ */ React.createElement("div", { className: "aef-viewmenu-list", role: "listbox" }, ADVANCED_VIEWS.map((v) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: v.key,
+      role: "option",
+      "aria-selected": v.key === current,
+      className: "aef-viewmenu-item" + (v.key === current ? " active" : ""),
+      onClick: () => choose(v.key)
+    },
+    v.label
+  ))));
+}
 Object.assign(window, {
   Icon,
   IC,
@@ -317,6 +358,7 @@ Object.assign(window, {
   fmtDb,
   useWheelStep,
   nudgeGainDb,
+  AdvancedViewMenu,
   useState,
   useEffect,
   useRef,

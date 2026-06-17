@@ -271,6 +271,51 @@ function SleekSlider({ value, min = 0, max = 1, step = 0.01, onChange, onBeforeC
   );
 }
 
+// Dropdown that switches the Advanced Effect window between its modules
+// (Spatial Field / Ambience). `current` is the module shown in this window.
+const ADVANCED_VIEWS = [
+  { key: "pan", label: "Spatial Field" },
+  { key: "ambience", label: "Ambience" },
+  { key: "eq", label: "Equalizer" },
+];
+function AdvancedViewMenu({ current }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const currentLabel = (ADVANCED_VIEWS.find((v) => v.key === current) || ADVANCED_VIEWS[0]).label;
+  const choose = (key) => {
+    setOpen(false);
+    if (key === current) return;
+    if (window.electronAPI && window.electronAPI.navigateAdvanced) window.electronAPI.navigateAdvanced(key);
+  };
+  return (
+    <div className="aef-viewmenu" ref={ref}>
+      <button className={"aef-viewmenu-btn" + (open ? " open" : "")} onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}>
+        <span>{currentLabel}</span>
+        <svg className="aef-viewmenu-caret" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open && (
+        <div className="aef-viewmenu-list" role="listbox">
+          {ADVANCED_VIEWS.map((v) => (
+            <button key={v.key} role="option" aria-selected={v.key === current}
+              className={"aef-viewmenu-item" + (v.key === current ? " active" : "")}
+              onClick={() => choose(v.key)}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 Object.assign(window, { Icon, IC, useTick, Knob, Fader, Meter, SoloBtn, MuteBtn, Seg, SleekSlider, fmtTime, fmtDb,
-  useWheelStep, nudgeGainDb,
+  useWheelStep, nudgeGainDb, AdvancedViewMenu,
   useState, useEffect, useRef, useCallback, useMemo });

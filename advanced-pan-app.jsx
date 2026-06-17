@@ -145,6 +145,14 @@ function SvgDefs() {
           <stop offset="0" stopColor="var(--bg2)" />
           <stop offset="1" stopColor="var(--bg)" />
         </linearGradient>
+        <symbol id="ic-fx" viewBox="0 0 24 24">
+          <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <line x1="6" y1="4" x2="6" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /><line x1="18" y1="4" x2="18" y2="20" />
+          </g>
+          <g fill="var(--bg2, #1a1a1a)" stroke="currentColor" strokeWidth="1.6">
+            <circle cx="6" cy="9" r="2.3" /><circle cx="12" cy="14.5" r="2.3" /><circle cx="18" cy="8" r="2.3" />
+          </g>
+        </symbol>
         <symbol id="ic-piano" viewBox="0 0 24 24">
           <rect x="3" y="6" width="18" height="12" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
           <path d="M7.5 6v12M12 6v12M16.5 6v12" stroke="currentColor" strokeWidth="1" opacity="0.45" />
@@ -432,7 +440,7 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
           </g>
         ))}
         {selectedPos && (
-          <line x1="551" y1="439" x2={selectedPos.x} y2={selectedPos.y} stroke={selectedInst ? selectedInst.color : "var(--amber)"} strokeWidth="1.6" strokeDasharray="3 4" opacity="0.9" />
+          <line x1="551" y1="439" x2={selectedPos.x} y2={selectedPos.y} stroke={(selectedTrack && selectedTrack.color) || (selectedInst ? selectedInst.color : "var(--amber)")} strokeWidth="1.6" strokeDasharray="3 4" opacity="0.9" />
         )}
         <circle cx="551" cy="439" r="22" fill="none" stroke="var(--amber-soft-strong)" strokeWidth="1.2" />
         <circle cx="551" cy="439" r="13" fill="var(--surface)" stroke="var(--amber)" strokeWidth="1.6" />
@@ -462,7 +470,7 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
             </div>
             <div
               className={"aef-token" + (selected ? " selected" : "") + (activeId === track.id ? " active" : "")}
-              style={{ color: inst.color, transform: `scale(${scale.toFixed(3)})` }}
+              style={{ color: track.color || inst.color, transform: `scale(${scale.toFixed(3)})` }}
             >
               <svg width="30" height="30" viewBox="0 0 24 24" style={{ overflow: "visible", pointerEvents: "none" }}>
                 <use href={`#ic-${inst.icon}`} />
@@ -535,6 +543,7 @@ function PanKnob({ track, index, selected, level, scale = 1, onSelect, onBeforeC
   const pan = params.pan || 0;
   const type = matchInstrument(track.name || track.fileName);
   const inst = INSTRUMENTS[type] || INSTRUMENTS.unknown;
+  const accent = track.color || inst.color; // match studio track colour, fallback to instrument colour
   const dragRef = useRef(null);
 
   const onMove = useCallback((e) => {
@@ -590,16 +599,16 @@ function PanKnob({ track, index, selected, level, scale = 1, onSelect, onBeforeC
             <circle cx="52" cy="52" r="25" fill="url(#g-cap)" stroke="rgba(255,242,214,0.12)" strokeWidth="1" />
             <ellipse cx="52" cy="45" rx="18" ry="10" fill="rgba(255,242,214,0.05)" />
             <line x1="52" y1="31" x2="52" y2="47" stroke="var(--cream)" strokeWidth="2.6" strokeLinecap="round" />
-            <circle cx="52" cy="21.5" r="2.6" fill={inst.color} className="aef-led" />
+            <circle cx="52" cy="21.5" r="2.6" fill={accent} className="aef-led" />
           </g>
           <circle cx="52" cy="52" r="3.2" fill="var(--bg)" stroke="rgba(255,242,214,0.14)" strokeWidth="1" />
         </svg>
         <MiniTrackMeter level={level} height={Math.round(58 * scale)} width={Math.max(4, Math.round(6 * scale))} />
       </div>
-      <div className="aef-pan-readout" style={{ color: inst.color }}>{panLabel(pan)}</div>
+      <div className="aef-pan-readout" style={{ color: accent }}>{panLabel(pan)}</div>
       <div className="aef-mini-bar">
         <div className="aef-mini-center" />
-        <div className="aef-mini-dot" style={{ left: `${dotPos.toFixed(2)}%`, background: inst.color, boxShadow: `0 0 7px ${inst.color}` }} />
+        <div className="aef-mini-dot" style={{ left: `${dotPos.toFixed(2)}%`, background: accent, boxShadow: `0 0 7px ${accent}` }} />
       </div>
       <div className="aef-pan-caption">PAN</div>
     </div>
@@ -760,12 +769,12 @@ function AdvancedPanApp() {
       <div className="aef-shell">
         <div className="aef-window">
           <div className="aef-titlebar">
-            {/* Left: spatial field label + tabs */}
-            <span className="aef-toolbar-label">SPATIAL FIELD</span>
-            <div className="aef-tabs">
-              <span className="aef-tab active">Soundstage</span>
-              <span className="aef-tab">Distance - Vol</span>
-            </div>
+            {/* Left: module label + view switcher */}
+            <span className="aef-brand">
+              <svg className="aef-brand-icon" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-fx" /></svg>
+              <span className="aef-toolbar-label">SPATIAL FIELD</span>
+            </span>
+            <AdvancedViewMenu current="pan" />
 
             {/* Center: window title (centered relative to titlebar) */}
             <div className="title-c" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", flex: "none" }}>FocusDAW Studio <b>Advanced Pan</b></div>

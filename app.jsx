@@ -1585,6 +1585,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme: localStorage.getItem("focusdaw-theme") || "default",
+        room: DAW.master.room || "none",
+        roomParams: { ...DAW.master.roomParams },
       });
     };
 
@@ -1605,12 +1607,28 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           break;
         case "REQUEST_UNDO":
           undo();
+          sendInit(); // re-broadcast restored state so advanced windows reflect the undo
           break;
         case "REQUEST_REDO":
           redo();
+          sendInit();
           break;
         case "SET_TRACK_PARAM":
           DAW.setTrackParam(msg.id, msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_ROOM_PRESET":
+          pushUndo();
+          DAW.setRoom(msg.room);
+          sendInit(); // broadcast full state (incl. room/roomParams) so windows stay in sync
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_ROOM_PARAM":
+          // Fine-tune a single ambience param. Undo is captured via BEFORE_CHANGE
+          // (sent on slider grab), so we don't pushUndo per drag event here.
+          DAW.setRoomParam(msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
           break;
