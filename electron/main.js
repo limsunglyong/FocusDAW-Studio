@@ -558,7 +558,7 @@ let requestedHeight = 0;
 let initialContentWidth = 0;
 let initialContentHeight = 0;
 
-const MIXER_HEIGHT = 490;
+const MIXER_HEIGHT = 515;
 const ADVANCED_PAN_WIDTH = 1162;
 const ADVANCED_PAN_HEIGHT = 770;
 

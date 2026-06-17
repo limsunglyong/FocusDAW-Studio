@@ -26,6 +26,7 @@
   --amber:#bf7f2e; --amber-deep:#9e6620; --amber-soft:rgba(191,127,46,.14);
   --green:#7c9a4f; --green-deep:#5e7a38; --red:#c2593b; --blue:#5f86a6; --violet:#a0668a;
   --shadow:0 18px 50px -18px rgba(0,0,0,.22); --mixer-bar-bg:linear-gradient(#2a2520,#221d17); --mixer-bar-fg:#efe6d4;
+  --knob-cap-1:color-mix(in srgb, var(--amber) 75%, white); --knob-cap-2:var(--amber); --knob-cap-3:var(--amber-deep);
 }
 :root[data-theme="blue"]{
   --bg:#142841; --bg2:#1c3556; --surface:#274665; --surface2:#33567b; --surface3:#3f6791;
@@ -74,6 +75,7 @@
   --amber:#236a56; --amber-deep:#0f523f; --amber-soft:rgba(35,106,86,.14);
   --green:#7abea7; --green-deep:#4f947f; --red:#ba1a1a; --blue:#4f7f93; --violet:#904a43;
   --shadow:0 18px 50px -18px rgba(0,0,0,.18); --mixer-bar-bg:linear-gradient(#154c3c,#0f3d30); --mixer-bar-fg:#eef8f2;
+  --knob-cap-1:color-mix(in srgb, var(--amber) 75%, white); --knob-cap-2:var(--amber); --knob-cap-3:var(--amber-deep);
 }
 :root[data-theme="solar"]{
   --bg:#1c1917; --bg2:#292524; --surface:#292524; --surface2:#44403c; --surface3:#57534e;
@@ -151,7 +153,8 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .aef-knob-body{display:flex;align-items:center;justify-content:center;gap:calc(5px*var(--ks,1));width:100%;padding-left:calc(6px*var(--ks,1))}
 .aef-pan-svg{cursor:ns-resize;touch-action:none;width:calc(100px*var(--ks,1));height:calc(100px*var(--ks,1))}
 .aef-track-meter{display:flex;flex-direction:column-reverse;gap:1.5px;flex:0 0 auto}
-.aef-knob-pointer{filter:drop-shadow(0 0 4px rgba(243,234,216,.5))}
+.aef-knob-pointer{filter:drop-shadow(0 0 4px rgba(243,234,216,.4)); transition:filter 0.15s ease}
+.aef-pan-svg:hover .aef-knob-pointer{filter:drop-shadow(0 0 8px var(--amber))}
 .aef-led{filter:drop-shadow(0 0 3px currentColor)}
 .aef-pan-readout{font-family:var(--mono);font-size:calc(13px*var(--ks,1));font-weight:700;letter-spacing:.04em}
 .aef-mini-bar{position:relative;width:calc(92px*var(--ks,1));height:calc(9px*var(--ks,1));display:flex;align-items:center}

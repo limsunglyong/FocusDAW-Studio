@@ -1100,7 +1100,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         const masterW = 400;
         const contentW = DAW.tracks.length * channelW + masterW;
         let popW = Math.max(600, Math.min(1440, contentW));
-        let popH = 490;
+        let popH = 515;
         let popLeft = null;
         let popTop = null;
         try {
