@@ -406,7 +406,8 @@ function timelineMinPx(containerWidth) {
   const width = containerWidth || window.innerWidth || 1980;
   const visibleLaneW = Math.max(320, width - HEADER_W - 16);
   const dur = Math.max(1, DAW.duration || 1);
-  return Math.max(0.05, Math.min(TIME_ZOOM_BASE_MIN, visibleLaneW / dur));
+  const fitPx = visibleLaneW / dur;
+  return Math.max(0.05, Math.min(TIME_ZOOM_MAX, fitPx));
 }
 function timelineStep(minPx) {
   if (minPx < 1) return 0.01;
@@ -1382,10 +1383,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     return next;
   }, []);
   const fitTimelineToProject = useCallback(() => {
-    const next = updateTimeMin();
     fitTimelineRef.current = true;
-    setPx(next);
-  }, [updateTimeMin]);
+    const applyFit = () => {
+      const next = updateTimeMin();
+      setPx(next);
+      updateTimelineView();
+    };
+    applyFit();
+    requestAnimationFrame(applyFit);
+  }, [updateTimeMin, updateTimelineView]);
   const pushUndo = useCallback(() => {
     undoStack.current.push(DAW.getSnapshot());
     if (undoStack.current.length > MAX_UNDO) undoStack.current.shift();
@@ -2085,9 +2091,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     undoStack.current = [];
     redoStack.current = [];
     if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
-    fitTimelineRef.current = false;
-    updateTimeMin();
-    setPx(96);
+    fitTimelineToProject();
     saveRecentProject(nextName, null);
     force((n) => n + 1);
   };
