@@ -255,7 +255,7 @@ function FxChip({ label, active, color, onClick, canEnable = true }) {
       style={{ height: 30, padding: "0 7px", borderRadius: 5, display: "flex", alignItems: "center",
       flexShrink: 0, fontSize: 9, fontWeight: 700, letterSpacing: ".06em", cursor: active || canEnable ? "pointer" : "default", outline: "none",
       background: active ? color : "rgba(0,0,0,.28)",
-      color: active ? "#fff" : "var(--faint)",
+      color: active ? "var(--accent-fg)" : "var(--outfx-chip-off-fg, var(--faint))",
       border: "1px solid " + (active ? color : "rgba(232,212,170,.08)"),
       boxShadow: active ? `0 0 8px ${color}88` : "none",
       transition: "background .2s, color .2s, border-color .2s, box-shadow .2s" }}>
