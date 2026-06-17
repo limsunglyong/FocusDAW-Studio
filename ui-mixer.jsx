@@ -89,8 +89,23 @@ function MasterEQ({ width = 320, height = 156, onBeforeChange }) {
   // zone boundaries
   const b1 = freqToX(Math.sqrt(FQ[2] * FQ[3])), b2 = freqToX(Math.sqrt(FQ[5] * FQ[6]));
 
+  // Currently-selected EQ name (engine master.eqPreset). On manual deviation from flat
+  // (no named preset) show a breathing "custom"; on reset/flat show nothing.
+  const presetName = DAW.master.eqPreset;
+  const bandsFlat = bands.every((b) => Math.abs(b || 0) < 0.05);
+  let presetLabel = null, nameCustom = false;
+  if (presetName) presetLabel = (EQ_PRESET_BTNS.find(([, n]) => n === presetName) || [presetName])[0];
+  else if (!bandsFlat) { presetLabel = "custom"; nameCustom = true; }
+
   return (
     <div style={{ width, position: "relative" }}>
+      {presetLabel && (
+        <div style={{ position: "absolute", top: 6, right: 8, zIndex: 2, pointerEvents: "none",
+          fontFamily: "var(--mono)", fontSize: 9.5, fontWeight: 700, letterSpacing: ".08em",
+          color: "var(--amber)", textTransform: "uppercase", opacity: .92,
+          textShadow: "0 1px 3px rgba(0,0,0,.6)",
+          animation: nameCustom ? "eq-flash 1s steps(1,end) infinite" : "none" }}>{presetLabel}</div>
+      )}
       <svg ref={ref} width={width} height={height} style={{ display: "block", borderRadius: 8, background: "#15110b", cursor: "ns-resize" }}>
         {/* zone tints */}
         <rect x="0" y="0" width={b1} height={height} fill="rgba(217,106,78,.05)" />

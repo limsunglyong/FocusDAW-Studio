@@ -21,7 +21,7 @@ mkdir build
 cd build
 
 echo [FocusDAW Build] Running CMake Configuration with JUCE_PATH...
-cmake -A x64 -DJUCE_PATH="d:/roseWorks/programming/JUCE" ..
+cmake -A x64 -DJUCE_PATH="E:/programmings/FocusDAW-Studio/third_party/JUCE" ..
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] CMake configuration failed.

@@ -99,7 +99,30 @@ function MasterEQ({ width = 320, height = 156, onBeforeChange }) {
   const eqLine = smoothPath(curveP);
   const eqArea = eqLine + ` L${width} ${gainToY(0)} L0 ${gainToY(0)} Z`;
   const b1 = freqToX(Math.sqrt(FQ[2] * FQ[3])), b2 = freqToX(Math.sqrt(FQ[5] * FQ[6]));
-  return /* @__PURE__ */ React.createElement("div", { style: { width, position: "relative" } }, /* @__PURE__ */ React.createElement("svg", { ref, width, height, style: { display: "block", borderRadius: 8, background: "#15110b", cursor: "ns-resize" } }, /* @__PURE__ */ React.createElement("rect", { x: "0", y: "0", width: b1, height, fill: "rgba(217,106,78,.05)" }), /* @__PURE__ */ React.createElement("rect", { x: b1, y: "0", width: b2 - b1, height, fill: "rgba(232,176,75,.05)" }), /* @__PURE__ */ React.createElement("rect", { x: b2, y: "0", width: width - b2, height, fill: "rgba(127,176,196,.05)" }), [-12, -6, 0, 6, 12].map((g) => /* @__PURE__ */ React.createElement("g", { key: g }, /* @__PURE__ */ React.createElement("line", { x1: "0", y1: gainToY(g), x2: width, y2: gainToY(g), stroke: g === 0 ? "rgba(232,212,170,.20)" : "rgba(232,212,170,.06)", strokeWidth: g === 0 ? 1 : 0.75 }), /* @__PURE__ */ React.createElement("text", { x: "3", y: gainToY(g) - 2, fill: "var(--faint)", fontSize: "8", fontFamily: "var(--mono)" }, g > 0 ? "+" + g : g))), /* @__PURE__ */ React.createElement("path", { d: specD, fill: "rgba(216,205,182,.12)", stroke: "rgba(216,205,182,.28)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement("path", { d: eqArea, fill: "rgba(232,176,75,.12)" }), /* @__PURE__ */ React.createElement("path", { d: eqLine, fill: "none", stroke: "var(--amber)", strokeWidth: "2" }), pts.map((p, i) => /* @__PURE__ */ React.createElement("g", { key: i }, /* @__PURE__ */ React.createElement("line", { x1: p[0], y1: gainToY(0), x2: p[0], y2: p[1], stroke: zoneCol[zoneOf(i)], strokeWidth: "1", opacity: ".4" }), /* @__PURE__ */ React.createElement(
+  const presetName = DAW.master.eqPreset;
+  const bandsFlat = bands.every((b) => Math.abs(b || 0) < 0.05);
+  let presetLabel = null, nameCustom = false;
+  if (presetName) presetLabel = (EQ_PRESET_BTNS.find(([, n]) => n === presetName) || [presetName])[0];
+  else if (!bandsFlat) {
+    presetLabel = "custom";
+    nameCustom = true;
+  }
+  return /* @__PURE__ */ React.createElement("div", { style: { width, position: "relative" } }, presetLabel && /* @__PURE__ */ React.createElement("div", { style: {
+    position: "absolute",
+    top: 6,
+    right: 8,
+    zIndex: 2,
+    pointerEvents: "none",
+    fontFamily: "var(--mono)",
+    fontSize: 9.5,
+    fontWeight: 700,
+    letterSpacing: ".08em",
+    color: "var(--amber)",
+    textTransform: "uppercase",
+    opacity: 0.92,
+    textShadow: "0 1px 3px rgba(0,0,0,.6)",
+    animation: nameCustom ? "eq-flash 1s steps(1,end) infinite" : "none"
+  } }, presetLabel), /* @__PURE__ */ React.createElement("svg", { ref, width, height, style: { display: "block", borderRadius: 8, background: "#15110b", cursor: "ns-resize" } }, /* @__PURE__ */ React.createElement("rect", { x: "0", y: "0", width: b1, height, fill: "rgba(217,106,78,.05)" }), /* @__PURE__ */ React.createElement("rect", { x: b1, y: "0", width: b2 - b1, height, fill: "rgba(232,176,75,.05)" }), /* @__PURE__ */ React.createElement("rect", { x: b2, y: "0", width: width - b2, height, fill: "rgba(127,176,196,.05)" }), [-12, -6, 0, 6, 12].map((g) => /* @__PURE__ */ React.createElement("g", { key: g }, /* @__PURE__ */ React.createElement("line", { x1: "0", y1: gainToY(g), x2: width, y2: gainToY(g), stroke: g === 0 ? "rgba(232,212,170,.20)" : "rgba(232,212,170,.06)", strokeWidth: g === 0 ? 1 : 0.75 }), /* @__PURE__ */ React.createElement("text", { x: "3", y: gainToY(g) - 2, fill: "var(--faint)", fontSize: "8", fontFamily: "var(--mono)" }, g > 0 ? "+" + g : g))), /* @__PURE__ */ React.createElement("path", { d: specD, fill: "rgba(216,205,182,.12)", stroke: "rgba(216,205,182,.28)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement("path", { d: eqArea, fill: "rgba(232,176,75,.12)" }), /* @__PURE__ */ React.createElement("path", { d: eqLine, fill: "none", stroke: "var(--amber)", strokeWidth: "2" }), pts.map((p, i) => /* @__PURE__ */ React.createElement("g", { key: i }, /* @__PURE__ */ React.createElement("line", { x1: p[0], y1: gainToY(0), x2: p[0], y2: p[1], stroke: zoneCol[zoneOf(i)], strokeWidth: "1", opacity: ".4" }), /* @__PURE__ */ React.createElement(
     "circle",
     {
       cx: p[0],

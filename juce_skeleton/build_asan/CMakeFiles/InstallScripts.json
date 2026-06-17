@@ -1,0 +1,11 @@
+{
+	"InstallScripts" : 
+	[
+		"E:/programmings/FocusDAW-Studio/juce_skeleton/build_asan/cmake_install.cmake",
+		"E:/programmings/FocusDAW-Studio/juce_skeleton/build_asan/JUCE/cmake_install.cmake",
+		"E:/programmings/FocusDAW-Studio/juce_skeleton/build_asan/JUCE/modules/cmake_install.cmake",
+		"E:/programmings/FocusDAW-Studio/juce_skeleton/build_asan/JUCE/extras/Build/cmake_install.cmake",
+		"E:/programmings/FocusDAW-Studio/juce_skeleton/build_asan/JUCE/extras/Build/juceaide/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

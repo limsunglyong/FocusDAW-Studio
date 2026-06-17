@@ -55,9 +55,11 @@ window.DAW = {
   },
   setMasterBand(i, v) {
     this.master.bands[i] = v;
+    this.master.eqPreset = null; // manual edit → custom (optimistic; studio echoes)
     channel.postMessage({ type: 'SET_MASTER_BAND', i, v });
   },
   applyEQPreset(name) {
+    this.master.eqPreset = (name === 'Flat') ? null : name; // optimistic name fill
     channel.postMessage({ type: 'APPLY_EQ_PRESET', name });
   }
 };

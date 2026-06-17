@@ -562,16 +562,27 @@ const MIXER_HEIGHT = 515;
 const ADVANCED_PAN_WIDTH = 1162;
 const ADVANCED_PAN_HEIGHT = 770;
 
-function sendMixerState(isOpen) {
-  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.send('mixer-state', isOpen);
+// Send an IPC message to the main renderer, tolerating a torn-down render frame.
+// isDestroyed()/isCrashed() don't always cover the transient "render frame was
+// disposed" state (e.g. while the renderer is being recreated after a child-process
+// crash), so guard the send itself with try/catch to avoid an unhandled rejection.
+function sendToMain(channel, payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const wc = mainWindow.webContents;
+  if (!wc || wc.isDestroyed() || wc.isCrashed()) return;
+  try {
+    wc.send(channel, payload);
+  } catch (err) {
+    console.warn(`[main] dropped IPC '${channel}' (renderer frame unavailable):`, err && err.message);
   }
 }
 
+function sendMixerState(isOpen) {
+  sendToMain('mixer-state', isOpen);
+}
+
 function sendAdvancedPanState(isOpen) {
-  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.send('advanced-pan-state', isOpen);
-  }
+  sendToMain('advanced-pan-state', isOpen);
 }
 
 function hideMixerWindow() {

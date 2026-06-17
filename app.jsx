@@ -1004,6 +1004,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       advancedChannelRef.current.postMessage({
         type: "LEVEL_METERS",
         trackLevels,
+        masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : null,
+        bands: [...DAW.master.bands],
         isPlaying: DAW.isPlaying,
         playhead: DAW.getPlayhead(),
       });
@@ -1025,6 +1027,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     widenerStored: DAW.master.widenerStored,
     exciter: DAW.master.exciter,
     bands: DAW.master.bands,
+    eqPreset: DAW.master.eqPreset || null,
     fadeIn: DAW.master.fadeIn,
     fadeOut: DAW.master.fadeOut,
   });
@@ -1050,6 +1053,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           widenerStored: DAW.master.widenerStored,
           exciter: DAW.master.exciter,
           bands: [...DAW.master.bands],
+          eqPreset: DAW.master.eqPreset || null,
           fadeIn: DAW.master.fadeIn,
           fadeOut: DAW.master.fadeOut,
         },
@@ -1074,6 +1078,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme,
         master: { ...DAW.master, bands: [...DAW.master.bands] },
+        eqFreqs: [...DAW.EQ_FREQS],
+        eqPresets: DAW.EQ_PRESETS,
+        fftData: DAW.computeSpectrum ? DAW.computeSpectrum() : null,
+        isPlaying: DAW.isPlaying,
       });
     }
   }, [showAdvancedPan, currentTracksStateStr, currentMasterStateStr, theme]);
@@ -1520,6 +1528,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               widenerStored: DAW.master.widenerStored,
               exciter: DAW.master.exciter,
               bands: [...DAW.master.bands],
+              eqPreset: DAW.master.eqPreset || null,
               fadeIn: DAW.master.fadeIn,
               fadeOut: DAW.master.fadeOut,
             },
@@ -1621,6 +1630,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         master: { ...DAW.master, bands: [...DAW.master.bands] },
         room: DAW.master.room || "none",
         roomParams: { ...DAW.master.roomParams },
+        eqFreqs: [...DAW.EQ_FREQS],
+        eqPresets: DAW.EQ_PRESETS,
+        fftData: DAW.computeSpectrum ? DAW.computeSpectrum() : null,
+        isPlaying: DAW.isPlaying,
       });
     };
 
@@ -1649,6 +1662,23 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           break;
         case "SET_TRACK_PARAM":
           DAW.setTrackParam(msg.id, msg.k, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_MASTER_BAND":
+          DAW.setMasterBand(msg.i, msg.v);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "APPLY_EQ_PRESET":
+          DAW.applyEQPreset(msg.name);
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "SET_EQ_PRESET_NAME":
+          // Tag the current EQ with a name (e.g. a recalled user preset) without
+          // touching bands — sent after the band values so it survives setMasterBand's clear.
+          DAW.master.eqPreset = msg.name || null;
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
           break;

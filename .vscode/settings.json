@@ -1,0 +1,6 @@
+{
+    "cmake.sourceDirectory": "E:/programmings/FocusDAW-Studio/juce_skeleton",
+    "cmake.configureSettings": {
+        "JUCE_PATH": "E:/programmings/FocusDAW-Studio/third_party/JUCE"
+    }
+}

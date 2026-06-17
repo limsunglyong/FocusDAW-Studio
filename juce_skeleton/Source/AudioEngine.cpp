@@ -430,6 +430,10 @@ void AudioEngine::setMasterBands(const std::vector<float>& bands)
 
 double AudioEngine::getPlayhead() const
 {
+    // Lock: the status timer thread calls this while the client thread may be
+    // mutating juceTracks (loadTrack/clearTracks). Reading juceTracks[0] without
+    // the lock races the vector's reallocation/clear → use-after-free / heap corruption.
+    std::lock_guard<std::mutex> lock(engineMutex);
 #if USE_JUCE
     if (!juceTracks.empty() && juceTracks[0]->transportSource)
     {

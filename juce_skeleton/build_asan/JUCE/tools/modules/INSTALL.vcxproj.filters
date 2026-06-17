@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="E:\programmings\FocusDAW-Studio\juce_skeleton\build_asan\JUCE\tools\CMakeFiles\1d0118e6056fd464693fe054a4b756eb\INSTALL_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{318E511D-6FE7-3BBF-AA43-C1332E84D925}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

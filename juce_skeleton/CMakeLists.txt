@@ -18,7 +18,7 @@ set(SOURCE_FILES
 
 # If JUCE is available as a subdirectory, we can build it with full JUCE features
 if (NOT JUCE_PATH)
-    set(JUCE_PATH "d:/roseWorks/programming/JUCE" CACHE PATH "Path to JUCE directory")
+    set(JUCE_PATH "${CMAKE_CURRENT_LIST_DIR}/../third_party/JUCE" CACHE PATH "Path to JUCE directory")
 endif()
 
 if (EXISTS "${JUCE_PATH}")

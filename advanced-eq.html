@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
 :root{
   --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
@@ -132,6 +132,59 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .aef-room{position:relative;width:100%;min-height:320px;flex:1 1 auto;background:var(--bg);overflow:hidden}
 .aef-empty{width:100%;min-width:520px;padding:32px;text-align:center;color:var(--muted);font-size:12px}
 .aef-footer{height:30px;flex:0 0 30px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--bg);border-top:1px solid rgba(0,0,0,.4);font-size:10.5px;color:var(--faint)}
+
+/* --- Equalizer editor --- */
+.eq-room{display:flex;flex-direction:column;padding:16px 18px 14px;gap:14px}
+.eq-stage{position:relative;flex:1 1 auto;min-height:240px;border-radius:14px;overflow:hidden;
+  background:radial-gradient(120% 120% at 50% 0%,var(--surface) 0%,var(--bg) 70%);
+  border:1px solid var(--line-strong);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),var(--shadow)}
+.eq-svg{position:absolute;inset:0;display:block}
+.eq-stage-name{position:absolute;top:12px;right:16px;z-index:3;pointer-events:none;
+  font-family:"Michroma",var(--ui);font-weight:400;font-size:15px;letter-spacing:.04em;
+  color:var(--amber);text-shadow:0 1px 6px rgba(0,0,0,.6);opacity:.92}
+.eq-stage-name.custom{text-transform:uppercase;animation:eq-flash 1s steps(1,end) infinite}
+@keyframes eq-flash{0%,49%{opacity:1}50%,100%{opacity:0}}
+.eq-grid-lbl{fill:var(--faint);font-family:var(--mono);font-size:9px}
+.eq-handle{cursor:ns-resize;transition:r .1s ease}
+.eq-handle:hover{r:10}
+.eq-readout{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(9,1fr);
+  padding:5px 8px;gap:4px;background:linear-gradient(0deg,rgba(0,0,0,.32),transparent);pointer-events:none}
+.eq-readout-cell{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0}
+.eq-readout-db{font-size:10px;font-weight:700}
+.eq-readout-hz{font-size:8.5px;color:var(--faint)}
+
+.eq-controls{flex:0 0 auto;display:flex;flex-direction:column;gap:9px}
+.eq-preset-row{display:flex;align-items:center;gap:8px}
+.eq-row-label{flex:0 0 46px;font-size:9.5px;font-weight:700;letter-spacing:.12em;color:var(--muted)}
+.eq-preset-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 0;border-radius:8px;
+  background:rgba(255,255,255,.02);border:1px solid var(--line);color:var(--dim);font-size:11px;font-weight:600;
+  letter-spacing:.03em;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.eq-preset-btn:hover{border-color:var(--chip);color:var(--cream);background:rgba(255,255,255,.04)}
+.eq-preset-btn.active{border-color:var(--chip);color:var(--mixer-bar-fg);background:var(--chip);box-shadow:0 0 10px color-mix(in srgb,var(--chip) 55%,transparent)}
+.eq-preset-btn.active .eq-preset-dot{background:var(--mixer-bar-fg)}
+.eq-preset-dot{width:7px;height:7px;border-radius:2px;background:var(--chip)}
+
+.eq-uslot{position:relative;flex:1;min-width:0}
+.eq-uslot-btn{width:100%;display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:8px;
+  background:rgba(255,255,255,.02);border:1px solid var(--line);color:var(--dim);font-size:11px;font-weight:600;
+  cursor:pointer;overflow:hidden;transition:border-color .15s,color .15s}
+.eq-uslot-btn:hover{border-color:var(--amber);color:var(--cream)}
+.eq-uslot-btn.filled{color:var(--cream-2);border-color:var(--line-strong)}
+.eq-uslot-btn.active{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber);box-shadow:0 0 10px var(--amber-soft)}
+.eq-uslot-btn.active .eq-uslot-dot{background:var(--mixer-bar-fg);box-shadow:none}
+.eq-uslot-dot{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--faint);box-shadow:none}
+.eq-uslot-dot[data-on="true"]{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+.eq-uslot-name{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eq-uslot-input{width:100%;padding:7px 9px;border-radius:8px;background:var(--surface);border:1px solid var(--amber);
+  color:var(--cream);font-size:11px;font-weight:600;outline:none}
+.eq-uslot-menu{position:absolute;left:0;right:0;bottom:calc(100% + 6px);display:flex;flex-direction:column;gap:2px;
+  padding:5px;background:var(--surface);border:1px solid var(--line-strong);border-radius:9px;
+  box-shadow:0 12px 30px rgba(0,0,0,.55);z-index:60}
+.eq-uslot-item{text-align:left;font-size:11px;font-weight:600;color:var(--cream-2);background:transparent;border:none;
+  border-radius:6px;padding:8px 10px;cursor:pointer}
+.eq-uslot-item:hover{background:var(--surface2);color:var(--cream)}
+.eq-uslot-item.disabled{color:var(--faint);cursor:default}
+.eq-uslot-item.disabled:hover{background:transparent;color:var(--faint)}
 </style>
 </head>
 <body>

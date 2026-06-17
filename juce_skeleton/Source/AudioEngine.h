@@ -183,8 +183,11 @@ public:
 
     ~SoundTouchAudioSource() override
     {
+        // `source` is NON-owning by default (deleteInput=false): the caller — e.g.
+        // TrackAudioSource — keeps its own unique_ptr to the same object. Only delete
+        // it here when we were explicitly asked to own it, otherwise it double-frees.
         if (deleteInput)
-            source.reset();
+            delete source;
     }
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
@@ -315,7 +318,7 @@ public:
     void setPreservePitch(bool on) { preservePitch.store(on); }
 
 private:
-    std::unique_ptr<juce::PositionableAudioSource> source;
+    juce::PositionableAudioSource* source; // NON-owning unless deleteInput (see destructor)
     bool deleteInput;
     soundtouch::SoundTouch soundTouch;
     
@@ -535,6 +538,12 @@ public:
 
     void getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) override
     {
+        // 0. Rebuild EQ coefficients here (audio thread) if a band changed, so the
+        //    ref-counted coefficient pointers are never reassigned concurrently with
+        //    the eqFilters[i].process() reads below.
+        if (eqDirty.exchange(false))
+            updateEQCoefficients();
+
         // 1. Clear reverb send buffer
         reverbSendBuffer.clear();
 
@@ -670,7 +679,7 @@ public:
         if (index >= 0 && index < 9)
         {
             eqBands[index].store(db);
-            updateEQCoefficients();
+            eqDirty.store(true); // defer coefficient rebuild to the audio thread (see eqDirty)
         }
     }
 
@@ -743,6 +752,12 @@ private:
     using FilterDuplicator = juce::dsp::ProcessorDuplicator<FilterType, juce::dsp::IIR::Coefficients<float>>;
     std::array<FilterDuplicator, 9> eqFilters;
     std::atomic<float> eqBands[9];
+    // EQ coefficients (eqFilters[i].state, a ref-counted pointer) must only ever be
+    // reassigned on the audio thread; mutating it from the message thread while the
+    // audio thread reads it in process() races the coefficient object's ref-count and
+    // causes use-after-free / heap corruption. Setters just flag this dirty; the audio
+    // thread rebuilds the coefficients at the top of getNextAudioBlock.
+    std::atomic<bool> eqDirty { true };
 
     juce::Reverb reverb;
     std::atomic<float> reverbLevel { 0.0f };
@@ -810,7 +825,7 @@ public:
     }
 
 private:
-    std::mutex engineMutex;
+    mutable std::mutex engineMutex; // mutable so const getters (getPlayhead) can lock too
     bool playing = false;
     double playheadSeconds = 0.0;
     double sampleRate = 44100.0;

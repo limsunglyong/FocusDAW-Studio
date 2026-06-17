@@ -312,7 +312,7 @@
     tracks: [],
     loopEnabled: true,
     tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null },
-    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0, room: 'none', roomParams: { ...ROOM_PRESETS.none } },
+    master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: null, reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0, room: 'none', roomParams: { ...ROOM_PRESETS.none } },
     isPlaying: false,
     _startTime: 0,
     _offset: 0,
@@ -1053,6 +1053,7 @@
     setMasterBand(i, db) {
       this.master.bands[i] = db;
       if (eqNodes[i]) ramp(eqNodes[i].gain, db);
+      this.master.eqPreset = null; // manual band edit → custom (no named preset)
     },
     setMasterGroup(group, db) { // 0=low 1=mid 2=high
       for (let i = group * 3; i < group * 3 + 3; i++) this.setMasterBand(i, db);
@@ -1062,7 +1063,8 @@
     },
     applyEQPreset(name) {
       const p = EQ_PRESETS[name];
-      if (p) this.setMasterBands(p);
+      if (p) this.setMasterBands(p); // clears eqPreset via setMasterBand…
+      this.master.eqPreset = (name === 'Flat') ? null : name; // …then tag the named preset (Flat/Reset = none)
     },
     getMasterGroup(group) {
       const b = this.master.bands;
@@ -1185,7 +1187,7 @@
         if (this.master.widener !== undefined) this.setMaster("widener", this.master.widener);
         if (this.master.saturation !== undefined) this.setMaster("saturation", this.master.saturation);
         if (this.master.exciter !== undefined) this.setMaster("exciter", this.master.exciter);
-        if (this.master.bands) this.master.bands.forEach((db, i) => this.setMasterBand(i, db));
+        if (this.master.bands) { const ep = this.master.eqPreset; this.master.bands.forEach((db, i) => this.setMasterBand(i, db)); this.master.eqPreset = ep || null; }
         if (this.master.roomParams) this._applyRoom();
         else this.setRoom(this.master.room || 'none');
       }

@@ -1,0 +1,75 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\AudioEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\WebSocketServer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\AAFilter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\BPMDetect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\FIFOSampleBuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\FIRFilter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\InterpolateCubic.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\InterpolateLinear.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\InterpolateShannon.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\PeakFinder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\RateTransposer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\SoundTouch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\TDStretch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\cpu_detect_x86.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\mmx_optimized.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\soundtouch\sse_optimized.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\AudioEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="E:\programmings\FocusDAW-Studio\juce_skeleton\Source\WebSocketServer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="E:\programmings\FocusDAW-Studio\juce_skeleton\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{D258F209-78F0-316A-B0C0-E262713113B3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{144D00C8-B04C-3FB4-91BF-6D6F2A483063}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
