@@ -14,6 +14,9 @@
 #include <mutex>
 #include <atomic>
 #include <functional>
+#include <algorithm>
+#include <cmath>
+#include <utility>
 
 #if USE_JUCE
 #include "SoundTouch.h"
@@ -331,6 +334,76 @@ private:
     std::atomic<bool> preservePitch { true };
 };
 
+// Immutable volume-automation snapshot for a track. Built on the command thread
+// and read on the audio/export thread via a ref-counted pointer, so concurrent
+// edits never mutate data that is being read. Mirrors the Web Audio engine's
+// automation: linear, or Fritsch–Carlson monotone cubic when `curved`.
+struct TrackAutomation
+{
+    bool on = false;
+    bool curved = false;
+    std::vector<float> t;    // normalized times 0..1 (sorted)
+    std::vector<float> v;    // gains 0..1
+    std::vector<float> tan;  // monotone-cubic tangents (when curved)
+
+    // Evaluate the automation gain at normalized phase (0..1). Returns [0.0001, 1].
+    float sample(double phase) const
+    {
+        const size_t m = t.size();
+        if (m == 0) return 1.0f;
+        if (m == 1) return juce::jlimit(0.0001f, 1.0f, v[0]);
+        size_t seg = 0;
+        while (seg < m - 2 && phase > t[seg + 1]) ++seg;
+        double x0 = t[seg];
+        double h = (double)t[seg + 1] - x0; if (h <= 0) h = 1e-6;
+        double u = juce::jlimit(0.0, 1.0, (phase - x0) / h);
+        double out;
+        if (curved && tan.size() == m) {
+            double u2 = u * u, u3 = u2 * u;
+            out = (2 * u3 - 3 * u2 + 1) * v[seg]
+                + (u3 - 2 * u2 + u) * h * tan[seg]
+                + (-2 * u3 + 3 * u2) * v[seg + 1]
+                + (u3 - u2) * h * tan[seg + 1];
+        } else {
+            out = v[seg] + ((double)v[seg + 1] - v[seg]) * u;
+        }
+        return (float)juce::jlimit(0.0001, 1.0, out);
+    }
+
+    // Build from interleaved [t0,v0,t1,v1,...]; sorts points and precomputes tangents.
+    static std::shared_ptr<const TrackAutomation> build(bool on, bool curved, const std::vector<float>& flat)
+    {
+        auto d = std::make_shared<TrackAutomation>();
+        d->on = on;
+        d->curved = curved;
+        const size_t m = flat.size() / 2;
+        std::vector<std::pair<float, float>> pts;
+        pts.reserve(m);
+        for (size_t i = 0; i < m; ++i) pts.emplace_back(flat[2 * i], flat[2 * i + 1]);
+        std::sort(pts.begin(), pts.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (auto& p : pts) { d->t.push_back(p.first); d->v.push_back(p.second); }
+
+        if (curved && m >= 2) {
+            std::vector<double> slope(m - 1);
+            for (size_t i = 0; i < m - 1; ++i) {
+                double dx = (double)d->t[i + 1] - d->t[i]; if (dx == 0) dx = 1e-6;
+                slope[i] = ((double)d->v[i + 1] - d->v[i]) / dx;
+            }
+            d->tan.assign(m, 0.0f);
+            d->tan[0] = (float)slope[0];
+            d->tan[m - 1] = (float)slope[m - 2];
+            for (size_t i = 1; i < m - 1; ++i)
+                d->tan[i] = (slope[i - 1] * slope[i] <= 0) ? 0.0f : (float)((slope[i - 1] + slope[i]) / 2.0);
+            for (size_t i = 0; i < m - 1; ++i) {
+                if (slope[i] == 0) { d->tan[i] = 0; d->tan[i + 1] = 0; continue; }
+                double a = d->tan[i] / slope[i], b = d->tan[i + 1] / slope[i], s = a * a + b * b;
+                if (s > 9.0) { double k = 3.0 / std::sqrt(s); d->tan[i] = (float)(k * a * slope[i]); d->tan[i + 1] = (float)(k * b * slope[i]); }
+            }
+        }
+        return d;
+    }
+};
+
 // TrackAudioSource manages reader source, transport control, volume, pan, mute, and solo
 class TrackAudioSource : public juce::PositionableAudioSource
 {
@@ -430,11 +503,18 @@ public:
         // Automation gain is evaluated at the block's start/end normalized phase
         // (set by exportMix per block) and applied as a smooth ramp so it matches
         // the Web Audio render's sample-accurate `setValueCurveAtTime`.
+        // Take an immutable snapshot of the automation under the lock, then use it
+        // lock-free. setAutomation() swaps in a NEW object, so a concurrent edit
+        // (e.g. while playing/exporting) can never realloc the data we're reading —
+        // avoids the heap corruption (STATUS_HEAP_CORRUPTION / 0xC0000374) a plain
+        // unlocked vector read would risk.
         float autoGainStart = 1.0f, autoGainEnd = 1.0f;
-        const bool autoActive = offlineRendering.load() && autoOn && autoPointT.size() >= 1;
+        std::shared_ptr<const TrackAutomation> autoSnap;
+        if (offlineRendering.load()) autoSnap = automationSnapshot();
+        const bool autoActive = autoSnap && autoSnap->on && !autoSnap->t.empty();
         if (autoActive) {
-            autoGainStart = sampleAutomation(offlineAutoPhaseStart);
-            autoGainEnd   = sampleAutomation(offlineAutoPhaseEnd);
+            autoGainStart = autoSnap->sample(offlineAutoPhaseStart);
+            autoGainEnd   = autoSnap->sample(offlineAutoPhaseEnd);
         }
         if (volume != 1.0f || pan != 0.0f || autoActive) {
             for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel) {
@@ -521,45 +601,23 @@ public:
     // Points are {t, v} with t normalized 0..1 over the whole render and v a gain
     // in [0,1]. `flat` is interleaved [t0,v0,t1,v1,...]. Mirrors the Web Audio
     // engine's automation (linear, or Fritsch–Carlson monotone cubic when curved).
+    // The data is held as an immutable, ref-counted snapshot and swapped under a
+    // lock, so the audio/export thread can read it without risking a use-after-free
+    // if automation is edited concurrently.
     void setAutomation(bool on, bool curved, const std::vector<float>& flat) {
-        autoOn = on;
-        autoCurved = curved;
-        autoPointT.clear();
-        autoPointV.clear();
-        const size_t m = flat.size() / 2;
-        std::vector<std::pair<float, float>> pts;
-        pts.reserve(m);
-        for (size_t i = 0; i < m; ++i) pts.emplace_back(flat[2 * i], flat[2 * i + 1]);
-        std::sort(pts.begin(), pts.end(), [](auto& a, auto& b) { return a.first < b.first; });
-        for (auto& p : pts) { autoPointT.push_back(p.first); autoPointV.push_back(p.second); }
-        computeAutoTangents();
+        auto d = TrackAutomation::build(on, curved, flat);
+        std::lock_guard<std::mutex> lk(autoMutex);
+        autoData = d;
+    }
+
+    std::shared_ptr<const TrackAutomation> automationSnapshot() const {
+        std::lock_guard<std::mutex> lk(autoMutex);
+        return autoData; // copies the shared_ptr; the data stays alive while in use
     }
 
     void setOfflineAutomationPhase(double startPhase, double endPhase) {
         offlineAutoPhaseStart = startPhase;
         offlineAutoPhaseEnd = endPhase;
-    }
-
-    float sampleAutomation(double t) const {
-        const size_t m = autoPointT.size();
-        if (m == 0) return 1.0f;
-        if (m == 1) return juce::jlimit(0.0001f, 1.0f, autoPointV[0]);
-        size_t seg = 0;
-        while (seg < m - 2 && t > autoPointT[seg + 1]) ++seg;
-        double x0 = autoPointT[seg];
-        double h = (double)autoPointT[seg + 1] - x0; if (h <= 0) h = 1e-6;
-        double u = juce::jlimit(0.0, 1.0, (t - x0) / h);
-        double v;
-        if (autoCurved && autoTan.size() == m) {
-            double u2 = u * u, u3 = u2 * u;
-            v = (2 * u3 - 3 * u2 + 1) * autoPointV[seg]
-              + (u3 - 2 * u2 + u) * h * autoTan[seg]
-              + (-2 * u3 + 3 * u2) * autoPointV[seg + 1]
-              + (u3 - u2) * h * autoTan[seg + 1];
-        } else {
-            v = autoPointV[seg] + ((double)autoPointV[seg + 1] - autoPointV[seg]) * u;
-        }
-        return (float)juce::jlimit(0.0001, 1.0, v);
     }
 
     std::string id;
@@ -583,37 +641,12 @@ public:
     juce::AudioBuffer<float>* reverbSendBuffer = nullptr;
     FeedbackDelay echoDelay;
 
-    // Volume automation state (offline export only).
-    bool autoOn = false;
-    bool autoCurved = false;
-    std::vector<float> autoPointT;   // normalized times 0..1 (sorted)
-    std::vector<float> autoPointV;   // gains 0..1
-    std::vector<float> autoTan;      // monotone-cubic tangents (when curved)
+    // Volume automation (offline export only). Immutable snapshot + atomic swap
+    // (guarded by autoMutex). Phase is set/read only on the export thread.
+    std::shared_ptr<const TrackAutomation> autoData;
+    mutable std::mutex autoMutex;
     double offlineAutoPhaseStart = 0.0;
     double offlineAutoPhaseEnd = 0.0;
-
-private:
-    // Fritsch–Carlson monotone tangents — matches the Web Audio makeAutoSampler().
-    void computeAutoTangents() {
-        autoTan.clear();
-        const size_t m = autoPointT.size();
-        if (!autoCurved || m < 2) return;
-        std::vector<double> slope(m - 1);
-        for (size_t i = 0; i < m - 1; ++i) {
-            double dx = (double)autoPointT[i + 1] - autoPointT[i]; if (dx == 0) dx = 1e-6;
-            slope[i] = ((double)autoPointV[i + 1] - autoPointV[i]) / dx;
-        }
-        autoTan.assign(m, 0.0f);
-        autoTan[0] = (float)slope[0];
-        autoTan[m - 1] = (float)slope[m - 2];
-        for (size_t i = 1; i < m - 1; ++i)
-            autoTan[i] = (slope[i - 1] * slope[i] <= 0) ? 0.0f : (float)((slope[i - 1] + slope[i]) / 2.0);
-        for (size_t i = 0; i < m - 1; ++i) {
-            if (slope[i] == 0) { autoTan[i] = 0; autoTan[i + 1] = 0; continue; }
-            double a = autoTan[i] / slope[i], b = autoTan[i + 1] / slope[i], s = a * a + b * b;
-            if (s > 9.0) { double k = 3.0 / std::sqrt(s); autoTan[i] = (float)(k * a * slope[i]); autoTan[i + 1] = (float)(k * b * slope[i]); }
-        }
-    }
 };
 
 // Master effects pipeline: EQ, Reverb, Delay, Stereo Widener, Saturation, Exciter, Soft Clipper
