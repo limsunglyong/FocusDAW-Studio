@@ -470,6 +470,18 @@ void AudioEngine::setMasterBand(int index, float db)
     std::cout << "[AudioEngine] Master EQ band " << index << " set to " << db << " dB" << std::endl;
 }
 
+void AudioEngine::setRoom(const RoomSpec& spec)
+{
+#if USE_JUCE
+    if (masterEffectsSource) masterEffectsSource->setRoom(spec);
+#endif
+    std::cout << "[AudioEngine] Ambience room set: wet=" << spec.wet
+              << ", decay=" << spec.decay << ", preDelay=" << spec.preDelay
+              << ", damp=" << spec.damp << ", width=" << spec.width
+              << ", echo=" << spec.echo << ", size=" << spec.size
+              << ", erGain=" << spec.erGain << std::endl;
+}
+
 void AudioEngine::setMasterBands(const std::vector<float>& bands)
 {
 #if USE_JUCE

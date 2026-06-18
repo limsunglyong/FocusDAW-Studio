@@ -33,6 +33,22 @@ struct TrackInfo
     bool solo = false;
 };
 
+// Ambience (Sound Environment / room type) spec — mirrors the web engine's
+// ROOM_PRESETS / roomParams. Drives a procedurally generated room impulse response
+// (see MasterEffectsAudioSource::generateRoomIR, a port of audio-engine.js makeRoomIR).
+struct RoomSpec
+{
+    float decay = 0.001f;   // tail length (seconds)
+    float shape = 2.0f;     // decay-curve exponent
+    float preDelay = 0.0f;  // pre-delay (milliseconds)
+    float wet = 0.0f;       // send level 0..1
+    float damp = 20000.0f;  // HF damping cutoff (Hz)
+    float width = 1.0f;     // stereo width (0..1.5)
+    float echo = 0.0f;      // discrete slap-echo level 0..1
+    float size = 0.5f;      // room size 0..1 (scales ER / echo spacing)
+    float erGain = 1.0f;    // early-reflection prominence
+};
+
 #if USE_JUCE
 
 // Circular buffer feedback delay class for track/master echo
@@ -717,6 +733,17 @@ public:
         {
             exciterHpf[i].prepare(sampleRate, 3000.0f);
         }
+
+        // Ambience (room) convolution — prepare and (re)build the IR at this sample rate.
+        juce::dsp::ProcessSpec convSpec;
+        convSpec.sampleRate = sampleRate;
+        convSpec.maximumBlockSize = (juce::uint32)samplesPerBlockExpected;
+        convSpec.numChannels = 2;
+        roomConvolution.prepare(convSpec);
+        roomConvPrepared = true;
+        roomBuffer.setSize(2, samplesPerBlockExpected);
+        roomBuffer.clear();
+        if (roomSpec.wet > 0.0f) loadRoomIR(); // rebuild for the new sample rate if a room is active
     }
 
     void releaseResources() override
@@ -792,6 +819,33 @@ public:
         for (int i = 0; i < 9; ++i)
         {
             eqFilters[i].process(context);
+        }
+
+        // 4.5 Apply Ambience (room-type convolution) — parallel wet send, matching the
+        // web engine's masterVol → ambSend(wet) → convolver → mix. Convolve a copy of the
+        // post-EQ signal with the room IR (normalised) and add it back scaled by wet.
+        float rWet = roomWet.load();
+        if (rWet > 0.001f && roomReady.load())
+        {
+            int n = bufferToFill.numSamples;
+            int chs = std::min(bufferToFill.buffer->getNumChannels(), 2);
+            if (roomBuffer.getNumSamples() < n) roomBuffer.setSize(2, n, false, false, true);
+            roomBuffer.clear();
+            for (int ch = 0; ch < chs; ++ch)
+                roomBuffer.copyFrom(ch, 0, *bufferToFill.buffer, ch, bufferToFill.startSample, n);
+            if (chs == 1) roomBuffer.copyFrom(1, 0, roomBuffer, 0, 0, n); // mono → dual for stereo IR
+
+            juce::dsp::AudioBlock<float> rblock(roomBuffer);
+            auto rsub = rblock.getSubBlock(0, (size_t)n);
+            juce::dsp::ProcessContextReplacing<float> rctx(rsub);
+            roomConvolution.process(rctx);
+
+            for (int ch = 0; ch < chs; ++ch)
+            {
+                float* dst = bufferToFill.buffer->getWritePointer(ch, bufferToFill.startSample);
+                const float* wet = roomBuffer.getReadPointer(ch);
+                for (int s = 0; s < n; ++s) dst[s] += wet[s] * rWet;
+            }
         }
 
         // 5. Apply Master Echo/Delay
@@ -885,6 +939,15 @@ public:
     void setSaturationLevel(float val) { saturationLevel.store(val); }
     void setExciterLevel(float val) { exciterLevel.store(val); }
 
+    // Ambience (room type). Stores the spec, sets the wet send and (re)builds the IR.
+    // Called on the message thread; loadImpulseResponse swaps the IR in thread-safely.
+    void setRoom(const RoomSpec& spec)
+    {
+        roomSpec = spec;
+        roomWet.store(spec.wet);
+        loadRoomIR();
+    }
+
     float getMagnitudeL() const { return masterMagnitudeL.load(); }
     float getMagnitudeR() const { return masterMagnitudeR.load(); }
 
@@ -922,11 +985,86 @@ public:
         {
             exciterHpf[i].reset();
         }
+        roomConvolution.reset();
     }
 
     juce::AudioBuffer<float>* getReverbSendBuffer() { return &reverbSendBuffer; }
 
 private:
+    // (Re)generate the room IR from roomSpec at the current sample rate and hand it to
+    // the convolution. No-op until prepareToPlay has run (the convolver isn't prepared).
+    void loadRoomIR()
+    {
+        if (!roomConvPrepared) return; // prepareToPlay will rebuild once it's ready
+        double sr = currentSampleRate > 0 ? currentSampleRate : 44100.0;
+        auto ir = generateRoomIR(roomSpec, sr);
+        if (ir.getNumSamples() < 1) { roomReady.store(false); return; }
+        roomConvolution.loadImpulseResponse(std::move(ir), sr,
+            juce::dsp::Convolution::Stereo::yes,
+            juce::dsp::Convolution::Trim::no,
+            juce::dsp::Convolution::Normalise::yes);
+        roomReady.store(true);
+    }
+
+    // Procedural room impulse response — direct port of audio-engine.js makeRoomIR:
+    // pre-delay + decaying diffuse tail (shape exponent) with 1-pole HF damping and
+    // stereo decorrelation, plus discrete early reflections and slap-echo taps.
+    static juce::AudioBuffer<float> generateRoomIR(const RoomSpec& spec, double sr)
+    {
+        const double sizeScale = 0.5 + spec.size;                  // 0.5..1.5 spatial scale
+        const int pre  = std::max(0, (int)std::floor((spec.preDelay / 1000.0) * sr));
+        const int tail = std::max(1, (int)std::floor((spec.decay > 0 ? spec.decay : 0.001) * sr));
+
+        // slap-echo taps (base ~45..135ms × n, decaying)
+        std::vector<std::pair<double, double>> taps;
+        if (spec.echo > 0.0f)
+        {
+            const double base = 0.09 * (0.5 + spec.size);
+            for (int n = 1; n <= 3; ++n) taps.emplace_back(base * n, spec.echo * std::pow(0.55, n - 1));
+        }
+        const int echoSpan = taps.empty() ? 0 : (int)std::ceil((taps.back().first + 0.02) * sr);
+        const int len = pre + std::max(tail, echoSpan);
+
+        juce::AudioBuffer<float> ir(2, len);
+        ir.clear();
+
+        const double damp = std::min((double)(spec.damp > 0 ? spec.damp : 20000.0), sr / 2.0);
+        const double lpCoef = std::exp(-2.0 * 3.141592653589793 * damp / sr);   // 1-pole LP retention
+        const double stereo = std::max(0.0, std::min(1.0, spec.width / 1.5));     // 0=mono .. 1=decorrelated
+        float* L = ir.getWritePointer(0);
+        float* R = ir.getWritePointer(1);
+        juce::Random rng (0x5eed);                                               // deterministic IR
+        double lpM = 0, lpL = 0, lpR = 0;
+        for (int i = 0; i < tail; ++i)
+        {
+            const double env = std::pow(1.0 - (double)i / tail, spec.shape > 0 ? spec.shape : 2.0);
+            const double nM = (rng.nextDouble() * 2.0 - 1.0) * env;
+            const double nL = (rng.nextDouble() * 2.0 - 1.0) * env;
+            const double nR = (rng.nextDouble() * 2.0 - 1.0) * env;
+            lpM = lpCoef * lpM + (1 - lpCoef) * nM;
+            lpL = lpCoef * lpL + (1 - lpCoef) * nL;
+            lpR = lpCoef * lpR + (1 - lpCoef) * nR;
+            L[pre + i] = (float)((1 - stereo) * lpM + stereo * lpL);
+            R[pre + i] = (float)((1 - stereo) * lpM + stereo * lpR);
+        }
+
+        // early reflections (discrete taps) — initial spatial signature
+        const double er = spec.erGain;
+        const double earlies[5][2] = {{0.007, 0.8}, {0.013, -0.6}, {0.019, 0.5}, {0.029, -0.4}, {0.041, 0.3}};
+        for (auto& e : earlies)
+        {
+            const int idx = pre + (int)std::floor(e[0] * sizeScale * sr);
+            if (idx < len) { L[idx] += (float)(e[1] * er); R[idx] += (float)(e[1] * er * (0.85 + 0.3 * stereo)); }
+        }
+        // discrete slap echoes
+        for (auto& tap : taps)
+        {
+            const int idx = pre + (int)std::floor(tap.first * sr);
+            if (idx < len) { L[idx] += (float)tap.second; R[idx] += (float)(tap.second * (0.9 + 0.2 * stereo)); }
+        }
+        return ir;
+    }
+
     void applySoftClipping(juce::AudioBuffer<float>& buffer, int startSample, int numSamples)
     {
         float kn = 0.9f;
@@ -973,6 +1111,17 @@ private:
     std::atomic<float> exciterLevel { 0.0f };
     std::array<HighPassFilter, 2> exciterHpf;
 
+    // Ambience (room) convolution send — port of the web makeRoomIR + ConvolverNode.
+    // IR is (re)built on the message thread in setRoom()/loadRoomIR() and swapped in via
+    // Convolution::loadImpulseResponse (thread-safe); the audio thread only reads roomWet
+    // / roomReady and calls process().
+    juce::dsp::Convolution roomConvolution;
+    juce::AudioBuffer<float> roomBuffer;
+    std::atomic<float> roomWet { 0.0f };
+    std::atomic<bool> roomReady { false };
+    RoomSpec roomSpec;
+    bool roomConvPrepared = false;
+
     std::atomic<float> masterMagnitudeL { 0.0f };
     std::atomic<float> masterMagnitudeR { 0.0f };
 };
@@ -1007,6 +1156,7 @@ public:
     void setMaster(const std::string& key, float value);
     void setMasterBand(int index, float db);
     void setMasterBands(const std::vector<float>& bands);
+    void setRoom(const RoomSpec& spec);
 
     void exportMix(const std::string& exportId,
                    const std::string& tempOutputPath,

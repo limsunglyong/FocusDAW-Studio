@@ -233,6 +233,19 @@
       }
     },
 
+    // Ambience (room type). The native engine implements the same procedural room IR
+    // convolution as the web engine, so forward the resolved roomParams after LocalDAW
+    // applies the preset / fine-tune so realtime native playback (and export) get it.
+    setRoom(key) {
+      LocalDAW.setRoom(key);
+      if (this.isNative) sendRoomToNative();
+    },
+
+    setRoomParam(k, v) {
+      LocalDAW.setRoomParam(k, v);
+      if (this.isNative) sendRoomToNative();
+    },
+
     // Track addition: run locally (for waveforms) and sync with JUCE
     async addFileBuffer(name, arrayBuffer, options = {}) {
       const track = await LocalDAW.addFileBuffer(name, arrayBuffer, options);
@@ -275,6 +288,7 @@
         sendToNative({ command: "setMaster", key: "widener", value: m.widener });
         sendToNative({ command: "setMaster", key: "saturation", value: m.saturation });
         sendToNative({ command: "setMaster", key: "exciter", value: m.exciter });
+        sendRoomToNative(); // reset ambience too (LocalDAW.clearTracks set room → none)
         nativeState.offset = 0;
         nativeState.isPlaying = false;
       }
@@ -364,7 +378,10 @@
       if (LocalDAW.tracks.length > 0) {
         LocalDAW.tracks.forEach(track => syncTrackToNative(track));
       }
-      
+
+      // Sync current ambience (room) so it's applied immediately on connect.
+      sendRoomToNative();
+
       LocalDAW._emit();
     };
 
@@ -416,6 +433,24 @@
     // Native engine is gone — un-mute the web output so the local fallback is audible.
     try { LocalDAW.setOutputMuted(false); } catch (e) {}
     LocalDAW._emit();
+  }
+
+  // Forward the current ambience (room) spec to the native engine, which builds the
+  // matching room IR. Defaults mirror audio-engine.js makeRoomIR for any absent field.
+  function sendRoomToNative() {
+    const p = (LocalDAW.master && LocalDAW.master.roomParams) || {};
+    sendToNative({
+      command: "setMasterRoom",
+      decay: p.decay ?? 0.001,
+      shape: p.shape ?? 2,
+      preDelay: p.preDelay ?? 0,
+      wet: p.wet ?? 0,
+      damp: p.damp ?? 20000,
+      width: p.width ?? 1,
+      echo: p.echo ?? 0,
+      size: p.size ?? 0.5,
+      erGain: p.erGain ?? 1,
+    });
   }
 
   function sendToNative(obj) {

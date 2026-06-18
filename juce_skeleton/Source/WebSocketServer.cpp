@@ -547,6 +547,20 @@ void WebSocketServer::clientLoop(void* socketHandle)
             std::vector<float> bands = getJsonFloatArrayVal(frameText, "bands");
             audioEngine.setMasterBands(bands);
         }
+        else if (cmd == "setMasterRoom")
+        {
+            RoomSpec spec;
+            spec.decay    = (float)getJsonDoubleVal(frameText, "decay");
+            spec.shape    = (float)getJsonDoubleVal(frameText, "shape");
+            spec.preDelay = (float)getJsonDoubleVal(frameText, "preDelay");
+            spec.wet      = (float)getJsonDoubleVal(frameText, "wet");
+            spec.damp     = (float)getJsonDoubleVal(frameText, "damp");
+            spec.width    = (float)getJsonDoubleVal(frameText, "width");
+            spec.echo     = (float)getJsonDoubleVal(frameText, "echo");
+            spec.size     = (float)getJsonDoubleVal(frameText, "size");
+            spec.erGain   = (float)getJsonDoubleVal(frameText, "erGain");
+            audioEngine.setRoom(spec);
+        }
         else if (cmd == "setMasterGroup")
         {
             double group = getJsonDoubleVal(frameText, "group");
