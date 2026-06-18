@@ -1,0 +1,10 @@
+^E:\PROGRAMMINGS\FOCUSDAW-STUDIO\BUILD\JUCE\TOOLS\CMAKEFILES\506C7905DA2B70B6050AC2F7D06A37E9\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -SE:/programmings/FocusDAW-Studio/third_party/JUCE -BE:/programmings/FocusDAW-Studio/build/JUCE/tools --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file E:/programmings/FocusDAW-Studio/build/JUCE/tools/JUCE.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

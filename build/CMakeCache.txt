@@ -221,12 +221,22 @@ FocusDAW-AudioEngine_SOURCE_DIR:STATIC=E:/programmings/FocusDAW-Studio/juce_skel
 //Value Computed by CMake
 JUCE_BINARY_DIR:STATIC=E:/programmings/FocusDAW-Studio/build/JUCE
 
+//Add build targets for the DemoRunner and PIPs
+JUCE_BUILD_EXAMPLES:BOOL=OFF
+
+//Add build targets for the Projucer and other tools
+JUCE_BUILD_EXTRAS:BOOL=OFF
+
 //Whether or not plugins should be installed to the system after
 // building
 JUCE_COPY_PLUGIN_AFTER_BUILD:BOOL=OFF
 
 //Show all module sources in IDE projects
 JUCE_ENABLE_MODULE_SOURCE_GROUPS:BOOL=OFF
+
+//The location, relative to the install prefix, where the JUCE
+// config file will be installed
+JUCE_INSTALL_DESTINATION:STRING=lib/cmake/JUCE-8.0.13
 
 //Value Computed by CMake
 JUCE_IS_TOP_LEVEL:STATIC=OFF
@@ -235,10 +245,18 @@ JUCE_IS_TOP_LEVEL:STATIC=OFF
 JUCE_MODULES_ONLY:BOOL=OFF
 
 //No help, variable specified on the command line.
-JUCE_PATH:UNINITIALIZED=E:/programmings/FocusDAW-Studio/third_party/JUCE
+JUCE_PATH:STRING=E:/programmings/FocusDAW-Studio/third_party/JUCE
 
 //Value Computed by CMake
 JUCE_SOURCE_DIR:STATIC=E:/programmings/FocusDAW-Studio/third_party/JUCE
+
+//The location, relative to the install prefix, where juceaide
+// will be installed
+JUCE_TOOL_INSTALL_DIR:STRING=bin/JUCE-8.0.13
+
+//Location that overrides the default directory where our FindWebView2
+// script is looking for the *Microsoft.Web.WebView2* directory
+JUCE_WEBVIEW2_PACKAGE_LOCATION:BOOL=OFF
 
 
 ########################
@@ -375,34 +393,13 @@ CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
 //The path to the folder holding this file and other resources
 JUCE_CMAKE_UTILS_DIR:INTERNAL=E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake
+//The name of the juceaide program
+JUCE_JUCEAIDE_NAME:INTERNAL=juceaide.exe
 //The path to JUCE modules
 JUCE_MODULES_DIR:INTERNAL=E:/programmings/FocusDAW-Studio/third_party/JUCE/modules
 //The target architecture, used to name internal folders in VST3
 // bundles, and to locate bundled libraries in modules
 JUCE_TARGET_ARCHITECTURE:INTERNAL=Change Dir: 'E:/programmings/FocusDAW-Studio/build/JUCE/CMakeFiles/CMakeTmp'
-# WARNING: Value of JUCE_TARGET_ARCHITECTURE contained a newline
-#  and was truncated. Original value:
-# Change Dir: 'E:/programmings/FocusDAW-Studio/build/JUCE/CMakeFiles/CMakeTmp'
-# \n
-# \nRun Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_ea357.vcxproj /p:Configuration=Debug /p:Platform=win32 /p:VisualStudioVersion=18.0 /v:n
-# \nmsbuild 踰꾩쟾 18.6.3+84d3e95b4(.NET Framework??
-# \n鍮뚮뱶 ?쒖옉: 2026-06-18 ?ㅼ쟾 12:05:56
-# \n
-# \n1 ?몃뱶??"E:\programmings\FocusDAW-Studio\build\JUCE\CMakeFiles\CMakeTmp\cmTC_ea357.vcxproj" ?꾨줈?앺듃(湲곕낯 ????낅땲??
-# \nC:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Microsoft\VC\v180\Microsoft.Cpp.WindowsSDK.props(113,5): error MSB4184: "[Microsoft.Build.Utilities.ToolLocationHelper]::GetLatestSDKTargetPlatformVersion(Windows, 10.0)" ?앹쓣 怨꾩궛?????놁뒿?덈떎. 'C:\Users\limsu\AppData\Local\Microsoft SDKs' 寃쎈줈??????≪꽭?ㅺ? 嫄곕??섏뿀?듬땲?? [E:\programmings\FocusDAW-Studio\build\JUCE\CMakeFiles\CMakeTmp\cmTC_ea357.vcxproj]
-# \n"E:\programmings\FocusDAW-Studio\build\JUCE\CMakeFiles\CMakeTmp\cmTC_ea357.vcxproj" ?꾨줈?앺듃瑜?鍮뚮뱶?덉뒿?덈떎(湲곕낯 ???. - ?ㅽ뙣
-# \n
-# \n鍮뚮뱶?섏? 紐삵뻽?듬땲??
-# \n
-# \n"E:\programmings\FocusDAW-Studio\build\JUCE\CMakeFiles\CMakeTmp\cmTC_ea357.vcxproj"(湲곕낯 ???(1)->
-# \n  C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Microsoft\VC\v180\Microsoft.Cpp.WindowsSDK.props(113,5): error MSB4184: "[Microsoft.Build.Utilities.ToolLocationHelper]::GetLatestSDKTargetPlatformVersion(Windows, 10.0)" ?앹쓣 怨꾩궛?????놁뒿?덈떎. 'C:\Users\limsu\AppData\Local\Microsoft SDKs' 寃쎈줈??????≪꽭?ㅺ? 嫄곕??섏뿀?듬땲?? [E:\programmings\FocusDAW-Studio\build\JUCE\CMakeFiles\CMakeTmp\cmTC_ea357.vcxproj]
-# \n
-# \n    寃쎄퀬 0媛?
-# \n    ?ㅻ쪟 1媛?
-# \n
-# \n寃쎄낵 ?쒓컙: 00:00:00.03
-# \n
-# \n
 //Signals whether plugin related helper utilities can run on the
 // build machine
 JUCE_WINDOWS_HELPERS_CAN_RUN:INTERNAL=FALSE

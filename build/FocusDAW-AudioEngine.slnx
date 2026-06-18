@@ -7,16 +7,27 @@
 		<BuildType Name="RelWithDebInfo"/>
 		<Platform Name="win32"/>
 	</Configurations>
-	<Project Path="ALL_BUILD.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="8b4a6965-15a0-3602-b17e-77698b14c9c1" DefaultStartup="true">
-		<BuildDependency Project="FocusDAW-AudioEngine.vcxproj"/>
-		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
-		<Build Solution="Debug|*" Project="false"/>
-		<Build Solution="Release|*" Project="false"/>
-		<Build Solution="MinSizeRel|*" Project="false"/>
-		<Build Solution="RelWithDebInfo|*" Project="false"/>
-	</Project>
 	<Project Path="FocusDAW-AudioEngine.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="c883ad04-c974-3d60-9ad6-bbcd79ceb398">
+		<BuildDependency Project="FocusDAW-AudioEngine_rc_lib.vcxproj"/>
 		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
 	</Project>
-	<Project Path="ZERO_CHECK.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="9397daf4-7dab-3e6a-a688-42f0a14b34bc"/>
+	<Project Path="FocusDAW-AudioEngine_rc_lib.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="050e968e-7c83-350f-8840-df8a4a2e4c1b">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Folder Name="/CMakePredefinedTargets/">
+		<Project Path="ALL_BUILD.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="8b4a6965-15a0-3602-b17e-77698b14c9c1" DefaultStartup="true">
+			<BuildDependency Project="FocusDAW-AudioEngine.vcxproj"/>
+			<BuildDependency Project="FocusDAW-AudioEngine_rc_lib.vcxproj"/>
+			<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		</Project>
+		<Project Path="INSTALL.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="daf94781-9060-3724-8bb7-f78f55585452">
+			<BuildDependency Project="ALL_BUILD.vcxproj"/>
+			<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+			<Build Solution="Debug|*" Project="false"/>
+			<Build Solution="Release|*" Project="false"/>
+			<Build Solution="MinSizeRel|*" Project="false"/>
+			<Build Solution="RelWithDebInfo|*" Project="false"/>
+		</Project>
+		<Project Path="ZERO_CHECK.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="9397daf4-7dab-3e6a-a688-42f0a14b34bc"/>
+	</Folder>
 </Solution>

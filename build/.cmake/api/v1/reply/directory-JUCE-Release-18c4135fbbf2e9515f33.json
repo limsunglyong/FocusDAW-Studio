@@ -1,0 +1,81 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"E:/programmings/FocusDAW-Studio/third_party/JUCE/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 160,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 180,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/JUCE-8.0.13",
+			"paths" : 
+			[
+				"E:/programmings/FocusDAW-Studio/build/JUCE/JUCEConfigVersion.cmake",
+				"E:/programmings/FocusDAW-Studio/build/JUCE/JUCEConfig.cmake",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/JUCECheckAtomic.cmake",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/JUCEHelperTargets.cmake",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/JUCEModuleSupport.cmake",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/JUCEUtils.cmake",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/JuceLV2Defines.h.in",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/LaunchScreen.storyboard",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/PIPAudioProcessor.cpp.in",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/PIPAudioProcessorWithARA.cpp.in",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/PIPComponent.cpp.in",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/PIPConsole.cpp.in",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/RecentFilesMenuTemplate.nib",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/UnityPluginGUIScript.cs.in",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/checkBundleSigning.cmake",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/copyDir.cmake",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/juce_runtime_arch_detection.cpp",
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/juce_LinuxSubprocessHelper.cpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/JUCE-8.0.13",
+			"paths" : 
+			[
+				"E:/programmings/FocusDAW-Studio/third_party/JUCE/extras/Build/CMake/juce_vst3_helper"
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "JUCE",
+		"source" : "E:/programmings/FocusDAW-Studio/third_party/JUCE"
+	}
+}
