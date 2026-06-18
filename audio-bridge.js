@@ -312,6 +312,8 @@
       if (options.forceLocal || !this.isNative) {
         return LocalDAW.renderMix(onProgress, options);
       }
+      const tempoRate = LocalDAW && LocalDAW._projectRate ? LocalDAW._projectRate() : 1;
+      const exportDuration = tempoRate > 0 ? LocalDAW.duration / tempoRate : LocalDAW.duration;
       return new Promise((resolve, reject) => {
         const exportId = "exp_" + Date.now();
         window._activeExport = {
@@ -329,7 +331,7 @@
           normalize: options.normalize !== false,
           lufsTarget: options.lufsTarget || -14.0,
           preservePitch: !!options.preservePitch,
-          duration: LocalDAW.duration
+          duration: exportDuration
         });
       });
     }

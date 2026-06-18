@@ -192,6 +192,7 @@ public:
         soundTouch.setSampleRate(44100);
         soundTouch.setChannels(2);
         soundTouch.setTempo(1.0);
+        soundTouch.setRate(1.0);
         soundTouch.setPitchSemiTones(0.0);
         
         soundTouch.setSetting(SETTING_USE_AA_FILTER, 1);
@@ -235,11 +236,13 @@ public:
         
         if (currentPreserve)
         {
+            soundTouch.setRate(1.0f);
             soundTouch.setTempo(currentTempo);
             soundTouch.setPitchSemiTones(currentPitch);
         }
         else
         {
+            soundTouch.setTempo(1.0f);
             soundTouch.setRate(currentTempo);
             soundTouch.setPitchSemiTones(0.0f);
         }

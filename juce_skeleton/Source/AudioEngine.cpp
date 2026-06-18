@@ -765,6 +765,7 @@ void AudioEngine::exportMix(const std::string& exportId,
         track->reset();
         track->setPreservePitch(preservePitch);
         track->setOfflineRendering(true, preservePitch);
+        track->setLooping(false);
         track->transportSource->setPosition(0.0);
         track->transportSource->start();
     }
@@ -896,6 +897,7 @@ void AudioEngine::exportMix(const std::string& exportId,
     for (auto* track : activeTracks) {
         track->reset();
         track->setOfflineRendering(true, preservePitch);
+        track->setLooping(false);
         track->transportSource->setPosition(0.0);
         track->transportSource->start();
     }
@@ -998,6 +1000,7 @@ void AudioEngine::exportMix(const std::string& exportId,
     // Stop and restore track transport settings
     for (auto* track : activeTracks) {
         track->setOfflineRendering(false);
+        track->setLooping(true);
         track->transportSource->stop();
         track->transportSource->setPosition(0.0);
     }

@@ -1957,9 +1957,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const tag = el.tagName;
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     };
+    const isRangeInput = (el) => el && el.tagName === "INPUT" && el.type === "range";
     const k = (e) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (e.code === "Space" && !isTextInput(e.target)) {
+      if (e.code === "Space" && (!isTextInput(e.target) || isRangeInput(e.target))) {
         e.preventDefault();
         playPause();
         return;

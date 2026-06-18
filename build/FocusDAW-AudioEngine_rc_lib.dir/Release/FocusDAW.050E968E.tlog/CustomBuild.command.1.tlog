@@ -1,0 +1,20 @@
+^E:\PROGRAMMINGS\FOCUSDAW-STUDIO\BUILD\CMAKEFILES\1EF75DB2C2538D76FD7E31E13776301B\FOCUSDAW-AUDIOENGINE_RESOURCES.RC.RULE
+setlocal
+JUCE\tools\extras\Build\juceaide\juceaide_artefacts\Custom\juceaide.exe rcfile E:/programmings/FocusDAW-Studio/build/FocusDAW-AudioEngine_artefacts/JuceLibraryCode/Info.txt E:/programmings/FocusDAW-Studio/build/FocusDAW-AudioEngine_artefacts/JuceLibraryCode/FocusDAW-AudioEngine_resources.rc
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^E:\PROGRAMMINGS\FOCUSDAW-STUDIO\JUCE_SKELETON\CMAKELISTS.TXT
+setlocal
+"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -SE:/programmings/FocusDAW-Studio/juce_skeleton -BE:/programmings/FocusDAW-Studio/build --check-stamp-file E:/programmings/FocusDAW-Studio/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
