@@ -12,6 +12,10 @@ function basenameFromPath(filePath) {
 function projectNameFromPath(filePath) {
   return basenameFromPath(filePath).replace(/\.focus$/i, "") || DEFAULT_PROJECT_NAME;
 }
+function parentFolderName(filePath) {
+  const parts = (filePath || "").split(/[\\/]/).filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length - 2] : "";
+}
 function recentProjectId(projectName, projectPath) {
   return projectPath ? `path:${projectPath}` : `autosave:${projectName || DEFAULT_PROJECT_NAME}`;
 }
@@ -2083,13 +2087,19 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       force((n) => n + 1);
     });
   }, [startupReady, reconnectProjectAudio, fitTimelineToProject]);
-  const addFiles = async (files, rootOnly = false) => {
+  const folderImportProjectName = useCallback((folderName) => {
+    const fresh = DAW.tracks.length === 0 && (projectName === DEFAULT_PROJECT_NAME || !projectName) && !projectPath;
+    const clean = (folderName || "").trim();
+    return fresh && clean ? clean : null;
+  }, [projectName, projectPath]);
+  const addFiles = async (files, rootOnly = false, folderName = null) => {
     const audioFiles = files.filter((f) => {
       const rel = f.webkitRelativePath || "";
       const isNested = rel && rel.split("/").filter(Boolean).length > 2;
       return !(rootOnly && isNested) && /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(f.name);
     });
     if (!audioFiles.length) return;
+    const renameTo = folderImportProjectName(folderName);
     setLoading({ active: true, total: audioFiles.length, done: 0, label: "Preparing files..." });
     for (let i = 0; i < audioFiles.length; i++) {
       const f = audioFiles[i];
@@ -2100,14 +2110,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         console.error("Failed to add", f.name, e);
       }
     }
+    if (renameTo && onRenameProject) onRenameProject(renameTo);
     fitTimelineToProject();
-    saveRecentProject(projectName, projectPath);
+    saveRecentProject(renameTo || projectName, projectPath);
     setLoading({ active: true, total: audioFiles.length, done: audioFiles.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
   };
-  const addElectronFiles = useCallback(async (items) => {
+  const addElectronFiles = useCallback(async (items, opts = {}) => {
     if (!items.length) return;
+    const renameTo = folderImportProjectName(opts.folderName);
     setLoading({ active: true, total: items.length, done: 0, label: "Preparing files..." });
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -2124,12 +2136,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         console.error("Failed to add", item.name, e);
       }
     }
+    if (renameTo && onRenameProject) onRenameProject(renameTo);
     fitTimelineToProject();
-    saveRecentProject(projectName, projectPath);
+    saveRecentProject(renameTo || projectName, projectPath);
     setLoading({ active: true, total: items.length, done: items.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
-  }, [fitTimelineToProject, projectName, projectPath]);
+  }, [fitTimelineToProject, folderImportProjectName, onRenameProject, projectName, projectPath]);
   const pickAudioFiles = useCallback(async () => {
     if (window.electronAPI) {
       const items = await window.electronAPI.selectFiles();
@@ -2141,7 +2154,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const pickAudioFolder = useCallback(async () => {
     if (window.electronAPI) {
       const items = await window.electronAPI.openFolder();
-      if (items.length) addElectronFiles(items);
+      if (items.length) addElectronFiles(items, { folderName: parentFolderName(items[0].path) });
     } else {
       folderRef.current && folderRef.current.click();
     }
@@ -2276,7 +2289,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       multiple: true,
       style: { display: "none" },
       onChange: (e) => {
-        addFiles([...e.target.files], true);
+        const files = [...e.target.files];
+        const rel = files[0] && files[0].webkitRelativePath;
+        addFiles(files, true, rel ? rel.split("/")[0] : null);
         e.target.value = "";
       }
     }

@@ -21,6 +21,12 @@ function projectNameFromPath(filePath) {
   return basenameFromPath(filePath).replace(/\.focus$/i, "") || DEFAULT_PROJECT_NAME;
 }
 
+// Folder name that contains the given file path (e.g. ".../MySong/drums.wav" -> "MySong").
+function parentFolderName(filePath) {
+  const parts = (filePath || "").split(/[\\/]/).filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length - 2] : "";
+}
+
 function recentProjectId(projectName, projectPath) {
   return projectPath ? `path:${projectPath}` : `autosave:${projectName || DEFAULT_PROJECT_NAME}`;
 }
@@ -1991,27 +1997,42 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     });
   }, [startupReady, reconnectProjectAudio, fitTimelineToProject]);
 
-  const addFiles = async (files, rootOnly = false) => {
+  // When a folder is imported onto the *initial* (fresh) screen, name the project
+  // after that folder. "Fresh" = no tracks yet, still the default name, and not a
+  // saved project — so adding stems to an existing/named project never clobbers it.
+  // Must be evaluated BEFORE any file is added (DAW.tracks mutates during import).
+  const folderImportProjectName = useCallback((folderName) => {
+    const fresh = DAW.tracks.length === 0
+      && (projectName === DEFAULT_PROJECT_NAME || !projectName)
+      && !projectPath;
+    const clean = (folderName || "").trim();
+    return fresh && clean ? clean : null;
+  }, [projectName, projectPath]);
+
+  const addFiles = async (files, rootOnly = false, folderName = null) => {
     const audioFiles = files.filter((f) => {
       const rel = f.webkitRelativePath || "";
       const isNested = rel && rel.split("/").filter(Boolean).length > 2;
       return !(rootOnly && isNested) && /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(f.name);
     });
     if (!audioFiles.length) return;
+    const renameTo = folderImportProjectName(folderName);
     setLoading({ active: true, total: audioFiles.length, done: 0, label: "Preparing files..." });
     for (let i = 0; i < audioFiles.length; i++) {
       const f = audioFiles[i];
       setLoading({ active: true, total: audioFiles.length, done: i, label: f.name });
       try { await DAW.addFile(f); } catch (e) { console.error("Failed to add", f.name, e); }
     }
+    if (renameTo && onRenameProject) onRenameProject(renameTo);
     fitTimelineToProject();
-    saveRecentProject(projectName, projectPath);
+    saveRecentProject(renameTo || projectName, projectPath);
     setLoading({ active: true, total: audioFiles.length, done: audioFiles.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
   };
-  const addElectronFiles = useCallback(async (items) => {
+  const addElectronFiles = useCallback(async (items, opts = {}) => {
     if (!items.length) return;
+    const renameTo = folderImportProjectName(opts.folderName);
     setLoading({ active: true, total: items.length, done: 0, label: "Preparing files..." });
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -2026,12 +2047,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         });
       } catch (e) { console.error("Failed to add", item.name, e); }
     }
+    if (renameTo && onRenameProject) onRenameProject(renameTo);
     fitTimelineToProject();
-    saveRecentProject(projectName, projectPath);
+    saveRecentProject(renameTo || projectName, projectPath);
     setLoading({ active: true, total: items.length, done: items.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
     force((n) => n + 1);
-  }, [fitTimelineToProject, projectName, projectPath]);
+  }, [fitTimelineToProject, folderImportProjectName, onRenameProject, projectName, projectPath]);
 
   const pickAudioFiles = useCallback(async () => {
     if (window.electronAPI) {
@@ -2045,7 +2067,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const pickAudioFolder = useCallback(async () => {
     if (window.electronAPI) {
       const items = await window.electronAPI.openFolder();
-      if (items.length) addElectronFiles(items);
+      if (items.length) addElectronFiles(items, { folderName: parentFolderName(items[0].path) });
     } else {
       folderRef.current && folderRef.current.click();
     }
@@ -2167,7 +2189,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       <input ref={fileRef} type="file" multiple accept=".mp3,.wav,.aiff,.m4a,.ogg,.flac" style={{ display: "none" }}
         onChange={(e) => { addFiles([...e.target.files]); e.target.value = ""; }} />
       <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple style={{ display: "none" }}
-        onChange={(e) => { addFiles([...e.target.files], true); e.target.value = ""; }} />
+        onChange={(e) => {
+          const files = [...e.target.files];
+          const rel = files[0] && files[0].webkitRelativePath;
+          addFiles(files, true, rel ? rel.split("/")[0] : null);
+          e.target.value = "";
+        }} />
       <input ref={focusRef} type="file" accept=".focus,application/json" style={{ display: "none" }}
         onChange={(e) => { if (e.target.files[0]) { openProjectFile(e.target.files[0]); e.target.value = ""; } }} />
 

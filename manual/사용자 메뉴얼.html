@@ -183,6 +183,13 @@
       font-size: 18px;
     }
 
+    .appver-since {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      vertical-align: middle;
+    }
+
     p { margin: 8px 0 14px; }
 
     ul, ol { margin-top: 8px; padding-left: 24px; }
@@ -322,6 +329,7 @@
         <li><a href="#arrange">타임라인과 트랙</a></li>
         <li><a href="#automation">볼륨 오토메이션</a></li>
         <li><a href="#mixer">믹서와 마스터</a></li>
+        <li><a href="#advfx">고급 이펙트(Advanced Effects)</a></li>
         <li><a href="#export">믹스다운 내보내기</a></li>
         <li><a href="#settings">설정과 테마</a></li>
         <li><a href="#shortcuts">단축키</a></li>
@@ -334,6 +342,7 @@
         <li><a href="#arrange">Timeline &amp; Tracks</a></li>
         <li><a href="#automation">Volume Automation</a></li>
         <li><a href="#mixer">Mixer &amp; Master</a></li>
+        <li><a href="#advfx">Advanced Effects</a></li>
         <li><a href="#export">Exporting Mixdown</a></li>
         <li><a href="#settings">Settings &amp; Themes</a></li>
         <li><a href="#shortcuts">Shortcuts</a></li>
@@ -509,6 +518,18 @@
 
         <p>여러 스템을 가져오면 보컬, 드럼, 베이스, 기타, 스트링, 신스처럼 파일별로 독립 트랙이 생성됩니다. 각 트랙은 같은 시작점에 놓이지만, 실제 오디오가 없는 구간은 빈 파형으로 보이므로 편곡의 구간별 밀도를 한눈에 확인할 수 있습니다.</p>
 
+        <h3>폴더 이름으로 프로젝트 이름 자동 설정 <span class="appver-since">(v1.9.4)</span></h3>
+        <p>아직 트랙이 없는 <strong>초기(빈) 화면</strong>에서 <strong>Import Folder</strong>로 스템 폴더를 불러오면, 그 <strong>폴더 이름이 프로젝트 이름으로 자동 설정</strong>됩니다. 스템을 폴더 단위로 정리해 둔 경우 이름을 따로 입력하지 않아도 곡 제목이 곧바로 잡혀 편리합니다.</p>
+        <div class="figure">
+          <img src="live-screens/27-import-folder-button.png" alt="초기 화면의 Import Folder 버튼" />
+          <figcaption>초기 화면 가운데의 <strong>Import Folder</strong> 버튼입니다. 이 버튼(또는 <code>Project &gt; Import Stem Folder…</code>)으로 폴더를 선택합니다.</figcaption>
+        </div>
+        <div class="figure">
+          <img src="live-screens/28-folder-project-name.png" alt="폴더를 불러와 프로젝트 이름이 설정된 화면" />
+          <figcaption>예를 들어 <code>불꽃의 리듬 (Rhythm of Fire) Stems</code> 폴더를 불러오면, 상단의 프로젝트 이름이 그 폴더 이름으로 자동 설정됩니다.</figcaption>
+        </div>
+        <div class="note">이 자동 설정은 <strong>초기(빈) 화면에서 폴더를 불러올 때만</strong> 적용됩니다. 이미 트랙이 있거나 이름을 직접 바꿨거나 저장한 프로젝트에 폴더를 추가로 불러올 때는 기존 이름이 유지됩니다. 개별 파일(Import Files)이나 드래그 앤 드롭은 자동 이름 설정 대상이 아닙니다.</div>
+
         <h3>드래그 앤 드롭</h3>
         <p>메인 타임라인 영역으로 오디오 파일을 끌어다 놓아도 트랙을 추가할 수 있습니다. 지원하지 않는 확장자는 자동으로 무시됩니다.</p>
 
@@ -531,6 +552,18 @@
         </div>
 
         <p>Importing multiple stems creates separate, independent tracks for Vocals, Drums, Bass, Guitar, and so on. Tracks are aligned to the same starting point. Sections where a track is silent are shown as flat line waveforms, providing a clear layout of the arrangement density.</p>
+
+        <h3>Auto-Naming the Project from the Folder <span class="appver-since">(v1.9.4)</span></h3>
+        <p>When you use <strong>Import Folder</strong> on the <strong>initial (empty) screen</strong> — before any track exists — the <strong>folder's name automatically becomes the project name</strong>. If you keep your stems organized in per-song folders, the song title is set instantly without any typing.</p>
+        <div class="figure">
+          <img src="live-screens/27-import-folder-button.png" alt="Import Folder button on the empty start screen" />
+          <figcaption>The <strong>Import Folder</strong> button at the center of the empty start screen (equivalent to <code>Project &gt; Import Stem Folder…</code>).</figcaption>
+        </div>
+        <div class="figure">
+          <img src="live-screens/28-folder-project-name.png" alt="Project name set from the imported folder" />
+          <figcaption>For example, importing a folder named <code>불꽃의 리듬 (Rhythm of Fire) Stems</code> sets the project name at the top to that folder name.</figcaption>
+        </div>
+        <div class="note">This auto-naming applies <strong>only when importing a folder onto the empty start screen</strong>. If the project already has tracks, was renamed, or was saved, importing another folder keeps the existing name. Individual files (Import Files) and drag-and-drop are not auto-named.</div>
 
         <h3>Drag and Drop</h3>
         <p>You can drag and drop audio files directly from your system file explorer onto the main timeline area to add new tracks. Unsupported formats are ignored automatically.</p>
@@ -640,6 +673,21 @@
         </table>
 
         <div class="warning">트랙 삭제와 오토메이션 초기화는 확인 후 즉시 적용됩니다. 필요하면 삭제 전에 프로젝트를 저장해 두세요.</div>
+
+        <h3>Edit 메뉴 — 모든 트랙 삭제 (Delete all tracks) <span class="appver-since">(v1.9.0)</span></h3>
+        <p>상단 <strong>Edit</strong> 메뉴의 Undo / Redo 아래에 <strong>Delete all tracks</strong> 항목이 있습니다. 이 기능은 현재 불러온 <strong>오디오 트랙만 모두 비우고</strong>, 마스터(프로젝트 전체)에 걸어 둔 <strong>이펙트 설정은 그대로 유지</strong>합니다. 같은 이펙트 체인(마스터 EQ·리버브·에코·Ambience·페이드 등)을 유지한 채 다른 스템 세트로 교체하고 싶을 때 유용합니다.</p>
+        <div class="figure">
+          <img src="live-screens/29-edit-delete-all-tracks.png" alt="Edit 메뉴의 Delete all tracks 항목" />
+          <figcaption>Edit 메뉴의 <strong>Delete all tracks</strong> 항목입니다. 실수를 막기 위해 확인 창을 거칩니다.</figcaption>
+        </div>
+        <table>
+          <tbody>
+            <tr><th>유지되는 것</th><td>마스터 출력 이펙트(EQ, Reverb, Delay, Saturation, Widener, Exciter), Ambience, 마스터 페이드 등 <strong>프로젝트 전체 설정</strong>.</td></tr>
+            <tr><th>사라지는 것</th><td>모든 오디오 트랙과 함께 트랙별 설정(PAN, 트랙 볼륨/게인, 볼륨 오토메이션). BPM/Key도 빈 프로젝트처럼 <strong>---</strong>로 초기화됩니다.</td></tr>
+            <tr><th>되돌리기</th><td>삭제된 트랙의 오디오는 보관하지 않으므로 <strong>되돌릴 수 없습니다</strong>. 실행 시 Undo/Redo 기록도 비워집니다.</td></tr>
+          </tbody>
+        </table>
+        <div class="warning">Delete all tracks는 되돌릴 수 없습니다. 트랙을 보존해야 한다면 실행 전에 <code>Project &gt; Save Project</code>로 저장해 두세요. (참고: <code>New Project</code>는 트랙과 함께 마스터 이펙트까지 모두 초기화하는 점이 다릅니다.)</div>
       </div>
 
       <div class="lang-en">
@@ -740,6 +788,21 @@
         </table>
 
         <div class="warning">Track deletion and automation resets take effect immediately after confirmation. Save your project first if you are unsure.</div>
+
+        <h3>Edit Menu — Delete all tracks <span class="appver-since">(v1.9.0)</span></h3>
+        <p>The top <strong>Edit</strong> menu offers <strong>Delete all tracks</strong> below Undo / Redo. It clears <strong>all loaded audio tracks at once while keeping the master (project-wide) effect settings intact</strong>. This is handy when you want to swap in a different set of stems but keep the same effect chain (master EQ, reverb, echo, Ambience, fades, and so on).</p>
+        <div class="figure">
+          <img src="live-screens/29-edit-delete-all-tracks.png" alt="Delete all tracks item in the Edit menu" />
+          <figcaption>The <strong>Delete all tracks</strong> item in the Edit menu. A confirmation dialog prevents accidental loss.</figcaption>
+        </div>
+        <table>
+          <tbody>
+            <tr><th>Kept</th><td>Master output effects (EQ, Reverb, Delay, Saturation, Widener, Exciter), Ambience, master fades — all <strong>project-wide settings</strong>.</td></tr>
+            <tr><th>Removed</th><td>Every audio track and its per-track settings (PAN, track volume/gain, volume automation). BPM/Key also reset to <strong>---</strong> like a fresh project.</td></tr>
+            <tr><th>Undo</th><td>Deleted track audio is not retained, so this action <strong>cannot be undone</strong>. Running it also clears the Undo/Redo history.</td></tr>
+          </tbody>
+        </table>
+        <div class="warning">Delete all tracks cannot be undone. Save with <code>Project &gt; Save Project</code> first if you need to keep the tracks. (Note: <code>New Project</code> differs in that it also resets the master effects along with the tracks.)</div>
       </div>
     </section>
 
@@ -863,7 +926,7 @@
         </div>
 
         <h3>MASTER 패널</h3>
-        <p>MASTER 패널은 최종 출력에 적용되는 설정입니다. 9밴드 Graphic EQ, FFT 또는 Level meter 보기, 마스터 볼륨, 마스터 리버브/에코, EQ 프리셋을 제공합니다.</p>
+        <p>MASTER 패널은 최종 출력에 적용되는 설정입니다. 9밴드 Graphic EQ, FFT 또는 Level meter 보기, 마스터 볼륨, EQ 프리셋, 그리고 다섯 가지 <strong>OUTPUT EFFECTS</strong>(Reverb · Delay · Saturation · Widener · Exciter / Enhancer)를 제공합니다.</p>
 
         <div class="figure">
           <img src="live-screens/16-mixer-eq-adjust.png" alt="믹서 EQ 조정 화면" />
@@ -874,14 +937,24 @@
           <tbody>
             <tr><th>Graphic EQ · FFT</th><td>스펙트럼 배경 위에 EQ 곡선을 표시합니다. 각 밴드 포인트를 드래그해 -12dB부터 +12dB까지 조절합니다.</td></tr>
             <tr><th>Level meter</th><td>주파수 대역별 레벨 미터를 표시합니다. EQ 포인트 오버레이도 함께 조작할 수 있습니다.</td></tr>
-            <tr><th>EQ PRESET</th><td>Flat, Pop, Classic, HipHop 프리셋을 바로 적용합니다.</td></tr>
-            <tr><th>Output Effects</th><td>최종 출력에 Reverb와 Echo / Delay를 추가합니다. 각 슬라이더로 0~100% 전송량을 조절하며, 켜진 효과는 아이콘에 색이 들어오고 오른쪽에 퍼센트가 표시됩니다.</td></tr>
+            <tr><th>EQ PRESET</th><td>Reset(Flat), Pop, Classic, Hip Hop 프리셋을 바로 적용합니다. 더 정밀하게 다루려면 오른쪽 <strong>ADVANCED</strong> 버튼으로 큰 Equalizer 창을 엽니다(§7 참조).</td></tr>
+            <tr><th>OUTPUT EFFECTS</th><td>최종 출력(마스터 버스)에 적용하는 다섯 가지 효과입니다. 각 슬라이더로 0~100% 전송량을 조절하며, 켜진 효과는 아이콘에 색이 들어오고 오른쪽에 퍼센트가 표시됩니다.</td></tr>
+          </tbody>
+        </table>
+
+        <table>
+          <tbody>
+            <tr><th>Reverb</th><td>잔향(공간감)을 더합니다. 값이 클수록 소리가 더 넓고 멀리 울리는 공간에 있는 듯한 느낌을 줍니다.</td></tr>
+            <tr><th>Delay</th><td>반복되는 메아리(에코)를 추가합니다. 리듬감 있는 반사음으로 입체감과 공간을 넓혀 줍니다.</td></tr>
+            <tr><th>Saturation</th><td>아날로그 테이프/진공관식의 부드러운 배음(하모닉)을 더해 소리를 따뜻하고 두툼하게 만듭니다. 과하면 살짝 거칠어집니다.</td></tr>
+            <tr><th>Widener</th><td>스테레오 폭을 넓혀 좌우로 더 펼쳐진 느낌을 줍니다. 믹스를 크고 시원하게 들리게 합니다.</td></tr>
+            <tr><th>Exciter / Enhancer</th><td>고역대 배음을 보강해 선명함과 반짝임(공기감)을 살립니다. 답답한 믹스를 또렷하게 만들 때 효과적입니다.</td></tr>
           </tbody>
         </table>
 
         <div class="figure">
-          <img src="live-screens/26-output-effects-on.png" alt="마스터 Reverb/Echo 적용 화면" />
-          <figcaption>OUTPUT EFFECTS의 Reverb와 Echo / Delay를 켜고 전송량을 올린 모습입니다(예: Reverb 32%, Echo 61%).</figcaption>
+          <img src="live-screens/30-mixer-output-effects.png" alt="믹서 MASTER 패널의 새 OUTPUT EFFECTS" />
+          <figcaption>믹서 MASTER 패널 하단의 OUTPUT EFFECTS입니다. Reverb · Delay · Saturation · Widener · Exciter / Enhancer 다섯 효과와 EQ 프리셋(Reset · POP · Classic · HIP HOP), 그리고 정밀 편집용 <strong>ADVANCED</strong> 버튼이 보입니다.</figcaption>
         </div>
 
         <h3>OUTPUT FX 트랙</h3>
@@ -930,7 +1003,7 @@
         </div>
 
         <h3>MASTER Panel</h3>
-        <p>The MASTER panel shapes the final stereo mixdown. It provides a 9-band Graphic EQ with FFT frequency spectrum or level meters, master volume, output effects (Reverb, Echo), and EQ presets.</p>
+        <p>The MASTER panel shapes the final stereo mixdown. It provides a 9-band Graphic EQ with FFT frequency spectrum or level meters, master volume, EQ presets, and five <strong>OUTPUT EFFECTS</strong> (Reverb, Delay, Saturation, Widener, and Exciter / Enhancer).</p>
 
         <div class="figure">
           <img src="live-screens/16-mixer-eq-adjust.png" alt="Master EQ Adjustments" />
@@ -941,14 +1014,24 @@
           <tbody>
             <tr><th>Graphic EQ / FFT</th><td>Displays the EQ curve over a real-time FFT spectrum background. Drag points to adjust gain from -12dB to +12dB.</td></tr>
             <tr><th>Level meters</th><td>Displays real-time level bars for each frequency range alongside EQ controls.</td></tr>
-            <tr><th>EQ PRESETS</th><td>Instantly applies preset curves: Flat, Pop, Classic, and HipHop.</td></tr>
-            <tr><th>Output Effects</th><td>Applies global Reverb and Echo/Delay to the master stereo bus. Each slider sets the 0–100% send amount; active effects light up and show their percentage on the right.</td></tr>
+            <tr><th>EQ PRESETS</th><td>Instantly applies preset curves: Reset (Flat), Pop, Classic, and Hip Hop. For finer control, the <strong>ADVANCED</strong> button opens the large Equalizer window (see §7).</td></tr>
+            <tr><th>OUTPUT EFFECTS</th><td>Five effects applied to the final master bus. Each slider sets the 0–100% send amount; active effects light up and show their percentage on the right.</td></tr>
+          </tbody>
+        </table>
+
+        <table>
+          <tbody>
+            <tr><th>Reverb</th><td>Adds reverberation (sense of space). Higher amounts make the sound feel like it's in a larger, more distant room.</td></tr>
+            <tr><th>Delay</th><td>Adds repeating echoes. Rhythmic reflections widen the sound and add depth.</td></tr>
+            <tr><th>Saturation</th><td>Adds gentle analog tape/tube harmonics for a warmer, thicker tone. Too much makes it slightly gritty.</td></tr>
+            <tr><th>Widener</th><td>Expands the stereo width so the mix spreads further left and right, sounding bigger and more open.</td></tr>
+            <tr><th>Exciter / Enhancer</th><td>Reinforces high-frequency harmonics for added clarity and "air." Great for opening up a dull mix.</td></tr>
           </tbody>
         </table>
 
         <div class="figure">
-          <img src="live-screens/26-output-effects-on.png" alt="Master Reverb/Echo enabled" />
-          <figcaption>Master OUTPUT EFFECTS with Reverb and Echo/Delay enabled and their send amounts raised (e.g. Reverb 32%, Echo 61%).</figcaption>
+          <img src="live-screens/30-mixer-output-effects.png" alt="New OUTPUT EFFECTS in the mixer MASTER panel" />
+          <figcaption>The OUTPUT EFFECTS at the bottom of the mixer MASTER panel: Reverb, Delay, Saturation, Widener, and Exciter / Enhancer, plus EQ presets (Reset · POP · Classic · HIP HOP) and the <strong>ADVANCED</strong> button for precise editing.</figcaption>
         </div>
 
         <h3>Master OUTPUT FX Track</h3>
@@ -969,10 +1052,191 @@
       </div>
     </section>
 
-    <!-- ============ 7. 믹스다운 내보내기 / Exporting Mixdown ============ -->
+    <!-- ============ 7. 고급 이펙트 / Advanced Effects ============ -->
+    <section id="advfx">
+      <div class="lang-ko">
+        <h2>7. 고급 이펙트(Advanced Effects)</h2>
+        <p>상단 메뉴의 <strong>Advanced Effects</strong>에는 세 가지 전용 편집 창이 있습니다. 각 창은 마스터(프로젝트 전체) 출력에 적용되는 고급 효과를 더 넓은 화면에서 정밀하게 다루도록 만들어졌습니다.</p>
+        <div class="figure">
+          <img src="live-screens/31-advanced-effects-menu.png" alt="Advanced Effects 메뉴" />
+          <figcaption>상단 <strong>Advanced Effects</strong> 메뉴입니다. <strong>Ambience</strong>(공간감), <strong>Auto Panning</strong>(스테레오 배치), <strong>Equalizer Setup</strong>(EQ) 세 항목이 있습니다.</figcaption>
+        </div>
+        <table>
+          <tbody>
+            <tr><th>Ambience</th><td>곡 전체의 공간감(잔향·울림)을 디자인하는 <em>Sound Environment</em> 창을 엽니다.</td></tr>
+            <tr><th>Auto Panning</th><td>각 악기를 좌우·원근으로 배치하는 <em>Spatial Field</em>(스테레오 무대) 창을 엽니다.</td></tr>
+            <tr><th>Equalizer Setup</th><td>9밴드 그래픽 EQ를 큰 화면에서 편집하고 사용자 프리셋을 저장하는 <em>Equalizer</em> 창을 엽니다.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>세 창 사이 이동</h3>
+        <p>세 개의 고급 창은 모두 왼쪽 위에 <strong>창 전환 드롭다운</strong>을 공유합니다. 창을 닫지 않고도 <strong>Spatial Field(배치) → Ambience(공간감) → Equalizer(EQ)</strong> 사이를 바로 오갈 수 있습니다.</p>
+        <div class="figure">
+          <img src="live-screens/35-advfx-nav-dropdown.png" alt="고급 창 전환 드롭다운" />
+          <figcaption>왼쪽 위 드롭다운으로 <strong>Spatial Field · Ambience · Equalizer</strong> 세 화면을 바로 전환합니다.</figcaption>
+        </div>
+
+        <h3>7.1 Ambience — 음향 공간(Sound Environment)</h3>
+        <p>Ambience는 곡 전체가 어떤 <strong>공간에서 울리는지</strong>를 정하는 창입니다. 위쪽 <strong>SOUND ENVIRONMENT</strong>에서 공간 프리셋을 고른 뒤, 왼쪽 노브와 오른쪽 슬라이더로 잔향의 길이·거리감·밝기를 세밀하게 다듬습니다.</p>
+        <div class="figure">
+          <img src="live-screens/32-ambience-main.png" alt="Ambience 기본 화면" />
+          <figcaption>Ambience 메인 화면입니다. 가운데 곡선은 잔향이 시간에 따라 사라지는 모양(Decay)을 보여 주고, 왼쪽 MIX·ECHO·WIDTH 노브와 오른쪽 DECAY·PRE-DELAY·ROOM SIZE·DAMPING 슬라이더로 조정합니다.</figcaption>
+        </div>
+        <div class="figure">
+          <img src="live-screens/34-ambience-presets.png" alt="Ambience 프리셋(SOUND ENVIRONMENT) 선택" />
+          <figcaption>SOUND ENVIRONMENT 프리셋 선택 줄입니다. 각 프리셋은 실제 공간을 흉내 낸 음악적 효과를 줍니다.</figcaption>
+        </div>
+        <p><strong>각 공간 프리셋의 음악적 효과</strong> — 이름이 곧 어떤 음악적 결과를 내는지를 뜻합니다.</p>
+        <table>
+          <tbody>
+            <tr><th>Reset (효과 없음 · Dry)</th><td>잔향을 모두 끈 <strong>건조한(Dry)</strong> 상태입니다. 공간 울림 없이 소리가 가깝고 또렷하게 들립니다. 원음을 그대로 확인하거나 기준점으로 되돌릴 때 사용합니다.</td></tr>
+            <tr><th>Concert Hall (넓고 긴 잔향)</th><td>큰 공연장처럼 <strong>길고 풍성한 잔향</strong>을 만듭니다. 오케스트라·발라드·합창에 웅장하고 깊은 공간감을 줍니다.</td></tr>
+            <tr><th>Home (아늑한 실내)</th><td>작은 방의 <strong>짧고 자연스러운 울림</strong>입니다. 과하지 않은 실내 공기감으로 보컬·어쿠스틱 기타에 잘 어울립니다.</td></tr>
+            <tr><th>Far Field (원거리 · 슬랩 에코)</th><td>소리가 <strong>멀리서 들리는 듯한 거리감</strong>과 한 번 튕기는 슬랩 에코를 더합니다. 빈티지·로파이·몽환적 분위기에 좋습니다.</td></tr>
+            <tr><th>Studio (타이트 드라이)</th><td>녹음 스튜디오처럼 <strong>짧고 단단한 잔향</strong>입니다. 모던 팝/록에서 선명함을 유지하면서 살짝만 공간을 입힐 때 씁니다.</td></tr>
+            <tr><th>Tunnel (금속 반사 · 롱)</th><td>터널·복도 같은 <strong>금속성 반사가 강한 긴 잔향</strong>입니다. 특수효과·앰비언트·드라마틱한 연출에 적합합니다.</td></tr>
+            <tr><th>Custom (사용자 설정)</th><td>아래 노브·슬라이더를 직접 조정한 <strong>나만의 공간 설정</strong>을 보관합니다.</td></tr>
+          </tbody>
+        </table>
+        <p><strong>세부 조절(FINE-TUNE 노브 · 오른쪽 슬라이더)</strong></p>
+        <table>
+          <tbody>
+            <tr><th>MIX</th><td>원음과 잔향의 <strong>비율</strong>입니다. 높일수록 공간 울림이 많아지고, 낮추면 원음이 또렷해집니다.</td></tr>
+            <tr><th>ECHO</th><td>잔향에 섞이는 <strong>반복 반사(에코)</strong>의 양입니다. 리듬감 있는 공간 반사를 더합니다.</td></tr>
+            <tr><th>WIDTH</th><td>잔향의 <strong>스테레오 폭</strong>입니다. 높이면 공간감이 좌우로 넓게 펼쳐집니다.</td></tr>
+            <tr><th>DECAY</th><td>잔향 꼬리가 사라지는 <strong>길이</strong>(Short↔Long)입니다. 길수록 큰 공간처럼 오래 울립니다.</td></tr>
+            <tr><th>PRE-DELAY</th><td>원음이 난 뒤 잔향이 <strong>시작되기까지의 시간</strong>(Near↔Late)입니다. 길수록 더 큰 공간으로 느껴지고 원음이 묻히지 않습니다.</td></tr>
+            <tr><th>ROOM SIZE</th><td>가상 공간의 <strong>크기</strong>(Small↔Large)입니다. 잔향의 밀도와 두께를 좌우합니다.</td></tr>
+            <tr><th>DAMPING</th><td>잔향의 <strong>고역 흡수(밝기)</strong>(Dark↔Bright)입니다. 어두우면 부드럽고 따뜻하게, 밝으면 선명하고 화사하게 울립니다.</td></tr>
+          </tbody>
+        </table>
+        <p>Ambience 창 아래쪽에는 믹서 MASTER와 동일한 <strong>OUTPUT EFFECTS</strong>(Reverb · Delay · Saturation · Widener · Exciter / Enhancer)가 함께 있어, 공간감을 잡으면서 마스터 출력 효과까지 한 화면에서 조정할 수 있습니다.</p>
+        <div class="figure">
+          <img src="live-screens/33-ambience-output-effects.png" alt="Ambience 창 하단의 OUTPUT EFFECTS" />
+          <figcaption>Ambience 창 하단의 OUTPUT EFFECTS입니다. 믹서 MASTER 패널과 같은 다섯 가지 효과를 제공합니다.</figcaption>
+        </div>
+
+        <h3>7.2 Auto Panning — 스테레오 배치(Spatial Field)</h3>
+        <p>Auto Panning은 각 악기(트랙)를 반원형 <strong>스테레오 무대</strong> 위에 배치하는 창입니다. 위쪽 무대에서 악기 노드를 드래그해 <strong>좌우(팬)와 앞뒤(거리)</strong> 위치를 정하고, 아래쪽 트랙별 노브로 값을 미세 조정합니다. 악기를 서로 다른 자리에 펼쳐 두면 겹침이 줄어 믹스가 더 또렷하고 입체적으로 들립니다.</p>
+        <div class="figure">
+          <img src="live-screens/36-advanced-pan.png" alt="Advanced Pan(Spatial Field) 악기 배치 화면" />
+          <figcaption>Spatial Field 화면입니다. 무대 위 각 악기 노드를 드래그해 좌우·원근 위치를 잡고, 하단 노브로 트랙별 팬을 조정합니다.</figcaption>
+        </div>
+
+        <h3>7.3 Equalizer — 정밀 EQ 편집</h3>
+        <p>믹서 MASTER의 EQ를 큰 화면에서 다루는 전용 창입니다. 실시간 FFT 스펙트럼 위에 9개 밴드 포인트가 놓여 있고, 각 포인트를 위아래로 드래그하면 저역~고역의 양을 ±로 조절하며 그 값(dB)이 포인트 아래에 표시됩니다.</p>
+        <div class="figure">
+          <img src="live-screens/37-advanced-eq-presets.png" alt="Equalizer 창과 프리셋" />
+          <figcaption>Equalizer 창입니다. 하단 <strong>PRESET</strong> 줄에서 Reset · Pop · Classic · Hip Hop을 바로 적용할 수 있습니다(그림은 Pop 적용 상태).</figcaption>
+        </div>
+        <p><strong>사용자 EQ 프리셋 저장 · 불러오기 · 이름 변경</strong> — PRESET 아래 <strong>USER</strong> 줄에는 사용자 슬롯(내 EQ 1~5)이 있습니다. 슬롯을 누르면 작은 메뉴가 열립니다.</p>
+        <table>
+          <tbody>
+            <tr><th>Save here</th><td>현재 EQ 곡선을 그 슬롯에 <strong>저장</strong>합니다.</td></tr>
+            <tr><th>Recall</th><td>슬롯에 저장된 EQ 설정을 <strong>불러와 적용</strong>합니다.</td></tr>
+            <tr><th>Rename…</th><td>슬롯의 <strong>이름을 변경</strong>합니다. 자주 쓰는 설정을 알아보기 쉽게 이름 붙여 둘 수 있습니다.</td></tr>
+          </tbody>
+        </table>
+        <div class="figure">
+          <img src="live-screens/38-advanced-eq-user.png" alt="사용자 EQ 저장/불러오기/이름변경 메뉴" />
+          <figcaption>USER 슬롯의 <strong>Save here · Recall · Rename…</strong> 메뉴입니다. 즐겨 쓰는 EQ 설정을 슬롯에 저장해 두고 곡마다 빠르게 불러올 수 있습니다.</figcaption>
+        </div>
+      </div>
+
+      <div class="lang-en">
+        <h2>7. Advanced Effects</h2>
+        <p>The top <strong>Advanced Effects</strong> menu opens three dedicated editing windows, each giving you a larger workspace to fine-tune advanced effects applied to the master (project-wide) output.</p>
+        <div class="figure">
+          <img src="live-screens/31-advanced-effects-menu.png" alt="Advanced Effects menu" />
+          <figcaption>The <strong>Advanced Effects</strong> menu: <strong>Ambience</strong> (space), <strong>Auto Panning</strong> (stereo placement), and <strong>Equalizer Setup</strong> (EQ).</figcaption>
+        </div>
+        <table>
+          <tbody>
+            <tr><th>Ambience</th><td>Opens the <em>Sound Environment</em> window for designing the overall space (reverb/ambience).</td></tr>
+            <tr><th>Auto Panning</th><td>Opens the <em>Spatial Field</em> stereo-stage window for placing each instrument left/right and near/far.</td></tr>
+            <tr><th>Equalizer Setup</th><td>Opens the large <em>Equalizer</em> window to edit the 9-band graphic EQ and store user presets.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Switching Between the Windows</h3>
+        <p>All three advanced windows share a <strong>window switcher dropdown</strong> at the top left. You can jump between <strong>Spatial Field → Ambience → Equalizer</strong> without closing the window.</p>
+        <div class="figure">
+          <img src="live-screens/35-advfx-nav-dropdown.png" alt="Advanced window switcher dropdown" />
+          <figcaption>Use the top-left dropdown to switch instantly between <strong>Spatial Field · Ambience · Equalizer</strong>.</figcaption>
+        </div>
+
+        <h3>7.1 Ambience — Sound Environment</h3>
+        <p>Ambience defines <strong>what space the whole song echoes in</strong>. Pick a space preset under <strong>SOUND ENVIRONMENT</strong>, then refine the length, distance, and brightness of the reverb with the knobs on the left and the sliders on the right.</p>
+        <div class="figure">
+          <img src="live-screens/32-ambience-main.png" alt="Ambience main window" />
+          <figcaption>The Ambience main window. The center curve shows how the reverb fades over time (Decay); adjust it with the MIX/ECHO/WIDTH knobs (left) and the DECAY/PRE-DELAY/ROOM SIZE/DAMPING sliders (right).</figcaption>
+        </div>
+        <div class="figure">
+          <img src="live-screens/34-ambience-presets.png" alt="Ambience SOUND ENVIRONMENT presets" />
+          <figcaption>The SOUND ENVIRONMENT preset row. Each preset emulates a real space with a distinct musical effect.</figcaption>
+        </div>
+        <p><strong>The musical effect of each space preset</strong> — the name tells you the musical result.</p>
+        <table>
+          <tbody>
+            <tr><th>Reset (Dry)</th><td>All reverb off — a <strong>dry</strong> sound. No room echo, so the audio is close and crisp. Use it to hear the raw source or return to a baseline.</td></tr>
+            <tr><th>Concert Hall</th><td>A <strong>long, lush reverb</strong> like a large concert hall. Gives orchestras, ballads, and choirs a grand, deep sense of space.</td></tr>
+            <tr><th>Home</th><td>A small room's <strong>short, natural ambience</strong>. Subtle indoor air that suits vocals and acoustic guitar.</td></tr>
+            <tr><th>Far Field</th><td>Adds the feeling of sound heard <strong>from a distance</strong> plus a single slap-back echo. Great for vintage, lo-fi, or dreamy moods.</td></tr>
+            <tr><th>Studio</th><td>A <strong>short, tight reverb</strong> like a recording studio. Keeps modern pop/rock clear while adding just a touch of space.</td></tr>
+            <tr><th>Tunnel</th><td>A <strong>long, metallic reverb</strong> with strong reflections like a tunnel or corridor. Suited to special effects, ambient, and dramatic moments.</td></tr>
+            <tr><th>Custom</th><td>Stores <strong>your own space</strong> shaped with the knobs and sliders below.</td></tr>
+          </tbody>
+        </table>
+        <p><strong>Fine-tuning (FINE-TUNE knobs · right-side sliders)</strong></p>
+        <table>
+          <tbody>
+            <tr><th>MIX</th><td>The <strong>balance</strong> between dry and reverberant sound. Higher = more space; lower = a crisper original.</td></tr>
+            <tr><th>ECHO</th><td>The amount of <strong>repeating reflections (echo)</strong> blended into the reverb, adding rhythmic spatial bounce.</td></tr>
+            <tr><th>WIDTH</th><td>The <strong>stereo width</strong> of the reverb. Raise it to spread the space wider left and right.</td></tr>
+            <tr><th>DECAY</th><td>How <strong>long</strong> the reverb tail lasts (Short↔Long). Longer rings out like a bigger room.</td></tr>
+            <tr><th>PRE-DELAY</th><td>The <strong>time before the reverb begins</strong> after the dry sound (Near↔Late). Longer feels like a larger space and keeps the source clear.</td></tr>
+            <tr><th>ROOM SIZE</th><td>The <strong>size</strong> of the virtual space (Small↔Large), governing reverb density and thickness.</td></tr>
+            <tr><th>DAMPING</th><td>The reverb's <strong>high-frequency absorption (brightness)</strong> (Dark↔Bright). Dark = soft and warm; bright = clear and airy.</td></tr>
+          </tbody>
+        </table>
+        <p>The bottom of the Ambience window also includes the same <strong>OUTPUT EFFECTS</strong> as the mixer MASTER (Reverb, Delay, Saturation, Widener, Exciter / Enhancer), so you can shape the space and the master output effects on one screen.</p>
+        <div class="figure">
+          <img src="live-screens/33-ambience-output-effects.png" alt="OUTPUT EFFECTS at the bottom of the Ambience window" />
+          <figcaption>The OUTPUT EFFECTS at the bottom of the Ambience window — the same five effects as the mixer MASTER panel.</figcaption>
+        </div>
+
+        <h3>7.2 Auto Panning — Spatial Field</h3>
+        <p>Auto Panning places each instrument (track) on a fan-shaped <strong>stereo stage</strong>. Drag the instrument nodes on the upper stage to set their <strong>left/right (pan) and front/back (distance)</strong>, and fine-tune with the per-track knobs below. Spreading instruments to different spots reduces overlap, making the mix clearer and more three-dimensional.</p>
+        <div class="figure">
+          <img src="live-screens/36-advanced-pan.png" alt="Advanced Pan (Spatial Field) instrument placement" />
+          <figcaption>The Spatial Field window. Drag each instrument node on the stage to set left/right and near/far, and adjust per-track pan with the knobs below.</figcaption>
+        </div>
+
+        <h3>7.3 Equalizer — Precise EQ Editing</h3>
+        <p>A dedicated window for editing the mixer MASTER EQ on a large canvas. Nine band points sit over a real-time FFT spectrum; drag a point up or down to boost/cut from lows to highs, with its value (dB) shown beneath the point.</p>
+        <div class="figure">
+          <img src="live-screens/37-advanced-eq-presets.png" alt="Equalizer window and presets" />
+          <figcaption>The Equalizer window. The bottom <strong>PRESET</strong> row applies Reset · Pop · Classic · Hip Hop instantly (Pop is active here).</figcaption>
+        </div>
+        <p><strong>Save, recall, and rename user EQ presets</strong> — below PRESET, the <strong>USER</strong> row holds user slots (My EQ 1–5). Clicking a slot opens a small menu.</p>
+        <table>
+          <tbody>
+            <tr><th>Save here</th><td><strong>Saves</strong> the current EQ curve into that slot.</td></tr>
+            <tr><th>Recall</th><td><strong>Loads and applies</strong> the EQ stored in the slot.</td></tr>
+            <tr><th>Rename…</th><td><strong>Renames</strong> the slot so favorite settings are easy to recognize.</td></tr>
+          </tbody>
+        </table>
+        <div class="figure">
+          <img src="live-screens/38-advanced-eq-user.png" alt="User EQ save/recall/rename menu" />
+          <figcaption>The <strong>Save here · Recall · Rename…</strong> menu on a USER slot. Store favorite EQ settings and recall them quickly per song.</figcaption>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 8. 믹스다운 내보내기 / Exporting Mixdown ============ -->
     <section id="export">
       <div class="lang-ko">
-        <h2>7. 믹스다운 내보내기</h2>
+        <h2>8. 믹스다운 내보내기</h2>
         <p><strong>Export</strong> 버튼 또는 <strong>Project &gt; Export...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
 
         <h3>Export 설정</h3>
@@ -1010,7 +1274,7 @@
       </div>
 
       <div class="lang-en">
-        <h2>7. Exporting Mixdown</h2>
+        <h2>8. Exporting Mixdown</h2>
         <p>Click the <strong>Export</strong> button or go to <strong>Project &gt; Export...</strong> to open the Export dialog. The dialog supports exporting in either MP3 or WAV format.</p>
 
         <h3>Export Settings</h3>
@@ -1048,10 +1312,10 @@
       </div>
     </section>
 
-    <!-- ============ 8. 설정과 테마 / Settings & Themes ============ -->
+    <!-- ============ 9. 설정과 테마 / Settings & Themes ============ -->
     <section id="settings">
       <div class="lang-ko">
-        <h2>8. 설정과 테마</h2>
+        <h2>9. 설정과 테마</h2>
         <p>상단 메뉴의 <strong>Settings</strong>를 누르면 색상 테마를 변경하거나 분리된 믹서 창의 환경 설정을 관리할 수 있습니다.</p>
         <ul>
           <li><strong>Color Theme (색상 테마)</strong>: 10가지 색상 테마(Warm Analog, Classical Ivory, Modern Blue, Forest Green, Arctic Frost, Neon Lime, Minimal Slate, Sage Mist, Solar Gold, Slate Navy) 중 하나를 선택하면 앱 전체와 믹서 콘솔의 외관 색상이 즉시 연동되어 바뀝니다.</li>
@@ -1065,7 +1329,7 @@
       </div>
 
       <div class="lang-en">
-        <h2>8. Settings &amp; Themes</h2>
+        <h2>9. Settings &amp; Themes</h2>
         <p>Click <strong>Settings</strong> in the menu bar to change color themes or manage settings for the detached Mixer window.</p>
         <ul>
           <li><strong>Color Theme</strong>: Choose from 10 color themes (Warm Analog, Classical Ivory, Modern Blue, Forest Green, Arctic Frost, Neon Lime, Minimal Slate, Sage Mist, Solar Gold, Slate Navy). The visual styles of the main window and Mixer console update instantly.</li>
@@ -1079,10 +1343,10 @@
       </div>
     </section>
 
-    <!-- ============ 9. 단축키 / Shortcuts ============ -->
+    <!-- ============ 10. 단축키 / Shortcuts ============ -->
     <section id="shortcuts">
       <div class="lang-ko">
-        <h2>9. 단축키</h2>
+        <h2>10. 단축키</h2>
         <table>
           <tbody>
             <tr><th><kbd>Space</kbd></th><td>재생 / 일시정지</td></tr>
@@ -1102,7 +1366,7 @@
       </div>
 
       <div class="lang-en">
-        <h2>9. Shortcuts</h2>
+        <h2>10. Shortcuts</h2>
         <table>
           <tbody>
             <tr><th><kbd>Space</kbd></th><td>Play / Pause</td></tr>
@@ -1122,10 +1386,10 @@
       </div>
     </section>
 
-    <!-- ============ 10. 문제 해결 / Troubleshooting ============ -->
+    <!-- ============ 11. 문제 해결 / Troubleshooting ============ -->
     <section id="tips">
       <div class="lang-ko">
-        <h2>10. 문제 해결</h2>
+        <h2>11. 문제 해결</h2>
         <h3>오디오가 들리지 않을 때</h3>
         <ul>
           <li>트랙의 <strong>M</strong> 버튼이 켜져 있지 않은지 확인합니다.</li>
@@ -1145,7 +1409,7 @@
       </div>
 
       <div class="lang-en">
-        <h2>10. Troubleshooting</h2>
+        <h2>11. Troubleshooting</h2>
         <h3>No Sound During Playback</h3>
         <ul>
           <li>Check if the track <strong>M</strong> (Mute) button is turned on.</li>
