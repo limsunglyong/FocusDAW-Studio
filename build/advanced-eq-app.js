@@ -87,6 +87,8 @@ function EqStage({ bands, freqs, fft, bandLevels, presetName, nameCustom, onBefo
   const eqLine = smoothPath(curveP);
   const zeroY = gainToY(0);
   const isFlat = bands.every((b) => Math.abs(b) < 0.1);
+  const curveYs = curveP.map((p) => p[1]);
+  const curveHasHeight = Math.max(...curveYs) - Math.min(...curveYs) > 0.5;
   const specPath = (() => {
     if (!fft || !fft.length) return null;
     const sp = fft.map((p) => [freqToX(p.f), h - pad * 0.4 - p.n * (h - pad * 1.6)]);
@@ -158,7 +160,7 @@ function EqStage({ bands, freqs, fft, bandLevels, presetName, nameCustom, onBefo
       fill: "none",
       stroke: "var(--amber)",
       strokeWidth: "2.6",
-      filter: "url(#eqGlow)",
+      filter: curveHasHeight ? "url(#eqGlow)" : void 0,
       strokeLinecap: "round",
       strokeLinejoin: "round"
     }

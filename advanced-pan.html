@@ -137,6 +137,11 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .aef-node:active{cursor:grabbing}
 .aef-node-label{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:7px;max-width:132px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;color:var(--cream-2);background:rgba(20,16,11,.82);border:1px solid var(--line);pointer-events:none}
 .aef-node-label.selected{color:var(--mixer-bar-fg);background:var(--amber);box-shadow:0 0 10px var(--amber-soft);border-color:var(--amber)}
+/* Light themes (Classical Ivory / Sage Mist): --cream-2 is a dark colour, so an
+   unselected label reads as dark-on-dark over the fixed dark label background.
+   Use the theme's bright on-dark colour (--mixer-bar-fg) for legibility. */
+:root[data-theme="ivory"] .aef-node-label:not(.selected),
+:root[data-theme="sage"] .aef-node-label:not(.selected){color:var(--mixer-bar-fg)}
 .aef-token{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 50% 36%,var(--surface2),var(--bg));border:1.5px solid currentColor;box-shadow:0 7px 18px -7px #000,0 0 0 4px color-mix(in srgb,currentColor 8%,transparent),inset 0 1px 0 rgba(255,240,210,.06);transform-origin:center}
 .aef-token.selected{border-width:2px;box-shadow:0 10px 24px -6px #000,0 0 22px color-mix(in srgb,currentColor 55%,transparent),0 0 0 5px var(--amber-soft),inset 0 1px 0 rgba(255,240,210,.08)}
 .aef-token.active{filter:drop-shadow(0 0 12px var(--amber-soft))}

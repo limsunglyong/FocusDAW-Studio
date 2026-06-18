@@ -206,7 +206,7 @@ function recentDateLabel(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -252,12 +252,13 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
   ];
   const editItems = [
     { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
-    { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo }
+    { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo },
+    { sep: true },
+    { label: "Delete all tracks", icon: "trash", onClick: onDeleteAllTracks }
   ];
   const advancedItems = [
     { label: "Ambience", icon: "disc", onClick: onAdvancedAmbience },
     { label: "Auto Panning", icon: "auto", onClick: onAdvancedPan },
-    { sep: true },
     { label: "Equalizer Setup", icon: "eq", onClick: onAdvancedEq }
   ];
   const helpItems = [
@@ -717,8 +718,26 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
           }
         },
         /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014"),
-        /* @__PURE__ */ React.createElement("optgroup", { label: "Major" }, KEY_OPTIONS.major.map((k) => /* @__PURE__ */ React.createElement("option", { key: k, value: k }, k, " major"))),
-        /* @__PURE__ */ React.createElement("optgroup", { label: "Minor" }, KEY_OPTIONS.minor.map((k) => /* @__PURE__ */ React.createElement("option", { key: k, value: k }, k.slice(0, -1), " minor")))
+        /* @__PURE__ */ React.createElement("optgroup", { label: "Major" }, KEY_OPTIONS.major.map((k) => /* @__PURE__ */ React.createElement(
+          "option",
+          {
+            key: k,
+            value: k,
+            style: k === detectedKey ? { color: "var(--amber)", fontWeight: 700 } : void 0
+          },
+          k,
+          " major"
+        ))),
+        /* @__PURE__ */ React.createElement("optgroup", { label: "Minor" }, KEY_OPTIONS.minor.map((k) => /* @__PURE__ */ React.createElement(
+          "option",
+          {
+            key: k,
+            value: k,
+            style: k === detectedKey ? { color: "var(--amber)", fontWeight: 700 } : void 0
+          },
+          k.slice(0, -1),
+          " minor"
+        )))
       )
     )
   );
@@ -1341,6 +1360,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
   }, [showMixer]);
   const [showExport, setShowExport] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(null);
@@ -2141,6 +2161,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(nextName, null);
     force((n) => n + 1);
   };
+  const requestDeleteAllTracks = useCallback(() => {
+    if (DAW.tracks.length === 0) return;
+    setConfirmDeleteAll(true);
+  }, []);
+  const deleteAllTracks = useCallback(() => {
+    DAW.clearTracksKeepMaster();
+    undoStack.current = [];
+    redoStack.current = [];
+    if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
+    fitTimelineRef.current = true;
+    updateTimeMin();
+    saveRecentProject(projectName, projectPath);
+    setConfirmDeleteAll(false);
+    force((n) => n + 1);
+  }, [onUndoStateChange, projectName, projectPath]);
   const loadDemo = () => {
     const nextName = projectName || "Demo Session";
     DAW.addDemoTracks();
@@ -2168,9 +2203,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onOpenAdvancedPan: openAdvancedPan,
       onOpenAdvancedEq: openAdvancedEq,
       onUndo: undo,
-      onRedo: redo
+      onRedo: redo,
+      onDeleteAllTracks: requestDeleteAllTracks
     });
-  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo]);
+  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks]);
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) {
@@ -2387,7 +2423,39 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         onClearMuteSolo: clearMuteSolo
       }
     ), /* @__PURE__ */ React.createElement("div", { style: { height: 40 } }))
-  ), !empty && vScroll.up && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow up", onClick: () => scrollArrangeV(-1), title: "Scroll up", "aria-label": "Scroll tracks up" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 15 12 7 20 15", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), !empty && vScroll.down && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow down", onClick: () => scrollArrangeV(1), title: "Scroll down", "aria-label": "Scroll tracks down" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 9 12 17 20 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), /* @__PURE__ */ React.createElement(LoadingOverlay, { state: loading }));
+  ), !empty && vScroll.up && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow up", onClick: () => scrollArrangeV(-1), title: "Scroll up", "aria-label": "Scroll tracks up" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 15 12 7 20 15", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), !empty && vScroll.down && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow down", onClick: () => scrollArrangeV(1), title: "Scroll down", "aria-label": "Scroll tracks down" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 9 12 17 20 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), confirmDeleteAll && /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      style: { position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" },
+      onMouseDown: () => setConfirmDeleteAll(false)
+    },
+    /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        onMouseDown: (e) => e.stopPropagation(),
+        style: { width: 420, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }
+      },
+      /* @__PURE__ */ React.createElement("div", { style: { padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(Icon, { name: "trash", size: 18, style: { color: "var(--red)" } }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, fontSize: 15 } }, "Delete all tracks")),
+      /* @__PURE__ */ React.createElement("div", { style: { padding: "18px 20px", fontSize: 13, lineHeight: 1.5, color: "var(--cream-2)" } }, "Remove every audio track from this project? Project-wide settings (effects, master EQ, ambience) are kept, but this clears all tracks and ", /* @__PURE__ */ React.createElement("b", null, "cannot be undone"), "."),
+      /* @__PURE__ */ React.createElement("div", { style: { padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 } }, /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn",
+          onClick: () => setConfirmDeleteAll(false),
+          style: { padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }
+        },
+        "Cancel"
+      ), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn",
+          onClick: deleteAllTracks,
+          style: { padding: "8px 16px", borderRadius: 8, border: "1px solid var(--red)", background: "var(--red)", color: "#fff", fontSize: 12.5, fontWeight: 600 }
+        },
+        "Delete all"
+      ))
+    )
+  ), /* @__PURE__ */ React.createElement(LoadingOverlay, { state: loading }));
 }
 function App() {
   const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);
@@ -2465,6 +2533,7 @@ function App() {
       onRedo: () => H.onRedo && H.onRedo(),
       canUndo: undoState.canUndo,
       canRedo: undoState.canRedo,
+      onDeleteAllTracks: () => H.onDeleteAllTracks && H.onDeleteAllTracks(),
       onHelpManual: openHelpManual,
       onHelpAbout: () => setShowAbout(true)
     }

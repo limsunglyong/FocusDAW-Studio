@@ -679,6 +679,26 @@
         }
       }
     },
+    // Remove every audio track but PRESERVE all project-wide (master) settings —
+    // master volume, reverb/echo, ambience/room, EQ, widener/saturation/exciter,
+    // fades. Track-scoped settings (pan, per-track volume gain, etc.) disappear
+    // with their tracks, as intended. Used by the Edit ▸ "Delete all tracks"
+    // action so the user can swap in different stems while keeping the effect
+    // chain. Tempo is reset to the uninitialised state to match an empty project
+    // (the incoming stems will define a new tempo), mirroring removeTrack().
+    clearTracksKeepMaster() {
+      this.stop();
+      this.tracks.length = 0;
+      this.duration = DURATION;
+      this._spectrum = null;
+      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null };
+      this._renderCacheKey = null;
+      this._renderCacheBuffer = null;
+      this._stretchPreviewPreparing = false;
+      clearTimeout(this._tempoRestartTimer);
+      this._tempoRestartTimer = null;
+      // NB: this.master and the master audio nodes are deliberately left untouched.
+    },
 
     _applyMix() {
       const anySolo = this._anySolo();

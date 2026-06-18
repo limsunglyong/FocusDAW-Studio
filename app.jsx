@@ -202,7 +202,7 @@ function recentDateLabel(ms) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onHelpManual, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onHelpManual, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -252,11 +252,12 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
   const editItems = [
     { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
     { label: "Redo", icon: "redo", hint: "Ctrl+Y", onClick: onRedo, disabled: !canRedo },
+    { sep: true },
+    { label: "Delete all tracks", icon: "trash", onClick: onDeleteAllTracks },
   ];
   const advancedItems = [
     { label: "Ambience", icon: "disc", onClick: onAdvancedAmbience },
     { label: "Auto Panning", icon: "auto", onClick: onAdvancedPan },
-    { sep: true },
     { label: "Equalizer Setup", icon: "eq", onClick: onAdvancedEq },
   ];
   const helpItems = [
@@ -646,10 +647,16 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
               background: "var(--bg)", color: "var(--cream)", padding: "0 6px", fontSize: 12, cursor: "pointer", fontFamily: "var(--ui)" }}>
             <option value="">—</option>
             <optgroup label="Major">
-              {KEY_OPTIONS.major.map((k) => <option key={k} value={k}>{k} major</option>)}
+              {KEY_OPTIONS.major.map((k) => (
+                <option key={k} value={k}
+                  style={k === detectedKey ? { color: "var(--amber)", fontWeight: 700 } : undefined}>{k} major</option>
+              ))}
             </optgroup>
             <optgroup label="Minor">
-              {KEY_OPTIONS.minor.map((k) => <option key={k} value={k}>{k.slice(0, -1)} minor</option>)}
+              {KEY_OPTIONS.minor.map((k) => (
+                <option key={k} value={k}
+                  style={k === detectedKey ? { color: "var(--amber)", fontWeight: 700 } : undefined}>{k.slice(0, -1)} minor</option>
+              ))}
             </optgroup>
           </select>
         </div>
@@ -1211,6 +1218,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [showMixer]);
 
   const [showExport, setShowExport] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(null);
@@ -2058,6 +2066,26 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(nextName, null);
     force((n) => n + 1);
   };
+  // Edit ▸ "Delete all tracks": wipe every audio track but KEEP project-wide
+  // (master) settings — effects, master EQ, ambience, fades. Track-scoped
+  // settings (pan, per-track gain) vanish with their tracks, as requested.
+  // This cannot be undone (deleted track buffers aren't held in snapshots), so
+  // it goes through a confirmation dialog and clears the undo/redo history.
+  const requestDeleteAllTracks = useCallback(() => {
+    if (DAW.tracks.length === 0) return; // nothing to delete
+    setConfirmDeleteAll(true);
+  }, []);
+  const deleteAllTracks = useCallback(() => {
+    DAW.clearTracksKeepMaster();
+    undoStack.current = [];
+    redoStack.current = [];
+    if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
+    fitTimelineRef.current = true;
+    updateTimeMin();
+    saveRecentProject(projectName, projectPath);
+    setConfirmDeleteAll(false);
+    force((n) => n + 1);
+  }, [onUndoStateChange, projectName, projectPath]);
   const loadDemo = () => {
     const nextName = projectName || "Demo Session";
     DAW.addDemoTracks();
@@ -2089,8 +2117,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onOpenAdvancedEq: openAdvancedEq,
       onUndo: undo,
       onRedo: redo,
+      onDeleteAllTracks: requestDeleteAllTracks,
     });
-  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo]);
+  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks]);
 
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
@@ -2256,6 +2285,33 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       )}
 
       {showExport && <ExportDialog projectName={projectName} onClose={() => setShowExport(false)} />}
+      {confirmDeleteAll && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => setConfirmDeleteAll(false)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 420, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="trash" size={18} style={{ color: "var(--red)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Delete all tracks</span>
+            </div>
+            <div style={{ padding: "18px 20px", fontSize: 13, lineHeight: 1.5, color: "var(--cream-2)" }}>
+              Remove every audio track from this project? Project-wide settings
+              (effects, master EQ, ambience) are kept, but this clears all tracks
+              and <b>cannot be undone</b>.
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button className="btn" onClick={() => setConfirmDeleteAll(false)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button className="btn" onClick={deleteAllTracks}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--red)", background: "var(--red)", color: "#fff", fontSize: 12.5, fontWeight: 600 }}>
+                Delete all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <LoadingOverlay state={loading} />
     </div>
   );
@@ -2334,6 +2390,7 @@ function App() {
         onAdvancedEq={() => H.onOpenAdvancedEq && H.onOpenAdvancedEq()}
         onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
         canUndo={undoState.canUndo} canRedo={undoState.canRedo}
+        onDeleteAllTracks={() => H.onDeleteAllTracks && H.onDeleteAllTracks()}
         onHelpManual={openHelpManual}
         onHelpAbout={() => setShowAbout(true)} />
       <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath} startupReady={startupReady}

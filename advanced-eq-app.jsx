@@ -108,6 +108,13 @@ function EqStage({ bands, freqs, fft, bandLevels, presetName, nameCustom, onBefo
   const eqLine = smoothPath(curveP);
   const zeroY = gainToY(0);
   const isFlat = bands.every((b) => Math.abs(b) < 0.1);
+  // The glow filter uses objectBoundingBox units, so a perfectly horizontal curve
+  // (flat/reset, or every band at the same gain) has a zero-height bbox — the
+  // filter region collapses and the stroke disappears entirely. Skip the glow in
+  // that case so the connecting line stays visible. (The Mixer EQ has no glow and
+  // never showed this, which pinpointed the cause.)
+  const curveYs = curveP.map((p) => p[1]);
+  const curveHasHeight = Math.max(...curveYs) - Math.min(...curveYs) > 0.5;
 
   // Output-track FFT backdrop (combined tracks). n is normalized 0..1 per point.
   const specPath = (() => {
@@ -177,7 +184,7 @@ function EqStage({ bands, freqs, fft, bandLevels, presetName, nameCustom, onBefo
         {/* EQ curve — the connecting line is always drawn, including the flat/reset state */}
         <path d={`${eqLine} L${w} ${zeroY} L0 ${zeroY} Z`} fill="url(#eqFill)" opacity={isFlat ? 0.4 : 1} />
         <path d={eqLine} fill="none" stroke="var(--amber)" strokeWidth="2.6"
-          filter="url(#eqGlow)" strokeLinecap="round" strokeLinejoin="round" />
+          filter={curveHasHeight ? "url(#eqGlow)" : undefined} strokeLinecap="round" strokeLinejoin="round" />
 
         {/* band handles */}
         {pts.map((p, i) => (
