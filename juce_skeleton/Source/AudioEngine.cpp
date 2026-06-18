@@ -60,9 +60,18 @@ void AudioEngine::play()
     std::cout << "[AudioEngine] Playback started" << std::endl;
 
 #if USE_JUCE
+    // Re-align every track to the shared playhead before starting. Each track owns an
+    // independent AudioTransportSource (+ SoundTouch), so repeated play/stop (or
+    // pause/resume) can leave them at subtly different positions and drift apart over
+    // time. setPosition() snaps them all to the same sample and clears each SoundTouch
+    // residual (via setNextReadPosition), guaranteeing sample-aligned restarts.
     for (auto& track : juceTracks)
     {
-        if (track->transportSource) track->transportSource->start();
+        if (track->transportSource)
+        {
+            track->transportSource->setPosition(playheadSeconds);
+            track->transportSource->start();
+        }
     }
 #endif
 }
@@ -230,10 +239,12 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
     {
         if (t.id == trackId)
         {
+            // Solo/Mute are mutually exclusive on the same track (mirror the web engine):
+            // enabling one clears the other, so soloing a muted track makes it audible.
             if (key == "volume") t.volume = value;
             else if (key == "pan") t.pan = value;
-            else if (key == "mute") t.mute = (value > 0.5f);
-            else if (key == "solo") t.solo = (value > 0.5f);
+            else if (key == "mute") { t.mute = (value > 0.5f); if (t.mute) t.solo = false; }
+            else if (key == "solo") { t.solo = (value > 0.5f); if (t.solo) t.mute = false; }
             break;
         }
     }
@@ -254,10 +265,13 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "mute")
             {
                 track->mute = (value > 0.5f);
+                if (track->mute) track->solo = false; // mute clears solo (mutually exclusive)
+                updateSoloStates();
             }
             else if (key == "solo")
             {
                 track->solo = (value > 0.5f);
+                if (track->solo) track->mute = false; // solo clears mute (mutually exclusive)
                 updateSoloStates();
             }
             else if (key == "reverb")
@@ -310,6 +324,27 @@ void AudioEngine::clearTracks()
 #endif
 
     std::cout << "[AudioEngine] All tracks cleared." << std::endl;
+}
+
+void AudioEngine::clearAllMuteSolo()
+{
+    std::lock_guard<std::mutex> lock(engineMutex);
+    for (auto& t : tracks)
+    {
+        t.mute = false;
+        t.solo = false;
+    }
+
+#if USE_JUCE
+    for (auto& track : juceTracks)
+    {
+        track->mute = false;
+        track->solo = false;
+    }
+    updateSoloStates();
+#endif
+
+    std::cout << "[AudioEngine] All mute/solo cleared." << std::endl;
 }
 
 static int getSemitoneDifference(const std::string& origKey, const std::string& targetKey)

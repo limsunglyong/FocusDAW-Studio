@@ -496,6 +496,10 @@ void WebSocketServer::clientLoop(void* socketHandle)
         {
             audioEngine.clearTracks();
         }
+        else if (cmd == "clearAllMuteSolo")
+        {
+            audioEngine.clearAllMuteSolo();
+        }
         else if (cmd == "setProjectBpm")
         {
             double bpm = getJsonDoubleVal(frameText, "bpm");

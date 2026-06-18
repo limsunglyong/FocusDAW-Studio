@@ -225,7 +225,11 @@
     applyEQPreset(name) {
       LocalDAW.applyEQPreset(name);
       if (this.isNative) {
-        sendToNative({ command: "applyEQPreset", name });
+        // The native engine has no applyEQPreset handler (manual band drags use
+        // setMasterBand, which is why those worked but presets didn't). Forward the
+        // resolved 9-band values — LocalDAW.master.bands now holds the preset — via
+        // the setMasterBands command the engine already understands.
+        sendToNative({ command: "setMasterBands", bands: LocalDAW.master.bands });
       }
     },
 
@@ -259,6 +263,18 @@
       LocalDAW.clearTracks();
       if (this.isNative) {
         sendToNative({ command: "clearTracks" });
+        // Native clearTracks only drops the tracks; it does not reset master effects.
+        // Push the freshly-reset master state (LocalDAW.clearTracks just restored the
+        // defaults) so a New Project starts clean instead of inheriting the previous
+        // project's EQ / reverb / echo / widener / saturation / exciter / volume.
+        const m = LocalDAW.master;
+        sendToNative({ command: "setMasterBands", bands: m.bands });
+        sendToNative({ command: "setMaster", key: "volume", value: m.volume });
+        sendToNative({ command: "setMaster", key: "reverb", value: m.reverb });
+        sendToNative({ command: "setMaster", key: "echo", value: m.echo });
+        sendToNative({ command: "setMaster", key: "widener", value: m.widener });
+        sendToNative({ command: "setMaster", key: "saturation", value: m.saturation });
+        sendToNative({ command: "setMaster", key: "exciter", value: m.exciter });
         nativeState.offset = 0;
         nativeState.isPlaying = false;
       }
@@ -324,6 +340,12 @@
       Bridge.isNative = true;
       retryCount = 0;
       console.log("[AudioBridge] Connected to JUCE Native Audio Engine!");
+
+      // Native engine is now the sole audio output. Mute the local web-audio output
+      // so the two engines don't play the same tracks simultaneously (double playback
+      // → drifting clocks, phasing, doubled FX, half-applied mute/solo). LocalDAW is
+      // still driven for state/automation/playhead, just silenced at the speakers.
+      try { LocalDAW.setOutputMuted(true); } catch (e) {}
       
       // Send initial handshake/init command
       sendToNative({ command: "init", sampleRate: LocalDAW.ctx ? LocalDAW.ctx.sampleRate : 44100 });
@@ -391,10 +413,8 @@
     connectionState = "failed";
     Bridge.isNative = false;
     socket = null;
-    // Restore master volume to what it was
-    if (LocalDAW.ctx) {
-      try { LocalDAW.setMaster("volume", LocalDAW.master.volume); } catch(e){}
-    }
+    // Native engine is gone — un-mute the web output so the local fallback is audible.
+    try { LocalDAW.setOutputMuted(false); } catch (e) {}
     LocalDAW._emit();
   }
 

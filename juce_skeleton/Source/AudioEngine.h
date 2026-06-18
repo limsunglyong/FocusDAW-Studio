@@ -447,6 +447,26 @@ public:
     }
 
     void getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) override {
+        // ALWAYS advance the transport — even for muted / solo-excluded tracks.
+        // JUCE's AudioTransportSource only moves its read position when its
+        // getNextAudioBlock is pulled. An early-return on gating would FREEZE this
+        // track's position, which caused two bugs: (1) the playhead is read from
+        // track[0], so muting/un-soloing track[0] stalled the playbar; (2) a gated
+        // track resumed from its frozen sample when re-enabled, so tracks drifted
+        // permanently out of sync. We pull first to keep every transport in lockstep,
+        // then silence this track's output below if it is gated.
+        // (Offline export reuses this same transportSource path; the realtime device
+        // callback is suspended during export, so there is no contention here.)
+        // Capture the transport position around the pull. Offline export drives the
+        // automation phase externally (offlineAutoPhase*), but for REALTIME playback we
+        // derive it here from the track's own read position so volume automation is
+        // heard live — not only in the exported file. posBefore/posAfter are in source
+        // samples, so the phase stays correct under the transport's resampling at 96 kHz.
+        const juce::int64 totalLength = transportSource->getTotalLength();
+        const juce::int64 beforeReadPosition = transportSource->getNextReadPosition();
+        transportSource->getNextAudioBlock(bufferToFill);
+        const juce::int64 afterReadPosition = transportSource->getNextReadPosition();
+
         if (mute || (soloActive && !solo)) {
             bufferToFill.clearActiveBufferRegion();
             currentMagnitude.store(0.0f);
@@ -460,20 +480,6 @@ public:
             }
             return;
         }
-        // Read source audio. Offline export now uses the SAME transportSource path
-        // as realtime playback (file -> target sample-rate resampling + SoundTouch),
-        // just pulled by the offline render loop instead of the device callback.
-        // The earlier offline "direct-read" bypass skipped the transport's
-        // resampling/preparation and rendered silence — the exported file was
-        // silent even though realtime monitoring was audible. The realtime device
-        // callback is suspended during export, so there is no contention here.
-        juce::int64 beforeReadPosition = 0;
-        juce::int64 totalLength = 0;
-        if (offlineRendering.load()) {
-            beforeReadPosition = transportSource->getNextReadPosition();
-            totalLength = transportSource->getTotalLength();
-        }
-        transportSource->getNextAudioBlock(bufferToFill);
         float sourceMagnitude = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
 
         // Apply track individual echo/delay
@@ -499,22 +505,33 @@ public:
             }
         }
 
-        // Apply volume (× volume automation during offline export) and pan.
-        // Automation gain is evaluated at the block's start/end normalized phase
-        // (set by exportMix per block) and applied as a smooth ramp so it matches
-        // the Web Audio render's sample-accurate `setValueCurveAtTime`.
-        // Take an immutable snapshot of the automation under the lock, then use it
-        // lock-free. setAutomation() swaps in a NEW object, so a concurrent edit
-        // (e.g. while playing/exporting) can never realloc the data we're reading —
-        // avoids the heap corruption (STATUS_HEAP_CORRUPTION / 0xC0000374) a plain
-        // unlocked vector read would risk.
+        // Apply volume (× volume automation) and pan. Automation gain is evaluated at
+        // the block's start/end normalized phase and applied as a smooth ramp so it
+        // matches the Web Audio engine's sample-accurate `setValueCurveAtTime`.
+        // The phase is the global render position offline, or the track's own
+        // play position (0..1 over the song) in realtime — so automation is now heard
+        // during live native playback, not only in the exported file.
+        // Take an immutable snapshot under the lock, then use it lock-free.
+        // setAutomation() swaps in a NEW object, so a concurrent edit can never realloc
+        // the data we're reading — avoids the heap corruption (0xC0000374) a plain
+        // unlocked vector read would risk. The lock is held only for a shared_ptr copy.
         float autoGainStart = 1.0f, autoGainEnd = 1.0f;
-        std::shared_ptr<const TrackAutomation> autoSnap;
-        if (offlineRendering.load()) autoSnap = automationSnapshot();
+        std::shared_ptr<const TrackAutomation> autoSnap = automationSnapshot();
         const bool autoActive = autoSnap && autoSnap->on && !autoSnap->t.empty();
         if (autoActive) {
-            autoGainStart = autoSnap->sample(offlineAutoPhaseStart);
-            autoGainEnd   = autoSnap->sample(offlineAutoPhaseEnd);
+            double phaseStart, phaseEnd;
+            if (offlineRendering.load()) {
+                phaseStart = offlineAutoPhaseStart;
+                phaseEnd   = offlineAutoPhaseEnd;
+            } else if (totalLength > 0) {
+                phaseStart = (double)beforeReadPosition / (double)totalLength;
+                phaseEnd   = (double)afterReadPosition  / (double)totalLength;
+                if (phaseEnd < phaseStart) phaseEnd = phaseStart; // loop wrap within block
+            } else {
+                phaseStart = phaseEnd = 0.0;
+            }
+            autoGainStart = autoSnap->sample(phaseStart);
+            autoGainEnd   = autoSnap->sample(phaseEnd);
         }
         if (volume != 1.0f || pan != 0.0f || autoActive) {
             for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel) {
@@ -788,7 +805,10 @@ public:
         float currentWidth = widenerLevel.load();
         if (currentWidth > 0.001f && bufferToFill.buffer->getNumChannels() >= 2)
         {
-            float w = 1.0f + currentWidth;
+            // Match the web engine's widening strength (audio-engine.js setMaster:
+            // w = 1.0 + val * 1.5). Native previously used 1.0 + width, so the same
+            // slider value widened noticeably less than the web monitor / fallback.
+            float w = 1.0f + currentWidth * 1.5f;
             float* left = bufferToFill.buffer->getWritePointer(0, bufferToFill.startSample);
             float* right = bufferToFill.buffer->getWritePointer(1, bufferToFill.startSample);
             for (int i = 0; i < bufferToFill.numSamples; ++i)
@@ -828,10 +848,15 @@ public:
                 float* data = bufferToFill.buffer->getWritePointer(channel, bufferToFill.startSample);
                 for (int i = 0; i < bufferToFill.numSamples; ++i)
                 {
+                    // Match the web engine's exciter (audio-engine.js): a 3 kHz high-pass
+                    // through a WaveShaper y = x + 0.35x², summed with the dry signal and
+                    // scaled by the amount. The key term is the LINEAR `hp` (high-frequency
+                    // presence/brightness); the previous native version added only the
+                    // nonlinear hp·|hp| term, so it boosted no actual highs and was nearly
+                    // inaudible compared with the web monitor / fallback.
                     float x = data[i];
                     float hp = exciterHpf[channel].processSample(channel, x);
-                    float harmonics = hp * std::abs(hp) * 1.5f;
-                    data[i] = x + harmonics * currentExciter * 0.35f;
+                    data[i] = x + currentExciter * (hp + 0.35f * hp * hp);
                 }
             }
         }
@@ -970,6 +995,7 @@ public:
     void setTrackParam(const std::string& trackId, const std::string& key, float value);
     void setTrackAutomation(const std::string& trackId, bool autoOn, bool curved, const std::vector<float>& flatPoints);
     void clearTracks();
+    void clearAllMuteSolo();
     
     void setProjectBpm(double bpm);
     void setPlaybackBpm(double bpm);

@@ -276,6 +276,7 @@
   let ctx = null;
   let convolver = null;
   let masterBus, eqNodes = [], masterFade, masterVol, masterMix, masterAnalyser, mRevSend, mEchoSend, mDelay, mFb, mConv;
+  let masterOutputGain; // last stage before ctx.destination — muted while the native engine is the active output
   let ambSend, ambConv; // dedicated Ambience (room type) bus
   let mSatDry, mSatWet, mSatShaper, mSatOut;
   let mWidSplit, mWidMerge, mWidLL, mWidRL, mWidLR, mWidRR, mWidOut;
@@ -328,6 +329,7 @@
     _stretchPreviewDoneSeq: 0,
     _tempoRestartTimer: null,
     _playToken: 0,
+    _outputMuted: false, // true while the native engine is the active output (web stays silent)
     _clipCounter: 0,
     _cid() { return 'c' + (++this._clipCounter); },
     _displayName(fileName) {
@@ -459,7 +461,17 @@
       
       mExcOut.connect(masterComp);
       masterComp.connect(masterAnalyser);
-      masterAnalyser.connect(ctx.destination);
+      // Dedicated output-mute gain (last stage before the speakers). When the native
+      // JUCE engine is connected it becomes the sole audio output, so the web engine
+      // must stay silent to avoid double playback (two engines, same tracks, drifting
+      // clocks → phasing/comb-filtering). Muting here cuts only the speaker feed; the
+      // analyser above still receives signal so meters keep working. Kept separate from
+      // masterVol because importProject/snapshot restores rewrite masterVol.gain from
+      // master.volume and would otherwise un-mute the web output unexpectedly.
+      masterOutputGain = ctx.createGain();
+      masterOutputGain.gain.value = this._outputMuted ? 0 : 1;
+      masterAnalyser.connect(masterOutputGain);
+      masterOutputGain.connect(ctx.destination);
 
       // Stereo L/R metering tap (post-pan/comp) — true per-channel levels for the master meter
       masterMeterSplit = ctx.createChannelSplitter(2);
@@ -1411,6 +1423,16 @@
     },
 
     setLoop(val) { this.loopEnabled = !!val; },
+
+    // Mute/un-mute the audible web-audio output WITHOUT touching master.volume state.
+    // The audio bridge calls this when the native JUCE engine connects/disconnects:
+    // while native is the active output the web engine is muted to prevent double
+    // playback; on fallback to local it is un-muted so the web engine is audible again.
+    setOutputMuted(muted) {
+      this._outputMuted = !!muted;
+      if (!ctx || !masterOutputGain) return;
+      ramp(masterOutputGain.gain, this._outputMuted ? 0 : 1);
+    },
 
     async play(options = {}) {
       this.init();
