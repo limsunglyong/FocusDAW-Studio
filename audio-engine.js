@@ -1633,6 +1633,67 @@
       mv.connect(mEch); mEch.connect(mDel); mDel.connect(mFbO); mFbO.connect(mDel); mDel.connect(mMix);
       mv.connect(ambSO); ambSO.connect(ambCO); ambCO.connect(mMix);
 
+      // Master tone shaping — Saturation → Widener → Exciter/Enhancer.
+      // Mirror of the realtime monitoring chain (see init()) so Export matches
+      // playback. Each stage is inserted ONLY when its amount is non-zero: with
+      // everything at 0 the signal path is `mMix → limiter` exactly as before, so
+      // projects that don't use these effects render byte-for-byte unchanged.
+      // (The realtime chain ends in a DynamicsCompressor; Export keeps its
+      // zero-latency soft-clipper limiter below instead, by render policy.)
+      const FX_EPS = 1e-4;
+      const satVal = this.master.saturation || 0;
+      const widVal = this.master.widener || 0;
+      const excVal = this.master.exciter || 0;
+      let colorTail = mMix;
+
+      if (satVal > FX_EPS) {
+        // Saturation: tanh waveshaper with dry/wet blend.
+        const satDry = off.createGain(); satDry.gain.setValueAtTime(1.0 - satVal * 0.4, 0);
+        const satWet = off.createGain(); satWet.gain.setValueAtTime(satVal * 0.8, 0);
+        const satShaper = off.createWaveShaper();
+        const n = 44100, k = 4.0, comp = 1.0 / Math.tanh(k), cv = new Float32Array(n);
+        for (let i = 0; i < n; i++) { const x = (i * 2) / (n - 1) - 1; cv[i] = Math.tanh(k * x) * comp; }
+        satShaper.curve = cv;
+        const satOut = off.createGain();
+        colorTail.connect(satDry); satDry.connect(satOut);
+        colorTail.connect(satShaper); satShaper.connect(satWet); satWet.connect(satOut);
+        colorTail = satOut;
+      }
+
+      if (widVal > FX_EPS) {
+        // Stereo Widener: mid/side matrix via split → 4 gains → merge.
+        const wW = 1.0 + widVal * 1.5;
+        const widSplit = off.createChannelSplitter(2);
+        const widMerge = off.createChannelMerger(2);
+        const widLL = off.createGain(); widLL.gain.setValueAtTime(0.5 * (1.0 + wW), 0);
+        const widRR = off.createGain(); widRR.gain.setValueAtTime(0.5 * (1.0 + wW), 0);
+        const widRL = off.createGain(); widRL.gain.setValueAtTime(0.5 * (1.0 - wW), 0);
+        const widLR = off.createGain(); widLR.gain.setValueAtTime(0.5 * (1.0 - wW), 0);
+        const widOut = off.createGain();
+        colorTail.connect(widSplit);
+        widSplit.connect(widLL, 0); widSplit.connect(widLR, 0);
+        widSplit.connect(widRL, 1); widSplit.connect(widRR, 1);
+        widLL.connect(widMerge, 0, 0); widRL.connect(widMerge, 0, 0);
+        widLR.connect(widMerge, 0, 1); widRR.connect(widMerge, 0, 1);
+        widMerge.connect(widOut);
+        colorTail = widOut;
+      }
+
+      if (excVal > FX_EPS) {
+        // Exciter / Enhancer: high-passed harmonic generation blended back in (wet).
+        const excHPF = off.createBiquadFilter();
+        excHPF.type = "highpass"; excHPF.frequency.setValueAtTime(3000, 0); excHPF.Q.setValueAtTime(0.707, 0);
+        const excShaper = off.createWaveShaper();
+        const n = 44100, cv = new Float32Array(n);
+        for (let i = 0; i < n; i++) { const x = (i * 2) / (n - 1) - 1; cv[i] = x + 0.35 * x * x; }
+        excShaper.curve = cv;
+        const excWet = off.createGain(); excWet.gain.setValueAtTime(excVal * 0.5, 0);
+        const excOut = off.createGain();
+        colorTail.connect(excOut); // dry
+        colorTail.connect(excHPF); excHPF.connect(excShaper); excShaper.connect(excWet); excWet.connect(excOut);
+        colorTail = excOut;
+      }
+
       const useLimiter = options.normalize !== false;
       if (useLimiter) {
         // WaveShaper soft-clipper: zero look-ahead latency (DynamicsCompressor added ~10ms delay)
@@ -1647,9 +1708,9 @@
           cv[i] = x >= 0 ? y : -y;
         }
         clipper.curve = cv;
-        mMix.connect(clipper); clipper.connect(off.destination);
+        colorTail.connect(clipper); clipper.connect(off.destination);
       } else {
-        mMix.connect(off.destination);
+        colorTail.connect(off.destination);
       }
       const rr = off.createGain(); rr.gain.setValueAtTime(0.9, 0); conv.connect(rr); rr.connect(mBus);
       // fade automation
