@@ -377,9 +377,31 @@ public:
         if (mute || (soloActive && !solo)) {
             bufferToFill.clearActiveBufferRegion();
             currentMagnitude.store(0.0f);
+            if (offlineRendering.load() && !offlineDebugLogged.exchange(true)) {
+                std::cout << "[AudioEngine] Offline track muted: id=" << id
+                          << ", mute=" << (mute ? 1 : 0)
+                          << ", solo=" << (solo ? 1 : 0)
+                          << ", soloActive=" << (soloActive ? 1 : 0)
+                          << ", volume=" << volume
+                          << std::endl;
+            }
             return;
         }
+        // Read source audio. Offline export now uses the SAME transportSource path
+        // as realtime playback (file -> target sample-rate resampling + SoundTouch),
+        // just pulled by the offline render loop instead of the device callback.
+        // The earlier offline "direct-read" bypass skipped the transport's
+        // resampling/preparation and rendered silence — the exported file was
+        // silent even though realtime monitoring was audible. The realtime device
+        // callback is suspended during export, so there is no contention here.
+        juce::int64 beforeReadPosition = 0;
+        juce::int64 totalLength = 0;
+        if (offlineRendering.load()) {
+            beforeReadPosition = transportSource->getNextReadPosition();
+            totalLength = transportSource->getTotalLength();
+        }
         transportSource->getNextAudioBlock(bufferToFill);
+        float sourceMagnitude = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
 
         // Apply track individual echo/delay
         float currentEcho = echoSend.load();
@@ -404,21 +426,48 @@ public:
             }
         }
 
-        // Apply volume and pan
-        float currentGain = volume;
-        if (currentGain != 1.0f || pan != 0.0f) {
+        // Apply volume (× volume automation during offline export) and pan.
+        // Automation gain is evaluated at the block's start/end normalized phase
+        // (set by exportMix per block) and applied as a smooth ramp so it matches
+        // the Web Audio render's sample-accurate `setValueCurveAtTime`.
+        float autoGainStart = 1.0f, autoGainEnd = 1.0f;
+        const bool autoActive = offlineRendering.load() && autoOn && autoPointT.size() >= 1;
+        if (autoActive) {
+            autoGainStart = sampleAutomation(offlineAutoPhaseStart);
+            autoGainEnd   = sampleAutomation(offlineAutoPhaseEnd);
+        }
+        if (volume != 1.0f || pan != 0.0f || autoActive) {
             for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel) {
-                float channelGain = currentGain;
+                float panFactor = 1.0f;
                 if (pan != 0.0f) {
-                    if (channel == 0 && pan > 0.0f) channelGain *= (1.0f - pan);
-                    else if (channel == 1 && pan < 0.0f) channelGain *= (1.0f + pan);
+                    if (channel == 0 && pan > 0.0f) panFactor = (1.0f - pan);
+                    else if (channel == 1 && pan < 0.0f) panFactor = (1.0f + pan);
                 }
-                bufferToFill.buffer->applyGain(channel, bufferToFill.startSample, bufferToFill.numSamples, channelGain);
+                float gStart = volume * autoGainStart * panFactor;
+                float gEnd   = volume * autoGainEnd   * panFactor;
+                if (gStart == gEnd)
+                    bufferToFill.buffer->applyGain(channel, bufferToFill.startSample, bufferToFill.numSamples, gStart);
+                else
+                    bufferToFill.buffer->applyGainRamp(channel, bufferToFill.startSample, bufferToFill.numSamples, gStart, gEnd);
             }
         }
 
         float mag = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
         currentMagnitude.store(mag);
+        if (offlineRendering.load() && !offlineDebugLogged.exchange(true)) {
+            std::cout << "[AudioEngine] Offline track probe: id=" << id
+                      << ", sourcePeak=" << sourceMagnitude
+                      << ", postPeak=" << mag
+                      << ", volume=" << volume
+                      << ", pan=" << pan
+                      << ", mute=" << (mute ? 1 : 0)
+                      << ", solo=" << (solo ? 1 : 0)
+                      << ", soloActive=" << (soloActive ? 1 : 0)
+                      << ", readPos=" << beforeReadPosition
+                      << ", totalLength=" << totalLength
+                      << ", soundTouch=" << (offlineUseSoundTouch.load() ? 1 : 0)
+                      << std::endl;
+        }
     }
 
     void setNextReadPosition(juce::int64 newPosition) override {
@@ -459,6 +508,60 @@ public:
 #endif
     }
 
+    void setOfflineRendering(bool on, bool useSoundTouch = false) {
+        // Offline export reads through transportSource (see getNextAudioBlock), so
+        // the read position is reset by the caller via transportSource->setPosition(0).
+        // This flag now only drives the one-shot probe logging below.
+        offlineRendering.store(on);
+        offlineUseSoundTouch.store(on && useSoundTouch);
+        offlineDebugLogged.store(false);
+    }
+
+    // --- Volume automation (applied during offline export) -------------------
+    // Points are {t, v} with t normalized 0..1 over the whole render and v a gain
+    // in [0,1]. `flat` is interleaved [t0,v0,t1,v1,...]. Mirrors the Web Audio
+    // engine's automation (linear, or Fritsch–Carlson monotone cubic when curved).
+    void setAutomation(bool on, bool curved, const std::vector<float>& flat) {
+        autoOn = on;
+        autoCurved = curved;
+        autoPointT.clear();
+        autoPointV.clear();
+        const size_t m = flat.size() / 2;
+        std::vector<std::pair<float, float>> pts;
+        pts.reserve(m);
+        for (size_t i = 0; i < m; ++i) pts.emplace_back(flat[2 * i], flat[2 * i + 1]);
+        std::sort(pts.begin(), pts.end(), [](auto& a, auto& b) { return a.first < b.first; });
+        for (auto& p : pts) { autoPointT.push_back(p.first); autoPointV.push_back(p.second); }
+        computeAutoTangents();
+    }
+
+    void setOfflineAutomationPhase(double startPhase, double endPhase) {
+        offlineAutoPhaseStart = startPhase;
+        offlineAutoPhaseEnd = endPhase;
+    }
+
+    float sampleAutomation(double t) const {
+        const size_t m = autoPointT.size();
+        if (m == 0) return 1.0f;
+        if (m == 1) return juce::jlimit(0.0001f, 1.0f, autoPointV[0]);
+        size_t seg = 0;
+        while (seg < m - 2 && t > autoPointT[seg + 1]) ++seg;
+        double x0 = autoPointT[seg];
+        double h = (double)autoPointT[seg + 1] - x0; if (h <= 0) h = 1e-6;
+        double u = juce::jlimit(0.0, 1.0, (t - x0) / h);
+        double v;
+        if (autoCurved && autoTan.size() == m) {
+            double u2 = u * u, u3 = u2 * u;
+            v = (2 * u3 - 3 * u2 + 1) * autoPointV[seg]
+              + (u3 - 2 * u2 + u) * h * autoTan[seg]
+              + (-2 * u3 + 3 * u2) * autoPointV[seg + 1]
+              + (u3 - u2) * h * autoTan[seg + 1];
+        } else {
+            v = autoPointV[seg] + ((double)autoPointV[seg + 1] - autoPointV[seg]) * u;
+        }
+        return (float)juce::jlimit(0.0001, 1.0, v);
+    }
+
     std::string id;
     std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
 #if USE_JUCE
@@ -470,12 +573,47 @@ public:
     bool mute = false;
     bool solo = false;
     bool soloActive = false;
+    std::atomic<bool> offlineRendering { false };
+    std::atomic<bool> offlineUseSoundTouch { false };
+    std::atomic<bool> offlineDebugLogged { false };
 
     std::atomic<float> reverbSend { 0.0f };
     std::atomic<float> echoSend { 0.0f };
     std::atomic<float> currentMagnitude { 0.0f };
     juce::AudioBuffer<float>* reverbSendBuffer = nullptr;
     FeedbackDelay echoDelay;
+
+    // Volume automation state (offline export only).
+    bool autoOn = false;
+    bool autoCurved = false;
+    std::vector<float> autoPointT;   // normalized times 0..1 (sorted)
+    std::vector<float> autoPointV;   // gains 0..1
+    std::vector<float> autoTan;      // monotone-cubic tangents (when curved)
+    double offlineAutoPhaseStart = 0.0;
+    double offlineAutoPhaseEnd = 0.0;
+
+private:
+    // Fritsch–Carlson monotone tangents — matches the Web Audio makeAutoSampler().
+    void computeAutoTangents() {
+        autoTan.clear();
+        const size_t m = autoPointT.size();
+        if (!autoCurved || m < 2) return;
+        std::vector<double> slope(m - 1);
+        for (size_t i = 0; i < m - 1; ++i) {
+            double dx = (double)autoPointT[i + 1] - autoPointT[i]; if (dx == 0) dx = 1e-6;
+            slope[i] = ((double)autoPointV[i + 1] - autoPointV[i]) / dx;
+        }
+        autoTan.assign(m, 0.0f);
+        autoTan[0] = (float)slope[0];
+        autoTan[m - 1] = (float)slope[m - 2];
+        for (size_t i = 1; i < m - 1; ++i)
+            autoTan[i] = (slope[i - 1] * slope[i] <= 0) ? 0.0f : (float)((slope[i - 1] + slope[i]) / 2.0);
+        for (size_t i = 0; i < m - 1; ++i) {
+            if (slope[i] == 0) { autoTan[i] = 0; autoTan[i + 1] = 0; continue; }
+            double a = autoTan[i] / slope[i], b = autoTan[i + 1] / slope[i], s = a * a + b * b;
+            if (s > 9.0) { double k = 3.0 / std::sqrt(s); autoTan[i] = (float)(k * a * slope[i]); autoTan[i + 1] = (float)(k * b * slope[i]); }
+        }
+    }
 };
 
 // Master effects pipeline: EQ, Reverb, Delay, Stereo Widener, Saturation, Exciter, Soft Clipper
@@ -705,7 +843,15 @@ public:
             float db = eqBands[i].load();
             float gainFactor = juce::Decibels::decibelsToGain(db);
 
-            eqFilters[i].state = juce::dsp::IIR::Coefficients<float>::makePeakFilter(sr, freq, 1.1f, gainFactor);
+            // Copy the new coefficients INTO the existing shared state object rather
+            // than reassigning the state pointer. ProcessorDuplicator constructs each
+            // per-channel filter with the state pointer at prepare() time; reassigning
+            // `state` afterwards leaves those filters pointing at the OLD coefficients
+            // (default/empty = b0..a2 all zero -> the EQ output silence). Mutating the
+            // shared object in place is seen by every duplicated filter. This is done
+            // on the audio thread (via eqDirty) so there is no concurrent reader.
+            auto newCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter(sr, freq, 1.1f, gainFactor);
+            *eqFilters[i].state = *newCoeffs;
         }
     }
 
@@ -789,6 +935,7 @@ public:
     
     void loadTrack(const std::string& trackId, const std::string& filePath);
     void setTrackParam(const std::string& trackId, const std::string& key, float value);
+    void setTrackAutomation(const std::string& trackId, bool autoOn, bool curved, const std::vector<float>& flatPoints);
     void clearTracks();
     
     void setProjectBpm(double bpm);

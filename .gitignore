@@ -1,6 +1,7 @@
 node_modules/
 dist/
 juce_skeleton/build/
+juce_skeleton/build_native/
 third_party/JUCE/
 *.pdb
 *.exe

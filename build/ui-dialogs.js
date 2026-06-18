@@ -355,6 +355,7 @@ function ExportDialog({ projectName, onClose }) {
   const [audioBlob, setAudioBlob] = useState(null);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [exportNotice, setExportNotice] = useState(null);
   const _now = /* @__PURE__ */ new Date();
   const _curYear = String(_now.getFullYear());
   const _curDate = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
@@ -396,25 +397,47 @@ function ExportDialog({ projectName, onClose }) {
   const render = async () => {
     try {
       setErrorMsg("");
+      setExportNotice(null);
       setStage("rendering");
       setProg(0);
       setLabel("Rendering mix\u2026");
+      let forceLocalRender = false;
       if (DAW && DAW.isNative) {
-        const nativeResult = await DAW.renderMix((p) => setProg(p), {
-          format,
-          bitrate,
-          sampleRate: sr,
-          normalize,
-          lufsTarget,
-          preservePitch
-        });
-        setAudioBlob({
-          isNative: true,
-          tempFilePath: nativeResult.tempFilePath
-        });
-        setProg(1);
-        setStage("done");
-        return;
+        try {
+          const nativeResult = await DAW.renderMix((p) => setProg(p), {
+            format,
+            bitrate,
+            sampleRate: sr,
+            normalize,
+            lufsTarget,
+            preservePitch
+          });
+          if (nativeResult && nativeResult.isNative && nativeResult.tempFilePath) {
+            if (window.electronAPI && window.electronAPI.inspectNativeAudio) {
+              const inspected = await window.electronAPI.inspectNativeAudio(nativeResult.tempFilePath);
+              if (inspected && inspected.silent) {
+                throw new Error(`Native export produced silence (peak ${Number(inspected.peak || 0).toExponential(2)}, rms ${Number(inspected.rms || 0).toExponential(2)}).`);
+              }
+            }
+            setAudioBlob({
+              isNative: true,
+              tempFilePath: nativeResult.tempFilePath
+            });
+            setProg(1);
+            setStage("done");
+            return;
+          }
+          throw new Error("Native export returned no output file.");
+        } catch (nativeErr) {
+          console.warn("Native export failed; falling back to Web Audio export:", nativeErr);
+          forceLocalRender = true;
+          setExportNotice({
+            type: "fallback",
+            text: "Native export failed or produced silence. This file was rendered with Web Audio fallback."
+          });
+          setProg(0);
+          setLabel("Native export unavailable - rendering with Web Audio...");
+        }
       }
       const ratio = format === "mp3" ? 0.75 : 1;
       const tempoRate2 = DAW && DAW._projectRate ? DAW._projectRate() : 1;
@@ -428,7 +451,8 @@ function ExportDialog({ projectName, onClose }) {
         normalize: normalize && !nativeLoudnorm,
         sampleRate: sr,
         preservePitch: preservePitch && !nativeKeepPitch,
-        applyTempo: !nativeKeepPitch
+        applyTempo: !nativeKeepPitch,
+        forceLocal: forceLocalRender
       });
       const audioProcessOpts = {
         rate: nativeKeepPitch ? tempoRate2 : 1,
@@ -485,6 +509,12 @@ function ExportDialog({ projectName, onClose }) {
       }
       setUrl(URL.createObjectURL(blob));
       setAudioBlob(blob);
+      if (!exportNotice && forceLocalRender) {
+        setExportNotice({
+          type: "fallback",
+          text: "This file was rendered with Web Audio fallback."
+        });
+      }
       setStage("done");
     } catch (err) {
       console.error("Export failed:", err);
@@ -522,7 +552,18 @@ function ExportDialog({ projectName, onClose }) {
     /* @__PURE__ */ React.createElement("optgroup", { label: "Presets" }, presets.map((p, i) => /* @__PURE__ */ React.createElement("option", { key: i, value: "preset:" + i }, p.name))),
     cover && cover.key === "custom" && /* @__PURE__ */ React.createElement("option", { value: "custom" }, cover.name),
     /* @__PURE__ */ React.createElement("option", { value: "file" }, "Choose file\u2026")
-  ))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 18 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: onClose, style: { flex: 1 } }, "Cancel"), /* @__PURE__ */ React.createElement("button", { className: "btn primary", onClick: render, style: { flex: 2 } }, /* @__PURE__ */ React.createElement(Icon, { name: "disc", size: 15 }), " Render"))), stage === "rendering" && /* @__PURE__ */ React.createElement("div", { style: { padding: "34px 24px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 13, color: "var(--cream-2)", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 18, height: 18, borderRadius: "50%", border: "2px solid var(--line-strong)", borderTopColor: "var(--amber)", animation: "spin .8s linear infinite", flex: "0 0 auto" } }), stepLabel, " ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--amber)" } }, Math.round(prog * 100), "%"), /* @__PURE__ */ React.createElement("span", { className: "rec-dot", style: { width: 6, height: 6, borderRadius: "50%", background: "var(--amber)", flex: "0 0 auto" } })), /* @__PURE__ */ React.createElement("div", { style: { height: 8, background: "var(--surface)", borderRadius: 5, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: prog * 100 + "%", background: "linear-gradient(90deg,var(--amber-deep),var(--amber))", borderRadius: 5, transition: "width .12s" } })), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10.5, color: "var(--faint)", marginTop: 14 } }, "offline render \xB7 ", sr / 1e3, "kHz", format === "mp3" ? ` \xB7 ${bitrate}kbps MP3` : " \xB7 WAV", preservePitch && tempoChanged ? " \xB7 keep pitch" : "")), stage === "error" && /* @__PURE__ */ React.createElement("div", { style: { padding: "30px 24px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 52, height: 52, borderRadius: "50%", background: "rgba(217,106,78,.14)", color: "var(--red)", display: "grid", placeItems: "center", margin: "0 auto 14px", fontWeight: 700, fontSize: 24 } }, "!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Export failed"), /* @__PURE__ */ React.createElement("div", { style: { margin: "8px auto 18px", maxHeight: 96, overflow: "auto", fontSize: 11.5, color: "var(--dim)", lineHeight: 1.45, wordBreak: "break-word" } }, errorMsg), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => setStage("settings"), style: { flex: 1 } }, "Back"), /* @__PURE__ */ React.createElement("button", { className: "btn primary", onClick: render, style: { flex: 1 } }, /* @__PURE__ */ React.createElement(Icon, { name: "disc", size: 15 }), " Retry"))), stage === "done" && /* @__PURE__ */ React.createElement("div", { style: { padding: "30px 24px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" } }, /* @__PURE__ */ React.createElement(Icon, { name: "check", size: 26 })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Mixdown ready"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" } }, fileName, " \xB7 ", fmtTime(exportDuration), " \xB7 ", sr / 1e3, "kHz \xB7 ", ext.toUpperCase(), preservePitch && tempoChanged ? " \xB7 keep pitch" : ""), window.electronAPI ? /* @__PURE__ */ React.createElement("button", { className: "btn-save", disabled: saving, onClick: async () => {
+  ))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 18 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: onClose, style: { flex: 1 } }, "Cancel"), /* @__PURE__ */ React.createElement("button", { className: "btn primary", onClick: render, style: { flex: 2 } }, /* @__PURE__ */ React.createElement(Icon, { name: "disc", size: 15 }), " Render"))), stage === "rendering" && /* @__PURE__ */ React.createElement("div", { style: { padding: "34px 24px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 13, color: "var(--cream-2)", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 18, height: 18, borderRadius: "50%", border: "2px solid var(--line-strong)", borderTopColor: "var(--amber)", animation: "spin .8s linear infinite", flex: "0 0 auto" } }), stepLabel, " ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--amber)" } }, Math.round(prog * 100), "%"), /* @__PURE__ */ React.createElement("span", { className: "rec-dot", style: { width: 6, height: 6, borderRadius: "50%", background: "var(--amber)", flex: "0 0 auto" } })), /* @__PURE__ */ React.createElement("div", { style: { height: 8, background: "var(--surface)", borderRadius: 5, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: prog * 100 + "%", background: "linear-gradient(90deg,var(--amber-deep),var(--amber))", borderRadius: 5, transition: "width .12s" } })), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10.5, color: "var(--faint)", marginTop: 14 } }, "offline render \xB7 ", sr / 1e3, "kHz", format === "mp3" ? ` \xB7 ${bitrate}kbps MP3` : " \xB7 WAV", preservePitch && tempoChanged ? " \xB7 keep pitch" : "")), stage === "error" && /* @__PURE__ */ React.createElement("div", { style: { padding: "30px 24px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 52, height: 52, borderRadius: "50%", background: "rgba(217,106,78,.14)", color: "var(--red)", display: "grid", placeItems: "center", margin: "0 auto 14px", fontWeight: 700, fontSize: 24 } }, "!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Export failed"), /* @__PURE__ */ React.createElement("div", { style: { margin: "8px auto 18px", maxHeight: 96, overflow: "auto", fontSize: 11.5, color: "var(--dim)", lineHeight: 1.45, wordBreak: "break-word" } }, errorMsg), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => setStage("settings"), style: { flex: 1 } }, "Back"), /* @__PURE__ */ React.createElement("button", { className: "btn primary", onClick: render, style: { flex: 1 } }, /* @__PURE__ */ React.createElement(Icon, { name: "disc", size: 15 }), " Retry"))), stage === "done" && /* @__PURE__ */ React.createElement("div", { style: { padding: "30px 24px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" } }, /* @__PURE__ */ React.createElement(Icon, { name: "check", size: 26 })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Mixdown ready"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" } }, fileName, " \xB7 ", fmtTime(exportDuration), " \xB7 ", sr / 1e3, "kHz \xB7 ", ext.toUpperCase(), preservePitch && tempoChanged ? " \xB7 keep pitch" : ""), exportNotice && /* @__PURE__ */ React.createElement("div", { style: {
+    margin: "0 auto 16px",
+    maxWidth: 420,
+    padding: "9px 11px",
+    border: "1px solid rgba(232,176,75,.45)",
+    background: "rgba(232,176,75,.10)",
+    borderRadius: 7,
+    color: "var(--cream)",
+    fontSize: 12,
+    lineHeight: 1.45,
+    textAlign: "left"
+  } }, /* @__PURE__ */ React.createElement("strong", { style: { color: "var(--amber)" } }, "Web Audio fallback used."), " ", exportNotice.text), window.electronAPI ? /* @__PURE__ */ React.createElement("button", { className: "btn-save", disabled: saving, onClick: async () => {
     setSaving(true);
     if (audioBlob && audioBlob.isNative) {
       const yr = String(year || "").trim();

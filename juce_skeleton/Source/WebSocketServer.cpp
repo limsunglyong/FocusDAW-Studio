@@ -484,6 +484,14 @@ void WebSocketServer::clientLoop(void* socketHandle)
             double val = getJsonDoubleVal(frameText, "value");
             audioEngine.setTrackParam(trackId, key, (float)val);
         }
+        else if (cmd == "setTrackAutomation")
+        {
+            std::string trackId = getJsonStringVal(frameText, "trackId");
+            bool autoOn = getJsonBoolVal(frameText, "autoOn");
+            bool curved = getJsonBoolVal(frameText, "curved");
+            std::vector<float> pts = getJsonFloatArrayVal(frameText, "points"); // interleaved [t0,v0,t1,v1,...]
+            audioEngine.setTrackAutomation(trackId, autoOn, curved, pts);
+        }
         else if (cmd == "clearTracks")
         {
             audioEngine.clearTracks();

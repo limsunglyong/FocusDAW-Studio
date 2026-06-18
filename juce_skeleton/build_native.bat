@@ -4,6 +4,19 @@ setlocal enabledelayedexpansion
 echo [FocusDAW Build] Changing directory to script location...
 cd /d "%~dp0"
 
+set "ROOT_DIR=%~dp0.."
+set "JUCE_DIR=%ROOT_DIR%\third_party\JUCE"
+set "CMAKE_EXE=cmake"
+if exist "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" (
+    set "CMAKE_EXE=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+)
+
+if not exist "%JUCE_DIR%\CMakeLists.txt" (
+    echo [ERROR] JUCE not found at "%JUCE_DIR%".
+    echo [ERROR] Clone it with: git clone --depth 1 --branch 8.0.10 https://github.com/juce-framework/JUCE.git "%JUCE_DIR%"
+    exit /b 1
+)
+
 echo [FocusDAW Build] Setting up MSVC Build Environment...
 call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
 
@@ -21,7 +34,7 @@ mkdir build
 cd build
 
 echo [FocusDAW Build] Running CMake Configuration with JUCE_PATH...
-cmake -A x64 -DJUCE_PATH="E:/programmings/FocusDAW-Studio/third_party/JUCE" ..
+"%CMAKE_EXE%" -A x64 -DJUCE_PATH="%JUCE_DIR%" ..
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] CMake configuration failed.
@@ -29,7 +42,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo [FocusDAW Build] Compiling C++ Native Audio Engine (Release config)...
-cmake --build . --config Release
+"%CMAKE_EXE%" --build . --config Release
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Native build compilation failed.

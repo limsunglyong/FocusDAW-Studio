@@ -114,7 +114,15 @@
     setTrackParam(id, key, val) {
       LocalDAW.setTrackParam(id, key, val);
       if (this.isNative) {
-        sendToNative({ command: "setTrackParam", trackId: id, key, value: val });
+        // Volume automation (points array, on/off, curve toggle) is not a scalar —
+        // forward the full automation state via a dedicated command so the native
+        // engine can apply it during offline export.
+        if (key === "automation" || key === "autoOn" || key === "autoCurve") {
+          const track = LocalDAW.tracks.find((t) => t.id === id);
+          if (track) sendTrackAutomationToNative(track);
+        } else {
+          sendToNative({ command: "setTrackParam", trackId: id, key, value: val });
+        }
       }
     },
 
@@ -271,7 +279,7 @@
     },
 
     async renderMix(onProgress, options = {}) {
-      if (!this.isNative) {
+      if (options.forceLocal || !this.isNative) {
         return LocalDAW.renderMix(onProgress, options);
       }
       return new Promise((resolve, reject) => {
@@ -466,6 +474,25 @@
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "pan", value: track.params.pan });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "mute", value: track.params.mute });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "solo", value: track.params.solo });
+    sendTrackAutomationToNative(track);
+  }
+
+  // Forward a track's volume automation to the native engine as an interleaved
+  // [t0,v0,t1,v1,...] float array (t normalized 0..1, v gain 0..1), plus the on/off
+  // and curve-fitting flags. The native engine applies this during offline export.
+  function sendTrackAutomationToNative(track) {
+    if (!track) return;
+    const p = track.params || {};
+    const pts = Array.isArray(p.automation) ? p.automation : [];
+    const flat = [];
+    for (const pt of pts) { flat.push(pt.t, pt.v); }
+    sendToNative({
+      command: "setTrackAutomation",
+      trackId: track.id,
+      autoOn: !!p.autoOn,
+      curved: !!p.autoCurve,
+      points: flat,
+    });
   }
 
   // Convert AudioBuffer to WAV ArrayBuffer

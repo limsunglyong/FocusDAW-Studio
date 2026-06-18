@@ -431,6 +431,80 @@ ipcMain.handle('save-audio', async (_, buffer, defaultName) => {
   return { saved: true };
 });
 
+function inspectPcmWav(filePath) {
+  const buf = fs.readFileSync(filePath);
+  if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new Error('Not a PCM WAV file.');
+  }
+
+  let channels = 2;
+  let sampleRate = 44100;
+  let bitsPerSample = 16;
+  let dataStart = -1;
+  let dataLen = 0;
+  let pos = 12;
+  while (pos + 8 <= buf.length) {
+    const id = buf.toString('ascii', pos, pos + 4);
+    const size = buf.readUInt32LE(pos + 4);
+    const chunkStart = pos + 8;
+    if (id === 'fmt ' && size >= 16) {
+      channels = buf.readUInt16LE(chunkStart + 2);
+      sampleRate = buf.readUInt32LE(chunkStart + 4);
+      bitsPerSample = buf.readUInt16LE(chunkStart + 14);
+    } else if (id === 'data') {
+      dataStart = chunkStart;
+      dataLen = Math.min(size, buf.length - chunkStart);
+      break;
+    }
+    pos = chunkStart + size + (size % 2);
+  }
+
+  if (dataStart < 0 || dataLen <= 0) {
+    return { exists: true, bytes: buf.length, samples: 0, peak: 0, rms: 0, duration: 0, silent: true };
+  }
+  if (bitsPerSample !== 16) {
+    throw new Error(`Unsupported WAV bit depth for inspection: ${bitsPerSample}`);
+  }
+
+  let sumSq = 0;
+  let peak = 0;
+  let samples = 0;
+  const end = dataStart + dataLen;
+  for (let i = dataStart; i + 1 < end; i += 2) {
+    const v = buf.readInt16LE(i) / 32768;
+    const a = Math.abs(v);
+    if (a > peak) peak = a;
+    sumSq += v * v;
+    samples++;
+  }
+  const rms = Math.sqrt(sumSq / Math.max(1, samples));
+  const duration = samples / Math.max(1, channels) / Math.max(1, sampleRate);
+  return {
+    exists: true,
+    bytes: buf.length,
+    samples,
+    peak,
+    rms,
+    duration,
+    silent: peak < 0.0001 && rms < 0.00001,
+  };
+}
+
+ipcMain.handle('inspect-native-audio', async (_, tempFilePath) => {
+  if (!tempFilePath || !fs.existsSync(tempFilePath)) {
+    return { exists: false, silent: true, error: 'Native export temp file not found.' };
+  }
+  try {
+    return inspectPcmWav(tempFilePath);
+  } catch (err) {
+    return {
+      exists: true,
+      silent: false,
+      error: err && err.message ? err.message : String(err || 'Audio inspection failed.'),
+    };
+  }
+});
+
 // Save natively rendered audio file (supports WAV copy and MP3 encoding with tags/cover)
 ipcMain.handle('save-native-audio', async (_, tempFilePath, format, options, defaultName) => {
   const ext = format === 'mp3' ? 'mp3' : 'wav';

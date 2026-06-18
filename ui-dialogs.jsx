@@ -301,6 +301,7 @@ function ExportDialog({ projectName, onClose }) {
   const [audioBlob, setAudioBlob] = useState(null);
   const [saving, setSaving]     = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [exportNotice, setExportNotice] = useState(null);
 
   // ---- metadata (tags) ----
   const _now = new Date();
@@ -339,25 +340,47 @@ function ExportDialog({ projectName, onClose }) {
   const render = async () => {
     try {
       setErrorMsg("");
+      setExportNotice(null);
       setStage("rendering"); setProg(0); setLabel("Rendering mix…");
 
+      let forceLocalRender = false;
       if (DAW && DAW.isNative) {
-        const nativeResult = await DAW.renderMix((p) => setProg(p), {
-          format,
-          bitrate,
-          sampleRate: sr,
-          normalize,
-          lufsTarget,
-          preservePitch,
-        });
+        try {
+          const nativeResult = await DAW.renderMix((p) => setProg(p), {
+            format,
+            bitrate,
+            sampleRate: sr,
+            normalize,
+            lufsTarget,
+            preservePitch,
+          });
 
-        setAudioBlob({
-          isNative: true,
-          tempFilePath: nativeResult.tempFilePath,
-        });
-        setProg(1);
-        setStage("done");
-        return;
+          if (nativeResult && nativeResult.isNative && nativeResult.tempFilePath) {
+            if (window.electronAPI && window.electronAPI.inspectNativeAudio) {
+              const inspected = await window.electronAPI.inspectNativeAudio(nativeResult.tempFilePath);
+              if (inspected && inspected.silent) {
+                throw new Error(`Native export produced silence (peak ${Number(inspected.peak || 0).toExponential(2)}, rms ${Number(inspected.rms || 0).toExponential(2)}).`);
+              }
+            }
+            setAudioBlob({
+              isNative: true,
+              tempFilePath: nativeResult.tempFilePath,
+            });
+            setProg(1);
+            setStage("done");
+            return;
+          }
+          throw new Error("Native export returned no output file.");
+        } catch (nativeErr) {
+          console.warn("Native export failed; falling back to Web Audio export:", nativeErr);
+          forceLocalRender = true;
+          setExportNotice({
+            type: "fallback",
+            text: "Native export failed or produced silence. This file was rendered with Web Audio fallback.",
+          });
+          setProg(0);
+          setLabel("Native export unavailable - rendering with Web Audio...");
+        }
       }
 
       const ratio = format === "mp3" ? 0.75 : 1;
@@ -376,6 +399,7 @@ function ExportDialog({ projectName, onClose }) {
         sampleRate: sr,
         preservePitch: preservePitch && !nativeKeepPitch,
         applyTempo: !nativeKeepPitch,
+        forceLocal: forceLocalRender,
       });
       const audioProcessOpts = {
         rate: nativeKeepPitch ? tempoRate : 1,
@@ -436,6 +460,12 @@ function ExportDialog({ projectName, onClose }) {
 
       setUrl(URL.createObjectURL(blob));
       setAudioBlob(blob);
+      if (!exportNotice && forceLocalRender) {
+        setExportNotice({
+          type: "fallback",
+          text: "This file was rendered with Web Audio fallback.",
+        });
+      }
       setStage("done");
     } catch (err) {
       console.error("Export failed:", err);
@@ -563,6 +593,22 @@ function ExportDialog({ projectName, onClose }) {
             <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" }}><Icon name="check" size={26} /></div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Mixdown ready</div>
             <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(exportDuration)} · {sr / 1000}kHz · {ext.toUpperCase()}{preservePitch && tempoChanged ? " · keep pitch" : ""}</div>
+            {exportNotice && (
+              <div style={{
+                margin: "0 auto 16px",
+                maxWidth: 420,
+                padding: "9px 11px",
+                border: "1px solid rgba(232,176,75,.45)",
+                background: "rgba(232,176,75,.10)",
+                borderRadius: 7,
+                color: "var(--cream)",
+                fontSize: 12,
+                lineHeight: 1.45,
+                textAlign: "left"
+              }}>
+                <strong style={{ color: "var(--amber)" }}>Web Audio fallback used.</strong> {exportNotice.text}
+              </div>
+            )}
             {window.electronAPI ? (
               <button className="btn-save" disabled={saving} onClick={async () => {
                 setSaving(true);

@@ -276,6 +276,27 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
     std::cout << "[AudioEngine] Parameter " << key << " set to " << value << " for track " << trackId << std::endl;
 }
 
+void AudioEngine::setTrackAutomation(const std::string& trackId, bool autoOn, bool curved, const std::vector<float>& flatPoints)
+{
+    std::lock_guard<std::mutex> lock(engineMutex);
+#if USE_JUCE
+    for (auto& track : juceTracks)
+    {
+        if (track->id == trackId)
+        {
+            track->setAutomation(autoOn, curved, flatPoints);
+            std::cout << "[AudioEngine] Track automation set: id=" << trackId
+                      << ", autoOn=" << (autoOn ? 1 : 0)
+                      << ", curved=" << (curved ? 1 : 0)
+                      << ", points=" << (flatPoints.size() / 2) << std::endl;
+            break;
+        }
+    }
+#else
+    juce::ignoreUnused(trackId, autoOn, curved, flatPoints);
+#endif
+}
+
 void AudioEngine::clearTracks()
 {
     std::lock_guard<std::mutex> lock(engineMutex);
@@ -586,6 +607,22 @@ void AudioEngine::exportMix(const std::string& exportId,
 
     bool wasPlaying = false;
     std::vector<TrackAudioSource*> activeTracks;
+
+    // Offline export reuses the same master source graph as realtime playback.
+    // Detach the device callback during export so the audio device cannot pull
+    // from the same transports/effects while the offline pass is rendering.
+    bool realtimeCallbackSuspended = true;
+    deviceManager.removeAudioCallback(&sourcePlayer);
+    sourcePlayer.setSource(nullptr);
+    std::cout << "[AudioEngine] Realtime audio callback suspended for offline export." << std::endl;
+    auto restoreRealtimeCallback = [&]() {
+        if (!realtimeCallbackSuspended)
+            return;
+        sourcePlayer.setSource(masterEffectsSource.get());
+        deviceManager.addAudioCallback(&sourcePlayer);
+        realtimeCallbackSuspended = false;
+        std::cout << "[AudioEngine] Realtime audio callback restored after offline export." << std::endl;
+    };
     
     {
         std::lock_guard<std::mutex> lock(engineMutex);
@@ -600,6 +637,27 @@ void AudioEngine::exportMix(const std::string& exportId,
         for (auto& track : juceTracks) {
             activeTracks.push_back(track.get());
         }
+    }
+
+    if (activeTracks.empty()) {
+        std::cerr << "[AudioEngine] JUCE Offline Export aborted: no tracks are loaded in the native engine." << std::endl;
+
+        {
+            std::lock_guard<std::mutex> lock(engineMutex);
+            if (wasPlaying) {
+                playing = true;
+                for (auto& track : juceTracks) {
+                    if (track->transportSource) {
+                        track->transportSource->setPosition(playheadSeconds);
+                        track->transportSource->start();
+                    }
+                }
+            }
+        }
+
+        restoreRealtimeCallback();
+        completionCallback("", "Native export has no loaded tracks. Falling back to Web Audio export.");
+        return;
     }
 
     struct Biquad {
@@ -636,6 +694,9 @@ void AudioEngine::exportMix(const std::string& exportId,
     std::vector<double> msL, msR;
     double sumSqL = 0, sumSqR = 0;
     int samplesAccumulated = 0;
+    double rawSumSq = 0.0;
+    double rawPeak = 0.0;
+    juce::int64 rawSamplesMeasured = 0;
 
     int blockSize = 512;
     juce::int64 totalSamplesToRender = (juce::int64)(durationSeconds * targetSampleRate);
@@ -656,9 +717,12 @@ void AudioEngine::exportMix(const std::string& exportId,
         track->reverbSendBuffer = masterEffectsSource ? masterEffectsSource->getReverbSendBuffer() : nullptr;
         track->reset();
         track->setPreservePitch(preservePitch);
+        track->setOfflineRendering(true, preservePitch);
         track->transportSource->setPosition(0.0);
         track->transportSource->start();
     }
+    std::cout << "[AudioEngine] Offline track rendering enabled (via transportSource): tracks=" << activeTracks.size()
+              << ", soundTouch=" << (preservePitch ? 1 : 0) << std::endl;
 
     bool success = true;
     std::string errorMsg = "";
@@ -667,11 +731,17 @@ void AudioEngine::exportMix(const std::string& exportId,
     if (normalize) {
         while (samplesRendered < totalSamplesToRender) {
             int currentBlockSize = (int)std::min((juce::int64)blockSize, totalSamplesToRender - samplesRendered);
-            
+
             juce::AudioBuffer<float> blockBuffer(2, currentBlockSize);
             blockBuffer.clear();
             juce::AudioSourceChannelInfo info(&blockBuffer, 0, currentBlockSize);
-            
+
+            {
+                double phaseStart = (double)samplesRendered / (double)totalSamplesToRender;
+                double phaseEnd = (double)(samplesRendered + currentBlockSize) / (double)totalSamplesToRender;
+                for (auto* t : activeTracks) t->setOfflineAutomationPhase(phaseStart, phaseEnd);
+            }
+
             if (masterEffectsSource) {
                 masterEffectsSource->getNextAudioBlock(info);
             }
@@ -679,6 +749,12 @@ void AudioEngine::exportMix(const std::string& exportId,
             const float* srcL = blockBuffer.getReadPointer(0);
             const float* srcR = blockBuffer.getReadPointer(1);
             for (int i = 0; i < currentBlockSize; ++i) {
+                double rawL = srcL[i];
+                double rawR = srcR[i];
+                rawSumSq += rawL * rawL + rawR * rawR;
+                rawPeak = std::max(rawPeak, std::max(std::abs(rawL), std::abs(rawR)));
+                rawSamplesMeasured += 2;
+
                 double yL = filterL2.process(filterL1.process(srcL[i]));
                 double yR = filterR2.process(filterR1.process(srcR[i]));
 
@@ -745,6 +821,15 @@ void AudioEngine::exportMix(const std::string& exportId,
             }
         }
 
+        if (measuredLufs <= -69.99 && rawSamplesMeasured > 0 && rawPeak > 1.0e-6) {
+            double rawMeanSquarePerChannel = rawSumSq / (double)rawSamplesMeasured;
+            double rawStereoSumMS = rawMeanSquarePerChannel * 2.0;
+            measuredLufs = -0.691 + 10.0 * std::log10(std::max(rawStereoSumMS, 1.0e-12));
+            std::cout << "[AudioEngine] LUFS gate fallback used: rawPeak=" << rawPeak
+                      << ", rawRms=" << std::sqrt(rawMeanSquarePerChannel)
+                      << ", fallbackLufs=" << measuredLufs << std::endl;
+        }
+
         std::cout << "[AudioEngine] Measured LUFS: " << measuredLufs << std::endl;
         
         double gainDb = lufsTarget - measuredLufs;
@@ -763,6 +848,7 @@ void AudioEngine::exportMix(const std::string& exportId,
     }
     for (auto* track : activeTracks) {
         track->reset();
+        track->setOfflineRendering(true, preservePitch);
         track->transportSource->setPosition(0.0);
         track->transportSource->start();
     }
@@ -803,11 +889,17 @@ void AudioEngine::exportMix(const std::string& exportId,
 
             while (samplesRendered < totalSamplesToRender && success) {
                 int currentBlockSize = (int)std::min((juce::int64)blockSize, totalSamplesToRender - samplesRendered);
-                
+
                 juce::AudioBuffer<float> blockBuffer(2, currentBlockSize);
                 blockBuffer.clear();
                 juce::AudioSourceChannelInfo info(&blockBuffer, 0, currentBlockSize);
-                
+
+                {
+                    double phaseStart = (double)samplesRendered / (double)totalSamplesToRender;
+                    double phaseEnd = (double)(samplesRendered + currentBlockSize) / (double)totalSamplesToRender;
+                    for (auto* t : activeTracks) t->setOfflineAutomationPhase(phaseStart, phaseEnd);
+                }
+
                 if (masterEffectsSource) {
                     masterEffectsSource->getNextAudioBlock(info);
                 }
@@ -858,6 +950,7 @@ void AudioEngine::exportMix(const std::string& exportId,
 
     // Stop and restore track transport settings
     for (auto* track : activeTracks) {
+        track->setOfflineRendering(false);
         track->transportSource->stop();
         track->transportSource->setPosition(0.0);
     }
@@ -901,6 +994,8 @@ void AudioEngine::exportMix(const std::string& exportId,
             }
         }
     }
+
+    restoreRealtimeCallback();
 
     if (success) {
         std::cout << "[AudioEngine] JUCE Offline Export completed successfully: " << tempOutputPath << std::endl;

@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Save rendered audio via native OS dialog (with overwrite confirmation)
   saveAudio:      (buf, name)     => ipcRenderer.invoke('save-audio', buf, name),
+  inspectNativeAudio: (tempPath)  => ipcRenderer.invoke('inspect-native-audio', tempPath),
   saveNativeAudio: (tempPath, format, opts, name) => ipcRenderer.invoke('save-native-audio', tempPath, format, opts, name),
 
   // Window controls (Windows / Linux custom title bar)
