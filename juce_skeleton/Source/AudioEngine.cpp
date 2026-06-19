@@ -398,12 +398,21 @@ void AudioEngine::clearTracks()
     playheadSeconds = 0.0;
     playing = false;
 
+    // A New Project must not inherit the previous project's transpose / time-stretch
+    // state. The JS engine already resets tempo on clearTracks, but the native DSP
+    // state lived on independently — so a fresh project kept playing the old key.
+    variKey = false;
+    keyShift = 0;
+    currentKey = "";
+    detectedKey = "";
+    variBpm = false;
+
 #if USE_JUCE
     mixerSource.removeAllInputs();
     juceTracks.clear();
 #endif
 
-    std::cout << "[AudioEngine] All tracks cleared." << std::endl;
+    std::cout << "[AudioEngine] All tracks cleared (transpose/tempo DSP reset)." << std::endl;
 }
 
 void AudioEngine::clearAllMuteSolo()

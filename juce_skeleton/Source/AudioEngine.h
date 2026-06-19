@@ -623,7 +623,24 @@ public:
     }
 
     void setLooping(bool shouldLoop) override {
-        if (readerSource) readerSource->setLooping(shouldLoop);
+        if (! readerSource) return;
+        // MemoryAudioSource keeps a monotonic read counter that is NOT wrapped — while
+        // looping, getNextReadPosition() returns a value that grows past the buffer
+        // length after each loop. Disabling looping then makes hasStreamFinished()
+        // (position >= totalLength) instantly true, so turning repeat OFF after the song
+        // had looped once would stop playback dead. Rebase the counter into [0,length)
+        // when leaving loop mode; the audible read offset (position % length) is
+        // identical, so playback continues seamlessly from the current spot to the end.
+        if (! shouldLoop && readerSource->isLooping()) {
+            const auto len = readerSource->getTotalLength();
+            if (len > 0) {
+                const auto wrapped = readerSource->getNextReadPosition() % len;
+                readerSource->setLooping(false);
+                readerSource->setNextReadPosition(wrapped);
+                return;
+            }
+        }
+        readerSource->setLooping(shouldLoop);
     }
 
     bool hasFinished() const {
