@@ -292,7 +292,10 @@ function ExportDialog({ projectName, onClose }) {
   });
   useEffect(() => { try { localStorage.setItem("focusdaw-export-normalize", normalize ? "1" : "0"); } catch (e) {} }, [normalize]);
   useEffect(() => { try { localStorage.setItem("focusdaw-export-lufs", String(lufsTarget)); } catch (e) {} }, [lufsTarget]);
-  const [preservePitch, setPreservePitch] = useState(false);
+  const [preservePitch, setPreservePitch] = useState(() => {
+    const d = window.DAW;
+    return !!(d && d.tempo && d.tempo.variBpm);
+  });
   const [stage, setStage]       = useState("settings"); // settings | rendering | error | done
   const [prog, setProg]         = useState(0);
   const [stepLabel, setLabel]   = useState("Rendering mix…");
@@ -479,6 +482,7 @@ function ExportDialog({ projectName, onClose }) {
   const tempoRate = DAW && DAW._projectRate ? DAW._projectRate() : 1;
   const tempoChanged = Math.abs(tempoRate - 1) > 0.001;
   const exportDuration = tempoChanged ? DAW.duration / tempoRate : DAW.duration;
+  const variBpmEnabled = !!(window.DAW && window.DAW.tempo && window.DAW.tempo.variBpm);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }} onMouseDown={onClose}>
@@ -517,11 +521,11 @@ function ExportDialog({ projectName, onClose }) {
                     <button onClick={() => setNormalize(!normalize)} title={(window.electronAPI && window.electronAPI.processAudio) ? `Normalize loudness to ${lufsTarget} LUFS (true peak −1 dBTP)` : "Soft-limit peaks (browser fallback)"} style={{ width: 40, height: 22, borderRadius: 12, background: normalize ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s", flexShrink: 0 }}><span style={{ position: "absolute", top: 2, left: normalize ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button>
                   </div>
                 </Row>
-                <Row label="Keep pitch"><button onClick={() => setPreservePitch(!preservePitch)} disabled={!tempoChanged} title={tempoChanged ? "Export tempo changes without changing pitch" : "Enable Vari BPM and change Playback BPM first"} style={{ width: 40, height: 22, borderRadius: 12, background: preservePitch && tempoChanged ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s", opacity: tempoChanged ? 1 : 0.45 }}><span style={{ position: "absolute", top: 2, left: preservePitch && tempoChanged ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
+                <Row label="Keep pitch"><button onClick={() => setPreservePitch(!preservePitch)} disabled={!variBpmEnabled} title={variBpmEnabled ? "Export tempo changes without changing pitch" : "Enable Vari BPM first"} style={{ width: 40, height: 22, borderRadius: 12, background: preservePitch && variBpmEnabled ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s", opacity: variBpmEnabled ? 1 : 0.45 }}><span style={{ position: "absolute", top: 2, left: preservePitch && variBpmEnabled ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
                 <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(232,176,75,.06)", borderRadius: 9, fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
                   All unmuted tracks with FX, automation, master EQ &amp; fades. Length {fmtTime(exportDuration)}.
                   {normalize && window.electronAPI && window.electronAPI.processAudio ? ` Loudness normalized to ${lufsTarget} LUFS.` : ""}
-                  {preservePitch && tempoChanged ? " Keep pitch uses the stable desktop time-stretch path after mix render." : ""}
+                  {preservePitch && variBpmEnabled && tempoChanged ? " Keep pitch uses the stable desktop time-stretch path after mix render." : ""}
                 </div>
               </div>
 
@@ -571,7 +575,7 @@ function ExportDialog({ projectName, onClose }) {
               <div style={{ height: "100%", width: prog * 100 + "%", background: "linear-gradient(90deg,var(--amber-deep),var(--amber))", borderRadius: 5, transition: "width .12s" }} />
             </div>
             <div className="mono" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 14 }}>
-              offline render · {sr / 1000}kHz{format === "mp3" ? ` · ${bitrate}kbps MP3` : " · WAV"}{preservePitch && tempoChanged ? " · keep pitch" : ""}
+              offline render · {sr / 1000}kHz{format === "mp3" ? ` · ${bitrate}kbps MP3` : " · WAV"}{preservePitch && variBpmEnabled && tempoChanged ? " · keep pitch" : ""}
             </div>
           </div>
         )}
@@ -592,7 +596,7 @@ function ExportDialog({ projectName, onClose }) {
           <div style={{ padding: "30px 24px", textAlign: "center" }}>
             <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--amber-soft)", color: "var(--amber)", display: "grid", placeItems: "center", margin: "0 auto 14px" }}><Icon name="check" size={26} /></div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Mixdown ready</div>
-            <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(exportDuration)} · {sr / 1000}kHz · {ext.toUpperCase()}{preservePitch && tempoChanged ? " · keep pitch" : ""}</div>
+            <div className="mono" style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 18px" }}>{fileName} · {fmtTime(exportDuration)} · {sr / 1000}kHz · {ext.toUpperCase()}{preservePitch && variBpmEnabled && tempoChanged ? " · keep pitch" : ""}</div>
             {exportNotice && (
               <div style={{
                 margin: "0 auto 16px",

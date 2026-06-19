@@ -385,6 +385,14 @@ function AdvancedAmbienceApp() {
     : room === "custom" ? "Custom"
     : (ROOMS.find((r) => r.key === room) || {}).label;
 
+  const activeFx = [];
+  if (master.reverb > 0.001) activeFx.push("REVERB");
+  if (master.echo > 0.001) activeFx.push("DELAY");
+  if (master.saturation > 0.001) activeFx.push("SATURATION");
+  if (master.widener > 0.001) activeFx.push("WIDENER");
+  if (master.exciter > 0.001) activeFx.push("EXCITER");
+  const fxText = activeFx.length > 0 ? activeFx.join(", ") : "NONE";
+
   return (
     <div className="aef-backdrop">
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
@@ -504,7 +512,7 @@ function AdvancedAmbienceApp() {
 
           <div className="aef-footer">
             <span>Sound Environment - {currentLabel}</span>
-            <span className="mono">FocusDAW Studio</span>
+            <span className="mono">{fxText}</span>
           </div>
         </div>
       </div>
