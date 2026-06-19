@@ -774,7 +774,6 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
         },
         "Apply"
       ),
-      detectedKey && draft !== 0 && !(window.DAW && window.DAW.isNative) && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, fontSize: 9.5, lineHeight: 1.35, color: "var(--amber)", textAlign: "center" } }, "Key \uBCC0\uC870\uB294 \uB124\uC774\uD2F0\uBE0C \uC624\uB514\uC624 \uC5D4\uC9C4(\uB370\uC2A4\uD06C\uD1B1 \uC571) \uC5F0\uACB0 \uC2DC \uC801\uC6A9\uB429\uB2C8\uB2E4."),
       /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" } }, /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" } }, "KEY SET"), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } })),
       /* @__PURE__ */ React.createElement(
         "select",

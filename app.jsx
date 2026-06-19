@@ -710,14 +710,6 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
             style={{ width: "100%", height: 30, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", opacity: detectedKey ? 1 : 0.45 }}>
             Apply
           </button>
-          {/* Phase 1: pitch shift is rendered only by the native JUCE engine. When the
-              app is running on the Web Audio fallback, the applied key is shown but not
-              heard/exported — tell the user so it doesn't look broken. */}
-          {detectedKey && draft !== 0 && !(window.DAW && window.DAW.isNative) && (
-            <div style={{ marginTop: 8, fontSize: 9.5, lineHeight: 1.35, color: "var(--amber)", textAlign: "center" }}>
-              Key 변조는 네이티브 오디오 엔진(데스크톱 앱) 연결 시 적용됩니다.
-            </div>
-          )}
           <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" }}>
             <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
             <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>KEY SET</span>

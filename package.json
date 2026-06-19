@@ -1,6 +1,6 @@
 {
   "name": "focusdaw-studio",
-  "version": "1.11.2",
+  "version": "1.12.0",
   "description": "Stem mixing DAW ??Electron desktop app",
   "main": "electron/main.js",
   "scripts": {
@@ -15,7 +15,8 @@
     "ffmpeg-static": "^5.2.0",
     "lamejs": "^1.2.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "soundtouchjs": "^0.3.0"
   },
   "devDependencies": {
     "electron": "^42.4.0",

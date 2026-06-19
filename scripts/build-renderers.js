@@ -43,6 +43,23 @@ for (const [source, target] of vendorFiles) {
   console.log(`copied ${path.relative(root, outPath)}`);
 }
 
+// soundtouchjs ships as an ES module; bundle it into an IIFE global so the
+// non-module <script> pipeline (audio-engine.js) can use window.SoundTouchJS for
+// the WebAudio fallback pitch-shift (Phase 2 "bake" path).
+{
+  const outPath = path.join(vendorDir, "soundtouch.global.js");
+  esbuild.buildSync({
+    entryPoints: [path.join(root, "node_modules/soundtouchjs/dist/soundtouch.js")],
+    bundle: true,
+    format: "iife",
+    globalName: "SoundTouchJS",
+    target: "chrome120",
+    legalComments: "none",
+    outfile: outPath,
+  });
+  console.log(`bundled ${path.relative(root, outPath)}`);
+}
+
 for (const file of jsxFiles) {
   const sourcePath = path.join(root, file);
   const outPath = path.join(outDir, file.replace(/\.jsx$/, ".js"));

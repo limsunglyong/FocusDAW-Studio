@@ -583,6 +583,7 @@
       track.needsAudio = false;
       track.audioRev = (track.audioRev || 0) + 1;
       track._stretchPreview = null;
+      track._keyShiftPreview = null;
     },
 
     async addFileBuffer(name, arrayBuffer, options = {}) {
@@ -797,6 +798,7 @@
 
     setVariKey(on) {
       this.tempo.variKey = !!on;
+      this._restartPlaybackForKey();
       this._emit();
       return this.tempo.variKey;
     },
@@ -887,7 +889,7 @@
       const next = this._normalizeKeyShift(semitones);
       this.tempo.keyShift = next;
       this.tempo.key = this.tempo.detectedKey ? shiftKeyString(this.tempo.detectedKey, next) : null;
-      this._restartPlaybackForTempo();
+      this._restartPlaybackForKey();
       this._emit();
       return this.tempo.keyShift;
     },
@@ -971,12 +973,68 @@
       }
     },
 
+    // Semitones to pitch-shift for the WebAudio fallback PLAYBACK path. Only when the
+    // web engine is the audible output (native disconnected → not muted): when native
+    // is connected the web engine is silenced, so baking would be wasted work.
+    _fallbackKeyShiftSemis() {
+      if (this._outputMuted) return 0;
+      if (!this.tempo.variKey || !this.tempo.detectedKey) return 0;
+      return this._normalizeKeyShift(this.tempo.keyShift);
+    },
+
+    // Semitones for the EXPORT (offline render) path. Not gated on _outputMuted — an
+    // export that falls back to the web renderer must apply the shift even while the
+    // native engine is connected (it's the web render that produces the file).
+    _exportKeyShiftSemis() {
+      if (!this.tempo.variKey || !this.tempo.detectedKey) return 0;
+      return this._normalizeKeyShift(this.tempo.keyShift);
+    },
+
+    // Pre-bake pitch-shifted buffers for the current key shift (async, yielding between
+    // tracks so the UI can paint a "preparing" spinner). Bakes on top of the BPM
+    // stretch preview when Vari BPM is also active, so the two combine.
+    async _prepareKeyShift(rate = this._projectRate()) {
+      const semis = this._fallbackKeyShiftSemis();
+      if (semis === 0) return false;
+      this.init();
+      this._stretchPreviewPreparing = true;
+      this._emit();
+      await waitForPaint();
+      try {
+        for (const t of this.tracks) {
+          if (!t || !t.buffer || t.needsAudio) continue;
+          let base = t.buffer;
+          if (this._shouldUseRealtimeStretch(rate)) {
+            const pv = t._stretchPreview;
+            if (pv && pv.rate === rate && pv.buffer) base = pv.buffer;
+          }
+          const kp = t._keyShiftPreview;
+          if (kp && kp.semis === semis && kp.base === base && kp.buffer) continue;
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          t._keyShiftPreview = { semis, base, buffer: pitchShiftBuffer(ctx, base, semis) };
+        }
+        return true;
+      } finally {
+        this._stretchPreviewPreparing = false;
+        this._stretchPreviewDoneSeq = (this._stretchPreviewDoneSeq || 0) + 1;
+        this._emit();
+      }
+    },
+
     _playbackBufferForTrack(track, rate = this._projectRate()) {
+      let base = track.buffer;
       if (this._shouldUseRealtimeStretch(rate)) {
         const preview = track._stretchPreview;
-        if (preview && preview.rate === rate && preview.buffer) return preview.buffer;
+        if (preview && preview.rate === rate && preview.buffer) base = preview.buffer;
       }
-      return track.buffer;
+      const semis = this._fallbackKeyShiftSemis();
+      if (semis !== 0) {
+        const kp = track._keyShiftPreview;
+        // Pitch shift preserves length, so the keyShift preview shares its base's
+        // duration → _sourceOffsetForTrack math is unchanged.
+        if (kp && kp.semis === semis && kp.base === base && kp.buffer) return kp.buffer;
+      }
+      return base;
     },
 
     _sourceOffsetForTrack(track, sourceBuffer, rate = this._projectRate()) {
@@ -1073,6 +1131,30 @@
       this._stopSources();
       this.isPlaying = false;
       this.play({ skipFade: true });
+    },
+
+    // Re-bake + restart playback after a key change, debounced like the tempo restart.
+    // No-op when the native engine is the audible output (web muted) — there the native
+    // engine applies the pitch shift live and no web re-bake is needed.
+    _restartPlaybackForKey() {
+      if (!ctx || !this.isPlaying || this._outputMuted) return;
+      clearTimeout(this._keyRestartTimer);
+      this._stretchPreviewPreparing = true;
+      this._emit();
+      this._keyRestartTimer = setTimeout(async () => {
+        this._keyRestartTimer = null;
+        if (!ctx || !this.isPlaying) {
+          this._stretchPreviewPreparing = false;
+          this._stretchPreviewDoneSeq = (this._stretchPreviewDoneSeq || 0) + 1;
+          this._emit();
+          return;
+        }
+        const pos = this.getPlayhead();
+        this._offset = this.loopEnabled ? (pos % this.duration) : Math.min(pos, this.duration);
+        this._stopSources();
+        this.isPlaying = false;
+        await this.play({ skipFade: true });
+      }, 250);
     },
 
     setMaster(key, val) {
@@ -1496,6 +1578,10 @@
         await this._prepareRealtimeStretch(requestedRate);
         if (token !== this._playToken || this.isPlaying) return;
       }
+      if (this._fallbackKeyShiftSemis() !== 0) {
+        await this._prepareKeyShift(requestedRate);
+        if (token !== this._playToken || this.isPlaying) return;
+      }
       const now = ctx.currentTime + 0.02;
       this._startTime = now;
       this._sources = [];
@@ -1535,6 +1621,8 @@
       this._playToken++;
       clearTimeout(this._tempoRestartTimer);
       this._tempoRestartTimer = null;
+      clearTimeout(this._keyRestartTimer);
+      this._keyRestartTimer = null;
       this._stretchPreviewPreparing = false;
       this._offset = this.getPlayhead();
       this._stopSources();
@@ -1545,6 +1633,8 @@
       this._playToken++;
       clearTimeout(this._tempoRestartTimer);
       this._tempoRestartTimer = null;
+      clearTimeout(this._keyRestartTimer);
+      this._keyRestartTimer = null;
       this._stretchPreviewPreparing = false;
       this._offset = 0;
       if (ctx) this._stopSources();
@@ -1795,10 +1885,22 @@
       if (fo > 0) { fade.gain.setValueAtTime(1, renderDuration - fo); fade.gain.linearRampToValueAtTime(0, renderDuration); }
 
       const anySolo = this._anySolo();
+      // Pitch-shift (Vari Key) for the offline render. Baked into the source buffer so
+      // the exported file matches realtime playback. Tempo is still applied by graphRate
+      // (playbackRate) below; for the common Vari-Key-only case graphRate is 1 so the
+      // shift is exact.
+      const exportSemis = this._exportKeyShiftSemis();
       this.tracks.forEach((t) => {
         const p = t.params;
         const audible = p.mute ? 0 : (anySolo && !p.solo ? 0 : 1);
-        const src = off.createBufferSource(); src.buffer = t.buffer;
+        let srcBuffer = t.buffer;
+        if (exportSemis !== 0 && t.buffer) {
+          const kp = t._keyShiftPreview;
+          srcBuffer = (kp && kp.semis === exportSemis && kp.base === t.buffer && kp.buffer)
+            ? kp.buffer
+            : pitchShiftBuffer(off, t.buffer, exportSemis);
+        }
+        const src = off.createBufferSource(); src.buffer = srcBuffer;
         const rate = graphRate;
         try { src.playbackRate.setValueAtTime(rate, 0); } catch (e) {}
         const fd = off.createGain(); fd.gain.setValueAtTime(audible * p.volume, 0);
@@ -1945,6 +2047,52 @@
           }
         }
       }
+    }
+    return output;
+  }
+
+  // Pitch-shift an AudioBuffer by `semitones` while preserving its length/tempo, used
+  // by the WebAudio fallback (Phase 2) so the browser path can transpose like the
+  // native SoundTouch engine. The output buffer has the SAME length as the input, so
+  // multi-track sync, playhead, and offset math are unchanged.
+  //
+  // soundtouchjs' SimpleFilter stops processing the final <16384-frame input chunk, so
+  // we pad the source with trailing silence to flush the real tail through the pipe,
+  // then keep only the first `input.length` output frames (verified: leading latency ≈
+  // 0, full energy preserved to the end).
+  function pitchShiftBuffer(context, input, semitones) {
+    const sr = input.sampleRate || 44100;
+    const channels = input.numberOfChannels || 1;
+    const len = input.length || 0;
+    const output = context.createBuffer(channels, Math.max(1, len), sr);
+    const STJS = (typeof window !== "undefined") ? window.SoundTouchJS : null;
+    if (!len || !semitones || !STJS) {
+      for (let c = 0; c < channels; c++) {
+        output.getChannelData(c).set(input.getChannelData(c).subarray(0, len));
+      }
+      return output;
+    }
+    const { SoundTouch, SimpleFilter, WebAudioBufferSource } = STJS;
+    const PAD = 32768;
+    const padded = context.createBuffer(channels, len + PAD, sr);
+    for (let c = 0; c < channels; c++) padded.getChannelData(c).set(input.getChannelData(c));
+
+    const st = new SoundTouch();
+    st.tempo = 1;
+    st.rate = 1;
+    st.pitchSemitones = semitones;
+    const filter = new SimpleFilter(new WebAudioBufferSource(padded), st);
+    const BUF = 8192;
+    const tmp = new Float32Array(BUF * 2); // SoundTouch emits interleaved stereo
+    const outCh = [];
+    for (let c = 0; c < channels; c++) outCh.push(output.getChannelData(c));
+    let written = 0, got;
+    while ((got = filter.extract(tmp, BUF)) > 0) {
+      for (let i = 0; i < got && written < len; i++) {
+        for (let c = 0; c < channels; c++) outCh[c][written] = tmp[i * 2 + (c > 0 ? 1 : 0)];
+        written++;
+      }
+      if (written >= len) break;
     }
     return output;
   }
