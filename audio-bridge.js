@@ -87,9 +87,10 @@
     pause() {
       LocalDAW.pause();
       if (this.isNative) {
+        const pauseOffset = this.getPlayhead();
         sendToNative({ command: "pause" });
         nativeState.isPlaying = false;
-        nativeState.offset = this.getPlayhead();
+        nativeState.offset = pauseOffset;
       }
     },
 
@@ -171,6 +172,13 @@
         sendToNative({ command: "setVariKey", on: !!on });
       }
       return res;
+    },
+
+    setLoop(val) {
+      LocalDAW.setLoop(val);
+      if (this.isNative) {
+        sendToNative({ command: "setLoop", enabled: !!val });
+      }
     },
 
     setKey(key) {
@@ -299,6 +307,7 @@
       if (this.isNative) {
         // Send full sync project configuration to native C++ engine
         sendToNative({ command: "importProject", project: json });
+        sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
         // Since JUCE engine needs actual files, let's trigger loading for any files that have filePath
         LocalDAW.tracks.forEach(track => {
           if (track.filePath) {
@@ -383,6 +392,7 @@
 
       // Sync current ambience (room) so it's applied immediately on connect.
       sendRoomToNative();
+      sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
 
       LocalDAW._emit();
     };
@@ -468,6 +478,9 @@
     if (msg.event === "playbackPosition") {
       nativeState.offset = msg.positionSeconds;
       nativeState.startTime = Date.now();
+      if (typeof msg.isPlaying === "boolean") {
+        nativeState.isPlaying = msg.isPlaying;
+      }
       LocalDAW._emit();
     } else if (msg.event === "levels") {
       if (msg.tracks) nativeState.trackLevels = msg.tracks;

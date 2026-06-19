@@ -56,6 +56,15 @@ void AudioEngine::init(int sr)
 void AudioEngine::play()
 {
     std::lock_guard<std::mutex> lock(engineMutex);
+
+#if USE_JUCE
+    if (!loopEnabled && !juceTracks.empty() && juceTracks[0]->getLengthSeconds() > 0.0
+        && playheadSeconds >= juceTracks[0]->getLengthSeconds() - 0.001)
+    {
+        playheadSeconds = 0.0;
+    }
+#endif
+
     playing = true;
     std::cout << "[AudioEngine] Playback started" << std::endl;
 
@@ -129,6 +138,21 @@ void AudioEngine::seek(double positionSeconds)
         }
     }
 #endif
+}
+
+void AudioEngine::setLoop(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(engineMutex);
+    loopEnabled = enabled;
+
+#if USE_JUCE
+    for (auto& track : juceTracks)
+    {
+        track->setLooping(loopEnabled);
+    }
+#endif
+
+    std::cout << "[AudioEngine] Loop " << (loopEnabled ? "enabled" : "disabled") << std::endl;
 }
 
 void AudioEngine::loadTrack(const std::string& trackId, const std::string& filePath)
@@ -246,7 +270,7 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
         }
     }
 
-    trackSource->setLooping(true);
+    trackSource->setLooping(loopEnabled);
     trackSource->id = trackId;
 
     for (size_t i = 0; i < juceTracks.size(); ++i)
@@ -573,7 +597,22 @@ void AudioEngine::updatePlayhead()
 #if USE_JUCE
     if (playing && !juceTracks.empty() && juceTracks[0]->transportSource)
     {
-        playheadSeconds = juceTracks[0]->transportSource->getCurrentPosition();
+        playheadSeconds = juceTracks[0]->getCurrentPositionSeconds();
+
+        if (!loopEnabled && juceTracks[0]->hasFinished())
+        {
+            playing = false;
+            playheadSeconds = 0.0;
+            for (auto& track : juceTracks)
+            {
+                if (track->transportSource)
+                {
+                    track->transportSource->stop();
+                    track->transportSource->setPosition(0.0);
+                }
+            }
+            std::cout << "[AudioEngine] Playback completed" << std::endl;
+        }
     }
 #else
     if (playing)

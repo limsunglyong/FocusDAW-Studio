@@ -622,6 +622,18 @@ public:
         if (readerSource) readerSource->setLooping(shouldLoop);
     }
 
+    bool hasFinished() const {
+        return transportSource && transportSource->hasStreamFinished();
+    }
+
+    double getCurrentPositionSeconds() const {
+        return transportSource ? transportSource->getCurrentPosition() : 0.0;
+    }
+
+    double getLengthSeconds() const {
+        return transportSource ? transportSource->getLengthInSeconds() : 0.0;
+    }
+
     void setTempo(float tempo) {
 #if USE_JUCE
         if (soundTouchSource) soundTouchSource->setTempo(tempo);
@@ -1159,6 +1171,7 @@ public:
     void pause();
     void stop();
     void seek(double positionSeconds);
+    void setLoop(bool enabled);
     
     void loadTrack(const std::string& trackId, const std::string& filePath);
     void setTrackParam(const std::string& trackId, const std::string& key, float value);
@@ -1203,6 +1216,7 @@ public:
 private:
     mutable std::mutex engineMutex; // mutable so const getters (getPlayhead) can lock too
     bool playing = false;
+    bool loopEnabled = true;
     double playheadSeconds = 0.0;
     double sampleRate = 44100.0;
     

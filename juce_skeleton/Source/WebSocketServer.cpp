@@ -471,6 +471,11 @@ void WebSocketServer::clientLoop(void* socketHandle)
             double pos = getJsonDoubleVal(frameText, "positionSeconds");
             audioEngine.seek(pos);
         }
+        else if (cmd == "setLoop")
+        {
+            bool enabled = getJsonBoolVal(frameText, "enabled");
+            audioEngine.setLoop(enabled);
+        }
         else if (cmd == "loadTrack")
         {
             std::string trackId = getJsonStringVal(frameText, "trackId");
@@ -635,13 +640,10 @@ void WebSocketServer::timerLoop()
 
         const bool playing = audioEngine.isPlaying();
 
-        // Position only advances while playing (pause keeps the playhead where it is).
-        if (playing)
-        {
-            std::ostringstream posJson;
-            posJson << "{\"event\":\"playbackPosition\",\"positionSeconds\":" << audioEngine.getPlayhead() << "}";
-            broadcast(posJson.str());
-        }
+        std::ostringstream posJson;
+        posJson << "{\"event\":\"playbackPosition\",\"positionSeconds\":" << audioEngine.getPlayhead()
+                << ",\"isPlaying\":" << (playing ? "true" : "false") << "}";
+        broadcast(posJson.str());
 
         // Always broadcast level meters. When stopped/paused the magnitude getters
         // return 0, so the meters fall to silence instead of freezing at the last
