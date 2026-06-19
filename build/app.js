@@ -565,67 +565,107 @@ function renderKeyValue(text) {
     (ch, i) => ch === "#" || ch === "b" || ch === "\u266F" || ch === "\u266D" ? /* @__PURE__ */ React.createElement("span", { key: i, style: { fontFamily: "var(--key-accidental-font)", fontStyle: "italic", fontSize: "60%" } }, ch) : /* @__PURE__ */ React.createElement(React.Fragment, { key: i }, ch)
   );
 }
+function pitchClassOf(k) {
+  if (!k) return -1;
+  let name = k;
+  if (name.endsWith("m")) name = name.slice(0, -1);
+  switch (name) {
+    case "C":
+      return 0;
+    case "C#":
+    case "Db":
+      return 1;
+    case "D":
+      return 2;
+    case "D#":
+    case "Eb":
+      return 3;
+    case "E":
+      return 4;
+    case "F":
+      return 5;
+    case "F#":
+    case "Gb":
+      return 6;
+    case "G":
+      return 7;
+    case "G#":
+    case "Ab":
+      return 8;
+    case "A":
+      return 9;
+    case "A#":
+    case "Bb":
+      return 10;
+    case "B":
+      return 11;
+    default:
+      return -1;
+  }
+}
 function getSemitoneDifference(origKey, targetKey) {
-  const getPitchClass = (k) => {
-    if (!k) return -1;
-    let name = k;
-    if (name.endsWith("m")) name = name.slice(0, -1);
-    switch (name) {
-      case "C":
-        return 0;
-      case "C#":
-      case "Db":
-        return 1;
-      case "D":
-        return 2;
-      case "D#":
-      case "Eb":
-        return 3;
-      case "E":
-        return 4;
-      case "F":
-        return 5;
-      case "F#":
-      case "Gb":
-        return 6;
-      case "G":
-        return 7;
-      case "G#":
-      case "Ab":
-        return 8;
-      case "A":
-        return 9;
-      case "A#":
-      case "Bb":
-        return 10;
-      case "B":
-        return 11;
-      default:
-        return -1;
-    }
-  };
-  const orig = getPitchClass(origKey);
-  const target = getPitchClass(targetKey);
+  const orig = pitchClassOf(origKey);
+  const target = pitchClassOf(targetKey);
   if (orig === -1 || target === -1) return 0;
   let diff = target - orig;
   while (diff > 6) diff -= 12;
   while (diff < -6) diff += 12;
   return diff;
 }
-function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onSetKey }) {
+function shiftKey(key, semitones) {
+  const pc = pitchClassOf(key);
+  if (pc === -1) return key || null;
+  const isMinor = key.endsWith("m");
+  const arr = isMinor ? KEY_OPTIONS.minor : KEY_OPTIONS.major;
+  const idx = ((pc + semitones) % 12 + 12) % 12;
+  return arr[idx];
+}
+function KeyReadout({ keyValue, shift }) {
+  const isMinor = !!keyValue && keyValue.slice(-1) === "m";
+  const noteText = keyValue ? isMinor ? keyValue.slice(0, -1) : keyValue : "--";
+  const modeText = keyValue ? isMinor ? "Minor" : "Major" : null;
+  const shiftText = shift > 0 ? `+${shift}` : `${shift}`;
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 6.3, lineHeight: 1, fontWeight: 400, letterSpacing: ".12em", color: "var(--bpm-label-fg, var(--cream-2))" } }, "Key"), /* @__PURE__ */ React.createElement("span", { style: {
+    fontFamily: "var(--key-number-font)",
+    fontSize: 17,
+    lineHeight: 1,
+    fontWeight: 400,
+    color: "var(--bpm-fg, var(--cream))",
+    textShadow: "0 0 8px var(--amber-soft)",
+    position: "relative"
+  } }, renderKeyValue(noteText), shift !== 0 && (shift > 0 ? /* @__PURE__ */ React.createElement("sup", { style: { fontSize: "9px", color: "var(--amber)", position: "absolute", top: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" } }, shiftText) : /* @__PURE__ */ React.createElement("sub", { style: { fontSize: "9px", color: "var(--amber)", position: "absolute", bottom: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" } }, shiftText))), modeText && /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--ui)", fontStyle: "normal", fontSize: 7.56, lineHeight: 1, fontWeight: 400, letterSpacing: ".06em", color: "var(--bpm-label-fg, var(--cream-2))" } }, modeText));
+}
+function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onApplyKey }) {
   const key = tempo && tempo.key || null;
   const detectedKey = tempo && tempo.detectedKey || null;
-  const variKey = !!(tempo && tempo.variKey);
-  const displayKey = variKey ? key || detectedKey || null : detectedKey || key || null;
-  const isMinor = !!displayKey && displayKey.slice(-1) === "m";
-  const noteText = displayKey ? isMinor ? displayKey.slice(0, -1) : displayKey : "--";
-  const modeText = displayKey ? isMinor ? "Minor" : "Major" : null;
   const canDetect = hasAudio && !detecting;
-  let pitchShift = 0;
-  if (variKey && detectedKey && key) {
-    pitchShift = getSemitoneDifference(detectedKey, key);
-  }
-  const shiftText = pitchShift > 0 ? `+${pitchShift}` : `${pitchShift}`;
+  const pitchShift = detectedKey && key ? getSemitoneDifference(detectedKey, key) : 0;
+  const [draft, setDraft] = useState(0);
+  useEffect(() => {
+    if (open) setDraft(detectedKey && key ? getSemitoneDifference(detectedKey, key) : 0);
+  }, [open, detectedKey, key]);
+  const adjust = (d) => setDraft((v) => Math.max(-6, Math.min(6, v + d)));
+  const draftText = draft > 0 ? `+${draft}` : `${draft}`;
+  const applyDraft = () => {
+    if (detectedKey) onApplyKey(shiftKey(detectedKey, draft));
+  };
+  const stepBtnStyle = (enabled) => ({
+    width: 32,
+    height: 21,
+    padding: 0,
+    borderRadius: 6,
+    border: "1px solid var(--line-strong)",
+    background: "var(--bg)",
+    color: "var(--cream)",
+    fontSize: 15,
+    fontWeight: 700,
+    lineHeight: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: enabled ? "pointer" : "default",
+    opacity: enabled ? 1 : 0.4
+  });
   return /* @__PURE__ */ React.createElement(
     "div",
     {
@@ -658,17 +698,7 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
           gap: 3
         }
       },
-      /* @__PURE__ */ React.createElement("span", { style: { fontSize: 6.3, lineHeight: 1, fontWeight: 400, letterSpacing: ".12em", color: "var(--bpm-label-fg, var(--cream-2))" } }, "Key"),
-      /* @__PURE__ */ React.createElement("span", { style: {
-        fontFamily: "var(--key-number-font)",
-        fontSize: 17,
-        lineHeight: 1,
-        fontWeight: 400,
-        color: "var(--bpm-fg, var(--cream))",
-        textShadow: "0 0 8px var(--amber-soft)",
-        position: "relative"
-      } }, renderKeyValue(noteText), variKey && pitchShift !== 0 && (pitchShift > 0 ? /* @__PURE__ */ React.createElement("sup", { style: { fontSize: "9px", color: "var(--amber)", position: "absolute", top: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" } }, shiftText) : /* @__PURE__ */ React.createElement("sub", { style: { fontSize: "9px", color: "var(--amber)", position: "absolute", bottom: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" } }, shiftText))),
-      modeText && /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--ui)", fontStyle: "normal", fontSize: 7.56, lineHeight: 1, fontWeight: 400, letterSpacing: ".06em", color: "var(--bpm-label-fg, var(--cream-2))" } }, modeText)
+      /* @__PURE__ */ React.createElement(KeyReadout, { keyValue: key, shift: pitchShift })
     ),
     open && /* @__PURE__ */ React.createElement(
       "div",
@@ -702,12 +732,55 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
         },
         detecting ? /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--amber-soft)", borderTopColor: "var(--amber)", animation: "spin .7s linear infinite", display: "inline-block" } }), "Analyzing\u2026") : "Detect"
       ),
-      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" } }, /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" } }, "OR SET"), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } })),
+      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 9, margin: "11px 0 9px" } }, /* @__PURE__ */ React.createElement("div", { style: {
+        height: TOOLBAR_PANEL_H,
+        width: 54,
+        border: "1px solid var(--line-strong)",
+        borderRadius: 10,
+        background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,.045)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 3
+      } }, /* @__PURE__ */ React.createElement(KeyReadout, { keyValue: detectedKey, shift: 0 })), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--mono)", fontSize: 15, fontWeight: 700, color: "var(--amber)", minWidth: 24, textAlign: "center", lineHeight: 1 } }, draftText), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          title: "Up a semitone",
+          onClick: () => adjust(1),
+          disabled: !detectedKey || draft >= 6,
+          style: stepBtnStyle(!!detectedKey && draft < 6)
+        },
+        "+"
+      ), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          title: "Down a semitone",
+          onClick: () => adjust(-1),
+          disabled: !detectedKey || draft <= -6,
+          style: stepBtnStyle(!!detectedKey && draft > -6)
+        },
+        "\u2212"
+      ))),
+      /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn",
+          disabled: !detectedKey,
+          onClick: applyDraft,
+          style: { width: "100%", height: 30, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", opacity: detectedKey ? 1 : 0.45 }
+        },
+        "Apply"
+      ),
+      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" } }, /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" } }, "KEY SET"), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } })),
       /* @__PURE__ */ React.createElement(
         "select",
         {
-          value: key || "",
-          onChange: (e) => onSetKey(e.target.value || null),
+          value: detectedKey || "",
+          onChange: () => {
+          },
+          title: "\uC6D0\uACE1 Key (\uC120\uD0DD \uBD88\uAC00)",
           style: {
             width: "100%",
             height: 30,
@@ -1534,11 +1607,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
     console.log("[KeyDetection] UI detected key:", key);
     if (DAW.setDetectedKey) DAW.setDetectedKey(key);
-    if (DAW.setKey) DAW.setKey(key);
+    if (DAW.setKey) DAW.setKey(null);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   }, [detectingKey, touchKeyPanel, projectName, projectPath]);
-  const setKeyManual = useCallback((key) => {
+  const applyKey = useCallback((key) => {
     if (!DAW.setKey) return;
     touchKeyPanel();
     DAW.setKey(key || null);
@@ -2392,7 +2465,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onActivity: touchKeyPanel,
       onMouseInside: setKeyHover,
       onDetect: detectKey,
-      onSetKey: setKeyManual
+      onApplyKey: applyKey
     }
   ), /* @__PURE__ */ React.createElement(VariKeySwitch, { on: !!(DAW.tempo && DAW.tempo.variKey), onToggle: toggleVariKey }), /* @__PURE__ */ React.createElement(ToolbarDivider, null), /* @__PURE__ */ React.createElement(ActionBar, { onMixer: toggleMixer, mixerOpen: showMixer, onExport: () => setShowExport(true) }))), /* @__PURE__ */ React.createElement(
     "div",

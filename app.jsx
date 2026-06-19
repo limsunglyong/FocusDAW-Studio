@@ -539,59 +539,120 @@ function renderKeyValue(text) {
   );
 }
 
+function pitchClassOf(k) {
+  if (!k) return -1;
+  let name = k;
+  if (name.endsWith("m")) name = name.slice(0, -1);
+
+  switch (name) {
+    case "C": return 0;
+    case "C#": case "Db": return 1;
+    case "D": return 2;
+    case "D#": case "Eb": return 3;
+    case "E": return 4;
+    case "F": return 5;
+    case "F#": case "Gb": return 6;
+    case "G": return 7;
+    case "G#": case "Ab": return 8;
+    case "A": return 9;
+    case "A#": case "Bb": return 10;
+    case "B": return 11;
+    default: return -1;
+  }
+}
+
 function getSemitoneDifference(origKey, targetKey) {
-  const getPitchClass = (k) => {
-    if (!k) return -1;
-    let name = k;
-    if (name.endsWith("m")) name = name.slice(0, -1);
-    
-    switch (name) {
-      case "C": return 0;
-      case "C#": case "Db": return 1;
-      case "D": return 2;
-      case "D#": case "Eb": return 3;
-      case "E": return 4;
-      case "F": return 5;
-      case "F#": case "Gb": return 6;
-      case "G": return 7;
-      case "G#": case "Ab": return 8;
-      case "A": return 9;
-      case "A#": case "Bb": return 10;
-      case "B": return 11;
-      default: return -1;
-    }
-  };
-  
-  const orig = getPitchClass(origKey);
-  const target = getPitchClass(targetKey);
+  const orig = pitchClassOf(origKey);
+  const target = pitchClassOf(targetKey);
   if (orig === -1 || target === -1) return 0;
-  
+
   let diff = target - orig;
   while (diff > 6) diff -= 12;
   while (diff < -6) diff += 12;
   return diff;
 }
 
+// Transpose a key string by N semitones, preserving major/minor mode. The result
+// is the canonical KEY_OPTIONS spelling for that pitch class (e.g. shifting "C"
+// up 1 → "Db", "Am" up 1 → "C#m"). Returns null for a null key.
+function shiftKey(key, semitones) {
+  const pc = pitchClassOf(key);
+  if (pc === -1) return key || null;
+  const isMinor = key.endsWith("m");
+  const arr = isMinor ? KEY_OPTIONS.minor : KEY_OPTIONS.major;
+  const idx = ((pc + semitones) % 12 + 12) % 12;
+  return arr[idx];
+}
+
+// Shared readout markup for a key box (used by both the toolbar indicator and the
+// in-panel "original key" box). `shift` (semitones) renders the offset super/subscript;
+// pass 0 to hide it. The label / note / mode are laid out as a flex column by the parent.
+function KeyReadout({ keyValue, shift }) {
+  const isMinor = !!keyValue && keyValue.slice(-1) === "m";
+  const noteText = keyValue ? (isMinor ? keyValue.slice(0, -1) : keyValue) : "--";
+  const modeText = keyValue ? (isMinor ? "Minor" : "Major") : null;
+  const shiftText = shift > 0 ? `+${shift}` : `${shift}`;
+  return (
+    <React.Fragment>
+      <span style={{ fontSize: 6.3, lineHeight: 1, fontWeight: 400, letterSpacing: ".12em", color: "var(--bpm-label-fg, var(--cream-2))" }}>Key</span>
+      <span style={{
+        fontFamily: "var(--key-number-font)",
+        fontSize: 17,
+        lineHeight: 1,
+        fontWeight: 400,
+        color: "var(--bpm-fg, var(--cream))",
+        textShadow: "0 0 8px var(--amber-soft)",
+        position: "relative"
+      }}>
+        {renderKeyValue(noteText)}
+        {shift !== 0 && (
+          shift > 0 ? (
+            <sup style={{ fontSize: "9px", color: "var(--amber)", position: "absolute", top: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" }}>{shiftText}</sup>
+          ) : (
+            <sub style={{ fontSize: "9px", color: "var(--amber)", position: "absolute", bottom: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" }}>{shiftText}</sub>
+          )
+        )}
+      </span>
+      {modeText && <span style={{ fontFamily: "var(--ui)", fontStyle: "normal", fontSize: 7.56, lineHeight: 1, fontWeight: 400, letterSpacing: ".06em", color: "var(--bpm-label-fg, var(--cream-2))" }}>{modeText}</span>}
+    </React.Fragment>
+  );
+}
+
 // Read-out of the project's musical key. The narrow readout box (64px) drops a
 // wider setup panel (150px) straight down from its bottom edge — visually
 // connected (no gap), forming a stepped shape so the Detect button fits.
-function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onSetKey }) {
+//
+// Flow: `detectedKey` (the original/원Key) is set by Detect and shown only in the
+// in-panel "original" box. `key` (the applied key) is set only by Apply and is what
+// the toolbar indicator shows — it stays "--" until the user commits a key with Apply.
+// The +/- buttons adjust a local *draft* semitone offset (preview only, ±6, wrapping
+// within an octave); Apply commits `key = shiftKey(detectedKey, draft)`. The Vari Key
+// switch (separate) decides whether playback is transposed to `key` or left at原Key.
+function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onApplyKey }) {
   const key = (tempo && tempo.key) || null;
   const detectedKey = (tempo && tempo.detectedKey) || null;
-  const variKey = !!(tempo && tempo.variKey);
-  
-  // When Vari Key is off, display the original (detected) key. Otherwise, display the selected project key.
-  const displayKey = variKey ? (key || detectedKey || null) : (detectedKey || key || null);
-  const isMinor = !!displayKey && displayKey.slice(-1) === "m";
-  const noteText = displayKey ? (isMinor ? displayKey.slice(0, -1) : displayKey) : "--";
-  const modeText = displayKey ? (isMinor ? "Minor" : "Major") : null;
   const canDetect = hasAudio && !detecting;
 
-  let pitchShift = 0;
-  if (variKey && detectedKey && key) {
-    pitchShift = getSemitoneDifference(detectedKey, key);
-  }
-  const shiftText = pitchShift > 0 ? `+${pitchShift}` : `${pitchShift}`;
+  // Toolbar indicator shows the APPLIED key only; offset is relative to the original.
+  const pitchShift = (detectedKey && key) ? getSemitoneDifference(detectedKey, key) : 0;
+
+  // Draft offset for the +/- preview. Initialised from the current applied offset
+  // whenever the panel opens or the detected/applied key changes (Detect resets it
+  // to 0 since it clears `key`; Apply re-syncs it to the just-committed offset).
+  const [draft, setDraft] = useState(0);
+  useEffect(() => {
+    if (open) setDraft(detectedKey && key ? getSemitoneDifference(detectedKey, key) : 0);
+  }, [open, detectedKey, key]);
+  const adjust = (d) => setDraft((v) => Math.max(-6, Math.min(6, v + d)));
+  const draftText = draft > 0 ? `+${draft}` : `${draft}`;
+  const applyDraft = () => { if (detectedKey) onApplyKey(shiftKey(detectedKey, draft)); };
+
+  const stepBtnStyle = (enabled) => ({
+    width: 32, height: 21, padding: 0, borderRadius: 6, border: "1px solid var(--line-strong)",
+    background: "var(--bg)", color: "var(--cream)", fontSize: 15, fontWeight: 700, lineHeight: 1,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: enabled ? "pointer" : "default", opacity: enabled ? 1 : 0.4,
+  });
 
   return (
     <div className="key-indicator" onMouseEnter={() => onMouseInside(true)} onMouseLeave={() => onMouseInside(false)}
@@ -603,26 +664,7 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
           background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))",
           boxShadow: open ? "inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px rgba(232,176,75,.12)",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
-        <span style={{ fontSize: 6.3, lineHeight: 1, fontWeight: 400, letterSpacing: ".12em", color: "var(--bpm-label-fg, var(--cream-2))" }}>Key</span>
-        <span style={{ 
-          fontFamily: "var(--key-number-font)", 
-          fontSize: 17, 
-          lineHeight: 1, 
-          fontWeight: 400, 
-          color: "var(--bpm-fg, var(--cream))", 
-          textShadow: "0 0 8px var(--amber-soft)",
-          position: "relative"
-        }}>
-          {renderKeyValue(noteText)}
-          {variKey && pitchShift !== 0 && (
-            pitchShift > 0 ? (
-              <sup style={{ fontSize: "9px", color: "var(--amber)", position: "absolute", top: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" }}>{shiftText}</sup>
-            ) : (
-              <sub style={{ fontSize: "9px", color: "var(--amber)", position: "absolute", bottom: -2, left: "100%", marginLeft: 2, fontFamily: "var(--mono)", fontWeight: "bold" }}>{shiftText}</sub>
-            )
-          )}
-        </span>
-        {modeText && <span style={{ fontFamily: "var(--ui)", fontStyle: "normal", fontSize: 7.56, lineHeight: 1, fontWeight: 400, letterSpacing: ".06em", color: "var(--bpm-label-fg, var(--cream-2))" }}>{modeText}</span>}
+        <KeyReadout keyValue={key} shift={pitchShift} />
       </button>
       {open && (
         <div onMouseDown={onActivity} onKeyDown={onActivity} onWheel={onActivity}
@@ -643,12 +685,37 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
               </span>
             ) : "Detect"}
           </button>
+          {/* Original key (원Key) box | draft offset | semitone stepper — laid out as
+              three columns so the +/- buttons never overlap the offset number. The box
+              mirrors the toolbar readout but always shows the detected key with no
+              offset; the stepper tweaks the draft offset that Apply commits. */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 9, margin: "11px 0 9px" }}>
+            <div style={{ height: TOOLBAR_PANEL_H, width: 54, border: "1px solid var(--line-strong)", borderRadius: 10,
+              background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))", boxShadow: "inset 0 1px 0 rgba(255,255,255,.045)",
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
+              <KeyReadout keyValue={detectedKey} shift={0} />
+            </div>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 15, fontWeight: 700, color: "var(--amber)", minWidth: 24, textAlign: "center", lineHeight: 1 }}>{draftText}</span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+              <button title="Up a semitone" onClick={() => adjust(1)} disabled={!detectedKey || draft >= 6}
+                style={stepBtnStyle(!!detectedKey && draft < 6)}>+</button>
+              <button title="Down a semitone" onClick={() => adjust(-1)} disabled={!detectedKey || draft <= -6}
+                style={stepBtnStyle(!!detectedKey && draft > -6)}>−</button>
+            </div>
+          </div>
+          <button className="btn" disabled={!detectedKey} onClick={applyDraft}
+            style={{ width: "100%", height: 30, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", opacity: detectedKey ? 1 : 0.45 }}>
+            Apply
+          </button>
           <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" }}>
             <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>OR SET</span>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>KEY SET</span>
             <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
           </div>
-          <select value={key || ""} onChange={(e) => onSetKey(e.target.value || null)}
+          {/* Read-only key list: shows the original (detected) key highlighted; the
+              user cannot change the key here (selection reverts — Apply is the only
+              way to set the applied key). */}
+          <select value={detectedKey || ""} onChange={() => {}} title="원곡 Key (선택 불가)"
             style={{ width: "100%", height: 30, borderRadius: 7, border: "1px solid var(--line-strong)",
               background: "var(--bg)", color: "var(--cream)", padding: "0 6px", fontSize: 12, cursor: "pointer", fontFamily: "var(--ui)" }}>
             <option value="">—</option>
@@ -1408,13 +1475,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       return;
     }
     console.log("[KeyDetection] UI detected key:", key);
+    // Detect only sets the original/원Key (shown in the panel). The applied key
+    // (toolbar indicator) stays cleared until the user commits one with Apply.
     if (DAW.setDetectedKey) DAW.setDetectedKey(key);
-    if (DAW.setKey) DAW.setKey(key);
+    if (DAW.setKey) DAW.setKey(null);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   }, [detectingKey, touchKeyPanel, projectName, projectPath]);
 
-  const setKeyManual = useCallback((key) => {
+  // Commit a key from the Key panel's Apply button. This sets the applied key that
+  // the toolbar indicator displays (the original/원Key is left untouched).
+  const applyKey = useCallback((key) => {
     if (!DAW.setKey) return;
     touchKeyPanel();
     DAW.setKey(key || null);
@@ -2270,7 +2341,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             onActivity={touchKeyPanel}
             onMouseInside={setKeyHover}
             onDetect={detectKey}
-            onSetKey={setKeyManual}
+            onApplyKey={applyKey}
           />
           <VariKeySwitch on={!!(DAW.tempo && DAW.tempo.variKey)} onToggle={toggleVariKey} />
           <ToolbarDivider />
