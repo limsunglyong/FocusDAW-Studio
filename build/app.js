@@ -638,16 +638,17 @@ function KeyReadout({ keyValue, shift }) {
 function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onApplyKey }) {
   const key = tempo && tempo.key || null;
   const detectedKey = tempo && tempo.detectedKey || null;
+  const keyShift = tempo && Number.isFinite(tempo.keyShift) ? tempo.keyShift : 0;
   const canDetect = hasAudio && !detecting;
-  const pitchShift = detectedKey && key ? getSemitoneDifference(detectedKey, key) : 0;
+  const pitchShift = detectedKey && key ? keyShift : 0;
   const [draft, setDraft] = useState(0);
   useEffect(() => {
-    if (open) setDraft(detectedKey && key ? getSemitoneDifference(detectedKey, key) : 0);
-  }, [open, detectedKey, key]);
+    if (open) setDraft(detectedKey ? keyShift : 0);
+  }, [open, detectedKey, keyShift]);
   const adjust = (d) => setDraft((v) => Math.max(-6, Math.min(6, v + d)));
   const draftText = draft > 0 ? `+${draft}` : `${draft}`;
   const applyDraft = () => {
-    if (detectedKey) onApplyKey(shiftKey(detectedKey, draft));
+    if (detectedKey) onApplyKey(draft);
   };
   const stepBtnStyle = (enabled) => ({
     width: 32,
@@ -773,6 +774,7 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
         },
         "Apply"
       ),
+      detectedKey && draft !== 0 && !(window.DAW && window.DAW.isNative) && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, fontSize: 9.5, lineHeight: 1.35, color: "var(--amber)", textAlign: "center" } }, "Key \uBCC0\uC870\uB294 \uB124\uC774\uD2F0\uBE0C \uC624\uB514\uC624 \uC5D4\uC9C4(\uB370\uC2A4\uD06C\uD1B1 \uC571) \uC5F0\uACB0 \uC2DC \uC801\uC6A9\uB429\uB2C8\uB2E4."),
       /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" } }, /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" } }, "KEY SET"), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, height: 1, background: "var(--line-strong)" } })),
       /* @__PURE__ */ React.createElement(
         "select",
@@ -1611,10 +1613,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   }, [detectingKey, touchKeyPanel, projectName, projectPath]);
-  const applyKey = useCallback((key) => {
-    if (!DAW.setKey) return;
+  const applyKey = useCallback((semitones) => {
+    if (!DAW.setKeyShift) return;
     touchKeyPanel();
-    DAW.setKey(key || null);
+    DAW.setKeyShift(semitones | 0);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   }, [touchKeyPanel, projectName, projectPath]);

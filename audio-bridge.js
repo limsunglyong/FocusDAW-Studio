@@ -181,6 +181,17 @@
       }
     },
 
+    setKeyShift(semitones) {
+      const res = LocalDAW.setKeyShift(semitones);
+      if (this.isNative) {
+        // Send the integer semitone offset the engine resolved (already clamped).
+        sendToNative({ command: "setKeyShift", semitones: LocalDAW.tempo.keyShift });
+        // Keep the native key string in sync for display/back-compat.
+        sendToNative({ command: "setKey", key: LocalDAW.tempo.key });
+      }
+      return res;
+    },
+
     setKey(key) {
       const res = LocalDAW.setKey(key);
       if (this.isNative) {
@@ -331,6 +342,13 @@
           resolve,
           reject
         };
+        // Re-sync the current key state so the offline render matches realtime
+        // playback even if the user exported without ever starting playback.
+        const t = LocalDAW.tempo || {};
+        sendToNative({ command: "setVariKey", on: !!t.variKey });
+        sendToNative({ command: "setDetectedKey", key: t.detectedKey ?? null });
+        sendToNative({ command: "setKeyShift", semitones: t.keyShift | 0 });
+        sendToNative({ command: "setKey", key: t.key ?? null });
         sendToNative({
           command: "export",
           exportId,

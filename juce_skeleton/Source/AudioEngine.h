@@ -254,9 +254,13 @@ public:
         }
         else
         {
+            // Rate mode: tempo follows playback speed (pitch moves with it). The
+            // user's Vari Key offset is an independent musical transposition that
+            // must still be summed on top — previously this branch reset it to 0,
+            // silently dropping the key change during tempo+pitch-linked export.
             soundTouch.setTempo(1.0f);
             soundTouch.setRate(currentTempo);
-            soundTouch.setPitchSemiTones(0.0f);
+            soundTouch.setPitchSemiTones(currentPitch);
         }
 
         int numSamplesNeeded = bufferToFill.numSamples;
@@ -1185,7 +1189,8 @@ public:
     void setVariKey(bool on);
     void setKey(const std::string& key);
     void setDetectedKey(const std::string& key);
-    
+    void setKeyShift(int semitones);
+
     void setMaster(const std::string& key, float value);
     void setMasterBand(int index, float db);
     void setMasterBands(const std::vector<float>& bands);
@@ -1226,6 +1231,9 @@ private:
     bool variKey = false;
     std::string currentKey = "";
     std::string detectedKey = "";
+    // Authoritative semitone offset from JS (−6..+6). Preferred over re-deriving
+    // the shift from the currentKey/detectedKey strings.
+    int keyShift = 0;
     
     float masterVolume = 1.0f;
     std::vector<TrackInfo> tracks;

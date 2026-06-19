@@ -401,6 +401,12 @@ function ExportDialog({ projectName, onClose }) {
     try {
       setErrorMsg("");
       setExportNotice(null);
+      const activeKeyShift = DAW && DAW._keyShiftSemitones ? DAW._keyShiftSemitones() : 0;
+      if (activeKeyShift !== 0 && !(DAW && DAW.isNative)) {
+        setErrorMsg("Key \uBCC0\uC870(Vari Key) Export\uB294 \uB124\uC774\uD2F0\uBE0C \uC624\uB514\uC624 \uC5D4\uC9C4(JUCE) \uC5F0\uACB0 \uC0C1\uD0DC\uC5D0\uC11C\uB9CC \uC9C0\uC6D0\uB429\uB2C8\uB2E4. \uB370\uC2A4\uD06C\uD1B1 \uC571\uC5D0\uC11C \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uAC70\uB098 Vari Key\uB97C \uAEBC \uC8FC\uC138\uC694.");
+        setStage("error");
+        return;
+      }
       setStage("rendering");
       setProg(0);
       setLabel("Rendering mix\u2026");

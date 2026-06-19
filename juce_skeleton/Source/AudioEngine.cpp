@@ -507,6 +507,16 @@ void AudioEngine::setDetectedKey(const std::string& key)
     updateDspParams();
 }
 
+void AudioEngine::setKeyShift(int semitones)
+{
+    std::lock_guard<std::mutex> lock(engineMutex);
+    if (semitones < -6) semitones = -6;
+    if (semitones > 6) semitones = 6;
+    keyShift = semitones;
+    std::cout << "[AudioEngine] Key shift set to " << keyShift << " semitones" << std::endl;
+    updateDspParams();
+}
+
 void AudioEngine::setMaster(const std::string& key, float value)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
@@ -652,10 +662,16 @@ void AudioEngine::updateDspParams()
         if (targetTempo > 4.0f) targetTempo = 4.0f;
     }
 
+    // Pitch shift comes straight from the JS-supplied integer offset (clamped to
+    // −6..+6). Only applied when Vari Key is on. We no longer re-derive the shift
+    // from key strings, which avoids enharmonic/major-minor parsing ambiguity.
     float targetPitchShift = 0.0f;
-    if (variKey && !detectedKey.empty() && !currentKey.empty())
+    if (variKey)
     {
-        targetPitchShift = (float)getSemitoneDifference(detectedKey, currentKey);
+        int s = keyShift;
+        if (s < -6) s = -6;
+        if (s > 6) s = 6;
+        targetPitchShift = (float)s;
     }
 
 #if USE_JUCE
@@ -864,6 +880,17 @@ void AudioEngine::exportMix(const std::string& exportId,
         track->transportSource->setPosition(0.0);
         track->transportSource->start();
     }
+
+    // Push the latest tempo/pitch into each track's SoundTouch before rendering.
+    // Realtime playback normally does this via setters, but a fresh project that is
+    // exported without ever pressing Play would otherwise render at the wrong
+    // key/tempo (Bug②). Runs after the per-track setOfflineRendering above so the
+    // pitch shift is not overwritten.
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        updateDspParams();
+    }
+
     std::cout << "[AudioEngine] Offline track rendering enabled (via transportSource): tracks=" << activeTracks.size()
               << ", soundTouch=" << (preservePitch ? 1 : 0) << std::endl;
 

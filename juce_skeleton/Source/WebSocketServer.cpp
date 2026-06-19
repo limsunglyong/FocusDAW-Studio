@@ -535,6 +535,12 @@ void WebSocketServer::clientLoop(void* socketHandle)
             std::string key = getJsonStringVal(frameText, "key");
             audioEngine.setDetectedKey(key);
         }
+        else if (cmd == "setKeyShift")
+        {
+            double v = getJsonDoubleVal(frameText, "semitones");
+            int semitones = (int)(v < 0 ? v - 0.5 : v + 0.5);
+            audioEngine.setKeyShift(semitones);
+        }
         else if (cmd == "setMaster")
         {
             std::string key = getJsonStringVal(frameText, "key");

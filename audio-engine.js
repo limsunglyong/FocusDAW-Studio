@@ -312,7 +312,7 @@
     ROOM_PRESETS,
     tracks: [],
     loopEnabled: true,
-    tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null },
+    tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null },
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: null, reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0, room: 'none', roomParams: { ...ROOM_PRESETS.none } },
     isPlaying: false,
     _startTime: 0,
@@ -660,7 +660,7 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
-      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null };
+      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
       this._renderCacheKey = null;
       this._renderCacheBuffer = null;
       this._stretchPreviewPreparing = false;
@@ -703,7 +703,7 @@
       this.tracks.length = 0;
       this.duration = DURATION;
       this._spectrum = null;
-      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false, detectedKey: null };
+      this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
       this._renderCacheKey = null;
       this._renderCacheBuffer = null;
       this._stretchPreviewPreparing = false;
@@ -858,13 +858,57 @@
       return estimateKeyFromBuffers(buffers, labels);
     },
 
+    // Restore keyShift for save/undo compat: use the stored integer when present,
+    // otherwise derive it from detectedKey -> key, else 0.
+    _resolveKeyShift(rawTempo, detectedKey, key) {
+      if (rawTempo && rawTempo.keyShift != null) return this._normalizeKeyShift(rawTempo.keyShift);
+      if (detectedKey && key) return this._normalizeKeyShift(semitoneDiff(detectedKey, key));
+      return 0;
+    },
+
+    // Clamp a key-shift to an integer in -6..+6. Non-numeric → 0.
+    _normalizeKeyShift(value) {
+      const n = Math.round(Number(value));
+      if (!Number.isFinite(n)) return 0;
+      return Math.max(-6, Math.min(6, n));
+    },
+
+    // The semitone amount actually applied to audio: only when Vari Key is on and
+    // an original key was detected. Otherwise 0 (play/export at original pitch).
+    _keyShiftSemitones() {
+      if (!this.tempo.variKey || !this.tempo.detectedKey) return 0;
+      return this._normalizeKeyShift(this.tempo.keyShift);
+    },
+
+    // Primary entry point: store the semitone offset, recompute the applied key
+    // string from the detected key, and (if transposing during playback) restart
+    // with the same debounce as a tempo change.
+    setKeyShift(semitones) {
+      const next = this._normalizeKeyShift(semitones);
+      this.tempo.keyShift = next;
+      this.tempo.key = this.tempo.detectedKey ? shiftKeyString(this.tempo.detectedKey, next) : null;
+      this._restartPlaybackForTempo();
+      this._emit();
+      return this.tempo.keyShift;
+    },
+
+    // Kept for external/back-compat callers. Stores the applied key string but also
+    // derives keyShift from the detected key so the integer stays the source of truth.
     setKey(key) {
       this.tempo.key = key || null;
+      if (this.tempo.detectedKey && key) {
+        this.tempo.keyShift = this._normalizeKeyShift(semitoneDiff(this.tempo.detectedKey, key));
+      } else if (!key) {
+        this.tempo.keyShift = 0;
+      }
       this._emit();
       return this.tempo.key;
     },
     setDetectedKey(key) {
       this.tempo.detectedKey = key || null;
+      // A new original key invalidates the previous transposition (per spec: reset).
+      this.tempo.keyShift = 0;
+      this.tempo.key = null;
       this._emit();
       return this.tempo.detectedKey;
     },
@@ -1173,11 +1217,15 @@
       }
       if (snap.eqBands) this.setMasterBands(snap.eqBands);
       if (snap.tempo) {
+        const detectedKey = snap.tempo.detectedKey ?? null;
+        const key = snap.tempo.key ?? null;
         this.tempo = {
           projectBpm: this._normalizeBpm(snap.tempo.projectBpm),
           playbackBpm: this._normalizeBpm(snap.tempo.playbackBpm),
           variBpm: !!snap.tempo.variBpm,
-          key: snap.tempo.key ?? null,
+          detectedKey,
+          key,
+          keyShift: this._resolveKeyShift(snap.tempo, detectedKey, key),
           variKey: !!snap.tempo.variKey,
         };
       }
@@ -1203,13 +1251,17 @@
       this.tracks.length = 0;
       this._spectrum = null;
       this.duration = json.duration || DURATION;
+      const jt = json.tempo || {};
+      const jtDetectedKey = jt.detectedKey ?? null;
+      const jtKey = jt.key ?? null;
       this.tempo = {
-        projectBpm: this._normalizeBpm(json.tempo && json.tempo.projectBpm),
-        playbackBpm: this._normalizeBpm(json.tempo && json.tempo.playbackBpm),
-        variBpm: !!(json.tempo && json.tempo.variBpm),
-        key: (json.tempo && json.tempo.key) ?? null,
-        variKey: !!(json.tempo && json.tempo.variKey),
-        detectedKey: (json.tempo && json.tempo.detectedKey) ?? null,
+        projectBpm: this._normalizeBpm(jt.projectBpm),
+        playbackBpm: this._normalizeBpm(jt.playbackBpm),
+        variBpm: !!jt.variBpm,
+        detectedKey: jtDetectedKey,
+        key: jtKey,
+        keyShift: this._resolveKeyShift(jt, jtDetectedKey, jtKey),
+        variKey: !!jt.variKey,
       };
       if (json.master) {
         Object.assign(this.master, json.master);
@@ -2034,6 +2086,47 @@
     const chroma = new Float64Array(12);
     if (!accumulateChroma(buffer, chroma)) return null;
     return keyFromChroma(chroma);
+  }
+
+  // --- Key transposition helpers (mirror app.jsx so the engine can recompute the
+  // applied key from detectedKey + keyShift without depending on the UI layer). ---
+  const KEY_PC_MAJOR = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+  const KEY_PC_MINOR = ["Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm"];
+  function pitchClassOf(k) {
+    if (!k) return -1;
+    let name = k.endsWith("m") ? k.slice(0, -1) : k;
+    switch (name) {
+      case "C": return 0;
+      case "C#": case "Db": return 1;
+      case "D": return 2;
+      case "D#": case "Eb": return 3;
+      case "E": return 4;
+      case "F": return 5;
+      case "F#": case "Gb": return 6;
+      case "G": return 7;
+      case "G#": case "Ab": return 8;
+      case "A": return 9;
+      case "A#": case "Bb": return 10;
+      case "B": return 11;
+      default: return -1;
+    }
+  }
+  // Transpose a key string by N semitones, preserving major/minor mode.
+  function shiftKeyString(key, semitones) {
+    const pc = pitchClassOf(key);
+    if (pc === -1) return key || null;
+    const arr = key.endsWith("m") ? KEY_PC_MINOR : KEY_PC_MAJOR;
+    return arr[((pc + semitones) % 12 + 12) % 12];
+  }
+  // Smallest signed semitone distance (origKey -> targetKey), folded to -6..+6.
+  function semitoneDiff(origKey, targetKey) {
+    const o = pitchClassOf(origKey);
+    const t = pitchClassOf(targetKey);
+    if (o === -1 || t === -1) return 0;
+    let diff = t - o;
+    while (diff > 6) diff -= 12;
+    while (diff < -6) diff += 12;
+    return diff;
   }
 
   // 신뢰도 가중 결합: 각 트랙의 크로마를 따로 구해 "그 트랙이 어떤 키와 얼마나

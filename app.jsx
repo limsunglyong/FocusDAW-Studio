@@ -631,21 +631,24 @@ function KeyReadout({ keyValue, shift }) {
 function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, onMouseInside, onDetect, onApplyKey }) {
   const key = (tempo && tempo.key) || null;
   const detectedKey = (tempo && tempo.detectedKey) || null;
+  const keyShift = (tempo && Number.isFinite(tempo.keyShift)) ? tempo.keyShift : 0;
   const canDetect = hasAudio && !detecting;
 
-  // Toolbar indicator shows the APPLIED key only; offset is relative to the original.
-  const pitchShift = (detectedKey && key) ? getSemitoneDifference(detectedKey, key) : 0;
+  // Toolbar indicator shows the APPLIED key only; the offset is the committed
+  // keyShift (the integer is the source of truth — deriving it from the key string
+  // would lose the sign at ±6, since +6 and −6 land on the same pitch class).
+  const pitchShift = (detectedKey && key) ? keyShift : 0;
 
-  // Draft offset for the +/- preview. Initialised from the current applied offset
-  // whenever the panel opens or the detected/applied key changes (Detect resets it
-  // to 0 since it clears `key`; Apply re-syncs it to the just-committed offset).
+  // Draft offset for the +/- preview. Initialised from the committed keyShift
+  // whenever the panel opens or the detected key / shift changes (Detect resets it
+  // to 0 since it clears the shift; Apply re-syncs it to the just-committed offset).
   const [draft, setDraft] = useState(0);
   useEffect(() => {
-    if (open) setDraft(detectedKey && key ? getSemitoneDifference(detectedKey, key) : 0);
-  }, [open, detectedKey, key]);
+    if (open) setDraft(detectedKey ? keyShift : 0);
+  }, [open, detectedKey, keyShift]);
   const adjust = (d) => setDraft((v) => Math.max(-6, Math.min(6, v + d)));
   const draftText = draft > 0 ? `+${draft}` : `${draft}`;
-  const applyDraft = () => { if (detectedKey) onApplyKey(shiftKey(detectedKey, draft)); };
+  const applyDraft = () => { if (detectedKey) onApplyKey(draft); };
 
   const stepBtnStyle = (enabled) => ({
     width: 32, height: 21, padding: 0, borderRadius: 6, border: "1px solid var(--line-strong)",
@@ -707,6 +710,14 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
             style={{ width: "100%", height: 30, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", opacity: detectedKey ? 1 : 0.45 }}>
             Apply
           </button>
+          {/* Phase 1: pitch shift is rendered only by the native JUCE engine. When the
+              app is running on the Web Audio fallback, the applied key is shown but not
+              heard/exported — tell the user so it doesn't look broken. */}
+          {detectedKey && draft !== 0 && !(window.DAW && window.DAW.isNative) && (
+            <div style={{ marginTop: 8, fontSize: 9.5, lineHeight: 1.35, color: "var(--amber)", textAlign: "center" }}>
+              Key 변조는 네이티브 오디오 엔진(데스크톱 앱) 연결 시 적용됩니다.
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "9px 0 7px" }}>
             <span style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
             <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" }}>KEY SET</span>
@@ -1483,12 +1494,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     force((n) => n + 1);
   }, [detectingKey, touchKeyPanel, projectName, projectPath]);
 
-  // Commit a key from the Key panel's Apply button. This sets the applied key that
-  // the toolbar indicator displays (the original/원Key is left untouched).
-  const applyKey = useCallback((key) => {
-    if (!DAW.setKey) return;
+  // Commit a key from the Key panel's Apply button. Receives the draft semitone
+  // offset (−6..+6); setKeyShift stores it and recomputes the applied key that the
+  // toolbar indicator displays (the original/원Key is left untouched).
+  const applyKey = useCallback((semitones) => {
+    if (!DAW.setKeyShift) return;
     touchKeyPanel();
-    DAW.setKey(key || null);
+    DAW.setKeyShift(semitones | 0);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   }, [touchKeyPanel, projectName, projectPath]);

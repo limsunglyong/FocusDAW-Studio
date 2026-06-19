@@ -344,6 +344,17 @@ function ExportDialog({ projectName, onClose }) {
     try {
       setErrorMsg("");
       setExportNotice(null);
+
+      // Phase 1: Key transposition (Vari Key) is only supported by the native JUCE
+      // engine. Block the Web Audio fallback so it can never silently export at the
+      // original key. (No native pitch-shifter exists in the browser path yet.)
+      const activeKeyShift = (DAW && DAW._keyShiftSemitones) ? DAW._keyShiftSemitones() : 0;
+      if (activeKeyShift !== 0 && !(DAW && DAW.isNative)) {
+        setErrorMsg("Key 변조(Vari Key) Export는 네이티브 오디오 엔진(JUCE) 연결 상태에서만 지원됩니다. 데스크톱 앱에서 다시 시도하거나 Vari Key를 꺼 주세요.");
+        setStage("error");
+        return;
+      }
+
       setStage("rendering"); setProg(0); setLabel("Rendering mix…");
 
       let forceLocalRender = false;
