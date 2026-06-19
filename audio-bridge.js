@@ -319,6 +319,10 @@
         // Send full sync project configuration to native C++ engine
         sendToNative({ command: "importProject", project: json });
         sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+        // The native engine has no importProject handler, so explicitly push tempo +
+        // key (transpose) state — otherwise an imported project plays at the original
+        // key/tempo even though the UI shows the restored Key.
+        syncTempoKeyToNative();
         // Since JUCE engine needs actual files, let's trigger loading for any files that have filePath
         LocalDAW.tracks.forEach(track => {
           if (track.filePath) {
@@ -393,15 +397,8 @@
       // Send initial handshake/init command
       sendToNative({ command: "init", sampleRate: LocalDAW.ctx ? LocalDAW.ctx.sampleRate : 44100 });
       
-      // Sync current tempo & key settings
-      if (LocalDAW.tempo) {
-        if (LocalDAW.tempo.projectBpm) sendToNative({ command: "setProjectBpm", bpm: LocalDAW.tempo.projectBpm });
-        if (LocalDAW.tempo.playbackBpm) sendToNative({ command: "setPlaybackBpm", bpm: LocalDAW.tempo.playbackBpm });
-        sendToNative({ command: "setVariBpm", on: !!LocalDAW.tempo.variBpm });
-        sendToNative({ command: "setVariKey", on: !!LocalDAW.tempo.variKey });
-        if (LocalDAW.tempo.key) sendToNative({ command: "setKey", key: LocalDAW.tempo.key });
-        if (LocalDAW.tempo.detectedKey) sendToNative({ command: "setDetectedKey", key: LocalDAW.tempo.detectedKey });
-      }
+      // Sync current tempo & key settings (incl. keyShift — see syncTempoKeyToNative).
+      syncTempoKeyToNative();
 
       // Sync current track layout if already loaded
       if (LocalDAW.tracks.length > 0) {
@@ -487,6 +484,24 @@
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(obj));
     }
+  }
+
+  // Push the full tempo + key (transpose) state to the native engine. The native side
+  // has no "importProject" handler — its DSP state is driven entirely by these
+  // individual commands — so this must run on (re)connect and after every project
+  // import, or a restored project plays at the wrong key/tempo. Crucially keyShift
+  // must be sent: updateDspParams() derives the pitch shift from the integer keyShift,
+  // not from the key strings, so omitting it leaves the engine at the original pitch.
+  function syncTempoKeyToNative() {
+    const t = LocalDAW.tempo;
+    if (!t) return;
+    if (t.projectBpm) sendToNative({ command: "setProjectBpm", bpm: t.projectBpm });
+    if (t.playbackBpm) sendToNative({ command: "setPlaybackBpm", bpm: t.playbackBpm });
+    sendToNative({ command: "setVariBpm", on: !!t.variBpm });
+    sendToNative({ command: "setVariKey", on: !!t.variKey });
+    if (t.detectedKey) sendToNative({ command: "setDetectedKey", key: t.detectedKey });
+    sendToNative({ command: "setKeyShift", semitones: t.keyShift | 0 });
+    if (t.key) sendToNative({ command: "setKey", key: t.key });
   }
 
   // Handle incoming status messages from the JUCE C++ engine
