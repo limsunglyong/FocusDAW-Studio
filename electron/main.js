@@ -181,10 +181,16 @@ function startAudioEngine() {
   }
   
   console.log(`[FocusDAW] Spawning JUCE Audio Engine: ${binaryPath}`);
+  // Pass the bundled ffmpeg path so the native engine can decode compressed files
+  // (e.g. MP3) accurately. JUCE's own MP3 reader reports wrong lengths (over/under by
+  // tens of seconds), which streamed-seek drift and skewed automation timing; decoding
+  // to PCM via ffmpeg gives exact length + content. Env var avoids arg-quoting issues.
+  const ffmpegForEngine = resolveFfmpegPath();
   try {
     audioEngineProc = spawn(binaryPath, ['--port', '8082'], {
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: ffmpegForEngine ? { ...process.env, FOCUSDAW_FFMPEG: ffmpegForEngine } : process.env
     });
     
     audioEngineProc.stdout.on('data', (data) => {

@@ -161,21 +161,77 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
         return;
     }
 
-    auto* reader = formatManager.createReaderFor(file);
+    // For compressed formats (MP3/M4A/OGG/FLAC), JUCE's reader reports unreliable
+    // lengths (observed over/under by tens of seconds across stems of the SAME song),
+    // which skews automation timing and loop points. Decode to PCM via the bundled
+    // ffmpeg (path passed in FOCUSDAW_FFMPEG) into a temp WAV, then read that — exact
+    // length and content, matching the web engine. WAV/AIFF are read directly.
+    juce::File fileToRead = file;
+    juce::File tempWav;
+    const juce::String ext = file.getFileExtension().toLowerCase();
+    const bool isUncompressed = (ext == ".wav" || ext == ".aif" || ext == ".aiff");
+    const char* ffmpegEnv = std::getenv("FOCUSDAW_FFMPEG");
+    if (!isUncompressed && ffmpegEnv != nullptr && juce::File(juce::String(ffmpegEnv)).existsAsFile())
+    {
+        tempWav = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                      .getChildFile("focusdaw_dec_" + juce::String(juce::Time::getHighResolutionTicks()) + ".wav");
+        juce::StringArray cmd;
+        cmd.add(juce::String(ffmpegEnv));
+        cmd.add("-y");
+        cmd.add("-i");      cmd.add(file.getFullPathName());
+        cmd.add("-vn");                       // drop any cover-art video stream
+        cmd.add("-ac");     cmd.add("2");      // stereo for the mixer
+        cmd.add("-c:a");    cmd.add("pcm_s16le");
+        cmd.add(tempWav.getFullPathName());
+        juce::ChildProcess proc;
+        if (proc.start(cmd, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
+        {
+            proc.readAllProcessOutput();      // drain so the pipe doesn't stall
+            proc.waitForProcessToFinish(120000);
+        }
+        if (tempWav.existsAsFile() && tempWav.getSize() > 1024)
+        {
+            fileToRead = tempWav;
+        }
+        else
+        {
+            std::cerr << "[AudioEngine] ffmpeg decode failed; reading original directly: " << filePath << std::endl;
+            tempWav.deleteFile();
+            tempWav = juce::File();
+        }
+    }
+
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(fileToRead));
     if (reader == nullptr)
     {
         std::cerr << "[AudioEngine] Failed to create reader for file: " << filePath << std::endl;
+        if (tempWav != juce::File()) tempWav.deleteFile();
         return;
     }
 
-    auto readerSource = std::make_unique<juce::AudioFormatReaderSource>(reader, true);
+    // Decode the ENTIRE (now-PCM) file into memory and play it from a MemoryAudioSource.
+    // Streaming + re-seeking compressed files on every play/stop gave frame-imprecise
+    // seeks that drifted the audio (tracks desynced, song "slowed") while the transport's
+    // nominal read position still looked perfect. An in-memory PCM buffer seeks
+    // sample-exact, matching the web-audio engine (which also fully decodes up front).
+    const double fileSampleRate = reader->sampleRate > 0 ? reader->sampleRate : 44100.0;
+    const int numChannels = juce::jmax(1, (int)reader->numChannels);
+    const juce::int64 totalLen = reader->lengthInSamples;
+
+    juce::AudioBuffer<float> decoded(numChannels, (int)juce::jmax((juce::int64)1, totalLen));
+    reader->read(&decoded, 0, (int)totalLen, 0, true, true);
+    reader.reset();
+    if (tempWav != juce::File()) tempWav.deleteFile(); // PCM is now in `decoded`
+
     double deviceSampleRate = 44100.0;
     if (auto* currentDevice = deviceManager.getCurrentAudioDevice())
     {
         deviceSampleRate = currentDevice->getCurrentSampleRate();
     }
 
-    auto trackSource = std::make_unique<TrackAudioSource>(std::move(readerSource), deviceSampleRate);
+    // copyMemory=true → the source owns its own copy, so `decoded` can go out of scope.
+    auto memSource = std::make_unique<juce::MemoryAudioSource>(decoded, true, false);
+    auto trackSource = std::make_unique<TrackAudioSource>(std::move(memSource), fileSampleRate, deviceSampleRate);
 
     // Sync parameters
     for (const auto& t : tracks)
@@ -1061,6 +1117,9 @@ float AudioEngine::getTrackMagnitude(const std::string& trackId)
 {
 #if USE_JUCE
     std::lock_guard<std::mutex> lock(engineMutex);
+    // When stopped/paused no audio is produced, so the cached per-track magnitude is
+    // stale (frozen at the last played block). Report silence so meters fall to zero.
+    if (!playing) return 0.0f;
     for (auto& track : juceTracks)
     {
         if (track->id == trackId)
@@ -1076,6 +1135,7 @@ std::pair<float, float> AudioEngine::getMasterMagnitude()
 {
 #if USE_JUCE
     std::lock_guard<std::mutex> lock(engineMutex);
+    if (!playing) return { 0.0f, 0.0f }; // silence when stopped/paused (see getTrackMagnitude)
     if (masterEffectsSource)
     {
         return { masterEffectsSource->getMagnitudeL(), masterEffectsSource->getMagnitudeR() };

@@ -233,7 +233,19 @@ public:
         float currentTempo = targetTempo.load();
         float currentPitch = targetPitch.load();
         bool currentPreserve = preservePitch.load();
-        
+
+        // Bypass SoundTouch when no time-stretch/pitch-shift is active (tempo==1,
+        // pitch==0 — the normal case with Vari BPM/Key off). SoundTouch's frame
+        // pipeline only adds latency here, so pass the source straight through;
+        // sample-exact and matches the web-audio path.
+        if (currentTempo > 0.99999f && currentTempo < 1.00001f &&
+            currentPitch > -0.00001f && currentPitch < 0.00001f)
+        {
+            if (soundTouch.numSamples() > 0) soundTouch.clear(); // drop stale residual
+            source->getNextAudioBlock(bufferToFill);
+            return;
+        }
+
         if (currentPreserve)
         {
             soundTouch.setRate(1.0f);
@@ -253,7 +265,7 @@ public:
 
         int available = soundTouch.numSamples();
         int maxReadLoops = 32;
-        
+
         while (available < numSamplesNeeded && maxReadLoops > 0)
         {
             --maxReadLoops;
@@ -427,16 +439,20 @@ struct TrackAutomation
 class TrackAudioSource : public juce::PositionableAudioSource
 {
 public:
-    TrackAudioSource(std::unique_ptr<juce::AudioFormatReaderSource> reader, double deviceSampleRate)
+    // `source` is a fully-decoded, in-memory PCM source (MemoryAudioSource) so seeks
+    // are sample-exact. `sourceSampleRate` is the original file rate, used for the
+    // transport's rate correction (the reader no longer carries it).
+    TrackAudioSource(std::unique_ptr<juce::PositionableAudioSource> source, double sourceSampleRate, double deviceSampleRate)
     {
-        readerSource = std::move(reader);
+        readerSource = std::move(source);
+        fileSampleRate = sourceSampleRate;
 #if USE_JUCE
         soundTouchSource = std::make_unique<SoundTouchAudioSource>(readerSource.get(), false);
         transportSource = std::make_unique<juce::AudioTransportSource>();
-        transportSource->setSource(soundTouchSource.get(), 0, nullptr, readerSource->getAudioFormatReader()->sampleRate);
+        transportSource->setSource(soundTouchSource.get(), 0, nullptr, fileSampleRate);
 #else
         transportSource = std::make_unique<juce::AudioTransportSource>();
-        transportSource->setSource(readerSource.get(), 0, nullptr, readerSource->getAudioFormatReader()->sampleRate);
+        transportSource->setSource(readerSource.get(), 0, nullptr, fileSampleRate);
 #endif
         reverbSend.store(0.0f);
         echoSend.store(0.0f);
@@ -657,7 +673,8 @@ public:
     }
 
     std::string id;
-    std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
+    std::unique_ptr<juce::PositionableAudioSource> readerSource; // in-memory PCM (MemoryAudioSource)
+    double fileSampleRate = 44100.0; // original file rate, for transport rate correction
 #if USE_JUCE
     std::unique_ptr<SoundTouchAudioSource> soundTouchSource;
 #endif

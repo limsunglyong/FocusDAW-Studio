@@ -8,4 +8,4 @@
  * Keep both identical. All UI code reads window.APP_VERSION and
  * prepends "v" for display, so do NOT include the leading "v" here.
  * ============================================================ */
-window.APP_VERSION = "1.9.20";
+window.APP_VERSION = "1.9.21";

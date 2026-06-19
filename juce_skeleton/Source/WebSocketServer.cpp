@@ -632,19 +632,25 @@ void WebSocketServer::timerLoop()
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         
         audioEngine.updatePlayhead();
-        
-        if (audioEngine.isPlaying())
+
+        const bool playing = audioEngine.isPlaying();
+
+        // Position only advances while playing (pause keeps the playhead where it is).
+        if (playing)
         {
-            // Broadcast playback position
             std::ostringstream posJson;
             posJson << "{\"event\":\"playbackPosition\",\"positionSeconds\":" << audioEngine.getPlayhead() << "}";
             broadcast(posJson.str());
-            
-            // Broadcast actual level meters
+        }
+
+        // Always broadcast level meters. When stopped/paused the magnitude getters
+        // return 0, so the meters fall to silence instead of freezing at the last
+        // played level (which they did when we only broadcast while playing).
+        {
             std::ostringstream lvJson;
             auto masterMag = audioEngine.getMasterMagnitude();
             lvJson << "{\"event\":\"levels\",\"master\":{\"l\":" << masterMag.first << ",\"r\":" << masterMag.second << "}";
-            
+
             auto tracks = audioEngine.getTracks();
             if (!tracks.empty())
             {
