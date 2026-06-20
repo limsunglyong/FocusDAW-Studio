@@ -482,6 +482,11 @@ void WebSocketServer::clientLoop(void* socketHandle)
             std::string filePath = getJsonStringVal(frameText, "filePath");
             audioEngine.loadTrack(trackId, filePath);
         }
+        else if (cmd == "removeTrack")
+        {
+            std::string trackId = getJsonStringVal(frameText, "trackId");
+            audioEngine.removeTrack(trackId);
+        }
         else if (cmd == "setTrackParam")
         {
             std::string trackId = getJsonStringVal(frameText, "trackId");

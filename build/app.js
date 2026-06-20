@@ -2321,10 +2321,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [pushUndo, projectName, projectPath]);
   const removeTrack = (id) => {
     pushUndo();
-    const i = DAW.tracks.findIndex((t) => t.id === id);
-    if (i >= 0) DAW.tracks.splice(i, 1);
-    DAW._spectrum = null;
-    if (DAW.tracks.length === 0) DAW.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false };
+    DAW.removeTrack(id);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };

@@ -407,6 +407,33 @@ void AudioEngine::setTrackAutomation(const std::string& trackId, bool autoOn, bo
 #endif
 }
 
+void AudioEngine::removeTrack(const std::string& trackId)
+{
+    std::lock_guard<std::mutex> lock(engineMutex);
+
+    for (auto it = tracks.begin(); it != tracks.end(); ++it)
+    {
+        if (it->id == trackId) { tracks.erase(it); break; }
+    }
+
+#if USE_JUCE
+    for (size_t i = 0; i < juceTracks.size(); ++i)
+    {
+        if (juceTracks[i]->id == trackId)
+        {
+            // Pull it out of the mixer before destroying the source so the audio
+            // thread never reads a freed TrackAudioSource.
+            mixerSource.removeInputSource(juceTracks[i].get());
+            juceTracks.erase(juceTracks.begin() + i);
+            break;
+        }
+    }
+    updateSoloStates();
+#endif
+
+    LOG_DBG << "[AudioEngine] Track " << trackId << " removed from JUCE engine." << std::endl;
+}
+
 void AudioEngine::clearTracks()
 {
     std::lock_guard<std::mutex> lock(engineMutex);

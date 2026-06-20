@@ -550,6 +550,35 @@
       return track;
     },
 
+    // Remove a single track from the live graph. Splicing the tracks array (as the
+    // UI used to do) left the running BufferSource connected through the track's
+    // fader → masterBus, so a deleted track kept sounding during playback. Here we
+    // stop that source and disconnect the track's persistent nodes so it goes
+    // silent immediately, whether or not transport is playing.
+    removeTrack(id) {
+      const i = this.tracks.findIndex((t) => t.id === id);
+      if (i < 0) return;
+      const t = this.tracks[i];
+      if (t._liveSource) {
+        try { t._liveSource.stop(); } catch (e) {}
+        try { t._liveSource.disconnect(); } catch (e) {}
+        const si = this._sources.indexOf(t._liveSource);
+        if (si >= 0) this._sources.splice(si, 1);
+        t._liveSource = null;
+      }
+      if (t.nodes) {
+        Object.values(t.nodes).forEach((n) => { try { n.disconnect(); } catch (e) {} });
+      }
+      this.tracks.splice(i, 1);
+      this._spectrum = null;
+      // When the project becomes empty, reset the tempo so Project/Playback BPM
+      // return to the uninitialized "---" state (matches a fresh project).
+      if (this.tracks.length === 0) {
+        this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
+      }
+      this._applyMix();
+    },
+
     _decodedCacheKeyForFile(file) {
       if (!file) return null;
       const size = Number.isFinite(file.size) ? file.size : "unknown";
@@ -1615,6 +1644,7 @@
         src.loop = false;
         src.connect(t.nodes.fader);
         src.start(now, this._sourceOffsetForTrack(t, sourceBuffer, rate));
+        t._liveSource = src; // so removeTrack() can stop just this track mid-playback
         this._sources.push(src);
       });
       this.isPlaying = true;
@@ -1660,6 +1690,7 @@
       clearTimeout(this._autoSchedTimer); this._autoSchedTimer = null;
       this._sources.forEach((s) => { try { s.stop(); } catch (e) {} });
       this._sources = [];
+      this.tracks.forEach((t) => { t._liveSource = null; });
     },
 
     seek(t) {

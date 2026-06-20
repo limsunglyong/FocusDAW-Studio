@@ -291,6 +291,16 @@
       }
     },
 
+    // Track removal: drop it locally (stops the web source + disconnects nodes) and
+    // tell the native engine to drop it too, so neither engine keeps playing a track
+    // the user deleted from the header.
+    removeTrack(id) {
+      LocalDAW.removeTrack(id);
+      if (this.isNative) {
+        sendToNative({ command: "removeTrack", trackId: id });
+      }
+    },
+
     clearTracks() {
       LocalDAW.clearTracks();
       if (this.isNative) {

@@ -2242,12 +2242,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [pushUndo, projectName, projectPath]);
   const removeTrack = (id) => {
     pushUndo();
-    const i = DAW.tracks.findIndex((t) => t.id === id);
-    if (i >= 0) DAW.tracks.splice(i, 1);
-    DAW._spectrum = null;
-    // When the project becomes empty, reset the tempo so Project/Playback BPM
-    // return to the uninitialized "---" state (matches a fresh project).
-    if (DAW.tracks.length === 0) DAW.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, variKey: false };
+    // Delegate to the engine so the track's live audio source is stopped and its
+    // nodes disconnected (and the native engine is told to drop it). Splicing the
+    // array alone left the deleted track audible during playback.
+    DAW.removeTrack(id);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };

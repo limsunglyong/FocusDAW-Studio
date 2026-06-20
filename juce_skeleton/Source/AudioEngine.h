@@ -1252,6 +1252,7 @@ public:
     void setLoop(bool enabled);
     
     void loadTrack(const std::string& trackId, const std::string& filePath);
+    void removeTrack(const std::string& trackId);
     void setTrackParam(const std::string& trackId, const std::string& key, float value);
     void setTrackAutomation(const std::string& trackId, bool autoOn, bool curved, const std::vector<float>& flatPoints);
     void clearTracks();
