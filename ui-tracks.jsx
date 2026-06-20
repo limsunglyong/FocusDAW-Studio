@@ -575,7 +575,11 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
   const phx = (playhead / DAW.duration) * laneW;
   const seek = (e) => { const r = e.currentTarget.getBoundingClientRect(); onSeek(((e.clientX - r.left) / laneW) * DAW.duration); };
   return (
-    <div style={{ display: "flex", position: "sticky", top: 0, zIndex: 8 }}>
+    // minWidth:min-content — without it this sticky flex shrinks to the viewport width (unlike
+    // TrackRow/OutputTrack which set it), so the time-row flex item shrinks below laneW and its
+    // background (var(--bg2)) cuts off mid-timeline while the absolutely-positioned ticks still
+    // span the full width. Growing to content width keeps the ruler background full-length.
+    <div style={{ display: "flex", minWidth: "min-content", position: "sticky", top: 0, zIndex: 8 }}>
       <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 9,
         background: "var(--bg2)", borderRight: "1px solid var(--line-strong)", borderBottom: "1px solid var(--line-strong)",
         height: 30, display: "flex", alignItems: "center", gap: 7, padding: "0 12px" }}>

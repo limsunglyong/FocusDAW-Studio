@@ -674,48 +674,54 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
     const r = e.currentTarget.getBoundingClientRect();
     onSeek((e.clientX - r.left) / laneW * DAW.duration);
   };
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", position: "sticky", top: 0, zIndex: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
-    width: HEADER_W,
-    flex: `0 0 ${HEADER_W}px`,
-    position: "sticky",
-    left: 0,
-    zIndex: 9,
-    background: "var(--bg2)",
-    borderRight: "1px solid var(--line-strong)",
-    borderBottom: "1px solid var(--line-strong)",
-    height: 30,
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    padding: "0 12px"
-  } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" } }, "Track"), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: onAddTrack,
-      title: "Add track",
-      style: {
-        width: 18,
-        height: 18,
-        display: "grid",
-        placeItems: "center",
-        borderRadius: 5,
-        flex: "0 0 auto",
-        background: "var(--surface2)",
-        color: "var(--cream-2)",
-        border: "1px solid var(--line-strong)",
-        cursor: "pointer",
-        padding: 0
-      }
-    },
-    /* @__PURE__ */ React.createElement(Icon, { name: "plus", size: 12 })
-  ), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" } }, "Time"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9.5, color: "var(--faint)" } }, "m:ss"))), /* @__PURE__ */ React.createElement("div", { onMouseDown: seek, style: {
-    position: "relative",
-    width: laneW,
-    height: 30,
-    background: "var(--bg2)",
-    borderBottom: "1px solid var(--line-strong)",
-    cursor: "text"
-  } }, marks, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)" } })));
+  return (
+    // minWidth:min-content — without it this sticky flex shrinks to the viewport width (unlike
+    // TrackRow/OutputTrack which set it), so the time-row flex item shrinks below laneW and its
+    // background (var(--bg2)) cuts off mid-timeline while the absolutely-positioned ticks still
+    // span the full width. Growing to content width keeps the ruler background full-length.
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content", position: "sticky", top: 0, zIndex: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      width: HEADER_W,
+      flex: `0 0 ${HEADER_W}px`,
+      position: "sticky",
+      left: 0,
+      zIndex: 9,
+      background: "var(--bg2)",
+      borderRight: "1px solid var(--line-strong)",
+      borderBottom: "1px solid var(--line-strong)",
+      height: 30,
+      display: "flex",
+      alignItems: "center",
+      gap: 7,
+      padding: "0 12px"
+    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" } }, "Track"), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: onAddTrack,
+        title: "Add track",
+        style: {
+          width: 18,
+          height: 18,
+          display: "grid",
+          placeItems: "center",
+          borderRadius: 5,
+          flex: "0 0 auto",
+          background: "var(--surface2)",
+          color: "var(--cream-2)",
+          border: "1px solid var(--line-strong)",
+          cursor: "pointer",
+          padding: 0
+        }
+      },
+      /* @__PURE__ */ React.createElement(Icon, { name: "plus", size: 12 })
+    ), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" } }, "Time"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9.5, color: "var(--faint)" } }, "m:ss"))), /* @__PURE__ */ React.createElement("div", { onMouseDown: seek, style: {
+      position: "relative",
+      width: laneW,
+      height: 30,
+      background: "var(--bg2)",
+      borderBottom: "1px solid var(--line-strong)",
+      cursor: "text"
+    } }, marks, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)" } })))
+  );
 }
 Object.assign(window, { Waveform, AutomationOverlay, TrackHeader, TrackRow, Ruler, TimeGrid, HEADER_W });
 
