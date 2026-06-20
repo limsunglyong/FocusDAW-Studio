@@ -38,7 +38,7 @@ public:
             }
         }
 
-        std::cout << "[FocusDAW AudioEngine] Initializing JUCE daemon on port " << port << "..." << std::endl;
+        LOG_DBG << "[FocusDAW AudioEngine] Initializing JUCE daemon on port " << port << "..." << std::endl;
 
         audioEngine = std::make_unique<AudioEngine>();
         audioEngine->init(44100);
@@ -51,7 +51,7 @@ public:
         webSocketServer->stop();
         webSocketServer.reset();
         audioEngine.reset();
-        std::cout << "[FocusDAW AudioEngine] Shutdown complete." << std::endl;
+        LOG_DBG << "[FocusDAW AudioEngine] Shutdown complete." << std::endl;
     }
 
     void anotherInstanceStarted(const juce::String&) override {}
@@ -86,14 +86,14 @@ int main(int argc, char* argv[])
         }
     }
 
-    std::cout << "[FocusDAW AudioEngine] Running standalone mock daemon on port " << port << "..." << std::endl;
+    LOG_DBG << "[FocusDAW AudioEngine] Running standalone mock daemon on port " << port << "..." << std::endl;
 
     auto audioEngine = std::make_unique<AudioEngine>();
     audioEngine->init(44100);
     auto webSocketServer = std::make_unique<WebSocketServer>(port, *audioEngine);
     webSocketServer->start();
 
-    std::cout << "Daemon running. Press Ctrl+C in standalone console or let Electron terminate the process..." << std::endl;
+    LOG_DBG << "Daemon running. Press Ctrl+C in standalone console or let Electron terminate the process..." << std::endl;
     
     // Keep process alive. Electron main process will terminate this daemon via process kill.
     while (true)

@@ -43,25 +43,29 @@ function HelpDialog({ onClose, standalone = false }) {
     { id: "start", label: "2. 시작과 프로젝트" },
     { id: "import", label: "3. 오디오 가져오기" },
     { id: "arrange", label: "4. 타임라인과 트랙" },
-    { id: "automation", label: "5. 볼륨 오토메이션" },
-    { id: "mixer", label: "6. 믹서와 마스터" },
-    { id: "advfx", label: "7. 고급 이펙트" },
-    { id: "export", label: "8. 믹스다운 내보내기" },
-    { id: "settings", label: "9. 설정과 테마" },
-    { id: "shortcuts", label: "10. 단축키" },
-    { id: "tips", label: "11. 문제 해결" },
+    { id: "bpm", label: "5. BPM 표시 및 설정" },
+    { id: "key", label: "6. Key 표시 및 설정" },
+    { id: "automation", label: "7. 볼륨 오토메이션" },
+    { id: "mixer", label: "8. 믹서와 마스터" },
+    { id: "advfx", label: "9. 고급 이펙트" },
+    { id: "export", label: "10. 믹스다운 내보내기" },
+    { id: "settings", label: "11. 설정과 테마" },
+    { id: "shortcuts", label: "12. 단축키" },
+    { id: "tips", label: "13. 문제 해결" },
   ] : [
     { id: "overview", label: "1. App Overview" },
     { id: "start", label: "2. Start & Projects" },
     { id: "import", label: "3. Importing Audio" },
     { id: "arrange", label: "4. Timeline & Tracks" },
-    { id: "automation", label: "5. Volume Automation" },
-    { id: "mixer", label: "6. Mixer & Master" },
-    { id: "advfx", label: "7. Advanced Effects" },
-    { id: "export", label: "8. Exporting Mixdown" },
-    { id: "settings", label: "9. Settings & Themes" },
-    { id: "shortcuts", label: "10. Shortcuts" },
-    { id: "tips", label: "11. Troubleshooting" },
+    { id: "bpm", label: "5. BPM Display & Settings" },
+    { id: "key", label: "6. Key Display & Settings" },
+    { id: "automation", label: "7. Volume Automation" },
+    { id: "mixer", label: "8. Mixer & Master" },
+    { id: "advfx", label: "9. Advanced Effects" },
+    { id: "export", label: "10. Exporting Mixdown" },
+    { id: "settings", label: "11. Settings & Themes" },
+    { id: "shortcuts", label: "12. Shortcuts" },
+    { id: "tips", label: "13. Troubleshooting" },
   ];
 
   const scrollTo = (id) => {
@@ -675,51 +679,6 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">상단 미니맵으로 1분대 구간으로 이동한 화면입니다. 긴 오디오 프로젝트에서 스크롤보다 빠르게 위치를 잡을 수 있습니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">BPM 측정과 전체 템포 조정</h3>
-                  <p className="manual-p">FocusDAW Studio는 트랙 오디오에서 곡의 BPM(분당 박자 수)을 자동으로 측정하고, 그 값을 기준으로 <strong>전체 음악</strong>의 재생 템포를 조정할 수 있습니다. 새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시되며, 모든 트랙을 지우거나 새 프로젝트를 시작하면 다시 <strong>---</strong>로 초기화됩니다.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM 표시기" className="manual-img" />
-                    <div className="manual-figcaption"><strong>100 BPM | 100</strong>처럼 두 숫자가 보이며, 앞은 프로젝트 BPM(기준 템포), 뒤는 재생 BPM(실제 재생 속도)입니다.</div>
-                  </div>
-                  <p className="manual-p">BPM 표시기 오른쪽의 <strong>Vari BPM</strong> 스위치를 <strong>켜야</strong> 재생 BPM으로 곡 속도를 조정합니다(끄면 속도 불변, 기본 OFF). 켠 상태에서 BPM 표시기 위에 마우스 휠을 돌리거나 ▲▼ 버튼을 누르면 <strong>뒤쪽 재생 BPM</strong>이 1씩 바뀌고, 곡 전체가 그 비율(재생 BPM ÷ 프로젝트 BPM)만큼 빨라지거나 느려집니다.</p>
-
-                  <h3 className="manual-h3">① BPM 측정 대상 트랙 선택 (B 버튼)</h3>
-                  <p className="manual-p">트랙 헤더의 <strong>B</strong> 버튼을 누르면 그 트랙이 BPM 측정 소스로 선택되어 배경이 채워지며, B는 한 번에 한 트랙에만 켜집니다. 드럼처럼 박자가 뚜렷한 트랙을 고르면 측정이 더 정확합니다.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/20-bpm-source-track.png" alt="특정 트랙을 BPM 측정 트랙으로 설정" className="manual-img" />
-                    <div className="manual-figcaption"><strong>B</strong> 버튼이 채워진 트랙이 BPM 측정 소스입니다.</div>
-                  </div>
-
-                  <h3 className="manual-h3">② BPM 설정 패널 열기</h3>
-                  <p className="manual-p">BPM 표시기를 클릭하면 설정 패널이 아래로 펼쳐집니다. 다시 누르거나 마우스가 패널 밖으로 나간 채 5초가 지나면 접힙니다.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM 설정 패널" className="manual-img" />
-                    <div className="manual-figcaption">위쪽 <strong>BPM SOURCE</strong>에 선택된 트랙 이름과 <strong>Track</strong> 번호가 두 열로 표시되고, 그 아래 Detect · 입력칸 · APPLY · TAP 버튼이 있습니다.</div>
-                  </div>
-                  <table className="manual-table">
-                    <tbody>
-                      <tr><th className="manual-th">Detect</th><td className="manual-td">B로 선택한 트랙의 오디오를 분석해 BPM을 자동 추정합니다. 추정값이 입력칸에 채워집니다.</td></tr>
-                      <tr><th className="manual-th">직접 입력</th><td className="manual-td">입력칸에 BPM 숫자를 직접 적을 수 있습니다.</td></tr>
-                      <tr><th className="manual-th">TAP</th><td className="manual-td">음악을 들으며 박자에 맞춰 반복해 누르면 BPM을 수동 측정합니다. 누를수록 정확해지고, 버튼에 실시간 BPM과 탭 횟수(TAP · n)가 표시됩니다.</td></tr>
-                      <tr><th className="manual-th">APPLY</th><td className="manual-td">측정/입력한 값을 프로젝트 BPM과 재생 BPM에 모두 적용합니다.</td></tr>
-                    </tbody>
-                  </table>
-
-                  <h3 className="manual-h3">③ Detect 분석 중 표시</h3>
-                  <p className="manual-p"><strong>Detect</strong>를 누르면 분석 중에는 버튼이 회전 아이콘과 <strong>Analyzing…</strong>으로 바뀌고, 끝나면 추정 BPM이 입력칸에 강조 효과와 함께 표시됩니다.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM 분석 중 화면" className="manual-img" />
-                    <div className="manual-figcaption">Detect 실행 중에는 버튼이 <strong>Analyzing…</strong> 상태로 표시됩니다.</div>
-                  </div>
-
-                  <h3 className="manual-h3">④ 전체 음악 템포 바꿔 재생하기</h3>
-                  <p className="manual-p"><strong>Vari BPM</strong> 스위치를 켠 뒤 재생 BPM(뒤 숫자)을 바꾸면 모든 트랙이 같은 비율로 빨라지거나 느려진 상태로 재생됩니다. 예를 들어 프로젝트 BPM이 100일 때 재생 BPM을 120으로 올리면 곡 전체가 1.2배 빠르게 재생됩니다.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
-                    <div className="manual-figcaption">재생 BPM을 <strong>100 → 120</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>100 BPM | 120</strong>으로 바뀝니다.</div>
-                  </div>
-                  <div className="manual-warning">실시간 재생의 템포 변경은 Vari BPM이 켜져 있을 때 캐시형 Time Stretch 프리뷰를 준비해 피치 보존을 우선 적용합니다. Export 창의 Keep pitch 옵션은 Electron 데스크톱 Export에서 검증된 단기 안정 Time Stretch 경로를 사용해 파일 출력에 피치 보존을 적용합니다.</div>
-
                   <h3 className="manual-h3">트랙 헤더 컨트롤</h3>
                   <table className="manual-table">
                     <tbody>
@@ -782,51 +741,6 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">Using the minimap to navigate to the 1-minute mark. Much faster than manual horizontal scrolling.</div>
                   </div>
 
-                  <h3 className="manual-h3">BPM Detection and Whole-Song Tempo</h3>
-                  <p className="manual-p">FocusDAW Studio detects a song's BPM (beats per minute) from a track's audio and lets you adjust the playback tempo of the <strong>whole song</strong> based on it. A new project starts with BPM shown as <strong>---</strong>, and it returns to <strong>---</strong> whenever you clear all tracks or start a new project.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM indicator" className="manual-img" />
-                    <div className="manual-figcaption">The indicator shows two numbers such as <strong>100 BPM | 100</strong>: the front is the project BPM (reference tempo), the back is the playback BPM (actual speed).</div>
-                  </div>
-                  <p className="manual-p">The <strong>Vari BPM</strong> switch to the right of the indicator must be <strong>on</strong> for the playback BPM to change the song speed (off = no speed change; default off). With it on, hover the BPM indicator and scroll the mouse wheel, or use the ▲▼ buttons, to change the <strong>playback BPM</strong> by 1 — the whole song speeds up or slows down by that ratio (playback BPM ÷ project BPM).</p>
-
-                  <h3 className="manual-h3">1. Choose the detection source track (B button)</h3>
-                  <p className="manual-p">Press the <strong>B</strong> button on a track header to mark it as the BPM detection source (its background fills in). Only one track can be the B source at a time. Picking a track with a clear beat (e.g. drums) gives more accurate detection.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/20-bpm-source-track.png" alt="Track set as BPM detection source" className="manual-img" />
-                    <div className="manual-figcaption">The track whose <strong>B</strong> button is filled is the BPM detection source.</div>
-                  </div>
-
-                  <h3 className="manual-h3">2. Open the BPM settings panel</h3>
-                  <p className="manual-p">Click the BPM indicator to expand the settings panel. Click it again, or leave it inactive outside the mouse area for 5 seconds, to collapse it.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM settings panel" className="manual-img" />
-                    <div className="manual-figcaption">The top row shows <strong>BPM SOURCE</strong> (selected track name) and its <strong>Track</strong> number in two columns, with Detect, an input field, APPLY, and TAP below.</div>
-                  </div>
-                  <table className="manual-table">
-                    <tbody>
-                      <tr><th className="manual-th">Detect</th><td className="manual-td">Analyzes the B-selected track's audio and estimates its BPM, filling the input field.</td></tr>
-                      <tr><th className="manual-th">Manual input</th><td className="manual-td">Type a BPM value directly into the field.</td></tr>
-                      <tr><th className="manual-th">TAP</th><td className="manual-td">Tap along with the beat repeatedly to measure BPM. Accuracy improves the more you tap, and the button shows a live BPM and tap count (TAP · n).</td></tr>
-                      <tr><th className="manual-th">APPLY</th><td className="manual-td">Applies the measured/entered value to <strong>both</strong> the project BPM and the playback BPM.</td></tr>
-                    </tbody>
-                  </table>
-
-                  <h3 className="manual-h3">3. Detection-in-progress feedback</h3>
-                  <p className="manual-p">While <strong>Detect</strong> runs, the button changes to a spinner with <strong>Analyzing…</strong>. When it finishes, the estimated BPM appears in the input field with a brief highlight.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM analysis in progress" className="manual-img" />
-                    <div className="manual-figcaption">During detection the button shows the <strong>Analyzing…</strong> state.</div>
-                  </div>
-
-                  <h3 className="manual-h3">4. Play back at a changed tempo</h3>
-                  <p className="manual-p">With the <strong>Vari BPM</strong> switch on, changing the playback BPM (the back number) plays every track faster or slower by the same ratio. For example, with a project BPM of 100, raising the playback BPM to 120 plays the whole song 1.2× faster.</p>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="Playing after a tempo change" className="manual-img" />
-                    <div className="manual-figcaption">Playing after raising the playback BPM <strong>100 → 120</strong>; the indicator reads <strong>100 BPM | 120</strong>.</div>
-                  </div>
-                  <div className="manual-warning">Realtime tempo changes prepare a cached Time Stretch preview when Vari BPM is enabled, prioritizing pitch preservation during playback. The Export dialog's Keep pitch option applies pitch preservation through the validated short-term stable Time Stretch path for Electron desktop exports.</div>
-
                   <h3 className="manual-h3">Track Header Controls</h3>
                   <table className="manual-table">
                     <tbody>
@@ -860,11 +774,255 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 5. 볼륨 오토메이션 / Volume Automation */}
+            {/* 5. BPM 표시 및 설정 / BPM Display & Settings */}
+            <section id="bpm" className="manual-section">
+              {lang === "ko" ? (
+                <>
+                  <h2 className="manual-h2">5. BPM 표시 및 설정</h2>
+                  <p className="manual-p">FocusDAW Studio는 트랙 오디오에서 곡의 BPM(분당 박자 수)을 자동으로 측정하고, 그 값을 기준으로 <strong>전체 음악</strong>의 재생 템포를 조정할 수 있습니다. 새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시되며, 모든 트랙을 지우거나 새 프로젝트를 시작하면 다시 <strong>---</strong>로 초기화됩니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM 표시기" className="manual-img" />
+                    <div className="manual-figcaption">상단 도구 막대의 BPM 표시기입니다. <strong>100 BPM | 100</strong>처럼 두 숫자가 보이며, <strong>앞</strong>은 프로젝트 BPM(곡의 기준 템포), <strong>뒤</strong>는 재생 BPM(실제 재생 속도)입니다.</div>
+                  </div>
+
+                  <p className="manual-p">BPM 표시기 오른쪽에는 <strong>Vari BPM</strong> 스위치가 있습니다. 이 스위치를 <strong>켜야</strong> 재생 BPM으로 곡 속도를 조정하며, <strong>끄면</strong> 재생 BPM을 바꿔도 속도가 변하지 않습니다(기본값 OFF). 스위치를 켠 상태에서 BPM 표시기 위에 마우스 휠을 돌리거나 ▲▼ 버튼을 누르면 <strong>뒤쪽 재생 BPM</strong>이 1씩 바뀌고, 곡 전체가 그 비율(<code>재생 BPM ÷ 프로젝트 BPM</code>)만큼 빨라지거나 느려집니다.</p>
+
+                  <h3 className="manual-h3">① BPM 측정 대상 트랙 선택 (B 버튼)</h3>
+                  <p className="manual-p">먼저 어떤 트랙의 오디오로 BPM을 측정할지 정합니다. 트랙 헤더의 <strong>B</strong> 버튼을 누르면 그 트랙이 BPM 측정 소스로 선택되어 배경이 채워지며, B는 한 번에 한 트랙에만 켜집니다. 드럼처럼 박자가 뚜렷한 트랙을 고르면 측정이 더 정확합니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/20-bpm-source-track.png" alt="특정 트랙을 BPM 측정 트랙으로 설정" className="manual-img" />
+                    <div className="manual-figcaption"><strong>B</strong> 버튼이 채워진 트랙이 BPM 측정 소스입니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">② BPM 설정 패널 열기</h3>
+                  <p className="manual-p">BPM 표시기를 클릭하면 아래로 설정 패널이 펼쳐집니다. 다시 누르거나, 마우스가 패널 밖으로 나간 채 5초가 지나면 접힙니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM 설정 패널" className="manual-img" />
+                    <div className="manual-figcaption">BPM 설정 패널입니다. 위쪽 <strong>BPM SOURCE</strong>에 선택된 트랙 이름과 <strong>Track</strong> 번호가 두 열로 표시되고, 그 아래 Detect · 직접 입력칸 · APPLY · TAP 버튼이 있습니다.</div>
+                  </div>
+
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Detect</th><td className="manual-td">B로 선택한 트랙의 오디오를 분석해 BPM을 자동 추정합니다. 추정값이 아래 입력칸에 채워집니다.</td></tr>
+                      <tr><th className="manual-th">직접 입력</th><td className="manual-td">입력칸에 BPM 숫자를 직접 적을 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">TAP</th><td className="manual-td">음악을 들으며 박자에 맞춰 버튼을 반복해 누르면 BPM을 수동 측정합니다. 누를수록 값이 정확해지고, 버튼에는 실시간 BPM과 탭 횟수(<code>TAP · n</code>)가 표시됩니다.</td></tr>
+                      <tr><th className="manual-th">APPLY</th><td className="manual-td">측정/입력한 값을 프로젝트 BPM과 재생 BPM에 <strong>모두</strong> 적용합니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">③ Detect 분석 중 표시</h3>
+                  <p className="manual-p"><strong>Detect</strong>를 누르면 분석이 진행되는 동안 버튼이 회전 아이콘과 <strong>Analyzing…</strong> 표시로 바뀝니다. 분석이 끝나면 추정된 BPM이 입력칸에 강조 효과와 함께 표시됩니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM 분석 중 화면" className="manual-img" />
+                    <div className="manual-figcaption">Detect 실행 중에는 버튼이 <strong>Analyzing…</strong> 상태로 바뀌어 분석이 진행 중임을 알려줍니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">④ 전체 음악 템포 바꿔 재생하기</h3>
+                  <p className="manual-p"><strong>Vari BPM</strong> 스위치를 켠 뒤 재생 BPM(뒤 숫자)을 바꾸면 모든 트랙이 같은 비율로 빨라지거나 느려진 상태로 재생됩니다. 예를 들어 프로젝트 BPM이 100일 때 재생 BPM을 120으로 올리면 곡 전체가 1.2배 빠르게 재생됩니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
+                    <div className="manual-figcaption">재생 BPM을 <strong>100 → 120</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>100 BPM | 120</strong>으로 바뀌고 곡 전체가 그 비율만큼 빠르게 재생됩니다.</div>
+                  </div>
+
+                  <div className="manual-warning">실시간 재생의 템포 변경은 Vari BPM이 켜져 있을 때 캐시형 Time Stretch 프리뷰를 준비해 <strong>피치 보존을 우선 적용합니다.</strong> Export 창의 Keep pitch 옵션은 Electron 데스크톱 Export에서 검증된 단기 안정 Time Stretch 경로를 사용해 파일 출력에 피치 보존을 적용합니다.</div>
+                </>
+              ) : (
+                <>
+                  <h2 className="manual-h2">5. BPM Display & Settings</h2>
+                  <p className="manual-p">FocusDAW Studio detects a song's BPM (beats per minute) from a track's audio and lets you adjust the playback tempo of the <strong>whole song</strong> based on it. A new project starts with BPM shown as <strong>---</strong>, and it returns to <strong>---</strong> whenever you clear all tracks or start a new project.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM indicator" className="manual-img" />
+                    <div className="manual-figcaption">The indicator shows two numbers such as <strong>100 BPM | 100</strong>: the front is the project BPM (reference tempo), the back is the playback BPM (actual speed).</div>
+                  </div>
+
+                  <p className="manual-p">The <strong>Vari BPM</strong> switch to the right of the indicator must be <strong>on</strong> for the playback BPM to change the song speed (off = no speed change; default off). With it on, hover the BPM indicator and scroll the mouse wheel, or use the ▲▼ buttons, to change the <strong>playback BPM</strong> by 1 — the whole song speeds up or slows down by that ratio (playback BPM ÷ project BPM).</p>
+
+                  <h3 className="manual-h3">1. Choose the detection source track (B button)</h3>
+                  <p className="manual-p">Press the <strong>B</strong> button on a track header to mark it as the BPM detection source (its background fills in). Only one track can be the B source at a time. Picking a track with a clear beat (e.g. drums) gives more accurate detection.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/20-bpm-source-track.png" alt="Track set as BPM detection source" className="manual-img" />
+                    <div className="manual-figcaption">The track whose <strong>B</strong> button is filled is the BPM detection source.</div>
+                  </div>
+
+                  <h3 className="manual-h3">2. Open the BPM settings panel</h3>
+                  <p className="manual-p">Click the BPM indicator to expand the settings panel. Click it again, or leave it inactive outside the mouse area for 5 seconds, to collapse it.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM settings panel" className="manual-img" />
+                    <div className="manual-figcaption">The top row shows <strong>BPM SOURCE</strong> (selected track name) and its <strong>Track</strong> number in two columns, with Detect, an input field, APPLY, and TAP below.</div>
+                  </div>
+
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Detect</th><td className="manual-td">Analyzes the B-selected track's audio and estimates its BPM, filling the input field.</td></tr>
+                      <tr><th className="manual-th">Manual input</th><td className="manual-td">Type a BPM value directly into the field.</td></tr>
+                      <tr><th className="manual-th">TAP</th><td className="manual-td">Tap along with the beat repeatedly to measure BPM. Accuracy improves the more you tap, and the button shows a live BPM and tap count (TAP · n).</td></tr>
+                      <tr><th className="manual-th">APPLY</th><td className="manual-td">Applies the measured/entered value to <strong>both</strong> the project BPM and the playback BPM.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">3. Detection-in-progress feedback</h3>
+                  <p className="manual-p">While <strong>Detect</strong> runs, the button changes to a spinner with <strong>Analyzing…</strong>. When it finishes, the estimated BPM appears in the input field with a brief highlight.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM analysis in progress" className="manual-img" />
+                    <div className="manual-figcaption">During detection the button shows the <strong>Analyzing…</strong> state.</div>
+                  </div>
+
+                  <h3 className="manual-h3">4. Play back at a changed tempo</h3>
+                  <p className="manual-p">With the <strong>Vari BPM</strong> switch on, changing the playback BPM (the back number) plays every track faster or slower by the same ratio. For example, with a project BPM of 100, raising the playback BPM to 120 plays the whole song 1.2× faster.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="Playing after a tempo change" className="manual-img" />
+                    <div className="manual-figcaption">Playing after raising the playback BPM <strong>100 → 120</strong>; the indicator reads <strong>100 BPM | 120</strong> and the whole song plays faster by that ratio.</div>
+                  </div>
+
+                  <div className="manual-warning">Realtime tempo changes prepare a cached Time Stretch preview when Vari BPM is enabled, prioritizing <strong>pitch preservation</strong> during playback. The Export dialog's Keep pitch option applies pitch preservation through the validated short-term stable Time Stretch path for Electron desktop exports.</div>
+                </>
+              )}
+            </section>
+
+            {/* 6. Key 표시 및 설정 / Key Display & Settings */}
+            <section id="key" className="manual-section">
+              {lang === "ko" ? (
+                <>
+                  <h2 className="manual-h2">6. Key 표시 및 설정</h2>
+                  <p className="manual-p">FocusDAW Studio는 프로젝트에 로드된 트랙 오디오의 화성 성분을 종합적으로 분석하여 곡의 원곡 키(Key)를 자동으로 감지하고, 반음(Semitones) 단위로 곡의 조성을 올리거나 내려서 실시간으로 이조 재생할 수 있습니다. 처음 세션을 열었을 때 키 표시창은 <strong>---</strong>로 표시됩니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/39-key-indicator-initial.png" alt="Key 표시창 초기 상태" className="manual-img" />
+                    <div className="manual-figcaption">상단 도구 막대의 Key 표시창 초기 상태입니다. 아직 키 설정이 적용되지 않아 <code>---</code>로 표시됩니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">① Key 설정 패널 열기</h3>
+                  <p className="manual-p">Key 표시창 부분을 클릭하면 아래로 Key 설정 패널이 펼쳐집니다. 이 패널은 클릭하여 켜고 끌 수 있으며, 마우스 포인터가 패널에서 벗어난 지 5초가 지나면 자동으로 닫힙니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/40-key-panel-opened.png" alt="Key 설정 패널 열린 상태" className="manual-img" />
+                    <div className="manual-figcaption">Key 표시창을 클릭하여 설정 패널을 열어둔 상태입니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">② Key Detection (조성 감지)</h3>
+                  <p className="manual-p">패널 내의 <strong>Detect</strong> 버튼을 누르면 프로젝트의 활성화된 모든 오디오 트랙을 정밀 분석(STFT 기반 크로마 연산)하여 원곡의 키를 추정합니다. 분석이 끝나면 감지된 대표 키값이 패널 하단 목록에 표시됩니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/41-key-detected.png" alt="Key Detection 완료 화면" className="manual-img" />
+                    <div className="manual-figcaption">Detect 버튼을 누르면 <code>Analyzing...</code> 상태를 거쳐 분석된 오디오의 감지된 키가 하단에 나타납니다.</div>
+                  </div>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/42-key-list-window.png" alt="하단 Key 후보 리스트" className="manual-img" />
+                    <div className="manual-figcaption">하단 Key 리스트 창에서는 신뢰도가 높은 으뜸음 및 조성 후보들을 목록으로 제안합니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">③ Key 설정 적용</h3>
+                  <p className="manual-p">원하는 키 후보를 선택하거나, 패널 내의 <strong>+</strong> / <strong>-</strong> 버튼을 클릭해 원하는 반음(Semitones, 최대 ±6) 오프셋을 설정한 뒤 <strong>APPLY</strong> 버튼을 누르면 프로젝트의 기준 키가 세션에 등록됩니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/43-key-applied.png" alt="APPLY 적용 후의 Key 표시" className="manual-img" />
+                    <div className="manual-figcaption">APPLY 적용 후 Key 표시창의 <strong>앞부분</strong>에 분석/지정된 원곡 키(예: <code>Ab</code>)가 표시됩니다.</div>
+                  </div>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/44-key-settings-change.png" alt="오프셋 변경 후 APPLY된 화면" className="manual-img" />
+                    <div className="manual-figcaption">설정 패널에서 <code>+1</code> 반음과 같이 키 오프셋을 변경하고 APPLY 버튼을 눌러 적용을 완료한 화면입니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">④ 실시간 이조 재생 (Vari Key)</h3>
+                  <p className="manual-p">Key 표시기 오른쪽의 <strong>Vari Key</strong> 스위치를 <strong>켜면</strong>, 사용자가 변경한 조(Key)의 피치가 재생 엔진에 즉각 반영되어 음높이가 실시간으로 변조(Pitch Shift)되어 플레이됩니다. 스위치를 끄면 원래 녹음된 피치 그대로 재생됩니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/45-vari-key-on.png" alt="Vari Key 기능을 켠 화면" className="manual-img" />
+                    <div className="manual-figcaption">Vari Key 스위치를 켜면 재생 Key(뒤쪽 표시값)에 변경된 조가 적용되고, 재생 중인 음악의 키가 실시간으로 변합니다.</div>
+                  </div>
+
+                  <div className="manual-warning">
+                    <strong>Vari BPM과 Vari Key 동시 적용 시 주의</strong><br />
+                    Vari BPM과 Vari Key를 모두 켜서 템포와 음높이를 동시에 크게 조절하는 경우, 실시간 타임 스트레칭 및 피치 변조 처리가 겹치게 됩니다. 이로 인해 연산 부하가 증가하거나 재생 오디오에 과도한 소리 왜곡(Artifact)이 생길 수 있으므로, 적절한 범위 안에서 조절하는 것을 권장합니다.
+                  </div>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/46-vari-bpm-key-warning.png" alt="BPM 및 Key 동시 변경 경고 화면" className="manual-img" />
+                    <div className="manual-figcaption">Vari BPM과 Vari Key 스위치가 동시에 활성화된 상태입니다. 과도한 이조와 템포 변경은 음질 왜곡을 유발할 수 있습니다.</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="manual-h2">6. Key Display & Settings</h2>
+                  <p className="manual-p">FocusDAW Studio analyzes the harmonic content of all loaded audio tracks to estimate the song's original key and lets you shift the pitch up or down in semitones (up to ±6 semitones) for real-time key-shifted playback. When a new session is opened, the Key indicator reads <strong>---</strong>.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/39-key-indicator-initial.png" alt="Key indicator initial state" className="manual-img" />
+                    <div className="manual-figcaption">The initial state of the Key indicator in the top toolbar. It displays <code>---</code> when no key is set.</div>
+                  </div>
+
+                  <h3 className="manual-h3">1. Open Key Settings Panel</h3>
+                  <p className="manual-p">Click the Key indicator in the toolbar to expand the Key settings panel. You can toggle the panel open and closed by clicking it, and it will close automatically 5 seconds after the mouse pointer leaves the panel area.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/40-key-panel-opened.png" alt="Key settings panel opened" className="manual-img" />
+                    <div className="manual-figcaption">The Key settings panel opened by clicking the Key indicator.</div>
+                  </div>
+
+                  <h3 className="manual-h3">2. Key Detection</h3>
+                  <p className="manual-p">Click the <strong>Detect</strong> button in the panel to run a comprehensive harmonic analysis (STFT-based chromagram) across all active audio tracks. Once the analysis is complete, the estimated candidate keys will be displayed at the bottom of the panel.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/41-key-detected.png" alt="Key detection complete" className="manual-img" />
+                    <div className="manual-figcaption">Clicking Detect switches the button to an <code>Analyzing...</code> state, then reveals the detected key details.</div>
+                  </div>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/42-key-list-window.png" alt="Key candidate list" className="manual-img" />
+                    <div className="manual-figcaption">The key candidate list at the bottom suggests the most probable tonic and scale options.</div>
+                  </div>
+
+                  <h3 className="manual-h3">3. Applying Key Settings</h3>
+                  <p className="manual-p">Select your preferred candidate key, or use the <strong>+</strong> / <strong>-</strong> buttons to adjust the semitones offset (up to ±6 semitones), then click <strong>APPLY</strong> to write the reference key to the project.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/43-key-applied.png" alt="Key indicator showing applied key" className="manual-img" />
+                    <div className="manual-figcaption">After clicking APPLY, the estimated/selected key is displayed in the <strong>left</strong> portion of the Key indicator (e.g. <code>Ab</code>).</div>
+                  </div>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/44-key-settings-change.png" alt="Offset changed and applied" className="manual-img" />
+                    <div className="manual-figcaption">Changing the key offset (e.g. to <code>+1</code> semitone) and applying the changes.</div>
+                  </div>
+
+                  <h3 className="manual-h3">4. Real-time Pitch Shifting (Vari Key)</h3>
+                  <p className="manual-p">Enable the <strong>Vari Key</strong> switch next to the Key indicator to apply your pitch shifts directly to the playback engine in real-time. Turning the switch off reverts the playback pitch back to the original recorded audio state.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/45-vari-key-on.png" alt="Vari Key switch turned on" className="manual-img" />
+                    <div className="manual-figcaption">Enabling Vari Key updates the playback key (the right value) and shifts the pitch of the playing music in real-time.</div>
+                  </div>
+
+                  <div className="manual-warning">
+                    <strong>Caution when combining Vari BPM and Vari Key</strong><br />
+                    If both Vari BPM and Vari Key are enabled to make significant changes to both tempo and pitch at the same time, the combined real-time time-stretching and pitch-shifting processing will run concurrently. This can increase CPU overhead or cause audibly noticeable sound artifacts, so we recommend keeping adjustments within moderate ranges.
+                  </div>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/46-vari-bpm-key-warning.png" alt="Vari BPM and Vari Key active warning" className="manual-img" />
+                    <div className="manual-figcaption">Both Vari BPM and Vari Key enabled at the same time. Excessive stretching and shifting may degrade audio quality.</div>
+                  </div>
+                </>
+              )}
+            </section>
+
+            {/* 7. 볼륨 오토메이션 / Volume Automation */}
             <section id="automation" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">5. 볼륨 오토메이션</h2>
+                  <h2 className="manual-h2">7. 볼륨 오토메이션</h2>
                   <p className="manual-p">트랙 헤더의 <strong>VOL AUTO</strong>를 켜면 트랙 위에 볼륨 오토메이션 곡선이 표시됩니다. 곡선의 점은 시간에 따른 볼륨 변화를 의미합니다.</p>
 
                   <ul className="manual-ul">
@@ -907,7 +1065,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">5. Volume Automation</h2>
+                  <h2 className="manual-h2">7. Volume Automation</h2>
                   <p className="manual-p">Toggling <strong>VOL AUTO</strong> in the track header displays a yellow automation lane over the track lane. Points on this line represent volume changes over time.</p>
 
                   <ul className="manual-ul">
@@ -951,11 +1109,11 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 6. 믹서와 마스터 / Mixer & Master */}
+            {/* 8. 믹서와 마스터 / Mixer & Master */}
             <section id="mixer" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">6. 믹서와 마스터</h2>
+                  <h2 className="manual-h2">8. 믹서와 마스터</h2>
                   <p className="manual-p">상단 오른쪽의 <strong>Mixer</strong> 버튼을 누르면 떠 있는 믹서 창이 열립니다. 믹서 창은 제목 표시줄을 드래그해 위치를 옮길 수 있습니다.</p>
 
                   <div className="manual-figure">
@@ -1032,7 +1190,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">6. Mixer & Master</h2>
+                  <h2 className="manual-h2">8. Mixer & Master</h2>
                   <p className="manual-p">Click the <strong>Mixer</strong> button on the top right to open the floating mixer console. Drag its title bar to position it anywhere on the screen.</p>
 
                   <div className="manual-figure">
@@ -1110,11 +1268,11 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 7. 고급 이펙트 / Advanced Effects */}
+            {/* 9. 고급 이펙트 / Advanced Effects */}
             <section id="advfx" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">7. 고급 이펙트(Advanced Effects)</h2>
+                  <h2 className="manual-h2">9. 고급 이펙트(Advanced Effects)</h2>
                   <p className="manual-p">상단 메뉴의 <strong>Advanced Effects</strong>에는 세 가지 전용 편집 창이 있습니다. 각 창은 마스터(프로젝트 전체) 출력에 적용되는 고급 효과를 넓은 화면에서 정밀하게 다루도록 만들어졌습니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/31-advanced-effects-menu.png" alt="Advanced Effects 메뉴" className="manual-img" />
@@ -1135,7 +1293,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">왼쪽 위 드롭다운으로 <strong>Spatial Field · Ambience · Equalizer</strong>를 바로 전환합니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">7.1 Ambience — 음향 공간(Sound Environment)</h3>
+                  <h3 className="manual-h3">9.1 Ambience — 음향 공간(Sound Environment)</h3>
                   <p className="manual-p">Ambience는 곡 전체가 어떤 <strong>공간에서 울리는지</strong>를 정하는 창입니다. 위쪽 <strong>SOUND ENVIRONMENT</strong>에서 공간 프리셋을 고른 뒤, 왼쪽 노브와 오른쪽 슬라이더로 잔향의 길이·거리감·밝기를 다듬습니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/32-ambience-main.png" alt="Ambience 기본 화면" className="manual-img" />
@@ -1175,14 +1333,18 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">Ambience 창 하단의 OUTPUT EFFECTS입니다. 믹서 MASTER 패널과 같은 다섯 효과를 제공합니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">7.2 Auto Panning — 스테레오 배치(Spatial Field)</h3>
-                  <p className="manual-p">Auto Panning은 각 악기(트랙)를 반원형 <strong>스테레오 무대</strong> 위에 배치하는 창입니다. 위쪽 무대에서 악기 노드를 드래그해 <strong>좌우(팬)와 앞뒤(거리)</strong>를 정하고, 아래쪽 트랙별 노브로 미세 조정합니다. 악기를 서로 다른 자리에 펼치면 겹침이 줄어 믹스가 더 또렷하고 입체적으로 들립니다.</p>
+                  <h3 className="manual-h3">9.2 Auto Panning — 스테레오 배치(Spatial Field)</h3>
+                  <p className="manual-p">Auto Panning은 각 악기(트랙)를 반원형 <strong>스테레오 무대</strong> 위에 배치하는 창입니다. 위쪽 무대에서 악기 노드를 드래그해 <strong>좌우(팬)와 앞뒤(거리)</strong> 위치를 정하고, 아래쪽 트랙별 노브로 값을 미세 조정합니다. 악기를 서로 다른 자리에 펼쳐 두면 겹침이 줄어 믹스가 더 또렷하고 입체적으로 들립니다. 리뉴얼된 Spatial Field 창의 우측에는 전체 믹스 볼륨을 조절할 수 있는 <strong>볼륨 슬라이더</strong>가 추가되었습니다. 게인을 과도하게 올려 사운드가 클리핑 임계값에 도달하면 슬라이더 배경이 붉은색으로 변하며 사운드 포화(Saturation) 경고가 표시됩니다.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/36-advanced-pan.png" alt="Advanced Pan(Spatial Field) 악기 배치" className="manual-img" />
-                    <div className="manual-figcaption">Spatial Field 화면입니다. 무대 위 악기 노드를 드래그해 좌우·원근을 잡고, 하단 노브로 트랙별 팬을 조정합니다.</div>
+                    <img src="manual/live-screens/36-advanced-pan.png" alt="Advanced Pan(Spatial Field) 악기 배치 화면" className="manual-img" />
+                    <div className="manual-figcaption">리뉴얼된 Spatial Field 화면입니다. 무대 위 각 악기 노드를 드래그해 좌우·원근 위치를 잡고, 하단 노브로 트랙별 팬을 조정하며 우측 볼륨 슬라이더로 마스터 출력을 제어합니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/36-advanced-pan-saturation.png" alt="Spatial Field 게인 과도 시 Saturation 표시 화면" className="manual-img" />
+                    <div className="manual-figcaption">우측 볼륨 슬라이더의 게인을 과도하게 올렸을 때 레벨 미터가 붉은색으로 바뀌며 사운드 Saturation 경고가 표시되는 모습입니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">7.3 Equalizer — 정밀 EQ 편집</h3>
+                  <h3 className="manual-h3">9.3 Equalizer — 정밀 EQ 편집</h3>
                   <p className="manual-p">믹서 MASTER의 EQ를 큰 화면에서 다루는 전용 창입니다. 실시간 FFT 스펙트럼 위에 9개 밴드 포인트가 놓여 있고, 각 포인트를 위아래로 드래그하면 저역~고역의 양을 ±로 조절하며 그 값(dB)이 포인트 아래에 표시됩니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/37-advanced-eq-presets.png" alt="Equalizer 창과 프리셋" className="manual-img" />
@@ -1203,7 +1365,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">7. Advanced Effects</h2>
+                  <h2 className="manual-h2">9. Advanced Effects</h2>
                   <p className="manual-p">The top <strong>Advanced Effects</strong> menu opens three dedicated editing windows, each giving you a larger workspace to fine-tune advanced effects applied to the master (project-wide) output.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/31-advanced-effects-menu.png" alt="Advanced Effects menu" className="manual-img" />
@@ -1224,7 +1386,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">Use the top-left dropdown to switch instantly between <strong>Spatial Field · Ambience · Equalizer</strong>.</div>
                   </div>
 
-                  <h3 className="manual-h3">7.1 Ambience — Sound Environment</h3>
+                  <h3 className="manual-h3">9.1 Ambience — Sound Environment</h3>
                   <p className="manual-p">Ambience defines <strong>what space the whole song echoes in</strong>. Pick a space preset under <strong>SOUND ENVIRONMENT</strong>, then refine the length, distance, and brightness of the reverb with the knobs on the left and sliders on the right.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/32-ambience-main.png" alt="Ambience main window" className="manual-img" />
@@ -1264,14 +1426,18 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">The OUTPUT EFFECTS at the bottom of the Ambience window — the same five effects as the mixer MASTER panel.</div>
                   </div>
 
-                  <h3 className="manual-h3">7.2 Auto Panning — Spatial Field</h3>
-                  <p className="manual-p">Auto Panning places each instrument (track) on a fan-shaped <strong>stereo stage</strong>. Drag the instrument nodes to set their <strong>left/right (pan) and front/back (distance)</strong>, and fine-tune with the per-track knobs below. Spreading instruments apart reduces overlap, making the mix clearer and more three-dimensional.</p>
+                  <h3 className="manual-h3">9.2 Auto Panning — Spatial Field</h3>
+                  <p className="manual-p">Auto Panning places each instrument (track) on a fan-shaped <strong>stereo stage</strong>. Drag the instrument nodes to set their <strong>left/right (pan) and front/back (distance)</strong>, and fine-tune with the per-track knobs below. Spreading instruments apart reduces overlap, making the mix clearer and more three-dimensional. In the renewed Spatial Field window, a <strong>master volume slider</strong> has been added to the right side. If you increase the gain excessively so that the signal level reaches clipping threshold, the level indicator turns red to warn about sound saturation.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/36-advanced-pan.png" alt="Advanced Pan (Spatial Field) instrument placement" className="manual-img" />
-                    <div className="manual-figcaption">The Spatial Field window. Drag each instrument node to set left/right and near/far, and adjust per-track pan with the knobs below.</div>
+                    <div className="manual-figcaption">The renewed Spatial Field window. Drag each instrument node on the stage to set left/right and near/far, adjust per-track pan, and control overall master volume via the slider on the right.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/36-advanced-pan-saturation.png" alt="Spatial Field Saturation Warning Screen" className="manual-img" />
+                    <div className="manual-figcaption">When gain is raised excessively, the right volume slider level meter changes to red, displaying a sound saturation warning.</div>
                   </div>
 
-                  <h3 className="manual-h3">7.3 Equalizer — Precise EQ Editing</h3>
+                  <h3 className="manual-h3">9.3 Equalizer — Precise EQ Editing</h3>
                   <p className="manual-p">A dedicated window for editing the mixer MASTER EQ on a large canvas. Nine band points sit over a real-time FFT spectrum; drag a point up or down to boost/cut from lows to highs, with its value (dB) shown beneath it.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/37-advanced-eq-presets.png" alt="Equalizer window and presets" className="manual-img" />
@@ -1293,11 +1459,11 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 8. 믹스다운 내보내기 / Exporting Mixdown */}
+            {/* 10. 믹스다운 내보내기 / Exporting Mixdown */}
             <section id="export" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">8. 믹스다운 내보내기</h2>
+                  <h2 className="manual-h2">10. 믹스다운 내보내기</h2>
                   <p className="manual-p"><strong>Export</strong> 버튼 또는 <strong>Project &gt; Export...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
 
                   <h3 className="manual-h3">Export 설정</h3>
@@ -1335,7 +1501,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">8. Exporting Mixdown</h2>
+                  <h2 className="manual-h2">10. Exporting Mixdown</h2>
                   <p className="manual-p">Click the <strong>Export</strong> button or go to <strong>Project &gt; Export...</strong> to open the Export dialog. The dialog supports exporting in either MP3 or WAV format.</p>
 
                   <h3 className="manual-h3">Export Settings</h3>
@@ -1374,11 +1540,11 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 9. 설정과 테마 / Settings & Themes */}
+            {/* 11. 설정과 테마 / Settings & Themes */}
             <section id="settings" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">9. 설정과 테마</h2>
+                  <h2 className="manual-h2">11. 설정과 테마</h2>
                   <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 색상 테마를 변경하거나 분리된 믹서 창의 환경 설정을 관리할 수 있습니다.</p>
                   <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
                     <li style={{ marginBottom: 6 }}><strong>Color Theme (색상 테마)</strong>: 다양한 색상 테마 중 하나를 선택하면 앱 전체와 믹서 콘솔의 외관 색상이 즉시 연동되어 바뀝니다.</li>
@@ -1392,7 +1558,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">9. Settings & Themes</h2>
+                  <h2 className="manual-h2">11. Settings &amp; Themes</h2>
                   <p className="manual-p">Click <strong>Settings</strong> in the menu bar to change color themes or manage settings for the detached Mixer window.</p>
                   <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
                     <li style={{ marginBottom: 6 }}><strong>Color Theme</strong>: Choose from multiple color themes. The visual styles of the main window and Mixer console update instantly.</li>
@@ -1407,11 +1573,11 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 10. 단축키 / Shortcuts */}
+            {/* 12. 단축키 / Shortcuts */}
             <section id="shortcuts" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">10. 단축키</h2>
+                  <h2 className="manual-h2">12. 단축키</h2>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지</td></tr>
@@ -1431,7 +1597,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">10. Shortcuts</h2>
+                  <h2 className="manual-h2">12. Shortcuts</h2>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / Pause</td></tr>
@@ -1452,11 +1618,11 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 11. 문제 해결 / Troubleshooting */}
+            {/* 13. 문제 해결 / Troubleshooting */}
             <section id="tips" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">11. 문제 해결</h2>
+                  <h2 className="manual-h2">13. 문제 해결</h2>
                   <h3 className="manual-h3">오디오가 들리지 않을 때</h3>
                   <ul className="manual-ul">
                     <li className="manual-li">트랙의 <strong>M</strong> 버튼이 켜져 있지 않은지 확인합니다.</li>
@@ -1476,7 +1642,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">11. Troubleshooting</h2>
+                  <h2 className="manual-h2">13. Troubleshooting</h2>
                   <h3 className="manual-h3">No Sound During Playback</h3>
                   <ul className="manual-ul">
                     <li className="manual-li">Check if the track **M** (Mute) button is turned on.</li>

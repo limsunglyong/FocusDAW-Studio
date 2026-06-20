@@ -252,6 +252,19 @@
     return peaks;
   }
 
+  // Largest absolute sample peak from a computePeaks() array (interleaved min,max).
+  // Used to flag track saturation (peak * volume > 1.0) for the waveform red overlay
+  // and the Advanced Pan gain slider glow.
+  function maxAbsPeak(peaksArr) {
+    if (!peaksArr || !peaksArr.length) return 0;
+    let m = 0;
+    for (let i = 0; i < peaksArr.length; i++) {
+      const a = Math.abs(peaksArr[i]);
+      if (a > m) m = a;
+    }
+    return m;
+  }
+
   // Pre-compute 3 resolution levels: coarse(512), medium(2048), fine(duration-based).
   // choosePeaks() in ui-tracks.jsx selects the level that best matches the current zoom.
   function computePeakLevels(buffer) {
@@ -518,7 +531,7 @@
       const { coarse, medium, fine } = peaks || computePeakLevels(buffer);
       const track = {
         id, name, type, color, buffer,
-        peaks: fine, peaksMedium: medium, peaksCoarse: coarse,
+        peaks: fine, peaksMedium: medium, peaksCoarse: coarse, peakAmp: maxAbsPeak(coarse),
         nodes: { fader, autoGain, panner, meter, reverbSend, echoSend, delay, fb },
         params: {
           volume: 1.0, pan: 0, mute: false, solo: false,
@@ -580,6 +593,7 @@
       track.peaks = decoded.peaks.fine;
       track.peaksMedium = decoded.peaks.medium;
       track.peaksCoarse = decoded.peaks.coarse;
+      track.peakAmp = maxAbsPeak(decoded.peaks.coarse);
       track.needsAudio = false;
       track.audioRev = (track.audioRev || 0) + 1;
       track._stretchPreview = null;

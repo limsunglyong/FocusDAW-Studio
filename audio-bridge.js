@@ -307,6 +307,8 @@
         sendToNative({ command: "setMaster", key: "widener", value: m.widener });
         sendToNative({ command: "setMaster", key: "saturation", value: m.saturation });
         sendToNative({ command: "setMaster", key: "exciter", value: m.exciter });
+        sendToNative({ command: "setMaster", key: "fadeIn", value: m.fadeIn || 0 });
+        sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
         sendRoomToNative(); // reset ambience too (LocalDAW.clearTracks set room → none)
         nativeState.offset = 0;
         nativeState.isPlaying = false;
@@ -323,6 +325,12 @@
         // key (transpose) state — otherwise an imported project plays at the original
         // key/tempo even though the UI shows the restored Key.
         syncTempoKeyToNative();
+        // Master fade (in/out) likewise must be pushed explicitly for imported projects.
+        {
+          const m = LocalDAW.master || {};
+          sendToNative({ command: "setMaster", key: "fadeIn", value: m.fadeIn || 0 });
+          sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
+        }
         // Since JUCE engine needs actual files, let's trigger loading for any files that have filePath
         LocalDAW.tracks.forEach(track => {
           if (track.filePath) {
@@ -353,6 +361,11 @@
         sendToNative({ command: "setDetectedKey", key: t.detectedKey ?? null });
         sendToNative({ command: "setKeyShift", semitones: t.keyShift | 0 });
         sendToNative({ command: "setKey", key: t.key ?? null });
+        // Master fade in/out — convert project-second fade lengths to the export
+        // (output) timeline exactly like LocalDAW.renderMix (fadeIn/graphRate, clamped
+        // to half the render duration), so the native render matches the web fallback.
+        const m = LocalDAW.master || {};
+        const fadeInOut = (v) => Math.min(Math.max(0, (v || 0) / (tempoRate > 0 ? tempoRate : 1)), exportDuration / 2);
         sendToNative({
           command: "export",
           exportId,
@@ -362,7 +375,9 @@
           normalize: options.normalize !== false,
           lufsTarget: options.lufsTarget || -14.0,
           preservePitch: !!options.preservePitch,
-          duration: exportDuration
+          duration: exportDuration,
+          fadeIn: fadeInOut(m.fadeIn),
+          fadeOut: fadeInOut(m.fadeOut)
         });
       });
     }
@@ -407,6 +422,12 @@
 
       // Sync current ambience (room) so it's applied immediately on connect.
       sendRoomToNative();
+      // Master fade (in/out) — native has no fade unless explicitly pushed.
+      {
+        const m = LocalDAW.master || {};
+        sendToNative({ command: "setMaster", key: "fadeIn", value: m.fadeIn || 0 });
+        sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
+      }
       sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
 
       LocalDAW._emit();

@@ -11,6 +11,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include "Logging.h"
 #include <mutex>
 #include <atomic>
 #include <functional>
@@ -510,7 +511,7 @@ public:
             bufferToFill.clearActiveBufferRegion();
             currentMagnitude.store(0.0f);
             if (offlineRendering.load() && !offlineDebugLogged.exchange(true)) {
-                std::cout << "[AudioEngine] Offline track muted: id=" << id
+                LOG_DBG << "[AudioEngine] Offline track muted: id=" << id
                           << ", mute=" << (mute ? 1 : 0)
                           << ", solo=" << (solo ? 1 : 0)
                           << ", soloActive=" << (soloActive ? 1 : 0)
@@ -591,7 +592,7 @@ public:
         float mag = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
         currentMagnitude.store(mag);
         if (offlineRendering.load() && !offlineDebugLogged.exchange(true)) {
-            std::cout << "[AudioEngine] Offline track probe: id=" << id
+            LOG_DBG << "[AudioEngine] Offline track probe: id=" << id
                       << ", sourcePeak=" << sourceMagnitude
                       << ", postPeak=" << mag
                       << ", volume=" << volume
@@ -971,6 +972,28 @@ public:
         // 9. Apply Soft-clipper to prevent clipping
         applySoftClipping(*bufferToFill.buffer, bufferToFill.startSample, bufferToFill.numSamples);
 
+        // 9b. Master fade in/out — a one-shot gesture over the song / export timeline.
+        // The engine resets fadePosSamples on play/seek (realtime) or at the start of
+        // each export pass; here we just advance and apply per block. fadeGainAt returns
+        // 1.0 once past the window so subsequent realtime loop passes play at full level.
+        if (fadeActive.load())
+        {
+            juce::int64 total = fadeTotalSamples.load();
+            if (total > 0)
+            {
+                juce::int64 pos = fadePosSamples.load();
+                int n = bufferToFill.numSamples;
+                float gStart = fadeGainAt(pos);
+                float gEnd = fadeGainAt(pos + n);
+                if (gStart != 1.0f || gEnd != 1.0f)
+                {
+                    for (int ch = 0; ch < bufferToFill.buffer->getNumChannels(); ++ch)
+                        bufferToFill.buffer->applyGainRamp(ch, bufferToFill.startSample, n, gStart, gEnd);
+                }
+                fadePosSamples.store(pos + n);
+            }
+        }
+
         float magL = (bufferToFill.buffer->getNumChannels() > 0) ? bufferToFill.buffer->getMagnitude(0, bufferToFill.startSample, bufferToFill.numSamples) : 0.0f;
         float magR = (bufferToFill.buffer->getNumChannels() > 1) ? bufferToFill.buffer->getMagnitude(1, bufferToFill.startSample, bufferToFill.numSamples) : magL;
         masterMagnitudeL.store(magL);
@@ -991,6 +1014,33 @@ public:
     void setWidenerLevel(float val) { widenerLevel.store(val); }
     void setSaturationLevel(float val) { saturationLevel.store(val); }
     void setExciterLevel(float val) { exciterLevel.store(val); }
+
+    // Master fade (in/out). Window is expressed in output samples; the engine sets it
+    // for realtime playback (song length) or offline export (render length).
+    void setFadeWindow(juce::int64 inSamples, juce::int64 outSamples, juce::int64 totalSamples)
+    {
+        fadeInSamples.store(inSamples);
+        fadeOutSamples.store(outSamples);
+        fadeTotalSamples.store(totalSamples);
+    }
+    void setFadePosition(juce::int64 posSamples) { fadePosSamples.store(posSamples); }
+    void setFadeActive(bool active) { fadeActive.store(active); }
+
+    // Linear fade gain at an output-sample position (matches audio-engine.js fadeVal).
+    float fadeGainAt(juce::int64 p) const
+    {
+        juce::int64 total = fadeTotalSamples.load();
+        if (total <= 0 || p >= total) return 1.0f; // one-shot done → full level afterwards
+        juce::int64 fi = fadeInSamples.load();
+        juce::int64 fo = fadeOutSamples.load();
+        if (fi > 0 && p < fi) return (float)((double)p / (double)fi);
+        if (fo > 0 && p > total - fo)
+        {
+            float g = (float)((double)(total - p) / (double)fo);
+            return g < 0.0f ? 0.0f : g;
+        }
+        return 1.0f;
+    }
 
     // Ambience (room type). Stores the spec, sets the wet send and (re)builds the IR.
     // Called on the message thread; loadImpulseResponse swaps the IR in thread-safely.
@@ -1177,6 +1227,13 @@ private:
 
     std::atomic<float> masterMagnitudeL { 0.0f };
     std::atomic<float> masterMagnitudeR { 0.0f };
+
+    // Master fade (in/out) state. All in output samples. fadeTotalSamples == 0 disables.
+    std::atomic<juce::int64> fadeInSamples { 0 };
+    std::atomic<juce::int64> fadeOutSamples { 0 };
+    std::atomic<juce::int64> fadeTotalSamples { 0 };
+    std::atomic<juce::int64> fadePosSamples { 0 };
+    std::atomic<bool> fadeActive { false };
 };
 
 #endif
@@ -1220,6 +1277,8 @@ public:
                    bool normalize,
                    float lufsTarget,
                    bool preservePitch,
+                   double fadeInSeconds,
+                   double fadeOutSeconds,
                    std::function<void(float)> progressCallback,
                    std::function<void(const std::string&, const std::string&)> completionCallback);
 
@@ -1253,6 +1312,8 @@ private:
     int keyShift = 0;
     
     float masterVolume = 1.0f;
+    float fadeIn = 0.0f;   // master fade-in length (project seconds)
+    float fadeOut = 0.0f;  // master fade-out length (project seconds)
     std::vector<TrackInfo> tracks;
 
 #if USE_JUCE
@@ -1267,4 +1328,7 @@ private:
     void updateSoloStates();
 #endif
     void updateDspParams();
+    // Configure the master fade window from the current fadeIn/fadeOut state for a
+    // given timeline length (output seconds) and sample rate. No-op without JUCE.
+    void configureMasterFade(double songLenSeconds, double sr);
 };

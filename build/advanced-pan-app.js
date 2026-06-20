@@ -148,6 +148,53 @@ function WindowControlsAef() {
   const suppressFocus = (e) => e.preventDefault();
   return /* @__PURE__ */ React.createElement("div", { className: "window-controls", "aria-label": "Window controls" }, /* @__PURE__ */ React.createElement("button", { className: "window-control", onMouseDown: suppressFocus, onClick: (e) => act(e, "minimize"), title: "Minimize", "aria-label": "Minimize" }, /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true" }, "-")), /* @__PURE__ */ React.createElement("button", { className: "window-control", onMouseDown: suppressFocus, onClick: (e) => act(e, "maximize"), title: "Maximize", "aria-label": "Maximize" }, /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true" }, "\u25A1")), /* @__PURE__ */ React.createElement("button", { className: "window-control close", onMouseDown: suppressFocus, onClick: (e) => act(e, "close"), title: "Close", "aria-label": "Close" }, /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true" }, "\xD7")));
 }
+function GainSlider({ track, color, onBeforeChange, onParam }) {
+  const railRef = useRef(null);
+  const draggingRef = useRef(false);
+  const gain = clamp((track.params || {}).volume ?? 1, TRACK_VOLUME_MIN, TRACK_VOLUME_MAX);
+  const frac = (gain - TRACK_VOLUME_MIN) / (TRACK_VOLUME_MAX - TRACK_VOLUME_MIN);
+  const saturating = (track.peak || 0) * gain > 1;
+  const setFromPointer = useCallback((e) => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const rect = rail.getBoundingClientRect();
+    const f = clamp((rect.bottom - e.clientY) / rect.height, 0, 1);
+    const g = TRACK_VOLUME_MIN + f * (TRACK_VOLUME_MAX - TRACK_VOLUME_MIN);
+    onParam(track.id, "volume", Math.round(g * 1e3) / 1e3);
+  }, [onParam, track.id]);
+  const onMove = useCallback((e) => {
+    if (draggingRef.current) setFromPointer(e);
+  }, [setFromPointer]);
+  const onUp = useCallback(() => {
+    draggingRef.current = false;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  }, [onMove]);
+  const onDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onBeforeChange();
+    draggingRef.current = true;
+    setFromPointer(e);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  useEffect(() => () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  }, [onMove, onUp]);
+  const ticks = [
+    { g: 2, label: "+6" },
+    { g: 1, label: "0" },
+    { g: 0.5, label: "-6" },
+    { g: 0.25, label: "-12" },
+    { g: 0, label: "-\u221E" }
+  ];
+  return /* @__PURE__ */ React.createElement("div", { className: "aef-gain-overlay" + (saturating ? " saturating" : ""), onPointerDown: (e) => e.stopPropagation() }, /* @__PURE__ */ React.createElement("div", { className: "aef-gain-head" }, /* @__PURE__ */ React.createElement("span", { className: "aef-gain-name", style: { color } }, "Gain(dB)"), /* @__PURE__ */ React.createElement("span", { className: "aef-gain-val mono" }, gainLabel(gain))), /* @__PURE__ */ React.createElement("div", { className: "aef-gain-rail", ref: railRef, onPointerDown: onDown, style: { "--gain-color": color } }, /* @__PURE__ */ React.createElement("div", { className: "aef-gain-fill", style: { height: (frac * 100).toFixed(2) + "%" } }), ticks.map((t) => {
+    const tf = (t.g - TRACK_VOLUME_MIN) / (TRACK_VOLUME_MAX - TRACK_VOLUME_MIN);
+    return /* @__PURE__ */ React.createElement("div", { key: t.label, className: "aef-gain-tick" + (Math.abs(t.g - 1) < 1e-4 ? " zero" : ""), style: { bottom: (tf * 100).toFixed(2) + "%" } }, /* @__PURE__ */ React.createElement("span", { className: "aef-gain-tick-label mono" }, t.label));
+  }), /* @__PURE__ */ React.createElement("div", { className: "aef-gain-thumb", style: { bottom: (frac * 100).toFixed(2) + "%" } })), /* @__PURE__ */ React.createElement("div", { className: "aef-gain-cap" }, "Silent"));
+}
 function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
   const roomRef = useRef(null);
   const dragRef = useRef(null);
@@ -253,7 +300,15 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
       ),
       /* @__PURE__ */ React.createElement("div", { className: "aef-vol" + (selected ? " selected" : "") }, gainLabel(params.volume ?? 1))
     );
-  }));
+  }), selectedTrack && /* @__PURE__ */ React.createElement(
+    GainSlider,
+    {
+      track: selectedTrack,
+      color: selectedTrack.color || (selectedInst ? selectedInst.color : "var(--amber)"),
+      onBeforeChange,
+      onParam
+    }
+  ));
 }
 function makeTicks() {
   const rOut = 47;
@@ -477,7 +532,7 @@ function AdvancedPanApp() {
   const selectedParams = selectedTrack && selectedTrack.params || {};
   const selectedLine = selectedTrack ? `${selectedTrack.name || selectedTrack.fileName || "Track"}  -  ${panLabel(selectedParams.pan || 0)}  -  ${gainLabel(selectedParams.volume ?? 1)}` : "Select a track to inspect";
   const onBackdropClick = (e) => {
-    if (e.target.closest(".aef-knob-cell, .aef-node, .aef-tab, button")) return;
+    if (e.target.closest(".aef-knob-cell, .aef-node, .aef-gain-overlay, .aef-tab, button")) return;
     setSelectedId(null);
   };
   return /* @__PURE__ */ React.createElement("div", { className: "aef-backdrop", onClick: onBackdropClick }, /* @__PURE__ */ React.createElement(SvgDefs, null), /* @__PURE__ */ React.createElement("div", { className: "aef-shell" }, /* @__PURE__ */ React.createElement("div", { className: "aef-window" }, /* @__PURE__ */ React.createElement("div", { className: "aef-titlebar" }, /* @__PURE__ */ React.createElement("span", { className: "aef-brand" }, /* @__PURE__ */ React.createElement("svg", { className: "aef-brand-icon", width: "17", height: "17", viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("use", { href: "#ic-fx" })), /* @__PURE__ */ React.createElement("span", { className: "aef-toolbar-label" }, "SPATIAL FIELD")), /* @__PURE__ */ React.createElement(AdvancedViewMenu, { current: "pan" }), /* @__PURE__ */ React.createElement("div", { className: "title-c", style: { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", flex: "none" } }, "FocusDAW Studio ", /* @__PURE__ */ React.createElement("b", null, "Advanced Pan")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginLeft: "auto", minWidth: 0 } }, /* @__PURE__ */ React.createElement("span", { className: "aef-selected-line mono" }, selectedLine), /* @__PURE__ */ React.createElement("button", { onClick: resetAll, className: "aef-reset" }, "Reset Pan")), /* @__PURE__ */ React.createElement(WindowControlsAef, null)), /* @__PURE__ */ React.createElement(Stage, { tracks, selectedId: selectedTrack && selectedTrack.id, onSelect: setSelectedId, onBeforeChange: beforeChange, onParam: setParam }), /* @__PURE__ */ React.createElement("div", { className: "aef-knobs-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "aef-knobs", ref: knobsRef }, /* @__PURE__ */ React.createElement("div", { className: "aef-knob-row" }, tracks.length ? tracks.map((track, index) => /* @__PURE__ */ React.createElement(

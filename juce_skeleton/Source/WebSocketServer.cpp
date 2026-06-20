@@ -258,7 +258,7 @@ void WebSocketServer::listenLoop()
         return;
     }
 
-    std::cout << "[WebSocketServer] Listening on port " << serverPort << std::endl;
+    LOG_DBG << "[WebSocketServer] Listening on port " << serverPort << std::endl;
 
     while (!shouldExit)
     {
@@ -435,7 +435,7 @@ void WebSocketServer::clientLoop(void* socketHandle)
         return;
     }
 
-    std::cout << "[WebSocketServer] Client connected and handshaked successfully." << std::endl;
+    LOG_DBG << "[WebSocketServer] Client connected and handshaked successfully." << std::endl;
 
     while (!shouldExit)
     {
@@ -445,7 +445,7 @@ void WebSocketServer::clientLoop(void* socketHandle)
 
         if (frameText.empty()) continue;
 
-        std::cout << "[Received Command] " << frameText << std::endl;
+        LOG_DBG << "[Received Command] " << frameText << std::endl;
 
         // Parse very basic commands
         std::string cmd = getJsonStringVal(frameText, "command");
@@ -590,12 +590,14 @@ void WebSocketServer::clientLoop(void* socketHandle)
             double lufsTarget = getJsonDoubleVal(frameText, "lufsTarget");
             bool preservePitch = getJsonBoolVal(frameText, "preservePitch");
             double duration = getJsonDoubleVal(frameText, "duration");
+            double fadeIn = getJsonDoubleVal(frameText, "fadeIn");
+            double fadeOut = getJsonDoubleVal(frameText, "fadeOut");
 
             const char* tempEnv = std::getenv("TEMP");
             std::string tempDir = tempEnv != nullptr ? std::string(tempEnv) : ".";
             std::string tempPath = tempDir + "\\" + exportId + ".wav";
 
-            std::thread([this, exportId, tempPath, sampleRate, duration, normalize, lufsTarget, preservePitch]() {
+            std::thread([this, exportId, tempPath, sampleRate, duration, normalize, lufsTarget, preservePitch, fadeIn, fadeOut]() {
                 audioEngine.exportMix(
                     exportId,
                     tempPath,
@@ -604,6 +606,8 @@ void WebSocketServer::clientLoop(void* socketHandle)
                     normalize,
                     (float)lufsTarget,
                     preservePitch,
+                    fadeIn,
+                    fadeOut,
                     [this, exportId](float progress) {
                         std::ostringstream json;
                         json << "{\"event\":\"exportProgress\",\"exportId\":\"" << exportId << "\",\"progress\":" << progress << "}";
@@ -630,7 +634,7 @@ void WebSocketServer::clientLoop(void* socketHandle)
     }
 
     closesocket(s);
-    std::cout << "[WebSocketServer] Client disconnected." << std::endl;
+    LOG_DBG << "[WebSocketServer] Client disconnected." << std::endl;
     
     std::lock_guard<std::mutex> lock(clientsMutex);
     activeClients.erase(std::remove(activeClients.begin(), activeClients.end(), socketHandle), activeClients.end());

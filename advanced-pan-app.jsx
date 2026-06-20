@@ -339,6 +339,80 @@ function WindowControlsAef() {
   );
 }
 
+// Vertical gain fader overlay shown on the right of the spatial field for the
+// selected track. Linear-in-gain (0..2) mapping mirrors the radial distance rings.
+function GainSlider({ track, color, onBeforeChange, onParam }) {
+  const railRef = useRef(null);
+  const draggingRef = useRef(false);
+  const gain = clamp((track.params || {}).volume ?? 1, TRACK_VOLUME_MIN, TRACK_VOLUME_MAX);
+  const frac = (gain - TRACK_VOLUME_MIN) / (TRACK_VOLUME_MAX - TRACK_VOLUME_MIN); // 0 bottom .. 1 top
+  // Mirror studio.html's waveform red overlay: a track clips when its peak sample
+  // amplitude * volume exceeds 1.0. Glow the slider red when that happens.
+  const saturating = (track.peak || 0) * gain > 1.0;
+
+  const setFromPointer = useCallback((e) => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const rect = rail.getBoundingClientRect();
+    const f = clamp((rect.bottom - e.clientY) / rect.height, 0, 1);
+    const g = TRACK_VOLUME_MIN + f * (TRACK_VOLUME_MAX - TRACK_VOLUME_MIN);
+    onParam(track.id, "volume", Math.round(g * 1000) / 1000);
+  }, [onParam, track.id]);
+
+  const onMove = useCallback((e) => { if (draggingRef.current) setFromPointer(e); }, [setFromPointer]);
+  const onUp = useCallback(() => {
+    draggingRef.current = false;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  }, [onMove]);
+
+  const onDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onBeforeChange();
+    draggingRef.current = true;
+    setFromPointer(e);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  useEffect(() => () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  }, [onMove, onUp]);
+
+  // Ticks at the same gains as the radial rings (2, 1, 0.5, 0.25, 0).
+  const ticks = [
+    { g: 2, label: "+6" },
+    { g: 1, label: "0" },
+    { g: 0.5, label: "-6" },
+    { g: 0.25, label: "-12" },
+    { g: 0, label: "-∞" },
+  ];
+
+  return (
+    <div className={"aef-gain-overlay" + (saturating ? " saturating" : "")} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="aef-gain-head">
+        <span className="aef-gain-name" style={{ color }}>Gain(dB)</span>
+        <span className="aef-gain-val mono">{gainLabel(gain)}</span>
+      </div>
+      <div className="aef-gain-rail" ref={railRef} onPointerDown={onDown} style={{ "--gain-color": color }}>
+        <div className="aef-gain-fill" style={{ height: (frac * 100).toFixed(2) + "%" }} />
+        {ticks.map((t) => {
+          const tf = (t.g - TRACK_VOLUME_MIN) / (TRACK_VOLUME_MAX - TRACK_VOLUME_MIN);
+          return (
+            <div key={t.label} className={"aef-gain-tick" + (Math.abs(t.g - 1) < 0.0001 ? " zero" : "")} style={{ bottom: (tf * 100).toFixed(2) + "%" }}>
+              <span className="aef-gain-tick-label mono">{t.label}</span>
+            </div>
+          );
+        })}
+        <div className="aef-gain-thumb" style={{ bottom: (frac * 100).toFixed(2) + "%" }} />
+      </div>
+      <div className="aef-gain-cap">Silent</div>
+    </div>
+  );
+}
+
 function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
   const roomRef = useRef(null);
   const dragRef = useRef(null);
@@ -480,6 +554,14 @@ function Stage({ tracks, selectedId, onSelect, onBeforeChange, onParam }) {
           </div>
         );
       })}
+      {selectedTrack && (
+        <GainSlider
+          track={selectedTrack}
+          color={selectedTrack.color || (selectedInst ? selectedInst.color : "var(--amber)")}
+          onBeforeChange={onBeforeChange}
+          onParam={onParam}
+        />
+      )}
     </div>
   );
 }
@@ -759,7 +841,7 @@ function AdvancedPanApp() {
 
   // Clicking empty/meaningless space clears the selection.
   const onBackdropClick = (e) => {
-    if (e.target.closest(".aef-knob-cell, .aef-node, .aef-tab, button")) return;
+    if (e.target.closest(".aef-knob-cell, .aef-node, .aef-gain-overlay, .aef-tab, button")) return;
     setSelectedId(null);
   };
 

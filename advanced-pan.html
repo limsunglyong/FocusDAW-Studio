@@ -147,6 +147,29 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .aef-token.active{filter:drop-shadow(0 0 12px var(--amber-soft))}
 .aef-vol{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:6px;white-space:nowrap;font-family:var(--mono);font-size:9.5px;color:var(--faint);opacity:.65}
 .aef-vol.selected{color:var(--dim);opacity:1}
+/* Vertical gain fader overlay — appears on the right of the spatial field when a
+   track is selected. Linear-in-gain (0..2) so it tracks the radial rings/node. */
+/* Fixed width so the rail stays put when the dB readout changes digit count
+   (e.g. +1.9 dB -> -11.0 dB); everything is centered on a constant axis. */
+.aef-gain-overlay{position:absolute;right:24px;top:50%;transform:translateY(-50%);width:108px;height:min(76%,360px);display:flex;flex-direction:column;align-items:center;gap:9px;z-index:500}
+.aef-gain-head{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;text-align:center}
+.aef-gain-name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.aef-gain-val{font-size:11px;color:var(--cream-2)}
+.aef-gain-rail{position:relative;flex:1 1 auto;width:34px;border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--bg2));border:1px solid var(--line-strong);box-shadow:inset 0 2px 8px rgba(0,0,0,.45);cursor:ns-resize;touch-action:none}
+.aef-gain-fill{position:absolute;left:0;right:0;bottom:0;border-radius:0 0 17px 17px;background:linear-gradient(180deg,color-mix(in srgb,var(--gain-color,var(--amber)) 68%,transparent),color-mix(in srgb,var(--gain-color,var(--amber)) 18%,transparent));pointer-events:none}
+.aef-gain-tick{position:absolute;right:100%;pointer-events:none}
+.aef-gain-tick::before{content:"";position:absolute;right:3px;top:0;width:8px;height:1px;background:var(--line-strong);transform:translateY(-50%)}
+.aef-gain-tick.zero::before{background:var(--amber-deep);width:11px;height:1.6px}
+.aef-gain-tick-label{position:absolute;right:13px;top:0;transform:translateY(-50%);font-size:9px;color:var(--faint);white-space:nowrap}
+.aef-gain-tick.zero .aef-gain-tick-label{color:var(--amber-deep);font-weight:700}
+.aef-gain-thumb{position:absolute;left:50%;width:42px;height:16px;border-radius:6px;transform:translate(-50%,50%);background:linear-gradient(180deg,var(--surface3),var(--surface2));border:1.5px solid var(--gain-color,var(--amber));box-shadow:0 4px 10px -3px #000,0 0 10px var(--amber-soft);pointer-events:none}
+.aef-gain-thumb::after{content:"";position:absolute;left:8px;right:8px;top:50%;height:2px;transform:translateY(-50%);background:var(--gain-color,var(--amber));border-radius:2px;opacity:.85}
+.aef-gain-cap{font-size:8.5px;font-weight:700;letter-spacing:.14em;color:var(--faint);text-transform:uppercase}
+/* Saturation (peak*gain > 1.0): red glow mirroring the studio waveform clip overlay. */
+.aef-gain-overlay.saturating .aef-gain-rail{border-color:rgba(220,70,60,.85);box-shadow:inset 0 2px 8px rgba(0,0,0,.45),0 0 14px rgba(220,70,60,.65),0 0 4px rgba(220,70,60,.9)}
+.aef-gain-overlay.saturating .aef-gain-thumb{border-color:rgba(230,80,70,.95);box-shadow:0 4px 10px -3px #000,0 0 14px rgba(220,70,60,.8)}
+.aef-gain-overlay.saturating .aef-gain-thumb::after{background:rgba(235,90,80,.95)}
+.aef-gain-overlay.saturating .aef-gain-val{color:#e8503a;font-weight:700}
 .aef-knobs-wrap{position:relative;flex:0 0 auto}
 .aef-knobs{background:linear-gradient(180deg,var(--surface),var(--bg2));border-top:1px solid var(--line);padding:16px 14px 18px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none}
 .aef-knobs::-webkit-scrollbar{display:none}

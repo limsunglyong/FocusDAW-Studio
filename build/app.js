@@ -1319,7 +1319,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           name: t.name,
           fileName: t.fileName,
           color: t.color,
-          params: { ...t.params }
+          params: { ...t.params },
+          peak: t.peakAmp || 0
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme,
@@ -1815,7 +1816,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           name: t.name,
           fileName: t.fileName,
           color: t.color,
-          params: { ...t.params }
+          params: { ...t.params },
+          peak: t.peakAmp || 0
         })),
         trackLevels: Object.fromEntries(DAW.tracks.map((t) => [t.id, DAW.getTrackLevel(t.id)])),
         theme: localStorage.getItem("focusdaw-theme") || "default",

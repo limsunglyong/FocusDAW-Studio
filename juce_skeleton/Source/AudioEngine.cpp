@@ -32,7 +32,7 @@ void AudioEngine::init(int sr)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     sampleRate = sr;
-    std::cout << "[AudioEngine] Initialized with sample rate: " << sampleRate << std::endl;
+    LOG_DBG << "[AudioEngine] Initialized with sample rate: " << sampleRate << std::endl;
 
 #if USE_JUCE
     juce::String err = deviceManager.initialiseWithDefaultDevices(0, 2);
@@ -42,7 +42,7 @@ void AudioEngine::init(int sr)
         if (auto* currentDevice = deviceManager.getCurrentAudioDevice())
         {
             sampleRate = currentDevice->getCurrentSampleRate();
-            std::cout << "[AudioEngine] JUCE audio device opened successfully. Sample Rate: " << sampleRate 
+            LOG_DBG << "[AudioEngine] JUCE audio device opened successfully. Sample Rate: " << sampleRate 
                       << ", Buffer Size: " << currentDevice->getCurrentBufferSizeSamples() << std::endl;
         }
     }
@@ -66,7 +66,7 @@ void AudioEngine::play()
 #endif
 
     playing = true;
-    std::cout << "[AudioEngine] Playback started" << std::endl;
+    LOG_DBG << "[AudioEngine] Playback started" << std::endl;
 
 #if USE_JUCE
     // Re-align every track to the shared playhead before starting. Each track owns an
@@ -81,6 +81,15 @@ void AudioEngine::play()
             track->transportSource->setPosition(playheadSeconds);
             track->transportSource->start();
         }
+    }
+
+    // Arm the master fade for this playback pass from the current playhead.
+    if (masterEffectsSource && !juceTracks.empty())
+    {
+        double sr = sampleRate > 0 ? sampleRate : 44100.0;
+        configureMasterFade(juceTracks[0]->getLengthSeconds(), sr);
+        masterEffectsSource->setFadePosition((juce::int64)(playheadSeconds * sr));
+        masterEffectsSource->setFadeActive(true);
     }
 #endif
 }
@@ -99,9 +108,10 @@ void AudioEngine::pause()
     {
         if (track->transportSource) track->transportSource->stop();
     }
+    if (masterEffectsSource) masterEffectsSource->setFadeActive(false);
 #endif
 
-    std::cout << "[AudioEngine] Playback paused at " << playheadSeconds << "s" << std::endl;
+    LOG_DBG << "[AudioEngine] Playback paused at " << playheadSeconds << "s" << std::endl;
 }
 
 void AudioEngine::stop()
@@ -109,7 +119,7 @@ void AudioEngine::stop()
     std::lock_guard<std::mutex> lock(engineMutex);
     playing = false;
     playheadSeconds = 0.0;
-    std::cout << "[AudioEngine] Playback stopped" << std::endl;
+    LOG_DBG << "[AudioEngine] Playback stopped" << std::endl;
 
 #if USE_JUCE
     for (auto& track : juceTracks)
@@ -120,6 +130,7 @@ void AudioEngine::stop()
             track->transportSource->setPosition(0.0);
         }
     }
+    if (masterEffectsSource) masterEffectsSource->setFadeActive(false);
 #endif
 }
 
@@ -127,7 +138,7 @@ void AudioEngine::seek(double positionSeconds)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     playheadSeconds = positionSeconds;
-    std::cout << "[AudioEngine] Seek to: " << playheadSeconds << "s" << std::endl;
+    LOG_DBG << "[AudioEngine] Seek to: " << playheadSeconds << "s" << std::endl;
 
 #if USE_JUCE
     for (auto& track : juceTracks)
@@ -136,6 +147,11 @@ void AudioEngine::seek(double positionSeconds)
         {
             track->transportSource->setPosition(positionSeconds);
         }
+    }
+    if (playing && masterEffectsSource)
+    {
+        double sr = sampleRate > 0 ? sampleRate : 44100.0;
+        masterEffectsSource->setFadePosition((juce::int64)(positionSeconds * sr));
     }
 #endif
 }
@@ -152,7 +168,7 @@ void AudioEngine::setLoop(bool enabled)
     }
 #endif
 
-    std::cout << "[AudioEngine] Loop " << (loopEnabled ? "enabled" : "disabled") << std::endl;
+    LOG_DBG << "[AudioEngine] Loop " << (loopEnabled ? "enabled" : "disabled") << std::endl;
 }
 
 void AudioEngine::loadTrack(const std::string& trackId, const std::string& filePath)
@@ -290,7 +306,7 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
 
             updateSoloStates();
             updateDspParams();
-            std::cout << "[AudioEngine] Track " << trackId << " reloaded and replaced in JUCE engine." << std::endl;
+            LOG_DBG << "[AudioEngine] Track " << trackId << " reloaded and replaced in JUCE engine." << std::endl;
             return;
         }
     }
@@ -306,9 +322,9 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
     juceTracks.push_back(std::move(trackSource));
     updateSoloStates();
     updateDspParams();
-    std::cout << "[AudioEngine] Track " << trackId << " loaded in JUCE engine." << std::endl;
+    LOG_DBG << "[AudioEngine] Track " << trackId << " loaded in JUCE engine." << std::endl;
 #else
-    std::cout << "[AudioEngine] Mock Track " << trackId << " loaded with " << filePath << std::endl;
+    LOG_DBG << "[AudioEngine] Mock Track " << trackId << " loaded with " << filePath << std::endl;
 #endif
 }
 
@@ -367,7 +383,7 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
     }
 #endif
 
-    std::cout << "[AudioEngine] Parameter " << key << " set to " << value << " for track " << trackId << std::endl;
+    LOG_DBG << "[AudioEngine] Parameter " << key << " set to " << value << " for track " << trackId << std::endl;
 }
 
 void AudioEngine::setTrackAutomation(const std::string& trackId, bool autoOn, bool curved, const std::vector<float>& flatPoints)
@@ -379,7 +395,7 @@ void AudioEngine::setTrackAutomation(const std::string& trackId, bool autoOn, bo
         if (track->id == trackId)
         {
             track->setAutomation(autoOn, curved, flatPoints);
-            std::cout << "[AudioEngine] Track automation set: id=" << trackId
+            LOG_DBG << "[AudioEngine] Track automation set: id=" << trackId
                       << ", autoOn=" << (autoOn ? 1 : 0)
                       << ", curved=" << (curved ? 1 : 0)
                       << ", points=" << (flatPoints.size() / 2) << std::endl;
@@ -412,7 +428,7 @@ void AudioEngine::clearTracks()
     juceTracks.clear();
 #endif
 
-    std::cout << "[AudioEngine] All tracks cleared (transpose/tempo DSP reset)." << std::endl;
+    LOG_DBG << "[AudioEngine] All tracks cleared (transpose/tempo DSP reset)." << std::endl;
 }
 
 void AudioEngine::clearAllMuteSolo()
@@ -433,7 +449,7 @@ void AudioEngine::clearAllMuteSolo()
     updateSoloStates();
 #endif
 
-    std::cout << "[AudioEngine] All mute/solo cleared." << std::endl;
+    LOG_DBG << "[AudioEngine] All mute/solo cleared." << std::endl;
 }
 
 static int getSemitoneDifference(const std::string& origKey, const std::string& targetKey)
@@ -472,7 +488,7 @@ void AudioEngine::setProjectBpm(double bpm)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     projectBpm = bpm;
-    std::cout << "[AudioEngine] Project BPM set to " << projectBpm << std::endl;
+    LOG_DBG << "[AudioEngine] Project BPM set to " << projectBpm << std::endl;
     updateDspParams();
 }
 
@@ -480,7 +496,7 @@ void AudioEngine::setPlaybackBpm(double bpm)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     playbackBpm = bpm;
-    std::cout << "[AudioEngine] Playback BPM set to " << playbackBpm << std::endl;
+    LOG_DBG << "[AudioEngine] Playback BPM set to " << playbackBpm << std::endl;
     updateDspParams();
 }
 
@@ -488,7 +504,7 @@ void AudioEngine::setVariBpm(bool on)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     variBpm = on;
-    std::cout << "[AudioEngine] Vari BPM: " << (variBpm ? "ON" : "OFF") << std::endl;
+    LOG_DBG << "[AudioEngine] Vari BPM: " << (variBpm ? "ON" : "OFF") << std::endl;
     updateDspParams();
 }
 
@@ -496,7 +512,7 @@ void AudioEngine::setVariKey(bool on)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     variKey = on;
-    std::cout << "[AudioEngine] Vari Key: " << (variKey ? "ON" : "OFF") << std::endl;
+    LOG_DBG << "[AudioEngine] Vari Key: " << (variKey ? "ON" : "OFF") << std::endl;
     updateDspParams();
 }
 
@@ -504,7 +520,7 @@ void AudioEngine::setKey(const std::string& key)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     currentKey = key;
-    std::cout << "[AudioEngine] Key set to " << currentKey << std::endl;
+    LOG_DBG << "[AudioEngine] Key set to " << currentKey << std::endl;
     updateDspParams();
 }
 
@@ -512,7 +528,7 @@ void AudioEngine::setDetectedKey(const std::string& key)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
     detectedKey = key;
-    std::cout << "[AudioEngine] Detected reference Key set to " << detectedKey << std::endl;
+    LOG_DBG << "[AudioEngine] Detected reference Key set to " << detectedKey << std::endl;
     updateDspParams();
 }
 
@@ -522,7 +538,7 @@ void AudioEngine::setKeyShift(int semitones)
     if (semitones < -6) semitones = -6;
     if (semitones > 6) semitones = 6;
     keyShift = semitones;
-    std::cout << "[AudioEngine] Key shift set to " << keyShift << " semitones" << std::endl;
+    LOG_DBG << "[AudioEngine] Key shift set to " << keyShift << " semitones" << std::endl;
     updateDspParams();
 }
 
@@ -534,6 +550,18 @@ void AudioEngine::setMaster(const std::string& key, float value)
         masterVolume = value;
 #if USE_JUCE
         if (masterGainSource) masterGainSource->masterGain.store(value);
+#endif
+    }
+    else if (key == "fadeIn" || key == "fadeOut")
+    {
+        if (key == "fadeIn") fadeIn = value; else fadeOut = value;
+#if USE_JUCE
+        // Live-update the active fade window if currently playing.
+        if (playing && masterEffectsSource && !juceTracks.empty())
+        {
+            double sr = sampleRate > 0 ? sampleRate : 44100.0;
+            configureMasterFade(juceTracks[0]->getLengthSeconds(), sr);
+        }
 #endif
     }
 #if USE_JUCE
@@ -558,7 +586,31 @@ void AudioEngine::setMaster(const std::string& key, float value)
         if (masterEffectsSource) masterEffectsSource->setExciterLevel(value);
     }
 #endif
-    std::cout << "[AudioEngine] Master parameter " << key << " set to " << value << std::endl;
+    LOG_DBG << "[AudioEngine] Master parameter " << key << " set to " << value << std::endl;
+}
+
+void AudioEngine::configureMasterFade(double songLenSeconds, double sr)
+{
+#if USE_JUCE
+    if (!masterEffectsSource) return;
+    if (songLenSeconds <= 0.0 || sr <= 0.0)
+    {
+        masterEffectsSource->setFadeWindow(0, 0, 0);
+        return;
+    }
+    double fi = fadeIn, fo = fadeOut;
+    double half = songLenSeconds / 2.0;
+    if (fi > half) fi = half;
+    if (fo > half) fo = half;
+    if (fi < 0.0) fi = 0.0;
+    if (fo < 0.0) fo = 0.0;
+    masterEffectsSource->setFadeWindow(
+        (juce::int64)(fi * sr),
+        (juce::int64)(fo * sr),
+        (juce::int64)(songLenSeconds * sr));
+#else
+    (void)songLenSeconds; (void)sr;
+#endif
 }
 
 void AudioEngine::setMasterBand(int index, float db)
@@ -566,7 +618,7 @@ void AudioEngine::setMasterBand(int index, float db)
 #if USE_JUCE
     if (masterEffectsSource) masterEffectsSource->setMasterBand(index, db);
 #endif
-    std::cout << "[AudioEngine] Master EQ band " << index << " set to " << db << " dB" << std::endl;
+    LOG_DBG << "[AudioEngine] Master EQ band " << index << " set to " << db << " dB" << std::endl;
 }
 
 void AudioEngine::setRoom(const RoomSpec& spec)
@@ -574,7 +626,7 @@ void AudioEngine::setRoom(const RoomSpec& spec)
 #if USE_JUCE
     if (masterEffectsSource) masterEffectsSource->setRoom(spec);
 #endif
-    std::cout << "[AudioEngine] Ambience room set: wet=" << spec.wet
+    LOG_DBG << "[AudioEngine] Ambience room set: wet=" << spec.wet
               << ", decay=" << spec.decay << ", preDelay=" << spec.preDelay
               << ", damp=" << spec.damp << ", width=" << spec.width
               << ", echo=" << spec.echo << ", size=" << spec.size
@@ -592,7 +644,7 @@ void AudioEngine::setMasterBands(const std::vector<float>& bands)
         }
     }
 #endif
-    std::cout << "[AudioEngine] Master EQ bands updated" << std::endl;
+    LOG_DBG << "[AudioEngine] Master EQ bands updated" << std::endl;
 }
 
 double AudioEngine::getPlayhead() const
@@ -630,7 +682,7 @@ void AudioEngine::updatePlayhead()
                     track->transportSource->setPosition(0.0);
                 }
             }
-            std::cout << "[AudioEngine] Playback completed" << std::endl;
+            LOG_DBG << "[AudioEngine] Playback completed" << std::endl;
         }
     }
 #else
@@ -691,7 +743,7 @@ void AudioEngine::updateDspParams()
     }
 #endif
     
-    std::cout << "[AudioEngine] DSP parameters updated: Tempo=" << targetTempo 
+    LOG_DBG << "[AudioEngine] DSP parameters updated: Tempo=" << targetTempo 
               << ", PitchShift=" << targetPitchShift << " semitones" << std::endl;
 }
 
@@ -702,6 +754,8 @@ void AudioEngine::exportMix(const std::string& exportId,
                             bool normalize,
                             float lufsTarget,
                             bool preservePitch,
+                            double fadeInSeconds,
+                            double fadeOutSeconds,
                             std::function<void(float)> progressCallback,
                             std::function<void(const std::string&, const std::string&)> completionCallback)
 {
@@ -709,7 +763,7 @@ void AudioEngine::exportMix(const std::string& exportId,
     // ==========================================
     // Mock Mode Implementation (USE_JUCE=0)
     // ==========================================
-    std::cout << "[AudioEngine] Mock Export started: id=" << exportId 
+    LOG_DBG << "[AudioEngine] Mock Export started: id=" << exportId 
               << ", path=" << tempOutputPath << ", sampleRate=" << targetSampleRate 
               << ", duration=" << durationSeconds << ", normalize=" << normalize 
               << ", target=" << lufsTarget << ", preservePitch=" << preservePitch << std::endl;
@@ -760,14 +814,14 @@ void AudioEngine::exportMix(const std::string& exportId,
         progressCallback(p);
     }
 
-    std::cout << "[AudioEngine] Mock Export completed: " << tempOutputPath << std::endl;
+    LOG_DBG << "[AudioEngine] Mock Export completed: " << tempOutputPath << std::endl;
     completionCallback(tempOutputPath, "");
 
 #else
     // ==========================================
     // JUCE Engine Implementation (USE_JUCE=1)
     // ==========================================
-    std::cout << "[AudioEngine] JUCE Offline Export started: id=" << exportId 
+    LOG_DBG << "[AudioEngine] JUCE Offline Export started: id=" << exportId 
               << ", path=" << tempOutputPath << ", sampleRate=" << targetSampleRate 
               << ", duration=" << durationSeconds << ", normalize=" << normalize 
               << ", target=" << lufsTarget << ", preservePitch=" << preservePitch << std::endl;
@@ -781,14 +835,14 @@ void AudioEngine::exportMix(const std::string& exportId,
     bool realtimeCallbackSuspended = true;
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
-    std::cout << "[AudioEngine] Realtime audio callback suspended for offline export." << std::endl;
+    LOG_DBG << "[AudioEngine] Realtime audio callback suspended for offline export." << std::endl;
     auto restoreRealtimeCallback = [&]() {
         if (!realtimeCallbackSuspended)
             return;
         sourcePlayer.setSource(masterEffectsSource.get());
         deviceManager.addAudioCallback(&sourcePlayer);
         realtimeCallbackSuspended = false;
-        std::cout << "[AudioEngine] Realtime audio callback restored after offline export." << std::endl;
+        LOG_DBG << "[AudioEngine] Realtime audio callback restored after offline export." << std::endl;
     };
     
     {
@@ -900,8 +954,27 @@ void AudioEngine::exportMix(const std::string& exportId,
         updateDspParams();
     }
 
-    std::cout << "[AudioEngine] Offline track rendering enabled (via transportSource): tracks=" << activeTracks.size()
+    LOG_DBG << "[AudioEngine] Offline track rendering enabled (via transportSource): tracks=" << activeTracks.size()
               << ", soundTouch=" << (preservePitch ? 1 : 0) << std::endl;
+
+    // Master fade in/out over the export timeline. The bridge already converts the
+    // project fade seconds to output seconds (mirrors web renderMix fadeIn/graphRate).
+    {
+        juce::int64 fadeInS = (juce::int64)(fadeInSeconds * targetSampleRate);
+        juce::int64 fadeOutS = (juce::int64)(fadeOutSeconds * targetSampleRate);
+        if (fadeInS < 0) fadeInS = 0;
+        if (fadeOutS < 0) fadeOutS = 0;
+        if (fadeInS > totalSamplesToRender / 2) fadeInS = totalSamplesToRender / 2;
+        if (fadeOutS > totalSamplesToRender / 2) fadeOutS = totalSamplesToRender / 2;
+        if (masterEffectsSource)
+        {
+            masterEffectsSource->setFadeWindow(fadeInS, fadeOutS, totalSamplesToRender);
+            masterEffectsSource->setFadePosition(0);
+            masterEffectsSource->setFadeActive(true);
+        }
+        LOG_DBG << "[AudioEngine] Export fade: inSamples=" << fadeInS << ", outSamples=" << fadeOutS
+                  << ", total=" << totalSamplesToRender << std::endl;
+    }
 
     bool success = true;
     std::string errorMsg = "";
@@ -1004,12 +1077,12 @@ void AudioEngine::exportMix(const std::string& exportId,
             double rawMeanSquarePerChannel = rawSumSq / (double)rawSamplesMeasured;
             double rawStereoSumMS = rawMeanSquarePerChannel * 2.0;
             measuredLufs = -0.691 + 10.0 * std::log10(std::max(rawStereoSumMS, 1.0e-12));
-            std::cout << "[AudioEngine] LUFS gate fallback used: rawPeak=" << rawPeak
+            LOG_DBG << "[AudioEngine] LUFS gate fallback used: rawPeak=" << rawPeak
                       << ", rawRms=" << std::sqrt(rawMeanSquarePerChannel)
                       << ", fallbackLufs=" << measuredLufs << std::endl;
         }
 
-        std::cout << "[AudioEngine] Measured LUFS: " << measuredLufs << std::endl;
+        LOG_DBG << "[AudioEngine] Measured LUFS: " << measuredLufs << std::endl;
         
         double gainDb = lufsTarget - measuredLufs;
         if (gainDb > 15.0) gainDb = 15.0;
@@ -1033,6 +1106,8 @@ void AudioEngine::exportMix(const std::string& exportId,
         track->transportSource->start();
     }
     samplesRendered = 0;
+    // Re-arm the master fade from the start for the write pass (PASS 1 advanced it).
+    if (masterEffectsSource) masterEffectsSource->setFadePosition(0);
 
     juce::File outputFile (tempOutputPath);
     outputFile.deleteFile();
@@ -1135,6 +1210,8 @@ void AudioEngine::exportMix(const std::string& exportId,
         track->transportSource->stop();
         track->transportSource->setPosition(0.0);
     }
+    // Disable the export fade window; realtime resume (below) re-arms it if needed.
+    if (masterEffectsSource) masterEffectsSource->setFadeActive(false);
 
     // Restore real-time playback master gain
     if (masterGainSource) {
@@ -1173,13 +1250,19 @@ void AudioEngine::exportMix(const std::string& exportId,
                     track->transportSource->start();
                 }
             }
+            // Re-arm the realtime master fade for resumed playback.
+            if (masterEffectsSource && !juceTracks.empty()) {
+                configureMasterFade(juceTracks[0]->getLengthSeconds(), originalSampleRate);
+                masterEffectsSource->setFadePosition((juce::int64)(playheadSeconds * originalSampleRate));
+                masterEffectsSource->setFadeActive(true);
+            }
         }
     }
 
     restoreRealtimeCallback();
 
     if (success) {
-        std::cout << "[AudioEngine] JUCE Offline Export completed successfully: " << tempOutputPath << std::endl;
+        LOG_DBG << "[AudioEngine] JUCE Offline Export completed successfully: " << tempOutputPath << std::endl;
         completionCallback(tempOutputPath, "");
     } else {
         std::cerr << "[AudioEngine] JUCE Offline Export failed: " << errorMsg << std::endl;
