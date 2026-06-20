@@ -2152,6 +2152,20 @@
     return [{ t: 0, v: 1 }, { t: 1, v: 1 }];
   }
 
+  // Meyda 라이브러리가 로드되지 않으면 BPM·Key 감지가 모두 무력화된다(조용히 null/false 반환).
+  // 패키징 누락(예: build.files에 meyda.min.js 미포함)이나 스크립트 404 시 즉시 인지할 수 있도록
+  // 최초 1회 콘솔에 명확한 경고를 남긴다.
+  let _meydaWarned = false;
+  function warnMeydaMissing(feature) {
+    if (_meydaWarned) return;
+    _meydaWarned = true;
+    console.error(
+      `[FocusDAW] Meyda 라이브러리가 로드되지 않아 ${feature} 감지를 사용할 수 없습니다. ` +
+      `studio.html이 참조하는 meyda.min.js가 패키지(asar)에 포함되었는지 확인하세요 ` +
+      `(package.json build.files).`
+    );
+  }
+
   // BPM 측정 (표준 onset detection + tempo estimation 흐름):
   //   1) 곡 중앙의 연속 구간(최대 ~75초)에서 spectral-flux onset strength 곡선 생성
   //   2) 전체 구간 자기상관(ACF)으로 periodicity 추정 + tempo prior 가중
@@ -2171,7 +2185,7 @@
   // 대표 구간에 대한 onset strength 곡선을 만들고 best tempo를 추정한다.
   // centerSample을 주면 그 지점을 중심으로, 없으면 곡 중앙을 분석한다.
   function estimateBpm(buffer, centerSample) {
-    if (typeof Meyda === "undefined") return null;
+    if (typeof Meyda === "undefined") { warnMeydaMissing("BPM"); return null; }
     const sr = buffer.sampleRate || 44100;
     const len = buffer.length || 0;
     if (!len) return null;
@@ -2197,7 +2211,8 @@
   // 한 버퍼의 곡 중앙 최대 120초 구간을 분석해 프레임별 정규화한 크로마를 누적 chroma에 더한다.
   // 여러 트랙을 하나의 chroma에 합산하면 곧 "전체 믹스의 화성 내용"을 분석하는 효과.
   function accumulateChroma(buffer, chroma) {
-    if (typeof Meyda === "undefined" || !buffer) return false;
+    if (typeof Meyda === "undefined") { warnMeydaMissing("Key"); return false; }
+    if (!buffer) return false;
     const sr = buffer.sampleRate || 44100;
     const len = buffer.length || 0;
     if (!len) return false;
