@@ -1,10 +1,25 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen, Menu } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
 const { spawn } = require('child_process');
+
+// Shared renderer webPreferences. `devTools` is gated on !app.isPackaged so the
+// DevTools / debug console is fully unavailable in packaged release builds
+// (F12, Ctrl+Shift+I, right-click Inspect and the View menu all become no-ops),
+// while local `npm start` development keeps it. Combined with the removed
+// application menu (see app.whenReady), release builds expose no debug surface.
+function buildWebPreferences() {
+  return {
+    preload: path.join(__dirname, 'preload.js'),
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: false,
+    devTools: !app.isPackaged,
+  };
+}
 
 let ffmpegPath = null;
 try { ffmpegPath = require('ffmpeg-static'); } catch (e) {
@@ -109,12 +124,7 @@ function createWindow() {
     minHeight: 600,
     icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
+    webPreferences: buildWebPreferences(),
     backgroundColor: '#1b1712',
   });
 
@@ -219,6 +229,10 @@ function stopAudioEngine() {
 }
 
 app.whenReady().then(() => {
+  // Remove the default application menu entirely. Besides hiding the native menu
+  // bar, this strips the built-in View ▸ Toggle Developer Tools item and the
+  // Alt-key menu, so a release build has no menu path to the debug console.
+  Menu.setApplicationMenu(null);
   startAudioEngine();
   createWindow();
   app.on('activate', () => {
@@ -607,12 +621,7 @@ ipcMain.handle('open-help', async () => {
     autoHideMenuBar: true,
     parent: undefined,
     icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
+    webPreferences: buildWebPreferences(),
     backgroundColor: '#1b1712',
     title: 'FocusDAW Studio Help',
   });
@@ -745,12 +754,7 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
     parent: mainWindow || undefined,
     icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
+    webPreferences: buildWebPreferences(),
     backgroundColor: '#1b1712',
   });
 
@@ -843,12 +847,7 @@ ipcMain.handle('open-advanced-pan', async (_, target = 'pan') => {
     parent: mainWindow || undefined,
     icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
+    webPreferences: buildWebPreferences(),
     backgroundColor: '#1b1712',
     title: 'FocusDAW Advanced Effect Factory',
   });
