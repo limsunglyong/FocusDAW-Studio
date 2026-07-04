@@ -21,8 +21,18 @@
     masterStereo: { l: 0, r: 0 },
     masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     hasNativeBandData: false, // true once the native engine broadcasts masterBands
-    stretchPreviewPreparing: false
+    stretchPreviewPreparing: false,
+    audioDevices: null,        // last "audioDevices" event from the native engine
+    audioDeviceResolvers: []   // pending requestAudioDevices() promises
   };
+
+  // App-specific audio output device (Settings dialog). Stored locally — this is
+  // an app preference, not project data. { type, name } with JUCE's names; absent
+  // or empty = system default device.
+  const AUDIO_DEVICE_KEY = "focusdaw-audio-device";
+  function loadSavedAudioDevice() {
+    try { return JSON.parse(localStorage.getItem(AUDIO_DEVICE_KEY) || "null"); } catch (e) { return null; }
+  }
 
   // Web → native output handover. On connect the native engine still has to
   // decode every synced track (async loadTrack), so the web engine keeps playing
@@ -111,7 +121,12 @@
     init() {
       // Always initialize LocalDAW so that the context and demo tracks are ready for fallback
       LocalDAW.init();
-      
+
+      // Point the web engine at the saved output device right away — before the
+      // native handover (and in web-only fallback) the web engine is what's audible.
+      const savedDev = loadSavedAudioDevice();
+      if (savedDev && savedDev.name) LocalDAW.setOutputDevice(savedDev.name);
+
       // If we are in Electron and not connected yet, try connecting
       if (window.electronAPI && connectionState === "connecting" && !socket) {
         setupWebSocket();
@@ -154,6 +169,42 @@
       // painted the web engine's reverb tail on the spectrum meter.
       if (nativeState.hasNativeBandData) return nativeState.masterBandLevels;
       return LocalDAW.getMasterBandLevels();
+    },
+
+    // --- Audio output device selection (Settings dialog) -----------------------
+    // The native engine owns the audible device via JUCE; the web engine mirrors
+    // the choice via setSinkId so pre-handover / fallback playback uses the same
+    // interface. The selection is an app preference persisted in localStorage.
+    getSavedAudioDevice() { return loadSavedAudioDevice(); },
+
+    requestAudioDevices() {
+      if (!this.isNative || !socket || socket.readyState !== WebSocket.OPEN)
+        return Promise.resolve(null); // web-only mode: no native device list
+      return new Promise((resolve) => {
+        nativeState.audioDeviceResolvers.push(resolve);
+        sendToNative({ command: "listAudioDevices" });
+        setTimeout(() => { // don't leave the dialog hanging if the engine stalls
+          const i = nativeState.audioDeviceResolvers.indexOf(resolve);
+          if (i >= 0) { nativeState.audioDeviceResolvers.splice(i, 1); resolve(nativeState.audioDevices); }
+        }, 10000);
+      });
+    },
+
+    setAudioDevice(type, name) {
+      try {
+        if (!type && !name) localStorage.removeItem(AUDIO_DEVICE_KEY);
+        else localStorage.setItem(AUDIO_DEVICE_KEY, JSON.stringify({ type: type || "", name: name || "" }));
+      } catch (e) {}
+      LocalDAW.setOutputDevice(name || "");
+      if (this.isNative) sendToNative({ command: "setAudioDevice", type: type || "", name: name || "" });
+    },
+
+    // Temporary master-FX bypass (Output FX EFFECT button). The web engine
+    // bypasses at the node level; the native engine mirrors it via neutral
+    // parameter pushes (state in LocalDAW.master stays untouched on both sides).
+    setMasterFxBypass(bypassed) {
+      LocalDAW.setMasterFxBypass(bypassed);
+      pushMasterFxStateToNative();
     },
 
     // Command forwarders. Transport commands go to the native engine only after
@@ -296,42 +347,46 @@
       return res;
     },
 
+    // While the Output FX EFFECT bypass is active, effect edits are stored in
+    // LocalDAW.master (the web engine guards its own nodes) but must NOT reach the
+    // native engine — it is running neutral values. Lifting the bypass re-pushes
+    // the full, latest master state via syncMasterToNative().
+    _fxEditBlocked(key) {
+      const fxKeys = ["reverb", "echo", "widener", "saturation", "exciter"];
+      return LocalDAW.masterFxBypassed && (key === undefined || fxKeys.includes(key));
+    },
+
     setMaster(key, val) {
-      if (key === "volume" && this.isNative) {
-        LocalDAW.setMaster(key, val);
+      LocalDAW.setMaster(key, val);
+      if (this.isNative && !this._fxEditBlocked(key)) {
         sendToNative({ command: "setMaster", key, value: val });
-      } else {
-        LocalDAW.setMaster(key, val);
-        if (this.isNative) {
-          sendToNative({ command: "setMaster", key, value: val });
-        }
       }
     },
 
     setMasterBand(i, db) {
       LocalDAW.setMasterBand(i, db);
-      if (this.isNative) {
+      if (this.isNative && !LocalDAW.masterFxBypassed) {
         sendToNative({ command: "setMasterBand", index: i, db });
       }
     },
 
     setMasterGroup(group, db) {
       LocalDAW.setMasterGroup(group, db);
-      if (this.isNative) {
+      if (this.isNative && !LocalDAW.masterFxBypassed) {
         sendToNative({ command: "setMasterGroup", group, db });
       }
     },
 
     setMasterBands(arr) {
       LocalDAW.setMasterBands(arr);
-      if (this.isNative) {
+      if (this.isNative && !LocalDAW.masterFxBypassed) {
         sendToNative({ command: "setMasterBands", bands: arr });
       }
     },
 
     applyEQPreset(name) {
       LocalDAW.applyEQPreset(name);
-      if (this.isNative) {
+      if (this.isNative && !LocalDAW.masterFxBypassed) {
         // The native engine has no applyEQPreset handler (manual band drags use
         // setMasterBand, which is why those worked but presets didn't). Forward the
         // resolved 9-band values — LocalDAW.master.bands now holds the preset — via
@@ -345,12 +400,12 @@
     // applies the preset / fine-tune so realtime native playback (and export) get it.
     setRoom(key) {
       LocalDAW.setRoom(key);
-      if (this.isNative) sendRoomToNative();
+      if (this.isNative && !LocalDAW.masterFxBypassed) sendRoomToNative();
     },
 
     setRoomParam(k, v) {
       LocalDAW.setRoomParam(k, v);
-      if (this.isNative) sendRoomToNative();
+      if (this.isNative && !LocalDAW.masterFxBypassed) sendRoomToNative();
     },
 
     // Track addition: run locally (for waveforms) and sync with JUCE
@@ -418,6 +473,9 @@
     },
 
     importProject(json) {
+      // The EFFECT bypass is a transient A/B state — a newly opened project
+      // always starts with its effects audible.
+      if (LocalDAW.masterFxBypassed) LocalDAW.setMasterFxBypass(false);
       LocalDAW.importProject(json);
       if (this.isNative) {
         // Send full sync project configuration to native C++ engine
@@ -443,6 +501,15 @@
       if (options.forceLocal || !this.isNative) {
         return LocalDAW.renderMix(onProgress, options);
       }
+      // The native export renders with the engine's LIVE master params. If the
+      // EFFECT bypass is active they are neutral — restore the real values for
+      // the render and re-apply the bypass afterwards (export always includes fx).
+      const fxWasBypassed = LocalDAW.masterFxBypassed;
+      if (fxWasBypassed) syncMasterToNative();
+      const restoreBypass = (v) => {
+        if (fxWasBypassed) pushMasterFxStateToNative();
+        return v;
+      };
       const tempoRate = LocalDAW && LocalDAW._projectRate ? LocalDAW._projectRate() : 1;
       const exportDuration = tempoRate > 0 ? LocalDAW.duration / tempoRate : LocalDAW.duration;
       return new Promise((resolve, reject) => {
@@ -450,8 +517,8 @@
         window._activeExport = {
           exportId,
           onProgress,
-          resolve,
-          reject
+          resolve: (v) => resolve(restoreBypass(v)),
+          reject: (e) => { restoreBypass(); reject(e); }
         };
         // Re-sync the current key state so the offline render matches realtime
         // playback even if the user exported without ever starting playback.
@@ -511,6 +578,14 @@
       // Send initial handshake/init command
       sendToNative({ command: "init", sampleRate: LocalDAW.ctx ? LocalDAW.ctx.sampleRate : 44100 });
 
+      // Restore the app-specific output device (Settings dialog). The native engine
+      // always boots on the system default; like tempo/key/master state it must be
+      // re-pushed on every (re)connect.
+      const savedDev = loadSavedAudioDevice();
+      if (savedDev && (savedDev.type || savedDev.name)) {
+        sendToNative({ command: "setAudioDevice", type: savedDev.type || "", name: savedDev.name || "" });
+      }
+
       // Sync current tempo & key settings (incl. keyShift — see syncTempoKeyToNative).
       syncTempoKeyToNative();
 
@@ -525,6 +600,10 @@
       // the mixer sliders show the restored values, until a slider is touched.
       syncMasterToNative();
       sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+
+      // If the Output FX EFFECT bypass is active, syncMasterToNative just pushed
+      // the real values — override them with neutral ones so both engines match.
+      if (LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
 
       // No tracks to load → native is ready right away; otherwise the handover
       // fires from onNativeTrackLoaded once the last pending load reports in.
@@ -612,6 +691,22 @@
     }
   }
 
+  // Mirror the web engine's master-FX bypass on the native engine: push neutral
+  // effect values while bypassed, re-push the real master state when lifted.
+  // LocalDAW.master keeps the real values throughout, so syncMasterToNative()
+  // restores everything (incl. the ambience room spec).
+  function pushMasterFxStateToNative() {
+    if (!Bridge.isNative) return;
+    if (LocalDAW.masterFxBypassed) {
+      sendToNative({ command: "setMasterBands", bands: [0, 0, 0, 0, 0, 0, 0, 0, 0] });
+      ["reverb", "echo", "widener", "saturation", "exciter"].forEach((k) =>
+        sendToNative({ command: "setMaster", key: k, value: 0 }));
+      sendToNative({ command: "setMasterRoom", decay: 0.001, shape: 2, preDelay: 0, wet: 0, damp: 20000, width: 1, echo: 0, size: 0.5, erGain: 1 });
+    } else {
+      syncMasterToNative();
+    }
+  }
+
   // Push the COMPLETE master section state to the native engine. Like tempo/key,
   // the native side has no importProject handler, so this must run on (re)connect,
   // after every project import, and after clearTracks — otherwise the native output
@@ -680,6 +775,13 @@
         nativeState.hasNativeBandData = true;
       }
       // Do not call _emit on every level message to avoid React overload, React uses useTick polling
+    } else if (msg.event === "audioDevices") {
+      nativeState.audioDevices = msg;
+      nativeState.audioDeviceResolvers.splice(0).forEach((resolve) => resolve(msg));
+      LocalDAW._emit();
+    } else if (msg.event === "audioDeviceChanged") {
+      if (!msg.ok) console.warn("[AudioBridge] Audio device change failed:", msg.error);
+      LocalDAW._emit();
     } else if (msg.event === "stretchPreviewPreparing") {
       nativeState.stretchPreviewPreparing = !!msg.preparing;
       LocalDAW._emit();

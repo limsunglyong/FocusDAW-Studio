@@ -599,6 +599,25 @@ void WebSocketServer::clientLoop(void* socketHandle)
                 audioEngine.setMasterBand(i, (float)db);
             }
         }
+        else if (cmd == "listAudioDevices")
+        {
+            broadcast(audioEngine.getAudioDevicesJson());
+        }
+        else if (cmd == "setAudioDevice")
+        {
+            std::string type = getJsonStringVal(frameText, "type");
+            std::string name = getJsonStringVal(frameText, "name");
+            std::string devErr = audioEngine.setAudioDevice(type, name);
+            std::string escaped;
+            for (char c : devErr) { if (c == '"' || c == '\\') escaped += '\\'; escaped += c; }
+            std::ostringstream ackJson;
+            ackJson << "{\"event\":\"audioDeviceChanged\",\"ok\":" << (devErr.empty() ? "true" : "false");
+            if (!devErr.empty()) ackJson << ",\"error\":\"" << escaped << "\"";
+            ackJson << "}";
+            broadcast(ackJson.str());
+            // Follow with the refreshed list so the UI reflects the device actually in use.
+            broadcast(audioEngine.getAudioDevicesJson());
+        }
         else if (cmd == "export")
         {
             std::string exportId = getJsonStringVal(frameText, "exportId");

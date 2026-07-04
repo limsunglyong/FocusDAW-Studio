@@ -240,7 +240,7 @@ function MasterLevelMeter({ width = 300, height = 156, onBeforeChange }) {
     })), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 7.5, color: "var(--faint)" } }, labels[i]));
   })), /* @__PURE__ */ React.createElement(MasterEQOverlay, { width, height, onBeforeChange }));
 }
-function MiniEQGraph({ width = 116, height = 30 }) {
+function MiniEQGraph({ width = 116, height = 30, gray = false }) {
   const bands = DAW.master.bands;
   const fmin = 30, fmax = 18e3;
   const freqToX = (f) => Math.log(f / fmin) / Math.log(fmax / fmin) * width;
@@ -251,27 +251,15 @@ function MiniEQGraph({ width = 116, height = 30 }) {
   const eqLine = smoothPath(curveP);
   const zeroY = gainToY(0);
   const isFlat = bands.every((b) => Math.abs(b) < 0.1);
+  const fill = gray ? isFlat ? "rgba(160,160,160,.04)" : "rgba(160,160,160,.12)" : isFlat ? "rgba(232,176,75,.04)" : "rgba(232,176,75,.14)";
+  const stroke = gray ? isFlat ? "rgba(160,160,160,.28)" : "rgba(160,160,160,.75)" : isFlat ? "rgba(232,176,75,.28)" : "var(--amber)";
   return /* @__PURE__ */ React.createElement("svg", { width, height, style: {
     display: "block",
     flexShrink: 0,
     borderRadius: 5,
     background: "var(--eq-graph-bg, rgba(0,0,0,.32))",
     overflow: "hidden"
-  } }, /* @__PURE__ */ React.createElement("line", { x1: "0", y1: zeroY, x2: width, y2: zeroY, stroke: "rgba(232,212,170,.15)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement(
-    "path",
-    {
-      d: `${eqLine} L${width} ${zeroY} L0 ${zeroY} Z`,
-      fill: isFlat ? "rgba(232,176,75,.04)" : "rgba(232,176,75,.14)"
-    }
-  ), /* @__PURE__ */ React.createElement(
-    "path",
-    {
-      d: eqLine,
-      fill: "none",
-      stroke: isFlat ? "rgba(232,176,75,.28)" : "var(--amber)",
-      strokeWidth: "1.5"
-    }
-  ));
+  } }, /* @__PURE__ */ React.createElement("line", { x1: "0", y1: zeroY, x2: width, y2: zeroY, stroke: "rgba(232,212,170,.15)", strokeWidth: "1" }), /* @__PURE__ */ React.createElement("path", { d: `${eqLine} L${width} ${zeroY} L0 ${zeroY} Z`, fill }), /* @__PURE__ */ React.createElement("path", { d: eqLine, fill: "none", stroke, strokeWidth: "1.5" }));
 }
 function FxChip({ label, active, color, onClick, canEnable = true }) {
   return /* @__PURE__ */ React.createElement(
@@ -507,23 +495,18 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const m = DAW.master;
-  const fxCanEnable = (key) => {
-    const s = m[key + "Stored"];
-    return s === void 0 || s > 1e-3;
-  };
-  const toggleFx = (key) => () => {
-    const cur = m[key] || 0;
-    const storedKey = key + "Stored";
-    const stored = m[storedKey];
-    if (cur > 1e-3) {
-      onBeforeChange && onBeforeChange();
-      DAW.setMaster(storedKey, cur);
-      DAW.setMaster(key, 0);
-    } else if (stored === void 0 || stored > 1e-3) {
-      onBeforeChange && onBeforeChange();
-      DAW.setMaster(key, stored === void 0 ? 0.4 : stored);
-    }
-  };
+  const fxOn = !DAW.masterFxBypassed;
+  const toggleAllFx = () => DAW.setMasterFxBypass(fxOn);
+  const fxBadges = [
+    ["R", "Reverb", m.reverb > 1e-3, "var(--violet)"],
+    ["D", "Delay", m.echo > 1e-3, "var(--blue)"],
+    ["S", "Saturation", m.saturation > 1e-3, "var(--red)"],
+    ["W", "Widener", m.widener > 1e-3, "var(--amber)"],
+    ["E", "Exciter", m.exciter > 1e-3, "var(--green)"]
+  ].filter(([, , on]) => on);
+  const ROOM_BADGE = { studio: "Studio", home: "Home", concert: "Concert", far: "Far", tunnel: "Tunnel", custom: "Custom" };
+  const roomWet = m.roomParams && m.roomParams.wet || 0;
+  const roomBadge = m.room !== "none" && roomWet > 1e-3 ? ROOM_BADGE[m.room] : null;
   const phx = playhead / DAW.duration * laneW;
   const inX = m.fadeIn * pxPerSec;
   const outX = (DAW.duration - m.fadeOut) * pxPerSec;
@@ -572,7 +555,55 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
       }
     },
     "MUTE Clr"
-  ), /* @__PURE__ */ React.createElement("span", { className: "chip", style: { fontSize: 9 } }, "master")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { onClick: onOpenMixer, title: "Open mixer", style: { cursor: "pointer", display: "flex", borderRadius: 5 } }, /* @__PURE__ */ React.createElement(MiniEQGraph, { width: 112, height: 30 })), /* @__PURE__ */ React.createElement(FxChip, { label: "REV", active: m.reverb > 1e-3, canEnable: fxCanEnable("reverb"), color: "var(--violet)", onClick: toggleFx("reverb") }), /* @__PURE__ */ React.createElement(FxChip, { label: "WIDE", active: m.widener > 1e-3, canEnable: fxCanEnable("widener"), color: "var(--amber)", onClick: toggleFx("widener") }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), /* @__PURE__ */ React.createElement(Meter, { level: DAW.getMasterLevel(), height: 46, width: 7 }))), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("span", { className: "chip", style: { fontSize: 9 } }, "master")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { onClick: onOpenMixer, title: "Open mixer", style: { cursor: "pointer", display: "flex", borderRadius: 5 } }, /* @__PURE__ */ React.createElement(MiniEQGraph, { width: 112, height: 30, gray: !fxOn })), /* @__PURE__ */ React.createElement(FxChip, { label: "EFFECT", active: fxOn, color: "var(--green)", onClick: toggleAllFx }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } })), /* @__PURE__ */ React.createElement("div", { style: {
+    display: "flex",
+    alignItems: "center",
+    gap: 3,
+    minHeight: 15,
+    flexWrap: "nowrap",
+    overflow: "hidden",
+    opacity: fxOn ? 1 : 0.35,
+    transition: "opacity .2s"
+  } }, fxBadges.map(([abbr, name, , color]) => /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      key: abbr,
+      title: name + (fxOn ? "" : " (bypassed)"),
+      className: "mono",
+      style: {
+        fontSize: 8.5,
+        fontWeight: 700,
+        lineHeight: 1,
+        padding: "3px 4.5px",
+        borderRadius: 4,
+        color,
+        border: "1px solid " + color,
+        flexShrink: 0,
+        cursor: "default",
+        userSelect: "none"
+      }
+    },
+    abbr
+  )), roomBadge && /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      title: "Ambience: " + roomBadge + (fxOn ? "" : " (bypassed)"),
+      className: "mono",
+      style: {
+        fontSize: 8.5,
+        fontWeight: 700,
+        lineHeight: 1,
+        padding: "3px 5px",
+        borderRadius: 4,
+        color: "var(--blue)",
+        border: "1px solid var(--blue)",
+        flexShrink: 0,
+        cursor: "default",
+        userSelect: "none"
+      }
+    },
+    roomBadge
+  ))), /* @__PURE__ */ React.createElement(Meter, { level: DAW.getMasterLevel(), height: 46, width: 7 }))), /* @__PURE__ */ React.createElement(
     "div",
     {
       className: "outlane",

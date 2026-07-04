@@ -1401,6 +1401,14 @@ public:
     // render while tracks are still decoding, or it would miss them).
     void waitForLoadsIdle(int timeoutMs = 180000);
 
+    // Audio output device selection (settings UI). Safe to call from the WebSocket
+    // client threads — the JUCE device work is marshalled to the message thread
+    // (WASAPI objects are COM apartment-affine). getAudioDevicesJson returns a
+    // ready-to-broadcast "audioDevices" event; setAudioDevice returns an error
+    // string ("" = success). Empty type/name select the system defaults.
+    std::string getAudioDevicesJson();
+    std::string setAudioDevice(const std::string& typeName, const std::string& deviceName);
+
     // Getters for status updates
     bool isPlaying() const { return playing; }
     double getPlayhead() const;

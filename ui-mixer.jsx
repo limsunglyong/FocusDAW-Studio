@@ -238,8 +238,10 @@ function MasterLevelMeter({ width = 300, height = 156, onBeforeChange }) {
   );
 }
 
-/* ---------- mini EQ graph (output track header) ---------- */
-function MiniEQGraph({ width = 116, height = 30 }) {
+/* ---------- mini EQ graph (output track header) ----------
+   `gray` = the EFFECT bypass is active: draw the curve in gray so the header
+   shows at a glance that the EQ is not being applied. */
+function MiniEQGraph({ width = 116, height = 30, gray = false }) {
   const bands = DAW.master.bands;
   const fmin = 30, fmax = 18000;
   const freqToX = (f) => (Math.log(f / fmin) / Math.log(fmax / fmin)) * width;
@@ -250,14 +252,16 @@ function MiniEQGraph({ width = 116, height = 30 }) {
   const eqLine = smoothPath(curveP);
   const zeroY = gainToY(0);
   const isFlat = bands.every(b => Math.abs(b) < 0.1);
+  const fill = gray ? (isFlat ? "rgba(160,160,160,.04)" : "rgba(160,160,160,.12)")
+                    : (isFlat ? "rgba(232,176,75,.04)" : "rgba(232,176,75,.14)");
+  const stroke = gray ? (isFlat ? "rgba(160,160,160,.28)" : "rgba(160,160,160,.75)")
+                      : (isFlat ? "rgba(232,176,75,.28)" : "var(--amber)");
   return (
     <svg width={width} height={height} style={{ display: "block", flexShrink: 0, borderRadius: 5,
       background: "var(--eq-graph-bg, rgba(0,0,0,.32))", overflow: "hidden" }}>
       <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="rgba(232,212,170,.15)" strokeWidth="1" />
-      <path d={`${eqLine} L${width} ${zeroY} L0 ${zeroY} Z`}
-        fill={isFlat ? "rgba(232,176,75,.04)" : "rgba(232,176,75,.14)"} />
-      <path d={eqLine} fill="none"
-        stroke={isFlat ? "rgba(232,176,75,.28)" : "var(--amber)"} strokeWidth="1.5" />
+      <path d={`${eqLine} L${width} ${zeroY} L0 ${zeroY} Z`} fill={fill} />
+      <path d={eqLine} fill="none" stroke={stroke} strokeWidth="1.5" />
     </svg>
   );
 }
@@ -452,22 +456,23 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const m = DAW.master;
-  // REV / WIDE bypass toggle — mirrors the mixer FxCard: remember amount on off, restore on on.
-  // If the amount was zeroed via the mixer slider (stored===0), enabling is a no-op.
-  const fxCanEnable = (key) => { const s = m[key + "Stored"]; return s === undefined || s > 0.001; };
-  const toggleFx = (key) => () => {
-    const cur = m[key] || 0;
-    const storedKey = key + "Stored";
-    const stored = m[storedKey];
-    if (cur > 0.001) {
-      onBeforeChange && onBeforeChange();
-      DAW.setMaster(storedKey, cur); DAW.setMaster(key, 0);
-    } else if (stored === undefined || stored > 0.001) {
-      onBeforeChange && onBeforeChange();
-      DAW.setMaster(key, stored === undefined ? 0.4 : stored);
-    }
-    // else (stored===0): user zeroed the slider — nothing to restore, no-op
-  };
+  // EFFECT = temporary bypass of ALL master effects (EQ + the Ambience-window fx;
+  // Spatial Field / volume / fades excluded) for A/B comparison. Node-level only —
+  // master state, undo history and project data stay untouched.
+  const fxOn = !DAW.masterFxBypassed;
+  const toggleAllFx = () => DAW.setMasterFxBypass(fxOn);
+  // Active-effect badges shown under the EQ graph. Amount > 0 = applied.
+  // Colors match each effect's FxCard icon background in the mixer (MasterPanel).
+  const fxBadges = [
+    ["R", "Reverb", m.reverb > 0.001, "var(--violet)"],
+    ["D", "Delay", m.echo > 0.001, "var(--blue)"],
+    ["S", "Saturation", m.saturation > 0.001, "var(--red)"],
+    ["W", "Widener", m.widener > 0.001, "var(--amber)"],
+    ["E", "Exciter", m.exciter > 0.001, "var(--green)"],
+  ].filter(([, , on]) => on);
+  const ROOM_BADGE = { studio: "Studio", home: "Home", concert: "Concert", far: "Far", tunnel: "Tunnel", custom: "Custom" };
+  const roomWet = (m.roomParams && m.roomParams.wet) || 0;
+  const roomBadge = m.room !== "none" && roomWet > 0.001 ? ROOM_BADGE[m.room] : null;
   const phx = (playhead / DAW.duration) * laneW;
   const inX = m.fadeIn * pxPerSec;
   const outX = (DAW.duration - m.fadeOut) * pxPerSec;
@@ -499,13 +504,34 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
           </button>
           <span className="chip" style={{ fontSize: 9 }}>master</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div onClick={onOpenMixer} title="Open mixer" style={{ cursor: "pointer", display: "flex", borderRadius: 5 }}>
-            <MiniEQGraph width={112} height={30} />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div onClick={onOpenMixer} title="Open mixer" style={{ cursor: "pointer", display: "flex", borderRadius: 5 }}>
+                <MiniEQGraph width={112} height={30} gray={!fxOn} />
+              </div>
+              <FxChip label="EFFECT" active={fxOn} color="var(--green)" onClick={toggleAllFx} />
+              <div style={{ flex: 1 }} />
+            </div>
+            {/* applied-effect badges (below the EQ graph) — dimmed while bypassed */}
+            <div style={{ display: "flex", alignItems: "center", gap: 3, minHeight: 15, flexWrap: "nowrap", overflow: "hidden",
+              opacity: fxOn ? 1 : 0.35, transition: "opacity .2s" }}>
+              {fxBadges.map(([abbr, name, , color]) => (
+                <span key={abbr} title={name + (fxOn ? "" : " (bypassed)")} className="mono"
+                  style={{ fontSize: 8.5, fontWeight: 700, lineHeight: 1, padding: "3px 4.5px", borderRadius: 4,
+                    color, border: "1px solid " + color, flexShrink: 0, cursor: "default", userSelect: "none" }}>
+                  {abbr}
+                </span>
+              ))}
+              {roomBadge && (
+                <span title={"Ambience: " + roomBadge + (fxOn ? "" : " (bypassed)")} className="mono"
+                  style={{ fontSize: 8.5, fontWeight: 700, lineHeight: 1, padding: "3px 5px", borderRadius: 4,
+                    color: "var(--blue)", border: "1px solid var(--blue)", flexShrink: 0, cursor: "default", userSelect: "none" }}>
+                  {roomBadge}
+                </span>
+              )}
+            </div>
           </div>
-          <FxChip label="REV" active={m.reverb > 0.001} canEnable={fxCanEnable("reverb")} color="var(--violet)" onClick={toggleFx("reverb")} />
-          <FxChip label="WIDE" active={m.widener > 0.001} canEnable={fxCanEnable("widener")} color="var(--amber)" onClick={toggleFx("widener")} />
-          <div style={{ flex: 1 }} />
           <Meter level={DAW.getMasterLevel()} height={46} width={7} />
         </div>
       </div>

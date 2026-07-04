@@ -353,6 +353,8 @@
       if (ctx) return;
       ctx = makeCtx();
       this.ctx = ctx;
+      // Re-apply a device selection made before the context existed (startup restore).
+      if (this._outputDeviceLabel) this.setOutputDevice(this._outputDeviceLabel);
       convolver = ctx.createConvolver();
       convolver.buffer = makeIR(ctx, 2.4, 2.6);
 
@@ -1206,6 +1208,9 @@
     setMaster(key, val) {
       this.master[key] = val;
       if (!ctx) return;
+      // While the Output FX EFFECT bypass is active, effect keys only update state —
+      // the nodes stay neutral until the bypass is lifted (volume/fades pass through).
+      if (this.masterFxBypassed && (key === "reverb" || key === "echo" || key === "widener" || key === "saturation" || key === "exciter")) return;
       if (key === "volume") ramp(masterVol.gain, val);
       if (key === "reverb") ramp(mRevSend.gain, val);
       if (key === "echo") ramp(mEchoSend.gain, val);
@@ -1233,7 +1238,7 @@
       if (!ctx || !ambConv) return;
       const spec = this.master.roomParams || ROOM_PRESETS.none;
       ambConv.buffer = makeRoomIR(ctx, spec);
-      ramp(ambSend.gain, spec.wet);
+      ramp(ambSend.gain, this.masterFxBypassed ? 0 : spec.wet);
     },
     // Select a named preset — resets fine-tune params to that preset's values.
     setRoom(key) {
@@ -1250,13 +1255,50 @@
       this.master.roomParams = { ...base, [k]: v };
       this.master.room = 'custom';
       if (!ctx || !ambConv) return;
-      if (k === 'wet') ramp(ambSend.gain, v);
+      if (k === 'wet') ramp(ambSend.gain, this.masterFxBypassed ? 0 : v);
       else this._applyRoom();
+    },
+
+    // Temporary master-FX bypass (Output FX track's EFFECT button, for A/B
+    // comparison). Silences every master effect at the NODE level — EQ bands,
+    // reverb, delay(echo), widener, saturation, exciter, ambience wet — WITHOUT
+    // touching this.master, so project data / undo / the mixer UI keep the real
+    // values and lifting the bypass restores the exact sound. Master volume,
+    // fades and Spatial Field are not effects and stay active. Offline export
+    // (renderMix) builds its own graph from this.master, so it is unaffected.
+    masterFxBypassed: false,
+    setMasterFxBypass(bypassed) {
+      this.masterFxBypassed = !!bypassed;
+      this._applyMasterFxNodes();
+      this._emit();
+    },
+    _applyMasterFxNodes() {
+      if (!ctx) return;
+      const byp = this.masterFxBypassed;
+      const m = this.master;
+      ramp(mRevSend.gain, byp ? 0 : m.reverb);
+      ramp(mEchoSend.gain, byp ? 0 : m.echo);
+      const w = 1.0 + (byp ? 0 : m.widener) * 1.5;
+      ramp(mWidLL.gain, 0.5 * (1.0 + w));
+      ramp(mWidRR.gain, 0.5 * (1.0 + w));
+      ramp(mWidRL.gain, 0.5 * (1.0 - w));
+      ramp(mWidLR.gain, 0.5 * (1.0 - w));
+      const sat = byp ? 0 : m.saturation;
+      ramp(mSatWet.gain, sat * 0.8);
+      ramp(mSatDry.gain, 1.0 - sat * 0.4);
+      ramp(mExcWet.gain, (byp ? 0 : m.exciter) * 0.5);
+      for (let i = 0; i < EQ_FREQS.length; i++) {
+        if (eqNodes[i]) ramp(eqNodes[i].gain, byp ? 0 : (m.bands[i] || 0));
+      }
+      if (ambSend) {
+        const spec = m.roomParams || ROOM_PRESETS[m.room] || ROOM_PRESETS.none;
+        ramp(ambSend.gain, byp ? 0 : (spec.wet || 0));
+      }
     },
 
     setMasterBand(i, db) {
       this.master.bands[i] = db;
-      if (eqNodes[i]) ramp(eqNodes[i].gain, db);
+      if (eqNodes[i] && !this.masterFxBypassed) ramp(eqNodes[i].gain, db);
       this.master.eqPreset = null; // manual band edit → custom (no named preset)
     },
     setMasterGroup(group, db) { // 0=low 1=mid 2=high
@@ -1761,6 +1803,31 @@
         const shaped = Math.pow((sum / Math.max(1, count)) / 255, 0.72);
         return Math.max(0, Math.min(1, shaped + (this.master.bands[i] || 0) / 42));
       });
+    },
+
+    // Route the web engine's output to a specific device (settings UI). The native
+    // engine picks its own device via JUCE; this keeps the pre-handover / fallback
+    // web output on the same interface so sound doesn't jump between devices.
+    // `label` is the device display name as the OS reports it ("" = system default).
+    // AudioContext.setSinkId wants a Chromium deviceId, so match by label.
+    async setOutputDevice(label) {
+      this._outputDeviceLabel = label || "";
+      if (!ctx || typeof ctx.setSinkId !== "function") return false;
+      try {
+        if (!this._outputDeviceLabel) { await ctx.setSinkId(""); return true; }
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const outs = devices.filter((d) => d.kind === "audiooutput");
+        const norm = (s) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+        const want = norm(this._outputDeviceLabel);
+        const hit = outs.find((d) => norm(d.label) === want)
+                 || outs.find((d) => norm(d.label).includes(want) || want.includes(norm(d.label)));
+        if (!hit) return false;
+        await ctx.setSinkId(hit.deviceId);
+        return true;
+      } catch (e) {
+        console.warn("[audio-engine] setOutputDevice failed:", e);
+        return false;
+      }
     },
 
     onTick(cb) { this._tickCbs.push(cb); },

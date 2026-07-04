@@ -797,6 +797,117 @@ function ThemeSwatch({ theme, active, onClick }) {
   );
 }
 
+/* ---------- audio output device section (Settings) ---------- */
+// App-only output device selection. The list comes from the native (JUCE) engine —
+// including "Windows Audio (Exclusive Mode)" for low latency — and the choice is
+// pushed to both engines via DAW.setAudioDevice (bridge persists it in localStorage
+// and re-applies it on every reconnect/restart).
+function AudioDeviceSection() {
+  const [devices, setDevices] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState(() => (DAW.getSavedAudioDevice ? DAW.getSavedAudioDevice() : null));
+
+  const isNative = !!DAW.isNative;
+
+  const refresh = async () => {
+    if (!DAW.requestAudioDevices) { setLoading(false); return; }
+    setLoading(true);
+    const list = await DAW.requestAudioDevices();
+    setDevices(list);
+    setLoading(false);
+  };
+  useEffect(() => { refresh(); }, []);
+
+  // DirectSound is a legacy API that Windows emulates on top of the shared WASAPI
+  // mixer anyway (an extra hop = more latency, no benefit), so hide it.
+  const types = ((devices && devices.types) || []).filter((t) => !/directsound/i.test(t.type));
+  const current = devices && devices.current;
+  const savedValue = saved && (saved.type || saved.name) ? JSON.stringify([saved.type || "", saved.name || ""]) : "";
+  const savedInList = !savedValue ||
+    types.some((t) => t.type === (saved.type || "") && (t.devices || []).includes(saved.name || ""));
+
+  const onChange = (e) => {
+    const v = e.target.value;
+    const [type, name] = v ? JSON.parse(v) : ["", ""];
+    setSaved(v ? { type, name } : null);
+    if (DAW.setAudioDevice) DAW.setAudioDevice(type, name);
+    setTimeout(refresh, 800); // engine broadcasts the refreshed state after the switch
+  };
+
+  return (
+    <div style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>Audio Output Device</div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "8px 0" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cream)" }}>Output Device</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
+            App-only setting — the Windows default device is not changed. "Windows Audio (Exclusive Mode)" takes over the device for the lowest latency.
+          </div>
+          {current && (
+            <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 6 }}>
+              Active: {current.name || "(system default)"} · {current.type} · {Math.round(current.sampleRate || 0)} Hz / {current.bufferSize || 0} samples
+            </div>
+          )}
+          {!isNative && (
+            <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+              Native audio engine not connected — the system default output is in use.
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+          <select value={savedValue} onChange={onChange} disabled={!isNative || loading}
+            style={{ maxWidth: 300, height: 32, fontSize: 12.5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" }}>
+            <option value="">System Default</option>
+            {!savedInList && savedValue && (
+              <option value={savedValue}>{(saved.name || "?") + " (saved — not found)"}</option>
+            )}
+            {types.map((t) => (
+              <optgroup key={t.type} label={t.type}>
+                {(t.devices || []).map((name) => (
+                  <option key={t.type + "|" + name} value={JSON.stringify([t.type, name])}>{name}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <button className="btn" onClick={refresh} disabled={!isNative || loading}
+            style={{ height: 32, fontSize: 12.5, padding: "0 12px", border: "1px solid var(--line-strong)" }}>
+            {loading ? "…" : "Rescan"}
+          </button>
+        </div>
+      </div>
+
+      {/* driver-mode comparison guide */}
+      <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+          <thead>
+            <tr style={{ background: "var(--bg)", color: "var(--dim)", textAlign: "left" }}>
+              {["Mode", "Path", "Latency", "Other apps", "Notes"].map((h) => (
+                <th key={h} style={{ padding: "7px 10px", fontWeight: 600, borderBottom: "1px solid var(--line)" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody style={{ color: "var(--muted)" }}>
+            {[
+              ["Windows Audio (Exclusive Mode)", "App → device directly", "Lowest (a few ms)", "Muted", "Takes over the device; the app sets the sample rate"],
+              ["Windows Audio (Low Latency Mode)", "App → Windows mixer (small buffer) → device", "Low (~3–10 ms)", "Audible", "Windows 10+; actual latency depends on the audio driver"],
+              ["Windows Audio", "App → Windows mixer → device", "Normal (10–30 ms)", "Audible", "Most stable — recommended for everyday use"],
+            ].map((row, i) => (
+              <tr key={i} style={{ borderBottom: i < 2 ? "1px solid var(--line)" : "none" }}>
+                {row.map((cell, j) => (
+                  <td key={j} style={{ padding: "7px 10px", verticalAlign: "top", color: j === 0 ? "var(--cream)" : undefined, fontWeight: j === 0 ? 600 : 400 }}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ padding: "7px 10px", fontSize: 11, color: "var(--dim)", borderTop: "1px solid var(--line)", background: "var(--bg)" }}>
+          Lower latency trades away stability — if you hear dropouts or crackles, switch back to Windows Audio (shared).
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800 }}
@@ -836,6 +947,8 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
               }} style={{ height: 32, fontSize: 12.5, padding: "0 14px", border: "1px solid var(--line-strong)" }}>Reset Position</button>
             </div>
           </div>
+
+          <AudioDeviceSection />
         </div>
         <div style={{ padding: "12px 22px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "flex-end" }}>
           <button className="btn primary" onClick={onClose}>Done</button>

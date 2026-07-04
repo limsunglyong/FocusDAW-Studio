@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <thread>
 #include <chrono>
+#include <sstream>
+#include <functional>
 
 AudioEngine::AudioEngine()
 {
@@ -1488,6 +1490,135 @@ std::pair<float, float> AudioEngine::getMasterMagnitude()
     }
 #endif
     return { 0.0f, 0.0f };
+}
+
+static std::string jsonEscapeString(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s)
+    {
+        if (c == '"' || c == '\\') { out += '\\'; out += c; }
+        else if ((unsigned char)c < 0x20) { out += ' '; } // control chars can't appear raw in JSON
+        else out += c;
+    }
+    return out;
+}
+
+#if USE_JUCE
+// Run fn on the JUCE message thread and hand its string back to the calling
+// (WebSocket) thread. AudioDeviceManager/WASAPI work must not run on arbitrary
+// threads — the COM objects live in the message thread's apartment. The shared
+// state keeps the lambda's storage alive even if the caller times out.
+static std::string runOnMessageThread(std::function<std::string()> fn, const std::string& timeoutResult)
+{
+    if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+        return fn();
+
+    struct State { std::string result; juce::WaitableEvent done; };
+    auto state = std::make_shared<State>();
+    juce::MessageManager::callAsync([state, fn]
+    {
+        state->result = fn();
+        state->done.signal();
+    });
+    if (!state->done.wait(8000))
+        return timeoutResult;
+    return state->result;
+}
+#endif
+
+std::string AudioEngine::getAudioDevicesJson()
+{
+#if USE_JUCE
+    return runOnMessageThread([this]() -> std::string
+    {
+        std::ostringstream json;
+        juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager.getAudioDeviceSetup();
+        double sr = 0.0;
+        int buf = 0;
+        if (auto* dev = deviceManager.getCurrentAudioDevice())
+        {
+            sr = dev->getCurrentSampleRate();
+            buf = dev->getCurrentBufferSizeSamples();
+        }
+        json << "{\"event\":\"audioDevices\",\"current\":{"
+             << "\"type\":\"" << jsonEscapeString(deviceManager.getCurrentAudioDeviceType().toStdString()) << "\","
+             << "\"name\":\"" << jsonEscapeString(setup.outputDeviceName.toStdString()) << "\","
+             << "\"sampleRate\":" << sr << ",\"bufferSize\":" << buf << "},\"types\":[";
+
+        const auto& types = deviceManager.getAvailableDeviceTypes();
+        for (int i = 0; i < types.size(); ++i)
+        {
+            auto* type = types.getUnchecked(i);
+            type->scanForDevices();
+            juce::StringArray names = type->getDeviceNames(false); // output devices
+            json << "{\"type\":\"" << jsonEscapeString(type->getTypeName().toStdString()) << "\",\"devices\":[";
+            for (int d = 0; d < names.size(); ++d)
+            {
+                json << "\"" << jsonEscapeString(names[d].toStdString()) << "\"";
+                if (d + 1 < names.size()) json << ",";
+            }
+            json << "]}";
+            if (i + 1 < types.size()) json << ",";
+        }
+        json << "]}";
+        return json.str();
+    }, "{\"event\":\"audioDevices\",\"error\":\"timeout\",\"types\":[]}");
+#else
+    return "{\"event\":\"audioDevices\",\"types\":[]}";
+#endif
+}
+
+std::string AudioEngine::setAudioDevice(const std::string& typeName, const std::string& deviceName)
+{
+#if USE_JUCE
+    return runOnMessageThread([this, typeName, deviceName]() -> std::string
+    {
+        const auto& types = deviceManager.getAvailableDeviceTypes();
+        if (types.isEmpty()) return "no audio device types available";
+
+        // Empty type = the platform default type (JUCE lists it first: WASAPI shared).
+        juce::String wantedType = typeName.empty() ? types.getUnchecked(0)->getTypeName()
+                                                   : juce::String::fromUTF8(typeName.c_str());
+        juce::AudioIODeviceType* typeObj = nullptr;
+        for (int i = 0; i < types.size(); ++i)
+            if (types.getUnchecked(i)->getTypeName() == wantedType) { typeObj = types.getUnchecked(i); break; }
+        if (typeObj == nullptr) return "unknown device type: " + typeName;
+
+        typeObj->scanForDevices();
+        juce::StringArray names = typeObj->getDeviceNames(false);
+        if (names.isEmpty()) return "no output devices for type: " + wantedType.toStdString();
+
+        // Empty name = the type's default output device.
+        juce::String wantedName = deviceName.empty()
+            ? names[juce::jlimit(0, names.size() - 1, typeObj->getDefaultDeviceIndex(false))]
+            : juce::String::fromUTF8(deviceName.c_str());
+        if (!names.contains(wantedName)) return "unknown device: " + deviceName;
+
+        if (deviceManager.getCurrentAudioDeviceType() != wantedType)
+            deviceManager.setCurrentAudioDeviceType(wantedType, true);
+
+        juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager.getAudioDeviceSetup();
+        setup.outputDeviceName = wantedName;
+        setup.inputDeviceName = juce::String();
+        setup.useDefaultOutputChannels = true;
+        juce::String err = deviceManager.setAudioDeviceSetup(setup, true);
+        if (err.isNotEmpty()) return err.toStdString();
+
+        {
+            std::lock_guard<std::mutex> lock(engineMutex);
+            if (auto* dev = deviceManager.getCurrentAudioDevice())
+                sampleRate = dev->getCurrentSampleRate();
+        }
+        LOG_DBG << "[AudioEngine] Audio device switched: type=" << wantedType.toStdString()
+                << ", name=" << wantedName.toStdString() << ", sr=" << sampleRate << std::endl;
+        return std::string();
+    }, "device switch timed out");
+#else
+    (void)typeName; (void)deviceName;
+    return "native engine not available";
+#endif
 }
 
 std::vector<float> AudioEngine::getMasterBandLevels()
