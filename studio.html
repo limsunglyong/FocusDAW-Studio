@@ -303,6 +303,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 .arrange-scroll-arrow:hover .arrange-scroll-disc{color:var(--amber);border-color:var(--amber);box-shadow:0 0 22px var(--amber-soft),0 0 9px var(--amber-soft),inset 0 0 8px var(--amber-soft);transform:scale(1.08)}
 .arrange-scroll-arrow:active .arrange-scroll-disc{transform:scale(.95)}
 .arrange-scroll-arrow:focus,.arrange-scroll-arrow:focus-visible{outline:none}
+/* Prevent accidental text selection and native element/image dragging across the app —
+   the "object stuck to the cursor" ghost + the import dropzone dashed outline it triggered.
+   Real form inputs stay selectable. The only intended drag is an external OS file drop,
+   which relies on neither in-app text selection nor an in-app dragstart. */
+body{user-select:none;-webkit-user-select:none;}
+input,textarea,select,[contenteditable="true"]{user-select:text;-webkit-user-select:text;}
+img,a,svg{-webkit-user-drag:none;}
 </style>
 </head>
 <body>
@@ -335,6 +342,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
   style.textContent = lines.join('\n');
   document.head.appendChild(style);
 })();
+
+/* Block all internal HTML5 drags (text/element/image "drag ghost" that could start a
+   move/copy and light up the file-import dropzone). External OS file drops do NOT fire
+   dragstart inside the page, so audio import via drag-and-drop is unaffected. There are
+   no legitimate in-app HTML5 drag sources (UI drags use mouse events / app-region). */
+document.addEventListener('dragstart', function (e) { e.preventDefault(); }, true);
 </script>
 
 <script src="version.js"></script>

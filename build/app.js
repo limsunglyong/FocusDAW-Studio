@@ -2393,7 +2393,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
     addFiles(files);
   };
+  const isFileDrag = (e) => {
+    const types = e.dataTransfer && e.dataTransfer.types;
+    return !!types && Array.prototype.indexOf.call(types, "Files") !== -1;
+  };
   const onDragOver = (e) => {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     if (!dragOver) setDragOver(true);
   };
@@ -2534,7 +2539,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     },
     /* @__PURE__ */ React.createElement(TimeStretchBusyBadge, { active: stretchPreparing, x: overlayX, y: overlayY }),
     empty ? /* @__PURE__ */ React.createElement(EmptyState, { dragOver, onPick: pickAudioFiles, onPickFolder: pickAudioFolder, onDemo: loadDemo }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(Ruler, { pxPerSec, playhead, onSeek: (t) => {
-      DAW.seek(t);
+      DAW.userSeek(t);
       force((n) => n + 1);
     }, onAddTrack: pickAudioFiles }), DAW.tracks.map((t, i) => /* @__PURE__ */ React.createElement(
       TrackRow,
@@ -2550,7 +2555,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         onParam: param(t.id),
         onRemove: () => removeTrack(t.id),
         onSeek: (time) => {
-          DAW.seek(time);
+          DAW.userSeek(time);
           force((n) => n + 1);
         },
         tool,
@@ -2565,7 +2570,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         laneH: Math.max(110, laneH * 0.9),
         playhead,
         onSeek: (t) => {
-          DAW.seek(t);
+          DAW.userSeek(t);
           force((n) => n + 1);
         },
         onOpenMixer: openMixerIfClosed,

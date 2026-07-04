@@ -555,6 +555,8 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
       window.removeEventListener("mouseup", up);
       if (!moved) {
         onSeek(startTime);
+      } else if (DAW.repeatPlayEnabled && DAW.loopRange && DAW.snapPlayheadToLoop) {
+        DAW.snapPlayheadToLoop();
       }
     };
     window.addEventListener("mousemove", move);

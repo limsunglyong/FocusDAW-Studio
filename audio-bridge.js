@@ -274,6 +274,20 @@
       }
     },
 
+    // Timeline click seek (ruler / track lane / Output FX lane). While Repeat is on the
+    // playhead is "jailed" inside the loop range: a click that lands OUTSIDE the range is
+    // ignored so the section keeps looping instead of the end-wrap yanking it to the start
+    // (past-end click) or playback escaping the loop (before-start click). Clicks inside
+    // the range seek normally. Deliberate transport nav (Return-to-start, arrow nudge)
+    // keeps using seek() directly and is not restricted.
+    userSeek(t) {
+      if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange &&
+          (t < LocalDAW.loopRange.start || t > LocalDAW.loopRange.end)) {
+        return;
+      }
+      this.seek(t);
+    },
+
     setTrackParam(id, key, val) {
       LocalDAW.setTrackParam(id, key, val);
       if (this.isNative) {
@@ -345,6 +359,33 @@
 
     setLoopRange(range) {
       LocalDAW.setLoopRange(range);
+    },
+
+    // Pull playback into the repeat range EXACTLY ONCE (called on loop-region drag end).
+    // Repeat only self-sustains via the END boundary (handleNativeMessage seeks back when
+    // the position passes loopRange.end), so a region moved AHEAD of the playhead is never
+    // entered on its own. We deliberately do NOT snap continuously during the drag — doing
+    // that (as the reverted v1.15.2 did in the position-frame wrap) fires a seek per frame
+    // while the region is still moving, which restarts the SoundTouch grain repeatedly and
+    // produces a buzzing drone. A single seek on release behaves like a normal user seek.
+    // Judge "outside the loop" from the RAW transport position, not getPlayhead() — the
+    // latter clamps into [start,end] while repeat is on and would hide an outside playhead.
+    snapPlayheadToLoop() {
+      if (!LocalDAW.repeatPlayEnabled || !LocalDAW.loopRange) return;
+      let raw;
+      if (this.isNative && nativeOutputActive) {
+        if (nativeState.isPlaying) {
+          const rate = LocalDAW._projectRate();
+          raw = nativeState.offset + (Date.now() - nativeState.startTime) / 1000 * rate;
+        } else {
+          raw = nativeState.offset;
+        }
+      } else {
+        raw = LocalDAW.getPlayhead(); // web engine getPlayhead does not clamp to loopRange
+      }
+      if (raw < LocalDAW.loopRange.start || raw >= LocalDAW.loopRange.end) {
+        this.seek(LocalDAW.loopRange.start);
+      }
     },
 
     setRepeatPlayEnabled(on) {

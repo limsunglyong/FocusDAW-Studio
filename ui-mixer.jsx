@@ -530,6 +530,10 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
       window.removeEventListener("mouseup", up);
       if (!moved) {
         onSeek(startTime);
+      } else if (DAW.repeatPlayEnabled && DAW.loopRange && DAW.snapPlayheadToLoop) {
+        // Region was created/moved. If repeat is on, pull playback into the (possibly
+        // relocated) range ONCE now that the drag has settled — a single seek, no drone.
+        DAW.snapPlayheadToLoop();
       }
     };
 

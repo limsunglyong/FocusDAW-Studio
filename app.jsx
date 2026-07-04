@@ -2331,7 +2331,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
     addFiles(files);
   };
-  const onDragOver = (e) => { e.preventDefault(); if (!dragOver) setDragOver(true); };
+  // Only react to external FILE drags (audio import). Internal element/text drags are
+  // suppressed globally (see studio.html dragstart handler); this Files check is a
+  // second guard so a stray non-file drag never lights up the import dropzone outline.
+  const isFileDrag = (e) => {
+    const types = e.dataTransfer && e.dataTransfer.types;
+    return !!types && Array.prototype.indexOf.call(types, "Files") !== -1;
+  };
+  const onDragOver = (e) => { if (!isFileDrag(e)) return; e.preventDefault(); if (!dragOver) setDragOver(true); };
   const onDragLeave = (e) => { if (e.currentTarget === e.target) setDragOver(false); };
   const empty = DAW.tracks.length === 0;
 
@@ -2431,15 +2438,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         ) : (
           <React.Fragment>
             <div style={{ position: "relative", minWidth: "min-content" }}>
-              <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} />
+              <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.userSeek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} />
               {DAW.tracks.map((t, i) => (
                 <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                   playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
-                  onSeek={(time) => { DAW.seek(time); force((n) => n + 1); }}
+                  onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />
               ))}
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
-                onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }}
+                onSeek={(t) => { DAW.userSeek(t); force((n) => n + 1); }}
                 onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
                 onClearMuteSolo={clearMuteSolo} />
               {DAW.loopRange && (
