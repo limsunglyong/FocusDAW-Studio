@@ -1086,7 +1086,22 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
         width: 1,
         background: isMajor ? "rgba(232,212,170,.14)" : "rgba(232,212,170,.075)"
       } });
-    }), DAW.tracks.length === 0 && /* @__PURE__ */ React.createElement("span", { style: { position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 10, color: "var(--faint)", letterSpacing: ".08em" } }, "TIMELINE"), /* @__PURE__ */ React.createElement("div", { style: {
+    }), DAW.tracks.length === 0 && /* @__PURE__ */ React.createElement("span", { style: { position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 10, color: "var(--faint)", letterSpacing: ".08em" } }, "TIMELINE"), DAW.loopRange && /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          left: `${DAW.loopRange.start / duration * 100}%`,
+          width: `${(DAW.loopRange.end - DAW.loopRange.start) / duration * 100}%`,
+          top: 0,
+          bottom: 0,
+          background: DAW.repeatPlayEnabled ? "rgba(232,176,75,.15)" : "rgba(255,255,255,.04)",
+          borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.5)" : "rgba(255,255,255,.2)"),
+          borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.5)" : "rgba(255,255,255,.2)"),
+          pointerEvents: "none"
+        }
+      }
+    ), /* @__PURE__ */ React.createElement("div", { style: {
       position: "absolute",
       left: `${viewLeft * 100}%`,
       top: 0,
@@ -2478,7 +2493,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       style: { flex: 1, overflow: "auto", position: "relative", outline: dragOver && !empty ? "2px dashed var(--amber)" : "none", outlineOffset: -4 }
     },
     /* @__PURE__ */ React.createElement(TimeStretchBusyBadge, { active: stretchPreparing, x: overlayX, y: overlayY }),
-    empty ? /* @__PURE__ */ React.createElement(EmptyState, { dragOver, onPick: pickAudioFiles, onPickFolder: pickAudioFolder, onDemo: loadDemo }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Ruler, { pxPerSec, playhead, onSeek: (t) => {
+    empty ? /* @__PURE__ */ React.createElement(EmptyState, { dragOver, onPick: pickAudioFiles, onPickFolder: pickAudioFolder, onDemo: loadDemo }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(Ruler, { pxPerSec, playhead, onSeek: (t) => {
       DAW.seek(t);
       force((n) => n + 1);
     }, onAddTrack: pickAudioFiles }), DAW.tracks.map((t, i) => /* @__PURE__ */ React.createElement(
@@ -2517,7 +2532,50 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         onBeforeChange: pushUndo,
         onClearMuteSolo: clearMuteSolo
       }
-    ), /* @__PURE__ */ React.createElement("div", { style: { height: 40 } }))
+    ), DAW.loopRange && /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          left: (window.HEADER_W || 244) + DAW.loopRange.start / DAW.duration * Math.max(1, DAW.duration * pxPerSec),
+          width: (DAW.loopRange.end - DAW.loopRange.start) / DAW.duration * Math.max(1, DAW.duration * pxPerSec),
+          top: 0,
+          bottom: 0,
+          background: DAW.repeatPlayEnabled ? "rgba(232,176,75,.16)" : "rgba(232,176,75,.05)",
+          borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.75)" : "rgba(255,255,255,.35)"),
+          borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.75)" : "rgba(255,255,255,.35)"),
+          pointerEvents: "none",
+          zIndex: 9
+        }
+      },
+      /* @__PURE__ */ React.createElement("div", { style: { position: "sticky", top: 0, height: 30, width: "100%", overflow: "visible" } }, /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          style: {
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: 10,
+            height: 10,
+            background: DAW.repeatPlayEnabled ? "var(--amber)" : "rgba(255,255,255,.4)",
+            clipPath: "polygon(0 0, 100% 0, 0 100%)"
+          }
+        }
+      ), /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          style: {
+            position: "absolute",
+            right: 0,
+            top: 0,
+            width: 10,
+            height: 10,
+            background: DAW.repeatPlayEnabled ? "var(--amber)" : "rgba(255,255,255,.4)",
+            clipPath: "polygon(0 0, 100% 0, 100% 100%)"
+          }
+        }
+      ))
+    )), /* @__PURE__ */ React.createElement("div", { style: { height: 40 } }))
   ), !empty && vScroll.up && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow up", onClick: () => scrollArrangeV(-1), title: "Scroll up", "aria-label": "Scroll tracks up" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 15 12 7 20 15", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), !empty && vScroll.down && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow down", onClick: () => scrollArrangeV(1), title: "Scroll down", "aria-label": "Scroll tracks down" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 9 12 17 20 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), confirmDeleteAll && /* @__PURE__ */ React.createElement(
     "div",
     {

@@ -510,6 +510,56 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   const phx = playhead / DAW.duration * laneW;
   const inX = m.fadeIn * pxPerSec;
   const outX = (DAW.duration - m.fadeOut) * pxPerSec;
+  const loopRange = DAW.loopRange;
+  const repeatOn = DAW.repeatPlayEnabled;
+  const leftX = loopRange ? loopRange.start / DAW.duration * laneW : 0;
+  const rightX = loopRange ? loopRange.end / DAW.duration * laneW : 0;
+  const onOutlaneMouseDown = (e) => {
+    if (e.target.closest(".fadeh") || e.target.closest(".loop-btn-x") || e.target.closest(".loop-btn-repeat")) return;
+    onBeforeChange && onBeforeChange();
+    const r = e.currentTarget.getBoundingClientRect();
+    const startX = e.clientX - r.left;
+    const startTime = startX / laneW * DAW.duration;
+    let dragType = "new";
+    let initialRange = loopRange ? { ...loopRange } : null;
+    if (loopRange) {
+      const leftHandleX = loopRange.start / DAW.duration * laneW;
+      const rightHandleX = loopRange.end / DAW.duration * laneW;
+      if (Math.abs(startX - leftHandleX) <= 8) {
+        dragType = "start";
+      } else if (Math.abs(startX - rightHandleX) <= 8) {
+        dragType = "end";
+      }
+    }
+    let moved = false;
+    const move = (ev) => {
+      moved = true;
+      const curX = Math.max(0, Math.min(laneW, ev.clientX - r.left));
+      const curTime = curX / laneW * DAW.duration;
+      if (dragType === "new") {
+        const t1 = Math.min(startTime, curTime);
+        const t2 = Math.max(startTime, curTime);
+        if (t2 - t1 > 0.05) {
+          DAW.setLoopRange({ start: t1, end: t2 });
+        }
+      } else if (dragType === "start") {
+        const newStart = Math.max(0, Math.min(curTime, initialRange.end - 0.05));
+        DAW.setLoopRange({ start: newStart, end: initialRange.end });
+      } else if (dragType === "end") {
+        const newEnd = Math.max(initialRange.start + 0.05, Math.min(curTime, DAW.duration));
+        DAW.setLoopRange({ start: initialRange.start, end: newEnd });
+      }
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      if (!moved) {
+        onSeek(startTime);
+      }
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
   const dragFade = (which) => (e) => {
     e.stopPropagation();
     e.preventDefault();
@@ -607,11 +657,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
     "div",
     {
       className: "outlane",
-      onMouseDown: (e) => {
-        if (e.target.closest(".fadeh")) return;
-        const r = e.currentTarget.getBoundingClientRect();
-        onSeek((e.clientX - r.left) / laneW * DAW.duration);
-      },
+      onMouseDown: onOutlaneMouseDown,
       style: { position: "relative", width: laneW, height: laneH, background: "rgba(232,176,75,.04)", cursor: "text", overflow: "hidden" }
     },
     /* @__PURE__ */ React.createElement(TimeGrid, { pxPerSec, height: laneH }),
@@ -620,7 +666,136 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
     /* @__PURE__ */ React.createElement("div", { className: "fadeh", onMouseDown: dragFade("out"), style: { position: "absolute", left: outX - 6, top: -2, width: 12, height: 12, borderRadius: "50%", background: "var(--red)", border: "2px solid #1b1712", cursor: "ew-resize" } }),
     /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 6, bottom: 5, fontSize: 9.5, color: "var(--green)" }, className: "mono" }, "FADE IN ", m.fadeIn.toFixed(1), "s"),
     /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 6, bottom: 5, fontSize: 9.5, color: "var(--red)" }, className: "mono" }, "FADE OUT ", m.fadeOut.toFixed(1), "s"),
-    /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", pointerEvents: "none" } })
+    /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", pointerEvents: "none", zIndex: 10 } }),
+    loopRange && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          left: leftX,
+          width: rightX - leftX,
+          top: 0,
+          bottom: 0,
+          background: repeatOn ? "rgba(232,176,75,.24)" : "rgba(232,176,75,.08)",
+          borderLeft: "2px solid " + (repeatOn ? "var(--amber)" : "var(--line-strong)"),
+          borderRight: "2px solid " + (repeatOn ? "var(--amber)" : "var(--line-strong)"),
+          pointerEvents: "none",
+          zIndex: 4
+        }
+      }
+    ), /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          left: leftX,
+          width: rightX - leftX,
+          top: 0,
+          bottom: 0,
+          pointerEvents: "none",
+          zIndex: 5
+        }
+      },
+      /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "loop-btn-x",
+          onClick: () => {
+            onBeforeChange && onBeforeChange();
+            DAW.setLoopRange(null);
+            DAW.setRepeatPlayEnabled(false);
+          },
+          style: {
+            position: "absolute",
+            right: 4,
+            top: 4,
+            width: 16,
+            height: 16,
+            padding: "1px",
+            borderRadius: 3,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(8,6,4,.6)",
+            color: "var(--cream-2)",
+            border: "1px solid var(--line-strong)",
+            cursor: "pointer",
+            fontSize: 8.5,
+            fontWeight: 800,
+            pointerEvents: "auto",
+            lineHeight: 1
+          },
+          onMouseEnter: (e) => {
+            e.currentTarget.style.background = "var(--red)";
+            e.currentTarget.style.color = "#fff";
+            e.currentTarget.style.borderColor = "var(--red)";
+          },
+          onMouseLeave: (e) => {
+            e.currentTarget.style.background = "rgba(8,6,4,.6)";
+            e.currentTarget.style.color = "var(--cream-2)";
+            e.currentTarget.style.borderColor = "var(--line-strong)";
+          }
+        },
+        "X"
+      ),
+      /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "loop-btn-repeat",
+          onClick: () => {
+            onBeforeChange && onBeforeChange();
+            DAW.setRepeatPlayEnabled(!repeatOn);
+          },
+          style: {
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            padding: "4px 10px",
+            borderRadius: 6,
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: ".04em",
+            cursor: "pointer",
+            background: repeatOn ? "var(--amber)" : "var(--surface2)",
+            color: repeatOn ? "#1b1712" : "var(--cream-2)",
+            border: "1px solid " + (repeatOn ? "var(--amber)" : "var(--line-strong)"),
+            boxShadow: repeatOn ? "0 0 10px rgba(232,176,75,.4)" : "none",
+            pointerEvents: "auto",
+            whiteSpace: "nowrap",
+            transition: "background .15s, color .15s, box-shadow .15s"
+          }
+        },
+        "Repeat ",
+        repeatOn ? "ON" : "OFF"
+      )
+    ), /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          left: leftX - 4,
+          width: 8,
+          top: 0,
+          bottom: 0,
+          cursor: "ew-resize",
+          zIndex: 6
+        }
+      }
+    ), /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          left: rightX - 4,
+          width: 8,
+          top: 0,
+          bottom: 0,
+          cursor: "ew-resize",
+          zIndex: 6
+        }
+      }
+    ))
   ));
 }
 Object.assign(window, { ChannelStrip, MasterPanel, MasterEQ, MasterEQOverlay, MasterViewTab, MasterLevelMeter, FxCard, MiniEQGraph, FxChip, MixerWindow, OutputTrack });

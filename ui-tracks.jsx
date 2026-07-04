@@ -525,7 +525,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
             background: "rgba(159,191,122,.07)", border: "1px solid rgba(159,191,122,.3)",
             pointerEvents: "none" }} />;
         })()}
-        <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 }} />
       </div>
     </div>
   );
@@ -597,8 +597,8 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
       <div onMouseDown={seek} style={{ position: "relative", width: laneW, height: 30, background: "var(--bg2)",
         borderBottom: "1px solid var(--line-strong)", cursor: "text" }}>
         {marks}
-        <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)" }} />
-        <div style={{ position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)" }} />
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)", zIndex: 10 }} />
+        <div style={{ position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)", zIndex: 10 }} />
       </div>
     </div>
   );

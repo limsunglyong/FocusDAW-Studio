@@ -17,6 +17,7 @@
     startTime: 0,
     offset: 0,
     lastPlaySentAt: 0,
+    lastSeekSentAt: 0,
     trackLevels: {},
     masterStereo: { l: 0, r: 0 },
     masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -142,6 +143,16 @@
       const rate = LocalDAW._projectRate();
       const elapsed = (Date.now() - nativeState.startTime) / 1000;
       const raw = nativeState.offset + elapsed * rate;
+      if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange) {
+        if (raw >= LocalDAW.loopRange.end) {
+          const len = LocalDAW.loopRange.end - LocalDAW.loopRange.start;
+          if (len > 0) {
+            return LocalDAW.loopRange.start + ((raw - LocalDAW.loopRange.start) % len);
+          }
+          return LocalDAW.loopRange.start;
+        }
+        return Math.max(LocalDAW.loopRange.start, Math.min(raw, LocalDAW.loopRange.end));
+      }
       return LocalDAW.loopEnabled ? (raw % LocalDAW.duration) : Math.min(raw, LocalDAW.duration);
     },
 
@@ -211,6 +222,12 @@
     // the output handover — before that the web engine is the audible output and
     // activateNativeOutput() transfers the transport state when native is ready.
     play(options) {
+      if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange) {
+        const currentPh = this.getPlayhead();
+        if (currentPh < LocalDAW.loopRange.start || currentPh > LocalDAW.loopRange.end) {
+          this.seek(LocalDAW.loopRange.start);
+        }
+      }
       LocalDAW.play(options); // Keep LocalDAW state in sync
       if (this.isNative && nativeOutputActive) {
         sendToNative({ command: "play", options });
@@ -238,13 +255,19 @@
       if (this.isNative && nativeOutputActive) {
         sendToNative({ command: "stop" });
         nativeState.isPlaying = false;
-        nativeState.offset = 0;
+        if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange) {
+          nativeState.offset = LocalDAW.loopRange.start;
+          sendToNative({ command: "seek", positionSeconds: LocalDAW.loopRange.start });
+        } else {
+          nativeState.offset = 0;
+        }
       }
     },
 
     seek(t) {
       LocalDAW.seek(t);
       if (this.isNative && nativeOutputActive) {
+        nativeState.lastSeekSentAt = Date.now();
         sendToNative({ command: "seek", positionSeconds: t });
         nativeState.offset = Math.max(0, Math.min(t, LocalDAW.duration));
         nativeState.startTime = Date.now();
@@ -318,6 +341,31 @@
       if (this.isNative) {
         sendToNative({ command: "setLoop", enabled: !!val });
       }
+    },
+
+    setLoopRange(range) {
+      LocalDAW.setLoopRange(range);
+    },
+
+    setRepeatPlayEnabled(on) {
+      LocalDAW.repeatPlayEnabled = !!on;
+      if (this.isNative && nativeOutputActive) {
+        if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange && LocalDAW.isPlaying) {
+          const ph = this.getPlayhead();
+          if (ph < LocalDAW.loopRange.start || ph > LocalDAW.loopRange.end) {
+            this.seek(LocalDAW.loopRange.start);
+          }
+        }
+      } else {
+        // Fallback to web-only engine behavior
+        if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange && LocalDAW.isPlaying) {
+          const ph = LocalDAW.getPlayhead();
+          if (ph < LocalDAW.loopRange.start || ph > LocalDAW.loopRange.end) {
+            LocalDAW.seek(LocalDAW.loopRange.start);
+          }
+        }
+      }
+      LocalDAW._emit();
     },
 
     setKeyShift(semitones) {
@@ -438,6 +486,7 @@
     // tell the native engine to drop it too, so neither engine keeps playing a track
     // the user deleted from the header.
     removeTrack(id) {
+      const fxWasBypassed = LocalDAW.masterFxBypassed;
       LocalDAW.removeTrack(id);
       if (this.isNative) {
         sendToNative({ command: "removeTrack", trackId: id });
@@ -449,6 +498,9 @@
           nativeState.isPlaying = false;
           nativeState.offset = 0;
           maybeActivateNativeOutput();
+          // Emptying the project lifted the EFFECT bypass inside LocalDAW.removeTrack;
+          // the native engine is still holding the neutral values — re-push the real ones.
+          if (fxWasBypassed && !LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
         }
       }
     },
@@ -467,6 +519,25 @@
         // defaults) so a New Project starts clean instead of inheriting the previous
         // project's EQ / reverb / echo / widener / saturation / exciter / volume.
         syncMasterToNative();
+        nativeState.offset = 0;
+        nativeState.isPlaying = false;
+      }
+    },
+
+    // Edit ▸ "Delete all tracks" (keep master fx). Without this wrapper the DAW
+    // proxy fell through to LocalDAW only, so the native engine kept (and kept
+    // playing) its copies of the deleted tracks. Master state is preserved by
+    // design, so unlike clearTracks() we do NOT reset it on the native side —
+    // except when the EFFECT bypass was active: LocalDAW.clearTracksKeepMaster
+    // lifts it, so the neutral values on native must be replaced with the real ones.
+    clearTracksKeepMaster() {
+      const fxWasBypassed = LocalDAW.masterFxBypassed;
+      LocalDAW.clearTracksKeepMaster();
+      if (this.isNative) {
+        sendToNative({ command: "clearTracks" });
+        pendingNativeLoads.clear();
+        maybeActivateNativeOutput();
+        if (fxWasBypassed && !LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
         nativeState.offset = 0;
         nativeState.isPlaying = false;
       }
@@ -753,15 +824,24 @@
       // Drop a stale "stopped" frame the 100ms timer captured BEFORE our play
       // command was processed — the engine's ack (ack:true) that follows the
       // command supersedes it. Without this the playhead flashes back to 0 for
-      // a frame right after pressing play.
-      const stale = !msg.ack && msg.isPlaying === false && nativeState.isPlaying &&
-        (Date.now() - nativeState.lastPlaySentAt) < 500;
+      // a frame right after pressing play. Also drop stale frames shortly after seek.
+      const stale = (!msg.ack && msg.isPlaying === false && nativeState.isPlaying &&
+        (Date.now() - nativeState.lastPlaySentAt) < 500) ||
+        (!msg.ack && (Date.now() - nativeState.lastSeekSentAt) < 500);
       if (!stale) {
         nativeState.offset = msg.positionSeconds;
         nativeState.startTime = Date.now();
         if (typeof msg.isPlaying === "boolean") {
           nativeState.isPlaying = msg.isPlaying;
         }
+
+        // Handle loop wrap immediately if we receive a position past loop end
+        if (nativeState.isPlaying && LocalDAW.repeatPlayEnabled && LocalDAW.loopRange) {
+          if (nativeState.offset >= LocalDAW.loopRange.end) {
+            Bridge.seek(LocalDAW.loopRange.start);
+          }
+        }
+
         LocalDAW._emit();
       }
     } else if (msg.event === "trackLoaded") {
@@ -923,6 +1003,15 @@
         clearInterval(localTickInterval);
         return;
       }
+
+      // Handle native loop playback wrapping
+      if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange) {
+        const ph = Bridge.getPlayhead();
+        if (ph >= LocalDAW.loopRange.end) {
+          Bridge.seek(LocalDAW.loopRange.start);
+        }
+      }
+
       LocalDAW._emit();
     }, 30);
   }

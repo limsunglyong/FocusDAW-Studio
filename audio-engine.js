@@ -325,6 +325,8 @@
     ROOM_PRESETS,
     tracks: [],
     loopEnabled: true,
+    loopRange: null,
+    repeatPlayEnabled: false,
     tempo: { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null },
     master: { volume: 0.9, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: null, reverb: 0, echo: 0, reverbStored: 0.4, echoStored: 0.35, widener: 0.0, saturation: 0.0, exciter: 0.0, fadeIn: 0.0, fadeOut: 0.0, room: 'none', roomParams: { ...ROOM_PRESETS.none } },
     isPlaying: false,
@@ -579,6 +581,8 @@
       // loaded track would resume playing from the stale position.
       if (this.tracks.length === 0) {
         this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
+        this.loopRange = null;
+        this.repeatPlayEnabled = false;
         this.stop();
       }
       this._applyMix();
@@ -708,6 +712,8 @@
       this.stop();
       this.tracks.length = 0;
       this.duration = DURATION;
+      this.loopRange = null;
+      this.repeatPlayEnabled = false;
       this._spectrum = null;
       this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
       this._renderCacheKey = null;
@@ -751,6 +757,8 @@
       this.stop();
       this.tracks.length = 0;
       this.duration = DURATION;
+      this.loopRange = null;
+      this.repeatPlayEnabled = false;
       this._spectrum = null;
       this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
       this._renderCacheKey = null;
@@ -1231,6 +1239,22 @@
       if ((key === "fadeIn" || key === "fadeOut") && this.isPlaying) this._scheduleFade();
     },
 
+    setLoopRange(range) {
+      this.loopRange = range;
+      this._emit();
+    },
+
+    setRepeatPlayEnabled(on) {
+      this.repeatPlayEnabled = !!on;
+      if (this.repeatPlayEnabled && this.loopRange && this.isPlaying) {
+        const ph = this.getPlayhead();
+        if (ph < this.loopRange.start || ph > this.loopRange.end) {
+          this.seek(this.loopRange.start);
+        }
+      }
+      this._emit();
+    },
+
     // Ambience (Sound Environment / room type) — the dedicated bus IR + wet send
     // are driven by `master.roomParams` (effective spec). Reflected in realtime
     // and Export (both share makeRoomIR + roomParams).
@@ -1660,6 +1684,11 @@
       this.init();
       if (ctx.state === "suspended") ctx.resume();
       if (this.isPlaying) return;
+      if (this.repeatPlayEnabled && this.loopRange) {
+        if (this._offset < this.loopRange.start || this._offset > this.loopRange.end) {
+          this._offset = this.loopRange.start;
+        }
+      }
       const token = ++this._playToken;
       const requestedRate = this._projectRate();
       if (this._shouldUseRealtimeStretch(requestedRate)) {
@@ -1725,7 +1754,11 @@
       clearTimeout(this._keyRestartTimer);
       this._keyRestartTimer = null;
       this._stretchPreviewPreparing = false;
-      this._offset = 0;
+      if (this.repeatPlayEnabled && this.loopRange) {
+        this._offset = this.loopRange.start;
+      } else {
+        this._offset = 0;
+      }
       if (ctx) this._stopSources();
       this.isPlaying = false;
       this._emit();
@@ -1838,6 +1871,15 @@
       // Source nodes are one-shot. At the song boundary the engine decides
       // whether to start a fresh pass or stop, using the latest Repeat state.
       const raw = this._projectPositionAt(ctx.currentTime);
+      if (this.repeatPlayEnabled && this.loopRange) {
+        if (raw >= this.loopRange.end) {
+          this._offset = this.loopRange.start;
+          this._stopSources();
+          this.isPlaying = false;
+          this.play({ skipFade: true });
+          return;
+        }
+      }
       if (raw >= this.duration) {
         if (this.loopEnabled) {
           this._offset = 0;

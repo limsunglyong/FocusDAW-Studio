@@ -950,6 +950,23 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
           <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 10, color: "var(--faint)", letterSpacing: ".08em" }}>TIMELINE</span>
         )}
 
+        {/* Shaded loop range highlight in Minimap */}
+        {DAW.loopRange && (
+          <div
+            style={{
+              position: "absolute",
+              left: `${(DAW.loopRange.start / duration) * 100}%`,
+              width: `${((DAW.loopRange.end - DAW.loopRange.start) / duration) * 100}%`,
+              top: 0,
+              bottom: 0,
+              background: DAW.repeatPlayEnabled ? "rgba(232,176,75,.15)" : "rgba(255,255,255,.04)",
+              borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.5)" : "rgba(255,255,255,.2)"),
+              borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.5)" : "rgba(255,255,255,.2)"),
+              pointerEvents: "none"
+            }}
+          />
+        )}
+
         <div style={{ position: "absolute", left: `${viewLeft * 100}%`, top: 0, width: `${viewWidth * 100}%`, minWidth: 18, height: "100%",
           borderRadius: 7, border: "1px solid rgba(232,176,75,.65)", background: "rgba(232,176,75,.08)",
           boxShadow: "0 0 12px rgba(232,176,75,.16)" }}>
@@ -2361,17 +2378,63 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           <EmptyState dragOver={dragOver} onPick={pickAudioFiles} onPickFolder={pickAudioFolder} onDemo={loadDemo} />
         ) : (
           <React.Fragment>
-            <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} />
-            {DAW.tracks.map((t, i) => (
-              <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
-                playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
-                onSeek={(time) => { DAW.seek(time); force((n) => n + 1); }}
-                tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />
-            ))}
-            <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
-              onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }}
-              onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
-              onClearMuteSolo={clearMuteSolo} />
+            <div style={{ position: "relative", minWidth: "min-content" }}>
+              <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} />
+              {DAW.tracks.map((t, i) => (
+                <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
+                  playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
+                  onSeek={(time) => { DAW.seek(time); force((n) => n + 1); }}
+                  tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />
+              ))}
+              <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
+                onSeek={(t) => { DAW.seek(t); force((n) => n + 1); }}
+                onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
+                onClearMuteSolo={clearMuteSolo} />
+              {DAW.loopRange && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: (window.HEADER_W || 244) + (DAW.loopRange.start / DAW.duration) * Math.max(1, DAW.duration * pxPerSec),
+                    width: ((DAW.loopRange.end - DAW.loopRange.start) / DAW.duration) * Math.max(1, DAW.duration * pxPerSec),
+                    top: 0,
+                    bottom: 0,
+                    background: DAW.repeatPlayEnabled ? "rgba(232,176,75,.16)" : "rgba(232,176,75,.05)",
+                    borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.75)" : "rgba(255,255,255,.35)"),
+                    borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.75)" : "rgba(255,255,255,.35)"),
+                    pointerEvents: "none",
+                    zIndex: 9
+                  }}
+                >
+                  {/* Sticky header container to lock triangles to the sticky Time Ruler */}
+                  <div style={{ position: "sticky", top: 0, height: 30, width: "100%", overflow: "visible" }}>
+                    {/* Loop Start Triangle Bracket (fills top-left 10x10 corner) */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        width: 10,
+                        height: 10,
+                        background: DAW.repeatPlayEnabled ? "var(--amber)" : "rgba(255,255,255,.4)",
+                        clipPath: "polygon(0 0, 100% 0, 0 100%)"
+                      }}
+                    />
+                    {/* Loop End Triangle Bracket (fills top-right 10x10 corner) */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        top: 0,
+                        width: 10,
+                        height: 10,
+                        background: DAW.repeatPlayEnabled ? "var(--amber)" : "rgba(255,255,255,.4)",
+                        clipPath: "polygon(0 0, 100% 0, 100% 100%)"
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
             <div style={{ height: 40 }} />
           </React.Fragment>
         )}

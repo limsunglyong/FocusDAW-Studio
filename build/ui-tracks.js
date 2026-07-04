@@ -626,7 +626,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
         pointerEvents: "none"
       } });
     })(),
-    /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none" } })
+    /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 } })
   ));
 }
 function TimeGrid({ pxPerSec, height }) {
@@ -720,7 +720,7 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
       background: "var(--bg2)",
       borderBottom: "1px solid var(--line-strong)",
       cursor: "text"
-    } }, marks, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)" } })))
+    } }, marks, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)", zIndex: 10 } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)", zIndex: 10 } })))
   );
 }
 Object.assign(window, { Waveform, AutomationOverlay, TrackHeader, TrackRow, Ruler, TimeGrid, HEADER_W });
