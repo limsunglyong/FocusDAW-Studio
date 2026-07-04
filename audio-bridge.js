@@ -348,22 +348,17 @@
     },
 
     setRepeatPlayEnabled(on) {
-      LocalDAW.repeatPlayEnabled = !!on;
-      if (this.isNative && nativeOutputActive) {
-        if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange && LocalDAW.isPlaying) {
-          const ph = this.getPlayhead();
-          if (ph < LocalDAW.loopRange.start || ph > LocalDAW.loopRange.end) {
-            this.seek(LocalDAW.loopRange.start);
-          }
-        }
-      } else {
-        // Fallback to web-only engine behavior
-        if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange && LocalDAW.isPlaying) {
-          const ph = LocalDAW.getPlayhead();
-          if (ph < LocalDAW.loopRange.start || ph > LocalDAW.loopRange.end) {
-            LocalDAW.seek(LocalDAW.loopRange.start);
-          }
-        }
+      const on2 = !!on;
+      // Read the TRUE playhead BEFORE flipping the flag. Once repeatPlayEnabled is
+      // true, the native getPlayhead() clamps/wraps its result into the loop range,
+      // which hides a playhead sitting outside (esp. ahead of) the loop and defeats
+      // the "snap into loop" check below. this.getPlayhead()/this.seek() both handle
+      // native vs web-only internally, so a single path covers both engines.
+      const phBefore = this.getPlayhead();
+      LocalDAW.repeatPlayEnabled = on2;
+      if (on2 && LocalDAW.loopRange &&
+          (phBefore < LocalDAW.loopRange.start || phBefore > LocalDAW.loopRange.end)) {
+        this.seek(LocalDAW.loopRange.start);
       }
       LocalDAW._emit();
     },

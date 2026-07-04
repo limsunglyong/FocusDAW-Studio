@@ -1861,6 +1861,58 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     setPx(nextPx);
   }, []);
 
+  // Timeline shortcuts on the arrange scroller:
+  //   Ctrl(+Cmd)+wheel  → zoom in/out centered on the cursor's time position
+  //   Shift+wheel       → pan left/right
+  //   (no modifier)     → native vertical scroll (untouched)
+  const pendingZoomScrollRef = useRef(null);
+  const onArrangeWheel = useCallback((e) => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      // Cursor position measured from the lane origin (right of the sticky track header).
+      const cursorLaneX = Math.max(0, (e.clientX - rect.left) - HEADER_W); // on-screen px
+      const anchorTime = (el.scrollLeft + cursorLaneX) / pxPerSec;         // time under cursor
+      const nextMin = timelineMinPx(el.clientWidth);
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      const nextPx = Math.max(nextMin, Math.min(TIME_ZOOM_MAX, pxPerSec * factor));
+      if (nextPx === pxPerSec) return;
+      // Keep the cursor's time fixed on screen once the lane re-renders at the new width.
+      pendingZoomScrollRef.current = Math.max(0, anchorTime * nextPx - cursorLaneX);
+      fitTimelineRef.current = nextPx <= nextMin + timelineStep(nextMin) * 0.5;
+      setPx(nextPx);
+    } else if (e.shiftKey) {
+      e.preventDefault();
+      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      el.scrollLeft += delta;
+      updateTimelineView();
+    }
+  }, [pxPerSec, updateTimelineView]);
+
+  // React 17+ delegates wheel as passive at the document root, so preventDefault() inside an
+  // onWheel prop is ignored. Register directly with {passive:false} (same as the minimap).
+  useEffect(() => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", onArrangeWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onArrangeWheel);
+  }, [onArrangeWheel]);
+
+  // After a Ctrl+wheel zoom re-renders the lane at its new width, apply the anchored scrollLeft.
+  React.useLayoutEffect(() => {
+    if (pendingZoomScrollRef.current == null) return;
+    const el = arrangeRef.current;
+    if (el) {
+      const visibleW = Math.max(1, el.clientWidth - HEADER_W);
+      const laneW = Math.max(1, DAW.duration * pxPerSec);
+      el.scrollLeft = Math.max(0, Math.min(pendingZoomScrollRef.current, laneW - visibleW));
+      updateTimelineView();
+    }
+    pendingZoomScrollRef.current = null;
+  }, [pxPerSec]);
+
   useEffect(() => {
     const onResize = () => {
       const next = updateTimeMin();

@@ -1638,7 +1638,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">데스크톱 앱은 내부적으로 ffmpeg를 사용해 MP3를 인코딩합니다. 개발 환경에서 문제가 있으면 의존성이 설치되어 있는지 확인한 뒤 <code className="manual-code">npm install</code>을 다시 실행하세요. 브라우저에서 직접 실행하는 경우에는 lamejs가 로드되어야 MP3 인코딩이 가능합니다.</p>
 
                   <h3 className="manual-h3">화면이 너무 좁을 때</h3>
-                  <p className="manual-p">FocusDAW Studio의 최소 창 크기는 960x600입니다. 믹서나 Export 창이 좁게 보이면 창을 넓히거나 타임라인을 스크롤해 필요한 영역을 확인하세요.</p>
+                  <p className="manual-p">FocusDAW Studio의 최소 창 크기는 1258x600입니다. 믹서나 Export 창이 좁게 보이면 창을 넓히거나 타임라인을 스크롤해 필요한 영역을 확인하세요.</p>
                 </>
               ) : (
                 <>
@@ -1658,7 +1658,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">The desktop app uses ffmpeg internally to encode MP3s. In a development environment, run <code className="manual-code">npm install</code> to restore dependencies. In a standalone browser, lamejs must be loaded to support MP3 exports.</p>
 
                   <h3 className="manual-h3">Elements cut off or window too small</h3>
-                  <p className="manual-p">The minimum window resolution is 960x600. Resize your window or scroll horizontally on the timeline to locate hidden elements.</p>
+                  <p className="manual-p">The minimum window resolution is 1258x600. Resize your window or scroll horizontally on the timeline to locate hidden elements.</p>
                 </>
               )}
             </section>
@@ -1677,35 +1677,49 @@ function HelpDialog({ onClose, standalone = false }) {
 
 function AboutDialog({ onClose }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 850 }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 850, userSelect: "none", WebkitUserSelect: "none" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--line-strong)", borderRadius: 14, width: 400, maxWidth: "95vw", padding: "32px 24px", textAlign: "center", boxShadow: "var(--shadow)", position: "relative" }}>
+      <div style={{ background: "var(--bg2)", border: "1px solid color-mix(in srgb, var(--cream) 30%, transparent)", borderRadius: 14, width: 400, maxWidth: "95vw", display: "flex", flexDirection: "column", boxShadow: "var(--shadow)", overflow: "hidden" }}>
         
-        {/* Close Button */}
-        <button className="iconbtn" onClick={onClose} style={{ position: "absolute", top: 16, right: 20, fontSize: 18, lineHeight: 1 }}>×</button>
-
-        {/* Logo */}
-        <Logo size={80} style={{ margin: "0 auto 16px", boxShadow: "0 8px 24px rgba(0,0,0,.3)" }} />
-
-        {/* App Info */}
-        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--cream)", marginBottom: 4 }}>FocusDAW Studio</div>
-        <div className="mono" style={{ fontSize: 12, color: "var(--amber)", marginBottom: 24 }}>{"v" + (window.APP_VERSION || "0.0.0")}</div>
-
-        <div style={{ borderTop: "1px solid var(--line)", padding: "16px 0", textAlign: "left", fontSize: 12.5, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: "var(--muted)" }}>Developer</span>
-            <span style={{ color: "var(--cream)", fontWeight: 500 }}>focustone</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: "var(--muted)" }}>Platform</span>
-            <span style={{ color: "var(--cream)", fontWeight: 500 }}>Electron / React / Web Audio API</span>
-          </div>
+        {/* Header Bar */}
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid color-mix(in srgb, var(--cream) 30%, transparent)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: ".06em", color: "var(--cream-2)", textTransform: "uppercase" }}>ABOUT</span>
+          <button className="iconbtn" onClick={onClose} style={{ fontSize: 18, lineHeight: 1, padding: 0, minWidth: 0, width: "auto", height: "auto", background: "none", border: "none", color: "var(--muted)", cursor: "pointer" }}>×</button>
         </div>
 
-        {/* OK Button */}
-        <button className="btn primary" onClick={onClose} style={{ marginTop: 24, minWidth: 100, height: 36, justifyContent: "center" }}>
-          OK
-        </button>
+        {/* Content Area */}
+        <div style={{ padding: "32px 24px", textAlign: "center" }}>
+          {/* Logo Card */}
+          <div style={{ width: 90, height: 90, borderRadius: 18, background: "color-mix(in srgb, var(--surface) 50%, transparent)", border: "1px solid color-mix(in srgb, var(--cream) 10%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px", boxShadow: "var(--shadow)" }}>
+            <Logo size={56} style={{ borderRadius: 12 }} />
+          </div>
+
+          {/* Title */}
+          <div style={{ fontFamily: '"Cinzel", serif', fontSize: 22, fontWeight: 400, color: "var(--cream)", marginBottom: 8 }}>
+            F<span style={{ fontSize: 20 }}>ocus</span>DAW - S<span style={{ fontSize: 20 }}>tudio</span>
+          </div>
+
+          {/* Version Badge */}
+          <div style={{ display: "inline-flex", alignItems: "center", background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--cream) 30%, transparent)", borderRadius: 14, padding: "4px 16px", fontSize: 12, fontWeight: 600, color: "var(--cream-2)", marginBottom: 20 }}>
+            Studio Edition v{window.APP_VERSION || "0.14.2"}
+          </div>
+
+          {/* Description */}
+          <div style={{ fontSize: 13, color: "var(--dim)", lineHeight: 1.5, maxWidth: 320, margin: "0 auto 20px" }}>
+            FocusDAW Studio is a desktop stem-mixing DAW. It lets you import separated audio stems, balance each track, draw volume automation, shape the master with EQ and output effects, and export a final MP3 or WAV mixdown.
+          </div>
+
+          {/* Email */}
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--accent)", marginBottom: 24 }}>
+            focustone.el@gmail.com
+          </div>
+
+          {/* OK Button */}
+          <button className="btn" onClick={onClose} style={{ minWidth: 90, height: 32, justifyContent: "center", margin: "0 auto" }}>
+            OK
+          </button>
+        </div>
+
       </div>
     </div>
   );

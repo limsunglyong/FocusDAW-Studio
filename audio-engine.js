@@ -1245,12 +1245,14 @@
     },
 
     setRepeatPlayEnabled(on) {
-      this.repeatPlayEnabled = !!on;
-      if (this.repeatPlayEnabled && this.loopRange && this.isPlaying) {
-        const ph = this.getPlayhead();
-        if (ph < this.loopRange.start || ph > this.loopRange.end) {
-          this.seek(this.loopRange.start);
-        }
+      const on2 = !!on;
+      // Read the true playhead before enabling — mirrors the bridge; snap into the
+      // loop whenever the playhead is outside it, in both playing and stopped states.
+      const phBefore = this.getPlayhead();
+      this.repeatPlayEnabled = on2;
+      if (on2 && this.loopRange &&
+          (phBefore < this.loopRange.start || phBefore > this.loopRange.end)) {
+        this.seek(this.loopRange.start);
       }
       this._emit();
     },

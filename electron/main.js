@@ -162,7 +162,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 960,
+    minWidth: 1258,
     minHeight: 600,
     icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),

@@ -1942,6 +1942,46 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
     setPx(nextPx);
   }, []);
+  const pendingZoomScrollRef = useRef(null);
+  const onArrangeWheel = useCallback((e) => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cursorLaneX = Math.max(0, e.clientX - rect.left - HEADER_W);
+      const anchorTime = (el.scrollLeft + cursorLaneX) / pxPerSec;
+      const nextMin = timelineMinPx(el.clientWidth);
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      const nextPx = Math.max(nextMin, Math.min(TIME_ZOOM_MAX, pxPerSec * factor));
+      if (nextPx === pxPerSec) return;
+      pendingZoomScrollRef.current = Math.max(0, anchorTime * nextPx - cursorLaneX);
+      fitTimelineRef.current = nextPx <= nextMin + timelineStep(nextMin) * 0.5;
+      setPx(nextPx);
+    } else if (e.shiftKey) {
+      e.preventDefault();
+      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      el.scrollLeft += delta;
+      updateTimelineView();
+    }
+  }, [pxPerSec, updateTimelineView]);
+  useEffect(() => {
+    const el = arrangeRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", onArrangeWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onArrangeWheel);
+  }, [onArrangeWheel]);
+  React.useLayoutEffect(() => {
+    if (pendingZoomScrollRef.current == null) return;
+    const el = arrangeRef.current;
+    if (el) {
+      const visibleW = Math.max(1, el.clientWidth - HEADER_W);
+      const laneW = Math.max(1, DAW.duration * pxPerSec);
+      el.scrollLeft = Math.max(0, Math.min(pendingZoomScrollRef.current, laneW - visibleW));
+      updateTimelineView();
+    }
+    pendingZoomScrollRef.current = null;
+  }, [pxPerSec]);
   useEffect(() => {
     const onResize = () => {
       const next = updateTimeMin();

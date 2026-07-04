@@ -53,7 +53,13 @@
       "PowerShell(node \"C:\\\\Users\\\\limsu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--programmings-FocusDAW-Studio\\\\e8b9a71e-b603-42a0-b6ed-8cacf1fc35a8\\\\scratchpad\\\\smoke-devices.mjs\")",
       "PowerShell(node --check audio-engine.js && node --check audio-bridge.js && \\(Get-Content package.json | ConvertFrom-Json\\).version)",
       "PowerShell(\\(Get-Content package.json -Raw\\) -replace '\"version\": \"1\\\\.14\\\\.13\"', '\"version\": \"1.14.14\"' | Set-Content package.json -NoNewline)",
-      "PowerShell(\\(Get-Content package.json | ConvertFrom-Json\\).version)"
+      "PowerShell(\\(Get-Content package.json | ConvertFrom-Json\\).version)",
+      "Bash(./bin/FocusDAW-AudioEngine.exe --port 8087)",
+      "Bash(echo \"engine pid $!\")",
+      "Bash(node \"C:\\\\Users\\\\limsu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--programmings-FocusDAW-Studio\\\\f205d04f-7945-4d46-a3f2-1b07c26846e5\\\\scratchpad\\\\seek-probe.js\" 8087 \"z_wav samples/c_scale_synth_bpm120.wav\" 3.0)",
+      "Bash(kill 363)",
+      "Bash(taskkill //F //IM FocusDAW-AudioEngine.exe)",
+      "Bash(tasklist //FI \"IMAGENAME eq FocusDAW-AudioEngine.exe\")"
     ]
   }
 }
