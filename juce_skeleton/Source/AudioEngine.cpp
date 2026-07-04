@@ -14,10 +14,21 @@ AudioEngine::AudioEngine()
     masterEffectsSource = std::make_unique<MasterEffectsAudioSource>(masterGainSource.get());
     sourcePlayer.setSource(masterEffectsSource.get());
 #endif
+    loaderThread = std::thread(&AudioEngine::loaderLoop, this);
 }
 
 AudioEngine::~AudioEngine()
 {
+    // Stop the loader before tearing down the JUCE graph — a job mid-install
+    // touches mixerSource/juceTracks.
+    {
+        std::lock_guard<std::mutex> ql(loadMutex);
+        loaderExit = true;
+        loadQueue.clear();
+    }
+    loadCv.notify_all();
+    if (loaderThread.joinable()) loaderThread.join();
+
 #if USE_JUCE
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
@@ -173,32 +184,119 @@ void AudioEngine::setLoop(bool enabled)
 
 void AudioEngine::loadTrack(const std::string& trackId, const std::string& filePath)
 {
-    std::lock_guard<std::mutex> lock(engineMutex);
+    // Register the track metadata synchronously (params arriving right after this
+    // command land in TrackInfo and are applied when the decode finishes), then
+    // queue the heavy decode to the background loader. This call must return
+    // immediately: it runs on the WebSocket receive thread, and blocking here is
+    // what used to stall play/seek commands for seconds after startup.
+    LoadJob job;
+    job.trackId = trackId;
+    job.filePath = filePath;
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
 
-    bool found = false;
-    for (auto& t : tracks)
-    {
-        if (t.id == trackId)
+        bool found = false;
+        for (auto& t : tracks)
         {
-            t.filePath = filePath;
-            found = true;
-            break;
+            if (t.id == trackId)
+            {
+                t.filePath = filePath;
+                found = true;
+                break;
+            }
         }
-    }
-    if (!found)
-    {
-        TrackInfo nt;
-        nt.id = trackId;
-        nt.filePath = filePath;
-        tracks.push_back(nt);
+        if (!found)
+        {
+            TrackInfo nt;
+            nt.id = trackId;
+            nt.filePath = filePath;
+            tracks.push_back(nt);
+        }
+
+        job.generation = loadGeneration;
+        job.seq = ++loadSeqCounter;
+        latestLoadSeq[trackId] = job.seq;
     }
 
 #if USE_JUCE
+    {
+        std::lock_guard<std::mutex> ql(loadMutex);
+        loadQueue.push_back(std::move(job));
+    }
+    loadCv.notify_one();
+    LOG_DBG << "[AudioEngine] Track " << trackId << " queued for background load." << std::endl;
+#else
+    LOG_DBG << "[AudioEngine] Mock Track " << trackId << " loaded with " << filePath << std::endl;
+    if (onTrackLoaded) onTrackLoaded(trackId, true, 0);
+#endif
+}
+
+void AudioEngine::loaderLoop()
+{
+    for (;;)
+    {
+        LoadJob job;
+        {
+            std::unique_lock<std::mutex> ql(loadMutex);
+            loadCv.wait(ql, [this] { return loaderExit || !loadQueue.empty(); });
+            if (loaderExit) return;
+            job = std::move(loadQueue.front());
+            loadQueue.pop_front();
+            loaderBusy = true;
+        }
+
+        bool ok = false;
+        try { ok = decodeAndInstallTrack(job); }
+        catch (const std::exception& e) { std::cerr << "[AudioEngine] Track load failed: " << e.what() << std::endl; }
+        catch (...) { std::cerr << "[AudioEngine] Track load failed (unknown error)" << std::endl; }
+
+        int pending = 0;
+        {
+            std::lock_guard<std::mutex> ql(loadMutex);
+            loaderBusy = false;
+            pending = (int)loadQueue.size();
+            if (pending == 0) loadIdleCv.notify_all();
+        }
+        if (onTrackLoaded) onTrackLoaded(job.trackId, ok, pending);
+    }
+}
+
+int AudioEngine::pendingLoadCount()
+{
+    std::lock_guard<std::mutex> ql(loadMutex);
+    return (int)loadQueue.size() + (loaderBusy ? 1 : 0);
+}
+
+void AudioEngine::waitForLoadsIdle(int timeoutMs)
+{
+    std::unique_lock<std::mutex> ql(loadMutex);
+    loadIdleCv.wait_for(ql, std::chrono::milliseconds(timeoutMs),
+                        [this] { return loadQueue.empty() && !loaderBusy; });
+}
+
+bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
+{
+#if !USE_JUCE
+    (void)job;
+    return true;
+#else
+    const std::string& trackId = job.trackId;
+    const std::string& filePath = job.filePath;
+
+    // Skip stale jobs before paying for a decode: the project may have been
+    // cleared (generation bump) or this track re-requested (newer seq).
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        if (job.generation != loadGeneration) return false;
+        auto it = latestLoadSeq.find(trackId);
+        if (it == latestLoadSeq.end() || it->second != job.seq) return false;
+    }
+
     juce::File file(filePath);
     if (!file.existsAsFile())
     {
         std::cerr << "[AudioEngine] File not found: " << filePath << std::endl;
-        return;
+        return false;
     }
 
     // For compressed formats (MP3/M4A/OGG/FLAC), JUCE's reader reports unreliable
@@ -246,7 +344,7 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
     {
         std::cerr << "[AudioEngine] Failed to create reader for file: " << filePath << std::endl;
         if (tempWav != juce::File()) tempWav.deleteFile();
-        return;
+        return false;
     }
 
     // Decode the ENTIRE (now-PCM) file into memory and play it from a MemoryAudioSource.
@@ -272,8 +370,22 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
     // copyMemory=true → the source owns its own copy, so `decoded` can go out of scope.
     auto memSource = std::make_unique<juce::MemoryAudioSource>(decoded, true, false);
     auto trackSource = std::make_unique<TrackAudioSource>(std::move(memSource), fileSampleRate, deviceSampleRate);
+    trackSource->id = trackId;
 
-    // Sync parameters
+    // Install into the live graph. Only this final phase takes engineMutex, so
+    // play/seek/param commands stay responsive while files decode.
+    std::lock_guard<std::mutex> lock(engineMutex);
+
+    // Re-check staleness: the project may have been cleared, the track removed,
+    // or a newer load of the same track requested while we were decoding.
+    if (job.generation != loadGeneration) return false;
+    {
+        auto it = latestLoadSeq.find(trackId);
+        if (it == latestLoadSeq.end() || it->second != job.seq) return false;
+    }
+
+    // Sync parameters (incl. any that arrived while the file was decoding)
+    bool stillRegistered = false;
     for (const auto& t : tracks)
     {
         if (t.id == trackId)
@@ -282,12 +394,17 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
             trackSource->pan = t.pan;
             trackSource->mute = t.mute;
             trackSource->solo = t.solo;
+            trackSource->reverbSend.store(t.reverbSend);
+            trackSource->echoSend.store(t.echoSend);
+            if (t.autoOn || !t.autoPoints.empty())
+                trackSource->setAutomation(t.autoOn, t.autoCurved, t.autoPoints);
+            stillRegistered = true;
             break;
         }
     }
+    if (!stillRegistered) return false; // removed while decoding
 
     trackSource->setLooping(loopEnabled);
-    trackSource->id = trackId;
 
     for (size_t i = 0; i < juceTracks.size(); ++i)
     {
@@ -307,7 +424,7 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
             updateSoloStates();
             updateDspParams();
             LOG_DBG << "[AudioEngine] Track " << trackId << " reloaded and replaced in JUCE engine." << std::endl;
-            return;
+            return true;
         }
     }
 
@@ -323,8 +440,7 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
     updateSoloStates();
     updateDspParams();
     LOG_DBG << "[AudioEngine] Track " << trackId << " loaded in JUCE engine." << std::endl;
-#else
-    LOG_DBG << "[AudioEngine] Mock Track " << trackId << " loaded with " << filePath << std::endl;
+    return true;
 #endif
 }
 
@@ -341,6 +457,8 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "pan") t.pan = value;
             else if (key == "mute") { t.mute = (value > 0.5f); if (t.mute) t.solo = false; }
             else if (key == "solo") { t.solo = (value > 0.5f); if (t.solo) t.mute = false; }
+            else if (key == "reverb") t.reverbSend = value;
+            else if (key == "echo") t.echoSend = value;
             break;
         }
     }
@@ -389,6 +507,20 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
 void AudioEngine::setTrackAutomation(const std::string& trackId, bool autoOn, bool curved, const std::vector<float>& flatPoints)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
+
+    // Keep a copy in TrackInfo: with async loads the JUCE track may not exist yet
+    // when the automation command arrives, and it's applied on install.
+    for (auto& t : tracks)
+    {
+        if (t.id == trackId)
+        {
+            t.autoOn = autoOn;
+            t.autoCurved = curved;
+            t.autoPoints = flatPoints;
+            break;
+        }
+    }
+
 #if USE_JUCE
     for (auto& track : juceTracks)
     {
@@ -415,6 +547,7 @@ void AudioEngine::removeTrack(const std::string& trackId)
     {
         if (it->id == trackId) { tracks.erase(it); break; }
     }
+    latestLoadSeq.erase(trackId); // void any in-flight background load of this track
 
 #if USE_JUCE
     for (size_t i = 0; i < juceTracks.size(); ++i)
@@ -440,6 +573,16 @@ void AudioEngine::clearTracks()
     tracks.clear();
     playheadSeconds = 0.0;
     playing = false;
+
+    // Void every queued/in-flight background load so a track decoded for the OLD
+    // project can't be installed into the new one.
+    loadGeneration++;
+    latestLoadSeq.clear();
+    {
+        std::lock_guard<std::mutex> ql(loadMutex);
+        loadQueue.clear();
+        if (!loaderBusy) loadIdleCv.notify_all();
+    }
 
     // A New Project must not inherit the previous project's transpose / time-stretch
     // state. The JS engine already resets tempo on clearTracks, but the native DSP
@@ -848,10 +991,15 @@ void AudioEngine::exportMix(const std::string& exportId,
     // ==========================================
     // JUCE Engine Implementation (USE_JUCE=1)
     // ==========================================
-    LOG_DBG << "[AudioEngine] JUCE Offline Export started: id=" << exportId 
-              << ", path=" << tempOutputPath << ", sampleRate=" << targetSampleRate 
-              << ", duration=" << durationSeconds << ", normalize=" << normalize 
+    LOG_DBG << "[AudioEngine] JUCE Offline Export started: id=" << exportId
+              << ", path=" << tempOutputPath << ", sampleRate=" << targetSampleRate
+              << ", duration=" << durationSeconds << ", normalize=" << normalize
               << ", target=" << lufsTarget << ", preservePitch=" << preservePitch << std::endl;
+
+    // Tracks may still be decoding in the background (async loadTrack); rendering
+    // now would silently miss them. This runs on the detached export thread, so
+    // blocking here is fine.
+    waitForLoadsIdle();
 
     bool wasPlaying = false;
     std::vector<TrackAudioSource*> activeTracks;

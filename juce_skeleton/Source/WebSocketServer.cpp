@@ -209,6 +209,18 @@ WebSocketServer::~WebSocketServer()
 void WebSocketServer::start()
 {
     shouldExit = false;
+
+    // Announce every finished background track load so the UI bridge knows when
+    // the native engine is actually ready to take over playback (it defers the
+    // web→native output handover until all pending loads report in).
+    audioEngine.onTrackLoaded = [this](const std::string& trackId, bool ok, int pending) {
+        std::ostringstream json;
+        json << "{\"event\":\"trackLoaded\",\"trackId\":\"" << trackId
+             << "\",\"ok\":" << (ok ? "true" : "false")
+             << ",\"pending\":" << pending << "}";
+        broadcast(json.str());
+    };
+
     serverThread = std::thread(&WebSocketServer::listenLoop, this);
     timerThread = std::thread(&WebSocketServer::timerLoop, this);
 }
@@ -635,6 +647,20 @@ void WebSocketServer::clientLoop(void* socketHandle)
                     }
                 );
             }).detach();
+        }
+
+        // Acknowledge transport commands immediately with the post-command state.
+        // The 100ms timer can broadcast a frame captured BEFORE the command was
+        // processed; this ack supersedes it so the UI playhead never sticks on a
+        // stale stopped/position-0 snapshot after pressing play.
+        if (cmd == "play" || cmd == "pause" || cmd == "stop" || cmd == "seek")
+        {
+            audioEngine.updatePlayhead();
+            const bool playingNow = audioEngine.isPlaying();
+            std::ostringstream ackJson;
+            ackJson << "{\"event\":\"playbackPosition\",\"positionSeconds\":" << audioEngine.getPlayhead()
+                    << ",\"isPlaying\":" << (playingNow ? "true" : "false") << ",\"ack\":true}";
+            broadcast(ackJson.str());
         }
     }
 

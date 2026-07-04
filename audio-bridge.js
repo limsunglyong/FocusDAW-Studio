@@ -16,11 +16,88 @@
     isPlaying: false,
     startTime: 0,
     offset: 0,
+    lastPlaySentAt: 0,
     trackLevels: {},
     masterStereo: { l: 0, r: 0 },
     masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     stretchPreviewPreparing: false
   };
+
+  // Web → native output handover. On connect the native engine still has to
+  // decode every synced track (async loadTrack), so the web engine keeps playing
+  // audibly until all pending loads report back via "trackLoaded". Only then is
+  // the web output muted and the current transport state (position + playing)
+  // handed to the native engine. Before this fix the web was muted immediately
+  // on connect and an in-progress playback was silently dropped: sound cut out
+  // and the playhead snapped to 0 until the user pressed Stop+Play.
+  let nativeOutputActive = false;        // native is the audible output (post-handover)
+  const pendingNativeLoads = new Set();  // trackIds sent to native, not yet loaded
+  let handoverFallbackTimer = null;
+
+  function sendLoadTrack(msg) {
+    if (!(socket && socket.readyState === WebSocket.OPEN)) return;
+    pendingNativeLoads.add(msg.trackId);
+    if (!nativeOutputActive) armHandoverFallback();
+    sendToNative(msg);
+  }
+
+  function onNativeTrackLoaded(trackId) {
+    pendingNativeLoads.delete(trackId);
+    if (!nativeOutputActive) armHandoverFallback(); // loads are progressing
+    maybeActivateNativeOutput();
+  }
+
+  function maybeActivateNativeOutput() {
+    if (!Bridge.isNative || nativeOutputActive) return;
+    if (pendingNativeLoads.size > 0) return;
+    activateNativeOutput();
+  }
+
+  function activateNativeOutput() {
+    if (!Bridge.isNative || nativeOutputActive) return;
+    nativeOutputActive = true;
+    clearTimeout(handoverFallbackTimer);
+    handoverFallbackTimer = null;
+
+    // Hand the current transport state over. These commands queue after all
+    // loadTrack commands the native engine has already finished, so they apply
+    // to a fully loaded project.
+    const pos = LocalDAW.getPlayhead();
+    sendToNative({ command: "seek", positionSeconds: pos });
+    nativeState.offset = Math.max(0, Math.min(pos, LocalDAW.duration));
+    nativeState.startTime = Date.now();
+    if (LocalDAW.isPlaying) {
+      sendToNative({ command: "play" });
+      nativeState.isPlaying = true;
+      nativeState.lastPlaySentAt = Date.now();
+      startLocalTickLoop();
+    } else {
+      nativeState.isPlaying = false;
+    }
+
+    // Native engine is now the sole audio output. Mute the local web-audio output
+    // so the two engines don't play the same tracks simultaneously (double playback
+    // → drifting clocks, phasing, doubled FX, half-applied mute/solo). LocalDAW is
+    // still driven for state/automation/playhead, just silenced at the speakers.
+    try { LocalDAW.setOutputMuted(true); } catch (e) {}
+    console.log("[AudioBridge] Native output active (all pending track loads done).");
+    LocalDAW._emit();
+  }
+
+  // If the engine never reports its loads (e.g. an outdated binary without the
+  // trackLoaded event), fall back to activating after 15s without progress so we
+  // don't stay on the web engine forever.
+  function armHandoverFallback() {
+    if (nativeOutputActive) return;
+    clearTimeout(handoverFallbackTimer);
+    handoverFallbackTimer = setTimeout(() => {
+      if (Bridge.isNative && !nativeOutputActive) {
+        console.warn("[AudioBridge] trackLoaded events stalled; activating native output anyway.");
+        pendingNativeLoads.clear();
+        activateNativeOutput();
+      }
+    }, 15000);
+  }
 
   // We capture the original DAW engine (Web Audio API)
   const LocalDAW = window.DAW;
@@ -40,9 +117,11 @@
       }
     },
 
-    // Native State getters
+    // Native State getters. All fall back to the web engine until the output
+    // handover completes — before that the native transport is idle and its
+    // state (stopped at 0) must not drive the UI.
     getPlayhead() {
-      if (!this.isNative) return LocalDAW.getPlayhead();
+      if (!this.isNative || !nativeOutputActive) return LocalDAW.getPlayhead();
       if (!nativeState.isPlaying) return nativeState.offset;
       const rate = LocalDAW._projectRate();
       const elapsed = (Date.now() - nativeState.startTime) / 1000;
@@ -51,52 +130,57 @@
     },
 
     getTrackLevel(id) {
-      if (!this.isNative) return LocalDAW.getTrackLevel(id);
+      if (!this.isNative || !nativeOutputActive) return LocalDAW.getTrackLevel(id);
       return nativeState.trackLevels[id] || 0;
     },
 
     getMasterLevel() {
-      if (!this.isNative) return LocalDAW.getMasterLevel();
+      if (!this.isNative || !nativeOutputActive) return LocalDAW.getMasterLevel();
       const nativeLevel = (nativeState.masterStereo.l + nativeState.masterStereo.r) / 2;
       return nativeLevel > 0.0001 ? nativeLevel : LocalDAW.getMasterLevel();
     },
 
     getMasterStereoLevels() {
-      if (!this.isNative) return LocalDAW.getMasterStereoLevels();
+      if (!this.isNative || !nativeOutputActive) return LocalDAW.getMasterStereoLevels();
       const nativeLevel = (nativeState.masterStereo.l + nativeState.masterStereo.r) / 2;
       return nativeLevel > 0.0001 ? nativeState.masterStereo : LocalDAW.getMasterStereoLevels();
     },
 
     getMasterBandLevels() {
-      if (!this.isNative) return LocalDAW.getMasterBandLevels();
+      if (!this.isNative || !nativeOutputActive) return LocalDAW.getMasterBandLevels();
       const hasNativeBands = nativeState.masterBandLevels.some((v) => v > 0.0001);
       return hasNativeBands ? nativeState.masterBandLevels : LocalDAW.getMasterBandLevels();
     },
 
-    // Command forwarders
+    // Command forwarders. Transport commands go to the native engine only after
+    // the output handover — before that the web engine is the audible output and
+    // activateNativeOutput() transfers the transport state when native is ready.
     play(options) {
       LocalDAW.play(options); // Keep LocalDAW state in sync
-      if (this.isNative) {
+      if (this.isNative && nativeOutputActive) {
         sendToNative({ command: "play", options });
         nativeState.isPlaying = true;
         nativeState.startTime = Date.now();
+        nativeState.lastPlaySentAt = Date.now();
         startLocalTickLoop();
       }
     },
 
     pause() {
-      LocalDAW.pause();
-      if (this.isNative) {
+      if (this.isNative && nativeOutputActive) {
         const pauseOffset = this.getPlayhead();
+        LocalDAW.pause();
         sendToNative({ command: "pause" });
         nativeState.isPlaying = false;
         nativeState.offset = pauseOffset;
+      } else {
+        LocalDAW.pause();
       }
     },
 
     stop() {
       LocalDAW.stop();
-      if (this.isNative) {
+      if (this.isNative && nativeOutputActive) {
         sendToNative({ command: "stop" });
         nativeState.isPlaying = false;
         nativeState.offset = 0;
@@ -105,7 +189,7 @@
 
     seek(t) {
       LocalDAW.seek(t);
-      if (this.isNative) {
+      if (this.isNative && nativeOutputActive) {
         sendToNative({ command: "seek", positionSeconds: t });
         nativeState.offset = Math.max(0, Math.min(t, LocalDAW.duration));
         nativeState.startTime = Date.now();
@@ -305,6 +389,11 @@
       LocalDAW.clearTracks();
       if (this.isNative) {
         sendToNative({ command: "clearTracks" });
+        // Native drops its queued (not yet started) loads without reporting them,
+        // so clear our pending set too or the output handover would wait on
+        // trackLoaded events that will never come.
+        pendingNativeLoads.clear();
+        maybeActivateNativeOutput();
         // Native clearTracks only drops the tracks; it does not reset master effects.
         // Push the freshly-reset master state (LocalDAW.clearTracks just restored the
         // defaults) so a New Project starts clean instead of inheriting the previous
@@ -344,7 +433,7 @@
         // Since JUCE engine needs actual files, let's trigger loading for any files that have filePath
         LocalDAW.tracks.forEach(track => {
           if (track.filePath) {
-            sendToNative({ command: "loadTrack", trackId: track.id, filePath: track.filePath });
+            sendLoadTrack({ command: "loadTrack", trackId: track.id, filePath: track.filePath });
           }
         });
       }
@@ -413,15 +502,15 @@
       retryCount = 0;
       console.log("[AudioBridge] Connected to JUCE Native Audio Engine!");
 
-      // Native engine is now the sole audio output. Mute the local web-audio output
-      // so the two engines don't play the same tracks simultaneously (double playback
-      // → drifting clocks, phasing, doubled FX, half-applied mute/solo). LocalDAW is
-      // still driven for state/automation/playhead, just silenced at the speakers.
-      try { LocalDAW.setOutputMuted(true); } catch (e) {}
-      
+      // NOTE: the web output is NOT muted here. Tracks below still have to be
+      // decoded by the native engine, so the web engine stays the audible output
+      // (an already-running playback keeps going) until every pending load
+      // reports back — see activateNativeOutput(), which mutes the web engine
+      // and hands the transport state over.
+
       // Send initial handshake/init command
       sendToNative({ command: "init", sampleRate: LocalDAW.ctx ? LocalDAW.ctx.sampleRate : 44100 });
-      
+
       // Sync current tempo & key settings (incl. keyShift — see syncTempoKeyToNative).
       syncTempoKeyToNative();
 
@@ -439,6 +528,11 @@
         sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
       }
       sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+
+      // No tracks to load → native is ready right away; otherwise the handover
+      // fires from onNativeTrackLoaded once the last pending load reports in.
+      maybeActivateNativeOutput();
+      if (!nativeOutputActive) armHandoverFallback();
 
       LocalDAW._emit();
     };
@@ -488,6 +582,10 @@
     connectionState = "failed";
     Bridge.isNative = false;
     socket = null;
+    nativeOutputActive = false;
+    pendingNativeLoads.clear();
+    clearTimeout(handoverFallbackTimer);
+    handoverFallbackTimer = null;
     // Native engine is gone — un-mute the web output so the local fallback is audible.
     try { LocalDAW.setOutputMuted(false); } catch (e) {}
     LocalDAW._emit();
@@ -540,11 +638,22 @@
     if (!msg || !msg.event) return;
 
     if (msg.event === "playbackPosition") {
-      nativeState.offset = msg.positionSeconds;
-      nativeState.startTime = Date.now();
-      if (typeof msg.isPlaying === "boolean") {
-        nativeState.isPlaying = msg.isPlaying;
+      // Drop a stale "stopped" frame the 100ms timer captured BEFORE our play
+      // command was processed — the engine's ack (ack:true) that follows the
+      // command supersedes it. Without this the playhead flashes back to 0 for
+      // a frame right after pressing play.
+      const stale = !msg.ack && msg.isPlaying === false && nativeState.isPlaying &&
+        (Date.now() - nativeState.lastPlaySentAt) < 500;
+      if (!stale) {
+        nativeState.offset = msg.positionSeconds;
+        nativeState.startTime = Date.now();
+        if (typeof msg.isPlaying === "boolean") {
+          nativeState.isPlaying = msg.isPlaying;
+        }
+        LocalDAW._emit();
       }
+    } else if (msg.event === "trackLoaded") {
+      if (msg.trackId) onNativeTrackLoaded(msg.trackId);
       LocalDAW._emit();
     } else if (msg.event === "levels") {
       if (msg.tracks) nativeState.trackLevels = msg.tracks;
@@ -579,7 +688,7 @@
   function syncTrackToNative(track) {
     if (!track) return;
     if (track.filePath) {
-      sendToNative({
+      sendLoadTrack({
         command: "loadTrack",
         trackId: track.id,
         filePath: track.filePath,
@@ -591,14 +700,22 @@
       // We convert it to WAV locally and save as temporary file.
       const wavBytes = bufferToWav(track.buffer);
       if (window.electronAPI && window.electronAPI.writeTempAudio) {
+        // Reserve the pending slot NOW so the handover can't slip through the
+        // gap while the temp WAV is being written.
+        pendingNativeLoads.add(track.id);
+        if (!nativeOutputActive) armHandoverFallback();
         window.electronAPI.writeTempAudio(wavBytes, track.name).then((tmpPath) => {
-          sendToNative({
+          sendLoadTrack({
             command: "loadTrack",
             trackId: track.id,
             filePath: tmpPath,
             type: track.type,
             color: track.color
           });
+        }).catch((err) => {
+          console.warn("[AudioBridge] writeTempAudio failed:", err);
+          pendingNativeLoads.delete(track.id);
+          maybeActivateNativeOutput();
         });
       }
     }

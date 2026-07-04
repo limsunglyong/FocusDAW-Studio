@@ -14,6 +14,10 @@
 #include "Logging.h"
 #include <mutex>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <map>
+#include <thread>
 #include <functional>
 #include <algorithm>
 #include <cmath>
@@ -32,6 +36,13 @@ struct TrackInfo
     float pan = 0.0f;
     bool mute = false;
     bool solo = false;
+    // Loads are asynchronous, so params/automation can arrive while the file is
+    // still decoding. They are kept here and applied when the JUCE track is built.
+    float reverbSend = 0.0f;
+    float echoSend = 0.0f;
+    bool autoOn = false;
+    bool autoCurved = false;
+    std::vector<float> autoPoints; // interleaved [t0,v0,t1,v1,...], t normalized 0..1
 };
 
 // Ambience (Sound Environment / room type) spec — mirrors the web engine's
@@ -1283,6 +1294,16 @@ public:
                    std::function<void(float)> progressCallback,
                    std::function<void(const std::string&, const std::string&)> completionCallback);
 
+    // Invoked from the background loader thread (WITHOUT engineMutex held) after
+    // each async loadTrack finishes: (trackId, success, loads still pending).
+    // The WebSocket server uses it to broadcast a "trackLoaded" event so the UI
+    // bridge knows when the native engine is actually ready to play.
+    std::function<void(const std::string&, bool, int)> onTrackLoaded;
+
+    // Block until the background load queue is drained (offline export must not
+    // render while tracks are still decoding, or it would miss them).
+    void waitForLoadsIdle(int timeoutMs = 180000);
+
     // Getters for status updates
     bool isPlaying() const { return playing; }
     double getPlayhead() const;
@@ -1332,4 +1353,32 @@ private:
     // Configure the master fade window from the current fadeIn/fadeOut state for a
     // given timeline length (output seconds) and sample rate. No-op without JUCE.
     void configureMasterFade(double songLenSeconds, double sr);
+
+    // ---- Asynchronous track loading -------------------------------------------
+    // Decoding (ffmpeg + full PCM read) used to run synchronously on the WebSocket
+    // receive thread while holding engineMutex, which blocked every subsequent
+    // command (play!) and the position broadcasts for seconds after startup. Loads
+    // are now queued to a single background worker; only the final install of the
+    // decoded track takes engineMutex.
+    struct LoadJob
+    {
+        std::string trackId;
+        std::string filePath;
+        uint64_t generation = 0; // voided by clearTracks
+        uint64_t seq = 0;        // superseded by a newer load of the same track
+    };
+    void loaderLoop();
+    bool decodeAndInstallTrack(const LoadJob& job); // heavy work, engineMutex only for install
+    int pendingLoadCount();                          // queue + in-flight (locks loadMutex)
+
+    std::deque<LoadJob> loadQueue;      // guarded by loadMutex
+    std::mutex loadMutex;
+    std::condition_variable loadCv;     // wakes the worker (new job / exit)
+    std::condition_variable loadIdleCv; // wakes waitForLoadsIdle when drained
+    bool loaderExit = false;            // guarded by loadMutex
+    bool loaderBusy = false;            // guarded by loadMutex
+    uint64_t loadGeneration = 0;                  // guarded by engineMutex
+    uint64_t loadSeqCounter = 0;                  // guarded by engineMutex
+    std::map<std::string, uint64_t> latestLoadSeq; // guarded by engineMutex
+    std::thread loaderThread;
 };
