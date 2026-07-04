@@ -572,9 +572,12 @@
       this.tracks.splice(i, 1);
       this._spectrum = null;
       // When the project becomes empty, reset the tempo so Project/Playback BPM
-      // return to the uninitialized "---" state (matches a fresh project).
+      // return to the uninitialized "---" state (matches a fresh project), and
+      // STOP the transport — otherwise isPlaying/offset linger and the next
+      // loaded track would resume playing from the stale position.
       if (this.tracks.length === 0) {
         this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
+        this.stop();
       }
       this._applyMix();
     },

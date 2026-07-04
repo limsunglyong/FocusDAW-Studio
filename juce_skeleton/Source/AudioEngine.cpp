@@ -564,6 +564,19 @@ void AudioEngine::removeTrack(const std::string& trackId)
     updateSoloStates();
 #endif
 
+    // Removing the LAST track must stop the transport. Otherwise `playing` stays
+    // true with a frozen playheadSeconds (updatePlayhead needs a track to advance),
+    // the broadcasts keep jittering the UI playbar at the stale position, and the
+    // next track load would install into "playing" state and resume from there.
+    if (tracks.empty())
+    {
+        playing = false;
+        playheadSeconds = 0.0;
+#if USE_JUCE
+        if (masterEffectsSource) masterEffectsSource->setFadeActive(false);
+#endif
+    }
+
     LOG_DBG << "[AudioEngine] Track " << trackId << " removed from JUCE engine." << std::endl;
 }
 

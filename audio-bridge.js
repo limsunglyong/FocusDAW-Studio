@@ -382,6 +382,15 @@
       LocalDAW.removeTrack(id);
       if (this.isNative) {
         sendToNative({ command: "removeTrack", trackId: id });
+        pendingNativeLoads.delete(id); // an in-flight load of this track is voided
+        // Last track removed → both engines stop (web via LocalDAW.removeTrack,
+        // native inside its removeTrack). Mirror that here so the UI doesn't show
+        // the stale position for the ~100ms until the next native broadcast.
+        if (LocalDAW.tracks.length === 0) {
+          nativeState.isPlaying = false;
+          nativeState.offset = 0;
+          maybeActivateNativeOutput();
+        }
       }
     },
 
