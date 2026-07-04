@@ -20,6 +20,7 @@
     trackLevels: {},
     masterStereo: { l: 0, r: 0 },
     masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    hasNativeBandData: false, // true once the native engine broadcasts masterBands
     stretchPreviewPreparing: false
   };
 
@@ -148,8 +149,11 @@
 
     getMasterBandLevels() {
       if (!this.isNative || !nativeOutputActive) return LocalDAW.getMasterBandLevels();
-      const hasNativeBands = nativeState.masterBandLevels.some((v) => v > 0.0001);
-      return hasNativeBands ? nativeState.masterBandLevels : LocalDAW.getMasterBandLevels();
+      // Once the native engine broadcasts band levels, always use them — the old
+      // any-nonzero check fell back to the muted web engine during silence, which
+      // painted the web engine's reverb tail on the spectrum meter.
+      if (nativeState.hasNativeBandData) return nativeState.masterBandLevels;
+      return LocalDAW.getMasterBandLevels();
     },
 
     // Command forwarders. Transport commands go to the native engine only after
@@ -671,7 +675,10 @@
     } else if (msg.event === "levels") {
       if (msg.tracks) nativeState.trackLevels = msg.tracks;
       if (msg.master) nativeState.masterStereo = msg.master;
-      if (msg.masterBands) nativeState.masterBandLevels = msg.masterBands;
+      if (msg.masterBands) {
+        nativeState.masterBandLevels = msg.masterBands;
+        nativeState.hasNativeBandData = true;
+      }
       // Do not call _emit on every level message to avoid React overload, React uses useTick polling
     } else if (msg.event === "stretchPreviewPreparing") {
       nativeState.stretchPreviewPreparing = !!msg.preparing;

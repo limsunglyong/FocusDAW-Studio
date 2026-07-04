@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, dialog, screen, Menu } = require('electron'
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 // Shared renderer webPreferences. `devTools` is gated on !app.isPackaged so the
@@ -27,6 +28,47 @@ try { ffmpegPath = require('ffmpeg-static'); } catch (e) {
 }
 
 const AUDIO_EXT = /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i;
+const PROJECT_EXT = /\.focus$/i;
+
+function assertTrustedIpc(event) {
+  const senderUrl = event && event.senderFrame && event.senderFrame.url;
+  if (!senderUrl || !senderUrl.startsWith('file://')) {
+    throw new Error('Blocked IPC request from an untrusted renderer.');
+  }
+  const rendererPath = path.resolve(decodeURIComponent(new URL(senderUrl).pathname.replace(/^\/([A-Za-z]:)/, '$1')));
+  const appRoot = path.resolve(app.getAppPath());
+  const relative = path.relative(appRoot, rendererPath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Blocked IPC request from outside the application.');
+  }
+}
+
+function assertFilePath(filePath, extensionPattern, label) {
+  if (typeof filePath !== 'string' || !path.isAbsolute(filePath) || !extensionPattern.test(filePath)) {
+    throw new Error(`Invalid ${label} path.`);
+  }
+  return path.resolve(filePath);
+}
+
+function assertTempWavPath(filePath) {
+  const resolved = assertFilePath(filePath, /\.wav$/i, 'temporary audio');
+  const relative = path.relative(path.resolve(os.tmpdir()), resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Temporary audio path is outside the system temp directory.');
+  }
+  return resolved;
+}
+
+function tempFilePath(prefix, extension) {
+  return path.join(os.tmpdir(), `${prefix}_${crypto.randomUUID()}.${extension}`);
+}
+
+function removeFileQuietly(filePath) {
+  if (!filePath) return;
+  try { fs.unlinkSync(filePath); } catch (e) {
+    if (!e || e.code !== 'ENOENT') console.warn(`[FocusDAW] Failed to remove temp file: ${filePath}`, e);
+  }
+}
 
 function resolveFfmpegPath() {
   if (!ffmpegPath) return null;
@@ -130,7 +172,8 @@ function createWindow() {
 
   mainWindow = win;
 
-  win.webContents.on('console-message', (_event, _level, message) => {
+  win.webContents.on('console-message', (details) => {
+    const { message } = details;
     if (typeof message === 'string' && message.startsWith('[KeyDetection]')) {
       console.log(message);
     }
@@ -251,7 +294,8 @@ app.on('will-quit', () => {
 // ── IPC handlers ──────────────────────────────────────────────────────────────
 
 // Scan a folder for audio files
-ipcMain.handle('open-folder', async () => {
+ipcMain.handle('open-folder', async (event) => {
+  assertTrustedIpc(event);
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openDirectory'],
     title: 'Select Stem Folder',
@@ -264,7 +308,8 @@ ipcMain.handle('open-folder', async () => {
 });
 
 // Select individual audio files
-ipcMain.handle('select-files', async () => {
+ipcMain.handle('select-files', async (event) => {
+  assertTrustedIpc(event);
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Audio Files', extensions: ['mp3', 'wav', 'aif', 'aiff', 'm4a', 'ogg', 'flac'] }],
@@ -275,24 +320,29 @@ ipcMain.handle('select-files', async () => {
 });
 
 // Read an audio file and return its raw bytes as ArrayBuffer
-ipcMain.handle('read-audio-file', async (_, filePath) => {
-  const buf = fs.readFileSync(filePath);
+ipcMain.handle('read-audio-file', async (event, filePath) => {
+  assertTrustedIpc(event);
+  const safePath = assertFilePath(filePath, AUDIO_EXT, 'audio file');
+  const buf = fs.readFileSync(safePath);
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 });
 
 // Write a temporary WAV file from raw bytes (used for demo tracks sync to native engine)
-ipcMain.handle('write-temp-audio', async (_, wavBuffer, fileName) => {
-  const base = path.basename(fileName, path.extname(fileName)) + `_${Date.now()}`;
-  const tmpWav = path.join(os.tmpdir(), base + '.wav');
+ipcMain.handle('write-temp-audio', async (event, wavBuffer, fileName) => {
+  assertTrustedIpc(event);
+  const base = safeFileBase(path.basename(String(fileName || 'audio'), path.extname(String(fileName || 'audio'))));
+  const tmpWav = tempFilePath(base, 'wav');
   fs.writeFileSync(tmpWav, Buffer.from(wavBuffer));
   return tmpWav;
 });
 
 // Save project via native Save dialog
-ipcMain.handle('save-project', async (_, json, defaultName, targetPath) => {
+ipcMain.handle('save-project', async (event, json, defaultName, targetPath) => {
+  assertTrustedIpc(event);
   if (targetPath) {
-    fs.writeFileSync(targetPath, JSON.stringify(json, null, 2), 'utf8');
-    return { saved: true, path: targetPath, dir: path.dirname(targetPath) };
+    const safeTargetPath = assertFilePath(targetPath, PROJECT_EXT, 'project');
+    fs.writeFileSync(safeTargetPath, JSON.stringify(json, null, 2), 'utf8');
+    return { saved: true, path: safeTargetPath, dir: path.dirname(safeTargetPath) };
   }
   const { canceled, filePath } = await dialog.showSaveDialog({
     defaultPath: safeFileBase(defaultName) + '.focus',
@@ -305,7 +355,8 @@ ipcMain.handle('save-project', async (_, json, defaultName, targetPath) => {
 });
 
 // Open project via native Open dialog
-ipcMain.handle('open-project', async () => {
+ipcMain.handle('open-project', async (event) => {
+  assertTrustedIpc(event);
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [{ name: 'FocusDAW Project', extensions: ['focus'] }],
@@ -321,66 +372,58 @@ ipcMain.handle('open-project', async () => {
 });
 
 // Encode WAV → MP3 via ffmpeg (with ID3v2 tags + optional embedded cover art)
-ipcMain.handle('encode-mp3', async (_, wavBuffer, options) => {
+ipcMain.handle('encode-mp3', async (event, wavBuffer, options) => {
+  assertTrustedIpc(event);
   const resolvedFfmpegPath = resolveFfmpegPath();
   if (!resolvedFfmpegPath) throw new Error('ffmpeg-static not installed. Run: npm install');
   if (!fs.existsSync(resolvedFfmpegPath)) throw new Error(`ffmpeg executable not found: ${resolvedFfmpegPath}`);
   const { bitrate = 320, sampleRate = 44100, meta = {}, cover = null } = options || {};
-  const base   = `focusdaw_${Date.now()}`;
+  const base   = `focusdaw_${crypto.randomUUID()}`;
   const tmpWav = path.join(os.tmpdir(), base + '.wav');
   const tmpMp3 = path.join(os.tmpdir(), base + '.mp3');
 
-  fs.writeFileSync(tmpWav, Buffer.from(wavBuffer));
-
-  // Album art: write the base64 image bytes to a temp file for ffmpeg to attach
   let tmpCover = null;
-  if (cover && cover.data) {
-    const ext = cover.mime === 'image/png' ? 'png'
-      : cover.mime === 'image/webp' ? 'webp'
-      : cover.mime === 'image/gif' ? 'gif'
-      : 'jpg';
-    tmpCover = path.join(os.tmpdir(), base + '_cover.' + ext);
-    fs.writeFileSync(tmpCover, Buffer.from(cover.data, 'base64'));
+  try {
+    fs.writeFileSync(tmpWav, Buffer.from(wavBuffer));
+
+    // Album art: write the base64 image bytes to a temp file for ffmpeg to attach
+    if (cover && cover.data) {
+      const ext = cover.mime === 'image/png' ? 'png'
+        : cover.mime === 'image/webp' ? 'webp'
+        : cover.mime === 'image/gif' ? 'gif'
+        : 'jpg';
+      tmpCover = path.join(os.tmpdir(), base + '_cover.' + ext);
+      fs.writeFileSync(tmpCover, Buffer.from(cover.data, 'base64'));
+    }
+
+    const args = ['-y', '-i', tmpWav];
+    if (tmpCover) {
+      args.push('-i', tmpCover,
+        '-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-c:v', 'copy',
+        '-disposition:v:0', 'attached_pic',
+        '-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)');
+    } else {
+      args.push('-c:a', 'libmp3lame');
+    }
+    args.push('-b:a', `${bitrate}k`, '-ar', String(sampleRate), '-id3v2_version', '3');
+
+    const addMeta = (k, v) => { if (v != null && String(v).length) args.push('-metadata', `${k}=${v}`); };
+    addMeta('title', meta.title);
+    addMeta('artist', meta.artist);
+    addMeta('album_artist', meta.artist);
+    addMeta('composer', meta.artist);
+    addMeta('album', meta.album);
+    addMeta('date', meta.date || meta.year);
+    args.push(tmpMp3);
+
+    await runFfmpeg(resolvedFfmpegPath, args);
+    const mp3Buf = fs.readFileSync(tmpMp3);
+    return mp3Buf.buffer.slice(mp3Buf.byteOffset, mp3Buf.byteOffset + mp3Buf.byteLength);
+  } finally {
+    removeFileQuietly(tmpWav);
+    removeFileQuietly(tmpMp3);
+    removeFileQuietly(tmpCover);
   }
-
-  const args = ['-y', '-i', tmpWav];
-  if (tmpCover) {
-    args.push('-i', tmpCover,
-      '-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-c:v', 'copy',
-      '-disposition:v:0', 'attached_pic',
-      '-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)');
-  } else {
-    args.push('-c:a', 'libmp3lame');
-  }
-  args.push('-b:a', `${bitrate}k`, '-ar', String(sampleRate), '-id3v2_version', '3');
-
-  // text tags — id3v2.3 derives Year (TYER) + Date (TDAT) from a full ISO date
-  const addMeta = (k, v) => { if (v != null && String(v).length) args.push('-metadata', `${k}=${v}`); };
-  addMeta('title', meta.title);
-  addMeta('artist', meta.artist);
-  addMeta('album_artist', meta.artist);
-  addMeta('composer', meta.artist);
-  addMeta('album', meta.album);
-  addMeta('date', meta.date || meta.year);
-
-  args.push(tmpMp3);
-
-  await new Promise((resolve, reject) => {
-    let stderr = '';
-    const proc = spawn(resolvedFfmpegPath, args, { windowsHide: true });
-    proc.stderr.on('data', (chunk) => {
-      stderr = (stderr + chunk.toString()).slice(-4000);
-    });
-    proc.on('close', code => {
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
-    });
-    proc.on('error', reject);
-  });
-
-  const mp3Buf = fs.readFileSync(tmpMp3);
-  try { fs.unlinkSync(tmpWav); fs.unlinkSync(tmpMp3); if (tmpCover) fs.unlinkSync(tmpCover); } catch (e) {}
-  return mp3Buf.buffer.slice(mp3Buf.byteOffset, mp3Buf.byteOffset + mp3Buf.byteLength);
 });
 
 // Post-render audio processing via ffmpeg: optional pitch-preserving tempo (atempo)
@@ -430,16 +473,21 @@ async function processAudioFfmpeg(wavBuffer, options) {
   }
 }
 
-ipcMain.handle('process-audio', (_, wavBuffer, options) => processAudioFfmpeg(wavBuffer, options));
+ipcMain.handle('process-audio', (event, wavBuffer, options) => {
+  assertTrustedIpc(event);
+  return processAudioFfmpeg(wavBuffer, options);
+});
 
 // Backward-compatible alias: tempo-only processing.
-ipcMain.handle('process-tempo', (_, wavBuffer, options) => {
+ipcMain.handle('process-tempo', (event, wavBuffer, options) => {
+  assertTrustedIpc(event);
   const { rate = 1, sampleRate = 44100 } = options || {};
   return processAudioFfmpeg(wavBuffer, { rate, sampleRate, loudnorm: null });
 });
 
 // Save rendered audio via native Save dialog (handles overwrite confirmation)
-ipcMain.handle('save-audio', async (_, buffer, defaultName) => {
+ipcMain.handle('save-audio', async (event, buffer, defaultName) => {
+  assertTrustedIpc(event);
   const ext = path.extname(defaultName).replace('.', '') || 'mp3';
   const { canceled, filePath } = await dialog.showSaveDialog({
     defaultPath: defaultName,
@@ -510,12 +558,14 @@ function inspectPcmWav(filePath) {
   };
 }
 
-ipcMain.handle('inspect-native-audio', async (_, tempFilePath) => {
-  if (!tempFilePath || !fs.existsSync(tempFilePath)) {
+ipcMain.handle('inspect-native-audio', async (event, tempFilePath) => {
+  assertTrustedIpc(event);
+  const safeTempFilePath = assertTempWavPath(tempFilePath);
+  if (!fs.existsSync(safeTempFilePath)) {
     return { exists: false, silent: true, error: 'Native export temp file not found.' };
   }
   try {
-    return inspectPcmWav(tempFilePath);
+    return inspectPcmWav(safeTempFilePath);
   } catch (err) {
     return {
       exists: true,
@@ -526,7 +576,9 @@ ipcMain.handle('inspect-native-audio', async (_, tempFilePath) => {
 });
 
 // Save natively rendered audio file (supports WAV copy and MP3 encoding with tags/cover)
-ipcMain.handle('save-native-audio', async (_, tempFilePath, format, options, defaultName) => {
+ipcMain.handle('save-native-audio', async (event, tempFilePath, format, options, defaultName) => {
+  assertTrustedIpc(event);
+  const safeTempFilePath = assertTempWavPath(tempFilePath);
   const ext = format === 'mp3' ? 'mp3' : 'wav';
   const { canceled, filePath } = await dialog.showSaveDialog({
     defaultPath: defaultName,
@@ -535,10 +587,10 @@ ipcMain.handle('save-native-audio', async (_, tempFilePath, format, options, def
   });
   if (canceled || !filePath) return { saved: false };
 
+  let tmpCover = null;
   try {
     if (format === 'wav') {
-      fs.copyFileSync(tempFilePath, filePath);
-      try { fs.unlinkSync(tempFilePath); } catch (e) {}
+      fs.copyFileSync(safeTempFilePath, filePath);
       return { saved: true };
     } else {
       const resolvedFfmpegPath = resolveFfmpegPath();
@@ -547,9 +599,8 @@ ipcMain.handle('save-native-audio', async (_, tempFilePath, format, options, def
       
       const { bitrate = 320, sampleRate = 44100, meta = {}, cover = null } = options || {};
       
-      let tmpCover = null;
       if (cover && cover.data) {
-        const base = `focusdaw_cover_${Date.now()}`;
+        const base = `focusdaw_cover_${crypto.randomUUID()}`;
         const extCover = cover.mime === 'image/png' ? 'png'
           : cover.mime === 'image/webp' ? 'webp'
           : cover.mime === 'image/gif' ? 'gif'
@@ -558,7 +609,7 @@ ipcMain.handle('save-native-audio', async (_, tempFilePath, format, options, def
         fs.writeFileSync(tmpCover, Buffer.from(cover.data, 'base64'));
       }
 
-      const args = ['-y', '-i', tempFilePath];
+      const args = ['-y', '-i', safeTempFilePath];
       if (tmpCover) {
         args.push('-i', tmpCover,
           '-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-c:v', 'copy',
@@ -581,12 +632,14 @@ ipcMain.handle('save-native-audio', async (_, tempFilePath, format, options, def
 
       await runFfmpeg(resolvedFfmpegPath, args);
 
-      try { fs.unlinkSync(tempFilePath); if (tmpCover) fs.unlinkSync(tmpCover); } catch (e) {}
       return { saved: true };
     }
   } catch (err) {
     console.error('[FocusDAW] save-native-audio error:', err);
     throw err;
+  } finally {
+    removeFileQuietly(safeTempFilePath);
+    removeFileQuietly(tmpCover);
   }
 });
 

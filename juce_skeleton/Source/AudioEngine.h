@@ -545,11 +545,15 @@ public:
         if (reverbSendBuffer != nullptr && currentRev > 0.001f)
         {
             int numChannels = std::min(bufferToFill.buffer->getNumChannels(), reverbSendBuffer->getNumChannels());
+            // Never write past the send buffer: if the device delivers a bigger block
+            // than the buffer was prepared for, writing numSamples would corrupt the
+            // heap. The master grows the buffer each block, but this is the safety net.
+            int sendSamples = std::min(bufferToFill.numSamples, reverbSendBuffer->getNumSamples());
             for (int channel = 0; channel < numChannels; ++channel)
             {
                 const float* src = bufferToFill.buffer->getReadPointer(channel, bufferToFill.startSample);
                 float* dst = reverbSendBuffer->getWritePointer(channel);
-                for (int s = 0; s < bufferToFill.numSamples; ++s)
+                for (int s = 0; s < sendSamples; ++s)
                 {
                     dst[s] += src[s] * currentRev;
                 }
@@ -726,9 +730,12 @@ public:
     std::unique_ptr<juce::AudioTransportSource> transportSource;
     float volume = 1.0f;
     float pan = 0.0f;
-    bool mute = false;
-    bool solo = false;
-    bool soloActive = false;
+    // Written from the WebSocket/message thread while the audio thread reads them
+    // every block in getNextAudioBlock — plain bools were a data race (UB); atomics
+    // guarantee the gate always sees a coherent value.
+    std::atomic<bool> mute { false };
+    std::atomic<bool> solo { false };
+    std::atomic<bool> soloActive { false };
     std::atomic<bool> offlineRendering { false };
     std::atomic<bool> offlineUseSoundTouch { false };
     std::atomic<bool> offlineDebugLogged { false };
@@ -757,6 +764,7 @@ public:
         for (int i = 0; i < 9; ++i)
         {
             eqBands[i].store(0.0f);
+            bandLevels[i].store(0.0f);
         }
         reverbLevel.store(0.0f);
         echoLevel.store(0.0f);
@@ -783,6 +791,38 @@ public:
             eqFilters[i].prepare(spec);
         }
         updateEQCoefficients();
+
+        // Band-level analysis filter bank (spectrum meter). One bandpass per
+        // EQ_FREQS band; keep the centre safely below Nyquist at low sample rates.
+        for (int i = 0; i < 9; ++i)
+        {
+            float freq = std::min(kBandFreqs[i], (float)(sampleRate * 0.45));
+            bandAnalysisFilters[i].coefficients =
+                juce::dsp::IIR::Coefficients<float>::makeBandPass(sampleRate, freq, 1.1f);
+            bandAnalysisFilters[i].reset();
+        }
+        bandScratch.setSize(1, samplesPerBlockExpected);
+
+        // Per-band dB offset so whole-band RMS lands on the web AnalyserNode's
+        // PER-BIN dB scale. The analyser reports one windowed, 1/N-normalised FFT
+        // bin, so band energy is spread over the band's bins (−10·log10(binCount))
+        // and attenuated by the Blackman window power (10·log10(W₂/2) ≈ −8.2 dB).
+        // Without this, any band above −30 dB RMS clamps to 1.0 and the meter
+        // paints a full wall. Bin bounds mirror audio-engine.js getMasterBandLevels
+        // with the web's masterAnalyser fftSize of 1024 (512 bins).
+        {
+            const double nyquist = sampleRate * 0.5;
+            const int numBins = 512;
+            for (int i = 0; i < 9; ++i)
+            {
+                const double lo = (i == 0) ? 30.0 : std::sqrt((double)kBandFreqs[i - 1] * kBandFreqs[i]);
+                const double hi = (i == 8) ? nyquist : std::sqrt((double)kBandFreqs[i] * kBandFreqs[i + 1]);
+                const int a = std::max(0, (int)std::floor(lo / nyquist * numBins));
+                const int b = std::min(numBins - 1, (int)std::ceil(hi / nyquist * numBins));
+                const int count = std::max(1, b - a + 1);
+                bandDbOffset[i] = 8.2f + 10.0f * std::log10((float)count);
+            }
+        }
 
         juce::Reverb::Parameters revParams;
         revParams.roomSize = 0.75f;
@@ -824,7 +864,12 @@ public:
         if (eqDirty.exchange(false))
             updateEQCoefficients();
 
-        // 1. Clear reverb send buffer
+        // 1. Clear reverb send buffer. Grow it first if the device delivered a bigger
+        //    block than prepareToPlay promised (device/driver changes can do this) —
+        //    the per-sample loops below and every track's send write assume the buffer
+        //    holds at least numSamples. Same guard roomBuffer uses in step 4.5.
+        if (reverbSendBuffer.getNumSamples() < bufferToFill.numSamples)
+            reverbSendBuffer.setSize(2, bufferToFill.numSamples, false, false, true);
         reverbSendBuffer.clear();
 
         // 2. Pull audio from dry mix
@@ -1009,6 +1054,44 @@ public:
         float magR = (bufferToFill.buffer->getNumChannels() > 1) ? bufferToFill.buffer->getMagnitude(1, bufferToFill.startSample, bufferToFill.numSamples) : magL;
         masterMagnitudeL.store(magL);
         masterMagnitudeR.store(magR);
+
+        // 10. Band-level analysis for the spectrum meter. The web UI used to borrow
+        // the muted web engine's AnalyserNode for this, which painted the web
+        // engine's reverb tail during silence; measuring the real native output
+        // here and broadcasting it (WebSocketServer::timerLoop) fixes that.
+        if (bufferToFill.buffer->getNumChannels() > 0)
+        {
+            const int n = bufferToFill.numSamples;
+            if (bandScratch.getNumSamples() < n) bandScratch.setSize(1, n, false, false, true);
+            float* mono = bandScratch.getWritePointer(0);
+            const float* lch = bufferToFill.buffer->getReadPointer(0, bufferToFill.startSample);
+            const float* rch = (bufferToFill.buffer->getNumChannels() > 1)
+                                   ? bufferToFill.buffer->getReadPointer(1, bufferToFill.startSample) : lch;
+            for (int s = 0; s < n; ++s) mono[s] = 0.5f * (lch[s] + rch[s]);
+
+            for (int b = 0; b < 9; ++b)
+            {
+                auto& filter = bandAnalysisFilters[b];
+                double sumSq = 0.0;
+                for (int s = 0; s < n; ++s)
+                {
+                    float y = filter.processSample(mono[s]);
+                    sumSq += (double)y * y;
+                }
+                filter.snapToZero();
+                float rms = std::sqrt((float)(sumSq / std::max(1, n)));
+                // Same 0..1 meter scale as the web AnalyserNode path: byte data maps
+                // dB -100..-30 onto 0..255, then getMasterBandLevels shapes by ^0.72.
+                // bandDbOffset converts whole-band RMS to the analyser's per-bin dB.
+                float db = 20.0f * std::log10(rms + 1.0e-9f) - bandDbOffset[b];
+                float norm = juce::jlimit(0.0f, 1.0f, (db + 100.0f) / 70.0f);
+                float shaped = std::pow(norm, 0.72f);
+                // Instant attack, smoothed release — mirrors the AnalyserNode's
+                // smoothingTimeConstant so the meter falls instead of stepping.
+                float prev = bandLevels[b].load();
+                bandLevels[b].store(shaped >= prev ? shaped : prev * 0.75f + shaped * 0.25f);
+            }
+        }
     }
 
     void setMasterBand(int index, float db)
@@ -1064,6 +1147,10 @@ public:
 
     float getMagnitudeL() const { return masterMagnitudeL.load(); }
     float getMagnitudeR() const { return masterMagnitudeR.load(); }
+    float getBandLevel(int index) const
+    {
+        return (index >= 0 && index < 9) ? bandLevels[(size_t)index].load() : 0.0f;
+    }
 
     void updateEQCoefficients()
     {
@@ -1239,6 +1326,16 @@ private:
     std::atomic<float> masterMagnitudeL { 0.0f };
     std::atomic<float> masterMagnitudeR { 0.0f };
 
+    // Spectrum-meter band analysis — 9 bandpass filters aligned to the web
+    // engine's EQ_FREQS (audio-engine.js), run on a mono mix of the final output.
+    // Audio thread writes bandLevels; the WebSocket broadcast thread reads them.
+    static constexpr float kBandFreqs[9] = { 60.0f, 150.0f, 320.0f, 640.0f, 1200.0f,
+                                             2400.0f, 4800.0f, 9000.0f, 15000.0f };
+    std::array<juce::dsp::IIR::Filter<float>, 9> bandAnalysisFilters;
+    std::array<std::atomic<float>, 9> bandLevels;
+    float bandDbOffset[9] = { 0.0f }; // set in prepareToPlay, read on the audio thread
+    juce::AudioBuffer<float> bandScratch;
+
     // Master fade (in/out) state. All in output samples. fadeTotalSamples == 0 disables.
     std::atomic<juce::int64> fadeInSamples { 0 };
     std::atomic<juce::int64> fadeOutSamples { 0 };
@@ -1310,6 +1407,7 @@ public:
     void updatePlayhead();
     float getTrackMagnitude(const std::string& trackId);
     std::pair<float, float> getMasterMagnitude();
+    std::vector<float> getMasterBandLevels();
 
     std::vector<TrackInfo> getTracks() {
         std::lock_guard<std::mutex> lock(engineMutex);

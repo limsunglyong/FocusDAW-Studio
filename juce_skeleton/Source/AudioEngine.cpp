@@ -1490,3 +1490,18 @@ std::pair<float, float> AudioEngine::getMasterMagnitude()
     return { 0.0f, 0.0f };
 }
 
+std::vector<float> AudioEngine::getMasterBandLevels()
+{
+    std::vector<float> bands(9, 0.0f);
+#if USE_JUCE
+    std::lock_guard<std::mutex> lock(engineMutex);
+    if (!playing) return bands; // silence when stopped/paused (see getTrackMagnitude)
+    if (masterEffectsSource)
+    {
+        for (int i = 0; i < 9; ++i)
+            bands[(size_t)i] = masterEffectsSource->getBandLevel(i);
+    }
+#endif
+    return bands;
+}
+

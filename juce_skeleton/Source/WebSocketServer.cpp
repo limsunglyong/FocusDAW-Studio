@@ -694,6 +694,19 @@ void WebSocketServer::timerLoop()
             auto masterMag = audioEngine.getMasterMagnitude();
             lvJson << "{\"event\":\"levels\",\"master\":{\"l\":" << masterMag.first << ",\"r\":" << masterMag.second << "}";
 
+            // Master band levels for the spectrum meter — without these the web UI
+            // borrows the muted web engine's analyser, which shows its reverb tail.
+            {
+                auto bands = audioEngine.getMasterBandLevels();
+                lvJson << ",\"masterBands\":[";
+                for (size_t i = 0; i < bands.size(); ++i)
+                {
+                    lvJson << bands[i];
+                    if (i + 1 < bands.size()) lvJson << ",";
+                }
+                lvJson << "]";
+            }
+
             auto tracks = audioEngine.getTracks();
             if (!tracks.empty())
             {
