@@ -398,17 +398,7 @@
         // Push the freshly-reset master state (LocalDAW.clearTracks just restored the
         // defaults) so a New Project starts clean instead of inheriting the previous
         // project's EQ / reverb / echo / widener / saturation / exciter / volume.
-        const m = LocalDAW.master;
-        sendToNative({ command: "setMasterBands", bands: m.bands });
-        sendToNative({ command: "setMaster", key: "volume", value: m.volume });
-        sendToNative({ command: "setMaster", key: "reverb", value: m.reverb });
-        sendToNative({ command: "setMaster", key: "echo", value: m.echo });
-        sendToNative({ command: "setMaster", key: "widener", value: m.widener });
-        sendToNative({ command: "setMaster", key: "saturation", value: m.saturation });
-        sendToNative({ command: "setMaster", key: "exciter", value: m.exciter });
-        sendToNative({ command: "setMaster", key: "fadeIn", value: m.fadeIn || 0 });
-        sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
-        sendRoomToNative(); // reset ambience too (LocalDAW.clearTracks set room → none)
+        syncMasterToNative();
         nativeState.offset = 0;
         nativeState.isPlaying = false;
       }
@@ -424,12 +414,9 @@
         // key (transpose) state — otherwise an imported project plays at the original
         // key/tempo even though the UI shows the restored Key.
         syncTempoKeyToNative();
-        // Master fade (in/out) likewise must be pushed explicitly for imported projects.
-        {
-          const m = LocalDAW.master || {};
-          sendToNative({ command: "setMaster", key: "fadeIn", value: m.fadeIn || 0 });
-          sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
-        }
+        // The FULL master state (volume/EQ/sends/room/fades) must likewise be pushed
+        // explicitly — LocalDAW.importProject only applied it to the web engine.
+        syncMasterToNative();
         // Since JUCE engine needs actual files, let's trigger loading for any files that have filePath
         LocalDAW.tracks.forEach(track => {
           if (track.filePath) {
@@ -519,14 +506,11 @@
         LocalDAW.tracks.forEach(track => syncTrackToNative(track));
       }
 
-      // Sync current ambience (room) so it's applied immediately on connect.
-      sendRoomToNative();
-      // Master fade (in/out) — native has no fade unless explicitly pushed.
-      {
-        const m = LocalDAW.master || {};
-        sendToNative({ command: "setMaster", key: "fadeIn", value: m.fadeIn || 0 });
-        sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
-      }
+      // Sync the FULL master state (volume/EQ/sends/room/fades). A restored
+      // project applies these to the web engine only; without this push the
+      // native output plays at default master settings (e.g. volume 1.0) while
+      // the mixer sliders show the restored values, until a slider is touched.
+      syncMasterToNative();
       sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
 
       // No tracks to load → native is ready right away; otherwise the handover
@@ -613,6 +597,26 @@
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(obj));
     }
+  }
+
+  // Push the COMPLETE master section state to the native engine. Like tempo/key,
+  // the native side has no importProject handler, so this must run on (re)connect,
+  // after every project import, and after clearTracks — otherwise the native output
+  // keeps its previous/default master volume, EQ bands, reverb/echo sends, widener,
+  // saturation, exciter, ambience and fades while the UI shows the restored values
+  // (audible mismatch until the user touches a control, which re-sends that one key).
+  function syncMasterToNative() {
+    const m = LocalDAW.master || {};
+    if (Array.isArray(m.bands)) sendToNative({ command: "setMasterBands", bands: m.bands });
+    sendToNative({ command: "setMaster", key: "volume", value: (m.volume ?? 1) });
+    sendToNative({ command: "setMaster", key: "reverb", value: m.reverb || 0 });
+    sendToNative({ command: "setMaster", key: "echo", value: m.echo || 0 });
+    sendToNative({ command: "setMaster", key: "widener", value: m.widener || 0 });
+    sendToNative({ command: "setMaster", key: "saturation", value: m.saturation || 0 });
+    sendToNative({ command: "setMaster", key: "exciter", value: m.exciter || 0 });
+    sendToNative({ command: "setMaster", key: "fadeIn", value: m.fadeIn || 0 });
+    sendToNative({ command: "setMaster", key: "fadeOut", value: m.fadeOut || 0 });
+    sendRoomToNative(); // ambience (room IR) spec
   }
 
   // Push the full tempo + key (transpose) state to the native engine. The native side
@@ -720,11 +724,14 @@
       }
     }
     
-    // Sync current params
+    // Sync current params (incl. per-track reverb/echo sends — the native engine
+    // stores them in TrackInfo and applies them when the async decode installs).
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "volume", value: track.params.volume });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "pan", value: track.params.pan });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "mute", value: track.params.mute });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "solo", value: track.params.solo });
+    sendToNative({ command: "setTrackParam", trackId: track.id, key: "reverb", value: track.params.reverb || 0 });
+    sendToNative({ command: "setTrackParam", trackId: track.id, key: "echo", value: track.params.echo || 0 });
     sendTrackAutomationToNative(track);
   }
 
