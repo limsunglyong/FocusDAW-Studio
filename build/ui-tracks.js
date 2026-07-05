@@ -324,7 +324,38 @@ function VariBpmTag() {
     "BPM"
   );
 }
-function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
+function FxTag({ label, color, on, onClick }) {
+  return /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      title: on ? `\uBBF9\uC11C\uC5D0\uC11C ${label} \uB178\uBE0C \uC5F4\uAE30` : void 0,
+      onClick: on && onClick ? onClick : void 0,
+      style: {
+        fontSize: 7.5,
+        padding: "1px 2px",
+        borderRadius: 3,
+        fontWeight: 700,
+        letterSpacing: 0,
+        lineHeight: 1,
+        whiteSpace: "nowrap",
+        flex: "0 0 auto",
+        background: `color-mix(in srgb, ${color} 18%, transparent)`,
+        color,
+        border: `1px solid color-mix(in srgb, ${color} 34%, transparent)`,
+        cursor: on && onClick ? "pointer" : "default",
+        visibility: on ? "visible" : "hidden"
+      },
+      onMouseEnter: on ? (e) => {
+        e.currentTarget.style.background = `color-mix(in srgb, ${color} 34%, transparent)`;
+      } : void 0,
+      onMouseLeave: on ? (e) => {
+        e.currentTarget.style.background = `color-mix(in srgb, ${color} 18%, transparent)`;
+      } : void 0
+    },
+    label
+  );
+}
+function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx }) {
   const p = track.params;
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -407,14 +438,32 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         fontWeight: 700,
         letterSpacing: ".04em",
         cursor: "pointer",
+        whiteSpace: "nowrap",
+        flex: "0 0 auto",
         background: p.autoOn ? "var(--amber-soft)" : "transparent",
         color: p.autoOn ? "var(--amber)" : "var(--muted)",
         border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)")
       }
     },
     /* @__PURE__ */ React.createElement(Icon, { name: "auto", size: 13 }),
-    " VOL AUTO"
-  ), DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && /* @__PURE__ */ React.createElement(VariBpmTag, null), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), track.needsAudio ? /* @__PURE__ */ React.createElement("span", { title: "Drop the audio file here to re-link", style: {
+    " AUTO"
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, flex: "0 0 auto" } }, /* @__PURE__ */ React.createElement(
+    FxTag,
+    {
+      label: "VRB",
+      color: "var(--violet)",
+      on: p.reverb > 1e-3,
+      onClick: onFocusFx ? () => onFocusFx(track.id, "reverb") : void 0
+    }
+  ), /* @__PURE__ */ React.createElement(
+    FxTag,
+    {
+      label: "ECHO",
+      color: "var(--blue)",
+      on: p.echo > 1e-3,
+      onClick: onFocusFx ? () => onFocusFx(track.id, "echo") : void 0
+    }
+  )), DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && /* @__PURE__ */ React.createElement(VariBpmTag, null), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), track.needsAudio ? /* @__PURE__ */ React.createElement("span", { title: "Drop the audio file here to re-link", style: {
     fontSize: 9,
     padding: "2px 4px",
     borderRadius: 4,
@@ -539,7 +588,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
     ))))
   ));
 }
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = playhead / DAW.duration * laneW;
   const p = track.params;
@@ -575,7 +624,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
     onSeek(sec);
   };
   const toolCursor = tool === "scissors" ? "crosshair" : tool === "join" ? "cell" : "text";
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, level, onParam, onRemove, laneH }), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, level, onParam, onRemove, laneH, onFocusFx }), /* @__PURE__ */ React.createElement(
     "div",
     {
       onMouseDown: laneClick,
@@ -586,6 +635,10 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
         width: laneW,
         height: laneH,
         background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
+        // isolate: make the lane its own stacking context so the absolutely-positioned playhead
+        // (and any overlay) can never paint above the sibling sticky TrackHeader when it scrolls
+        // left of the viewport (seek-back + time zoom-in). Header (zIndex 6) sits above the lane.
+        isolation: "isolate",
         borderBottom: "1px solid var(--line)",
         overflow: "hidden",
         cursor: toolCursor
@@ -718,6 +771,8 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
       width: laneW,
       height: 30,
       background: "var(--bg2)",
+      // isolate: keep the playhead line/marker below the sticky ruler corner (see TrackRow lane).
+      isolation: "isolate",
       borderBottom: "1px solid var(--line-strong)",
       cursor: "text"
     } }, marks, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)", zIndex: 10 } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)", zIndex: 10 } })))

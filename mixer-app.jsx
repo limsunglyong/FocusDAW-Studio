@@ -64,6 +64,38 @@ window.DAW = {
   }
 };
 
+// Scroll the given track's reverb/echo knob into view and pulse it, so a click on a track-header
+// VRB/ECHO badge visually lands the user on the right control. Retries across a few frames because
+// the strip may not be in the DOM yet when FOCUS_KNOB arrives right after INIT_STATE.
+let _fxPulseStyleInjected = false;
+function focusFxKnob(trackId, param) {
+  if (!_fxPulseStyleInjected) {
+    const st = document.createElement("style");
+    st.textContent = "@keyframes fxKnobPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,176,75,0)}25%{box-shadow:0 0 0 3px var(--amber),0 0 16px 3px var(--amber)}}"
+      + ".fx-knob-pulse{animation:fxKnobPulse .6s ease-in-out 2}";
+    document.head.appendChild(st);
+    _fxPulseStyleInjected = true;
+  }
+  const sel = `[data-track-id="${(window.CSS && CSS.escape) ? CSS.escape(trackId) : trackId}"][data-fx="${param}"]`;
+  let tries = 0;
+  const attempt = () => {
+    const el = document.querySelector(sel);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      // Clear any pending removal from a previous pulse first — otherwise its stale timer fires
+      // mid-animation on a quick repeat click and kills the restarted pulse (looks like "nothing").
+      if (el._fxPulseTimer) clearTimeout(el._fxPulseTimer);
+      el.classList.remove("fx-knob-pulse");
+      void el.offsetWidth; // force reflow so re-adding restarts the animation on repeat clicks
+      el.classList.add("fx-knob-pulse");
+      el._fxPulseTimer = setTimeout(() => { el.classList.remove("fx-knob-pulse"); el._fxPulseTimer = null; }, 1400);
+      return;
+    }
+    if (tries++ < 40) requestAnimationFrame(attempt);
+  };
+  attempt();
+}
+
 function MixerApp() {
   useTick(); // polling ticks for real-time level meters
   const [theme, setTheme] = React.useState("default");
@@ -91,6 +123,8 @@ function MixerApp() {
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
         force(n => n + 1);
+      } else if (msg.type === "FOCUS_KNOB") {
+        focusFxKnob(msg.trackId, msg.param);
       } else if (msg.type === "LEVEL_METERS") {
         window.DAW._levels = msg.trackLevels;
         window.DAW._masterLevel = msg.masterLevel;
@@ -104,8 +138,16 @@ function MixerApp() {
     };
 
     channel.addEventListener("message", handleMessage);
+
+    // Tell the main window whenever we become visible again. Electron's mixer "close" only HIDES the
+    // window (renderer stays alive, no new MIXER_READY), so this is how a reopen flushes a pending
+    // FOCUS_KNOB (track-header VRB/ECHO badge click) after the window is back on screen.
+    const onVisible = () => { if (document.visibilityState === "visible") channel.postMessage({ type: "MIXER_SHOWN" }); };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       channel.removeEventListener("message", handleMessage);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

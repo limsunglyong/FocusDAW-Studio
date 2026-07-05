@@ -304,7 +304,27 @@ function VariBpmTag() {
   );
 }
 
-function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
+// Per-track FX indicator tag (VRB / ECHO). Sits in a fixed slot next to VOL AUTO: the slot
+// always occupies its space (visibility toggles, not mounting) so VRB/ECHO never shift position
+// when the other is off. Shown only when the effect send amount is non-zero.
+function FxTag({ label, color, on, onClick }) {
+  return (
+    <span title={on ? `믹서에서 ${label} 노브 열기` : undefined}
+      onClick={on && onClick ? onClick : undefined}
+      style={{ fontSize: 7.5, padding: "1px 2px", borderRadius: 3, fontWeight: 700, letterSpacing: 0,
+        lineHeight: 1, whiteSpace: "nowrap", flex: "0 0 auto",
+        background: `color-mix(in srgb, ${color} 18%, transparent)`, color,
+        border: `1px solid color-mix(in srgb, ${color} 34%, transparent)`,
+        cursor: on && onClick ? "pointer" : "default",
+        visibility: on ? "visible" : "hidden" }}
+      onMouseEnter={on ? (e) => { e.currentTarget.style.background = `color-mix(in srgb, ${color} 34%, transparent)`; } : undefined}
+      onMouseLeave={on ? (e) => { e.currentTarget.style.background = `color-mix(in srgb, ${color} 18%, transparent)`; } : undefined}>
+      {label}
+    </span>
+  );
+}
+
+function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx }) {
   const p = track.params;
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -370,11 +390,20 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
         <button title="Volume automation on/off" onClick={() => onParam("autoOn", !p.autoOn)}
           style={{ display: "flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 6,
             fontSize: 10, fontWeight: 700, letterSpacing: ".04em", cursor: "pointer",
+            whiteSpace: "nowrap", flex: "0 0 auto",
             background: p.autoOn ? "var(--amber-soft)" : "transparent",
             color: p.autoOn ? "var(--amber)" : "var(--muted)",
             border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)") }}>
-          <Icon name="auto" size={13} /> VOL AUTO
+          <Icon name="auto" size={13} /> AUTO
         </button>
+        {/* fixed-position VRB / ECHO send indicators (colors match the mixer VRB/ECHO knobs).
+            Grouped so the row spends one gap, not two, on this tight (244px) header. */}
+        <div style={{ display: "flex", gap: 2, flex: "0 0 auto" }}>
+          <FxTag label="VRB" color="var(--violet)" on={p.reverb > 0.001}
+            onClick={onFocusFx ? () => onFocusFx(track.id, "reverb") : undefined} />
+          <FxTag label="ECHO" color="var(--blue)" on={p.echo > 0.001}
+            onClick={onFocusFx ? () => onFocusFx(track.id, "echo") : undefined} />
+        </div>
         {DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && <VariBpmTag />}
         <div style={{ flex: 1 }} />
         {track.needsAudio
@@ -455,7 +484,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH }) {
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -495,10 +524,14 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
 
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
-      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} laneH={laneH} />
+      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} laneH={laneH} onFocusFx={onFocusFx} />
       <div onMouseDown={laneClick} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
           background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
+          // isolate: make the lane its own stacking context so the absolutely-positioned playhead
+          // (and any overlay) can never paint above the sibling sticky TrackHeader when it scrolls
+          // left of the viewport (seek-back + time zoom-in). Header (zIndex 6) sits above the lane.
+          isolation: "isolate",
           borderBottom: "1px solid var(--line)", overflow: "hidden", cursor: toolCursor }}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         <Waveform track={track} clips={track.clips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} volume={track.params.volume} />
@@ -595,6 +628,8 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
         </span>
       </div>
       <div onMouseDown={seek} style={{ position: "relative", width: laneW, height: 30, background: "var(--bg2)",
+        // isolate: keep the playhead line/marker below the sticky ruler corner (see TrackRow lane).
+        isolation: "isolate",
         borderBottom: "1px solid var(--line-strong)", cursor: "text" }}>
         {marks}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)", zIndex: 10 }} />

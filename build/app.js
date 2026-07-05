@@ -1242,6 +1242,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [showAdvancedPan, setShowAdvancedPan] = useState(false);
   const mixerChannelRef = useRef(null);
   const advancedChannelRef = useRef(null);
+  const pendingMixerFocusRef = useRef(null);
   useEffect(() => {
     const needsLevels = showMixer && mixerChannelRef.current || showAdvancedPan && advancedChannelRef.current;
     if (!needsLevels) return;
@@ -1422,6 +1423,25 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [showMixer]);
   const openMixerIfClosed = useCallback(() => {
     if (!showMixer) toggleMixer();
+  }, [showMixer, toggleMixer]);
+  const focusMixerFx = useCallback((trackId, param2) => {
+    pendingMixerFocusRef.current = { trackId, param: param2 };
+    if (showMixer) {
+      if (window.electronAPI) window.electronAPI.openMixer(DAW.tracks.length);
+      else if (window.mixerPopup && !window.mixerPopup.closed) {
+        try {
+          window.mixerPopup.focus();
+        } catch (e) {
+        }
+      }
+      const pf = pendingMixerFocusRef.current;
+      if (pf && mixerChannelRef.current) {
+        pendingMixerFocusRef.current = null;
+        mixerChannelRef.current.postMessage({ type: "FOCUS_KNOB", trackId: pf.trackId, param: pf.param });
+      }
+    } else {
+      toggleMixer();
+    }
   }, [showMixer, toggleMixer]);
   const openAdvancedPan = useCallback(() => {
     if (window.electronAPI && window.electronAPI.openAdvancedPan) {
@@ -1761,6 +1781,18 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             isPlaying: DAW.isPlaying,
             playhead: DAW.getPlayhead()
           });
+          if (pendingMixerFocusRef.current) {
+            const pf = pendingMixerFocusRef.current;
+            pendingMixerFocusRef.current = null;
+            channel.postMessage({ type: "FOCUS_KNOB", trackId: pf.trackId, param: pf.param });
+          }
+          break;
+        case "MIXER_SHOWN":
+          if (pendingMixerFocusRef.current) {
+            const pf2 = pendingMixerFocusRef.current;
+            pendingMixerFocusRef.current = null;
+            channel.postMessage({ type: "FOCUS_KNOB", trackId: pf2.trackId, param: pf2.param });
+          }
           break;
         case "BEFORE_CHANGE":
           pushUndo();
@@ -2558,6 +2590,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           DAW.userSeek(time);
           force((n) => n + 1);
         },
+        onFocusFx: focusMixerFx,
         tool,
         onSplit: handleSplit,
         onJoin: handleJoin,

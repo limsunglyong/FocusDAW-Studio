@@ -1076,6 +1076,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [showAdvancedPan, setShowAdvancedPan] = useState(false);
   const mixerChannelRef = useRef(null);
   const advancedChannelRef = useRef(null);
+  // Pending "focus this knob" request while the mixer window is still opening; flushed on MIXER_READY.
+  const pendingMixerFocusRef = useRef(null);
 
   // Broadcast real-time level meter and FFT spectrum data to mixer / advanced windows (runs every frame via useTick)
   useEffect(() => {
@@ -1275,6 +1277,26 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // Open the mixer only if it isn't already open (no-op when open).
   const openMixerIfClosed = useCallback(() => {
     if (!showMixer) toggleMixer();
+  }, [showMixer, toggleMixer]);
+
+  // Clicking a VRB/ECHO badge in a track header: open (or raise) the mixer window and tell it to
+  // scroll to + highlight that track's reverb/echo knob. The request is stashed in
+  // pendingMixerFocusRef and flushed by the mixer's MIXER_READY (first cold load) or MIXER_SHOWN
+  // (every time it becomes visible — Electron's close only HIDES the window, so MIXER_READY never
+  // fires again on reopen). When it's already visible, no visibility change fires, so flush now.
+  const focusMixerFx = useCallback((trackId, param) => {
+    pendingMixerFocusRef.current = { trackId, param };
+    if (showMixer) {
+      if (window.electronAPI) window.electronAPI.openMixer(DAW.tracks.length);
+      else if (window.mixerPopup && !window.mixerPopup.closed) { try { window.mixerPopup.focus(); } catch (e) {} }
+      const pf = pendingMixerFocusRef.current;
+      if (pf && mixerChannelRef.current) {
+        pendingMixerFocusRef.current = null;
+        mixerChannelRef.current.postMessage({ type: "FOCUS_KNOB", trackId: pf.trackId, param: pf.param });
+      }
+    } else {
+      toggleMixer();
+    }
   }, [showMixer, toggleMixer]);
 
   const openAdvancedPan = useCallback(() => {
@@ -1649,6 +1671,22 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             isPlaying: DAW.isPlaying,
             playhead: DAW.getPlayhead(),
           });
+          // Flush a pending "focus knob" request now that the mixer is up and about to render strips.
+          if (pendingMixerFocusRef.current) {
+            const pf = pendingMixerFocusRef.current;
+            pendingMixerFocusRef.current = null;
+            channel.postMessage({ type: "FOCUS_KNOB", trackId: pf.trackId, param: pf.param });
+          }
+          break;
+
+        case "MIXER_SHOWN":
+          // Mixer window became visible again (e.g. reopened after an Electron hide-on-close, which
+          // does NOT re-fire MIXER_READY). Flush any pending focus request now that it's on screen.
+          if (pendingMixerFocusRef.current) {
+            const pf2 = pendingMixerFocusRef.current;
+            pendingMixerFocusRef.current = null;
+            channel.postMessage({ type: "FOCUS_KNOB", trackId: pf2.trackId, param: pf2.param });
+          }
           break;
 
         case "BEFORE_CHANGE":
@@ -2443,6 +2481,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                 <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                   playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                   onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
+                  onFocusFx={focusMixerFx}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />
               ))}
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}

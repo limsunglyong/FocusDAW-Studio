@@ -521,8 +521,11 @@
       const meter = ctx.createAnalyser(); meter.fftSize = 512;
       const reverbSend = ctx.createGain(); reverbSend.gain.value = 0;
       const echoSend = ctx.createGain(); echoSend.gain.value = 0;
-      const delay = ctx.createDelay(1.0); delay.delayTime.value = 0.25;
+      // Per-track echo — kept numerically identical to the native JUCE engine
+      // (FeedbackDelay: 0.3s delay, 0.34 feedback, wet mix = send × 0.45). See AudioEngine.h.
+      const delay = ctx.createDelay(1.0); delay.delayTime.value = 0.3;
       const fb = ctx.createGain(); fb.gain.value = 0.34;
+      const echoReturn = ctx.createGain(); echoReturn.gain.value = 0.45;
 
       // graph: (source) -> fader -> autoGain -> panner -> meter & bus
       fader.connect(autoGain); autoGain.connect(panner);
@@ -530,7 +533,7 @@
       panner.connect(masterBus);             // dry
       panner.connect(reverbSend); reverbSend.connect(convolver); // reverb send
       panner.connect(echoSend); echoSend.connect(delay);
-      delay.connect(fb); fb.connect(delay); delay.connect(masterBus); // echo
+      delay.connect(fb); fb.connect(delay); delay.connect(echoReturn); echoReturn.connect(masterBus); // echo (wet ×0.45)
 
       const { coarse, medium, fine } = peaks || computePeakLevels(buffer);
       const track = {
@@ -2067,11 +2070,13 @@
         const pn = off.createStereoPanner(); pn.pan.setValueAtTime(p.pan, 0);
         const rs = off.createGain(); rs.gain.setValueAtTime(p.reverb, 0);
         const es = off.createGain(); es.gain.setValueAtTime(p.echo, 0);
-        const dl = off.createDelay(1.0); dl.delayTime.setValueAtTime(0.25, 0);
+        // Match native/realtime per-track echo: 0.3s delay, 0.34 fb, wet ×0.45.
+        const dl = off.createDelay(1.0); dl.delayTime.setValueAtTime(0.3, 0);
         const fb = off.createGain(); fb.gain.setValueAtTime(0.34, 0);
+        const er = off.createGain(); er.gain.setValueAtTime(0.45, 0);
         src.connect(fd); fd.connect(ag); ag.connect(pn);
         pn.connect(mBus); pn.connect(rs); rs.connect(conv);
-        pn.connect(es); es.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(mBus);
+        pn.connect(es); es.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(er); er.connect(mBus);
         const rHasGaps = t.clips && (t.clips.length > 1 || (t.clips[0] && (t.clips[0].start > 0.01 || t.clips[0].end < this.duration - 0.01)));
         const rHasOverrides = t.clips && t.clips.some(c => c.params || c.automation);
         if (p.autoOn || rHasGaps || rHasOverrides) {

@@ -21,7 +21,7 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
     borderRight: "1px solid var(--line)",
     gap: 8,
     background: p.solo ? "rgba(232,176,75,.05)" : "transparent"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) }), /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, size: 22, onClick: () => {
+  } }, /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "reverb", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) })), /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "echo", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, size: 22, onClick: () => {
     onBeforeChange && onBeforeChange();
     onParam("solo", !p.solo);
   } }), /* @__PURE__ */ React.createElement(MuteBtn, { on: p.mute, auto: DAW._anySolo() && !p.solo, size: 22, onClick: () => {
@@ -660,7 +660,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
     {
       className: "outlane",
       onMouseDown: onOutlaneMouseDown,
-      style: { position: "relative", width: laneW, height: laneH, background: "rgba(232,176,75,.04)", cursor: "text", overflow: "hidden" }
+      style: { position: "relative", width: laneW, height: laneH, background: "rgba(232,176,75,.04)", cursor: "text", overflow: "hidden", isolation: "isolate" }
     },
     /* @__PURE__ */ React.createElement(TimeGrid, { pxPerSec, height: laneH }),
     /* @__PURE__ */ React.createElement("svg", { width: laneW, height: laneH, style: { position: "absolute", inset: 0, pointerEvents: "none" } }, /* @__PURE__ */ React.createElement("path", { d: `M0 ${laneH} L${inX} 0 L${inX} ${laneH} Z`, fill: "rgba(148,192,106,.18)", stroke: "var(--green)", strokeWidth: "1.5" }), /* @__PURE__ */ React.createElement("path", { d: `M${outX} 0 L${laneW} ${laneH} L${outX} ${laneH} Z`, fill: "rgba(217,106,78,.16)", stroke: "var(--red)", strokeWidth: "1.5" })),

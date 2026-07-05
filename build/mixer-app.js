@@ -59,6 +59,34 @@ window.DAW = {
     channel.postMessage({ type: "APPLY_EQ_PRESET", name });
   }
 };
+let _fxPulseStyleInjected = false;
+function focusFxKnob(trackId, param) {
+  if (!_fxPulseStyleInjected) {
+    const st = document.createElement("style");
+    st.textContent = "@keyframes fxKnobPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,176,75,0)}25%{box-shadow:0 0 0 3px var(--amber),0 0 16px 3px var(--amber)}}.fx-knob-pulse{animation:fxKnobPulse .6s ease-in-out 2}";
+    document.head.appendChild(st);
+    _fxPulseStyleInjected = true;
+  }
+  const sel = `[data-track-id="${window.CSS && CSS.escape ? CSS.escape(trackId) : trackId}"][data-fx="${param}"]`;
+  let tries = 0;
+  const attempt = () => {
+    const el = document.querySelector(sel);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      if (el._fxPulseTimer) clearTimeout(el._fxPulseTimer);
+      el.classList.remove("fx-knob-pulse");
+      void el.offsetWidth;
+      el.classList.add("fx-knob-pulse");
+      el._fxPulseTimer = setTimeout(() => {
+        el.classList.remove("fx-knob-pulse");
+        el._fxPulseTimer = null;
+      }, 1400);
+      return;
+    }
+    if (tries++ < 40) requestAnimationFrame(attempt);
+  };
+  attempt();
+}
 function MixerApp() {
   useTick();
   const [theme, setTheme] = React.useState("default");
@@ -82,6 +110,8 @@ function MixerApp() {
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
         force((n) => n + 1);
+      } else if (msg.type === "FOCUS_KNOB") {
+        focusFxKnob(msg.trackId, msg.param);
       } else if (msg.type === "LEVEL_METERS") {
         window.DAW._levels = msg.trackLevels;
         window.DAW._masterLevel = msg.masterLevel;
@@ -93,8 +123,13 @@ function MixerApp() {
       }
     };
     channel.addEventListener("message", handleMessage);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") channel.postMessage({ type: "MIXER_SHOWN" });
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       channel.removeEventListener("message", handleMessage);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
   React.useEffect(() => {

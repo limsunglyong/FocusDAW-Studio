@@ -59,7 +59,16 @@
       "Bash(node \"C:\\\\Users\\\\limsu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--programmings-FocusDAW-Studio\\\\f205d04f-7945-4d46-a3f2-1b07c26846e5\\\\scratchpad\\\\seek-probe.js\" 8087 \"z_wav samples/c_scale_synth_bpm120.wav\" 3.0)",
       "Bash(kill 363)",
       "Bash(taskkill //F //IM FocusDAW-AudioEngine.exe)",
-      "Bash(tasklist //FI \"IMAGENAME eq FocusDAW-AudioEngine.exe\")"
+      "Bash(tasklist //FI \"IMAGENAME eq FocusDAW-AudioEngine.exe\")",
+      "PowerShell(Start-Process -FilePath \"npm\" -ArgumentList \"start\" -WorkingDirectory \"e:\\\\programmings\\\\FocusDAW-Studio\" -WindowStyle Minimized)",
+      "PowerShell(\"launched\")",
+      "PowerShell(Get-Process electron -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(\"electron stopped\")",
+      "Bash(grep -iE \"error|built build\\\\\\\\\\\\\\\\\\(app|ui-tracks|ui-mixer|mixer-app\\)\")",
+      "Bash(awk '{print $6, $7}')",
+      "Bash(grep -oE \"if \\\\\\(el\\\\\\) \\\\{.{0,320}\" build/mixer-app.js)",
+      "PowerShell(\"stopped\")"
     ]
   }
 }

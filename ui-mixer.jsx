@@ -16,10 +16,14 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
       padding: "10px 6px", borderRight: "1px solid var(--line)", gap: 8, background: p.solo ? "rgba(232,176,75,.05)" : "transparent" }}>
       <div style={{ height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` }} />
       <div style={{ fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 }}>{track.name}</div>
-      {/* FX knobs */}
+      {/* FX knobs — data-fx tags let a track-header VRB/ECHO click (FOCUS_KNOB msg) locate & pulse them */}
       <div style={{ display: "flex", gap: 4 }}>
-        <Knob value={p.reverb} size={28} color="var(--violet)" label="VRB" onBeforeChange={onBeforeChange} onChange={(v) => onParam("reverb", v)} />
-        <Knob value={p.echo} size={28} color="var(--blue)" label="ECHO" onBeforeChange={onBeforeChange} onChange={(v) => onParam("echo", v)} />
+        <div data-track-id={track.id} data-fx="reverb" style={{ borderRadius: 10 }}>
+          <Knob value={p.reverb} size={28} color="var(--violet)" label="VRB" onBeforeChange={onBeforeChange} onChange={(v) => onParam("reverb", v)} />
+        </div>
+        <div data-track-id={track.id} data-fx="echo" style={{ borderRadius: 10 }}>
+          <Knob value={p.echo} size={28} color="var(--blue)" label="ECHO" onBeforeChange={onBeforeChange} onChange={(v) => onParam("echo", v)} />
+        </div>
       </div>
       <div style={{ display: "flex", gap: 5 }}>
         <SoloBtn on={p.solo} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("solo", !p.solo); }} />
@@ -602,7 +606,9 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
       </div>
       {/* lane with fade overlay */}
       <div className="outlane" onMouseDown={onOutlaneMouseDown}
-        style={{ position: "relative", width: laneW, height: laneH, background: "rgba(232,176,75,.04)", cursor: "text", overflow: "hidden" }}>
+        // isolate: make the lane its own stacking context so the playhead / loop overlays can never
+        // paint above the sibling sticky header when scrolled left (seek-back + zoom-in). See TrackRow.
+        style={{ position: "relative", width: laneW, height: laneH, background: "rgba(232,176,75,.04)", cursor: "text", overflow: "hidden", isolation: "isolate" }}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         {/* fade in */}
         <svg width={laneW} height={laneH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
