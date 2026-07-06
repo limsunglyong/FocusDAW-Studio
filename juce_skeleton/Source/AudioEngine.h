@@ -484,6 +484,7 @@ public:
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override {
         transportSource->prepareToPlay(samplesPerBlockExpected, sampleRate);
+        preparedSampleRate.store(sampleRate > 0.0 ? sampleRate : 44100.0);
         echoDelay.prepare(sampleRate, 2);
     }
 
@@ -653,6 +654,25 @@ public:
             }
         }
 
+        // A track decoded while transport is already running joins at an arbitrary
+        // waveform phase. Ramp it in briefly to avoid a discontinuity/click without
+        // changing its transport position or the other tracks.
+        int fadeRemaining = joinFadeSamplesRemaining.load();
+        const int fadeTotal = joinFadeTotalSamples.load();
+        if (fadeRemaining > 0 && fadeTotal > 0 && bufferToFill.numSamples > 0) {
+            const int used = juce::jmin(fadeRemaining, bufferToFill.numSamples);
+            const float startGain = 1.0f - (float)fadeRemaining / (float)fadeTotal;
+            const float endGain = 1.0f - (float)(fadeRemaining - used) / (float)fadeTotal;
+            for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel) {
+                bufferToFill.buffer->applyGainRamp(
+                    channel, bufferToFill.startSample, used, startGain, endGain);
+            }
+            if (used < bufferToFill.numSamples) {
+                // The fade completed inside this block; the remainder stays at unity.
+            }
+            joinFadeSamplesRemaining.store(fadeRemaining - used);
+        }
+
         float mag = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
         currentMagnitude.store(mag);
         if (offlineRendering.load() && !offlineDebugLogged.exchange(true)) {
@@ -718,6 +738,13 @@ public:
 
     double getLengthSeconds() const {
         return transportSource ? transportSource->getLengthInSeconds() : 0.0;
+    }
+
+    void beginJoinFade(double milliseconds = 8.0) {
+        const double sr = preparedSampleRate.load();
+        const int samples = juce::jmax(1, (int)std::round(sr * milliseconds / 1000.0));
+        joinFadeTotalSamples.store(samples);
+        joinFadeSamplesRemaining.store(samples);
     }
 
     void setTempo(float tempo) {
@@ -792,6 +819,9 @@ public:
     std::atomic<float> reverbSend { 0.0f };
     std::atomic<float> echoSend { 0.0f };
     std::atomic<float> currentMagnitude { 0.0f };
+    std::atomic<double> preparedSampleRate { 44100.0 };
+    std::atomic<int> joinFadeTotalSamples { 0 };
+    std::atomic<int> joinFadeSamplesRemaining { 0 };
     juce::AudioBuffer<float>* reverbSendBuffer = nullptr;
     FeedbackDelay echoDelay;
 

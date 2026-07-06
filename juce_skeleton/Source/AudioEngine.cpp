@@ -409,6 +409,13 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
 
     trackSource->setLooping(loopEnabled);
 
+    // `playheadSeconds` is refreshed by the 100ms status timer and can therefore
+    // be stale during a hot add. Read the live reference transport while holding
+    // the install lock, then position the new source BEFORE it is started.
+    double liveJoinPosition = playheadSeconds;
+    if (playing && !juceTracks.empty() && juceTracks[0]->transportSource)
+        liveJoinPosition = juceTracks[0]->getCurrentPositionSeconds();
+
     for (size_t i = 0; i < juceTracks.size(); ++i)
     {
         if (juceTracks[i]->id == trackId)
@@ -420,8 +427,9 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
 
             if (playing)
             {
+                juceTracks[i]->transportSource->setPosition(liveJoinPosition);
+                juceTracks[i]->beginJoinFade();
                 juceTracks[i]->transportSource->start();
-                juceTracks[i]->transportSource->setPosition(playheadSeconds);
             }
 
             updateSoloStates();
@@ -435,8 +443,9 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
     mixerSource.addInputSource(trackSource.get(), false);
     if (playing)
     {
+        trackSource->transportSource->setPosition(liveJoinPosition);
+        trackSource->beginJoinFade();
         trackSource->transportSource->start();
-        trackSource->transportSource->setPosition(playheadSeconds);
     }
 
     juceTracks.push_back(std::move(trackSource));

@@ -662,11 +662,13 @@
         ph.fileName = ph.fileName || name;
         ph.filePath = filePath || ph.filePath || null;
         this._applyMix();
+        this._startHotAddedTrack(ph);
         return ph;
       }
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
       const t = this._addTrack({ name: displayName, type: "audio", color, buffer, peaks: decoded.peaks, fileName: name, filePath });
+      this._startHotAddedTrack(t);
       return t;
     },
 
@@ -693,11 +695,13 @@
         this._assignDecodedToTrack(ph, decoded);
         ph.fileName = ph.fileName || fileName;
         this._applyMix();
+        this._startHotAddedTrack(ph);
         return ph;
       }
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
       const t = this._addTrack({ name, type: "audio", color, buffer, peaks: decoded.peaks, fileName });
+      this._startHotAddedTrack(t);
       return t;
     },
 
@@ -1103,6 +1107,44 @@
         return Math.min(sourceBuffer.duration - 0.001, (offset / rate) % sourceBuffer.duration);
       }
       return offset % sourceBuffer.duration;
+    },
+
+    // Join a file that finished decoding while transport is already running.
+    // During section Repeat it joins immediately too; the existing common seek at
+    // the next loopRange.start then removes any residual sub-block alignment error.
+    _startHotAddedTrack(track) {
+      if (!ctx || !this.isPlaying || !track || !track.buffer || track.needsAudio) return;
+
+      if (track._liveSource) {
+        try { track._liveSource.stop(); } catch (e) {}
+        const oldIndex = this._sources.indexOf(track._liveSource);
+        if (oldIndex >= 0) this._sources.splice(oldIndex, 1);
+        track._liveSource = null;
+      }
+
+      const rate = this._activePlaybackRate();
+      const startAt = ctx.currentTime + 0.01;
+      const projectPosition = this._projectPositionAt(startAt, rate);
+      const sourceBuffer = this._playbackBufferForTrack(track, rate);
+      if (!sourceBuffer || !sourceBuffer.duration) return;
+
+      const src = ctx.createBufferSource();
+      const joinGain = ctx.createGain();
+      src.buffer = sourceBuffer;
+      const usingStretchPreview = sourceBuffer !== track.buffer && this._shouldUseRealtimeStretch(rate);
+      try { src.playbackRate.value = usingStretchPreview ? 1 : rate; } catch (e) {}
+      src.connect(joinGain);
+      joinGain.connect(track.nodes.fader);
+      joinGain.gain.setValueAtTime(0, startAt);
+      joinGain.gain.linearRampToValueAtTime(1, startAt + 0.008);
+
+      const sourceOffset = usingStretchPreview
+        ? (projectPosition / rate) % sourceBuffer.duration
+        : projectPosition % sourceBuffer.duration;
+      src.start(startAt, Math.max(0, Math.min(sourceBuffer.duration - 0.001, sourceOffset)));
+      track._liveSource = src;
+      this._sources.push(src);
+      this._scheduleAutomation();
     },
 
     _scheduleRealtimeStretchRestart(oldRate, nextRate) {
