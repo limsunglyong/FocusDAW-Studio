@@ -396,10 +396,23 @@
       // the "snap into loop" check below. this.getPlayhead()/this.seek() both handle
       // native vs web-only internally, so a single path covers both engines.
       const phBefore = this.getPlayhead();
+      // During the first Electron native-output handover, the native position cache
+      // can briefly lag behind the Web Audio transport that was driving the visible
+      // playhead. Treat the local transport as corroborating evidence: only snap when
+      // BOTH positions are outside. This preserves the intended outside-range snap
+      // while preventing an in-range playhead from jumping to the start on the first
+      // Repeat enable.
+      const localPhBefore = (this.isNative && nativeOutputActive)
+        ? LocalDAW.getPlayhead()
+        : phBefore;
       LocalDAW.repeatPlayEnabled = on2;
-      if (on2 && LocalDAW.loopRange &&
-          (phBefore < LocalDAW.loopRange.start || phBefore > LocalDAW.loopRange.end)) {
-        this.seek(LocalDAW.loopRange.start);
+      if (on2 && LocalDAW.loopRange) {
+        const { start, end } = LocalDAW.loopRange;
+        const nativeOutside = phBefore < start || phBefore > end;
+        const localOutside = localPhBefore < start || localPhBefore > end;
+        if (nativeOutside && localOutside) {
+          this.seek(start);
+        }
       }
       LocalDAW._emit();
     },
