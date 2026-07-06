@@ -7,7 +7,7 @@ function choosePeaks(track, pxPerSec) {
   if (bucketsNeeded <= 2048) return track.peaksMedium || track.peaks || [];
   return track.peaks || [];
 }
-function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
+function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normalizeToPeak = false }) {
   const ref = useRef(null);
   const isVisibleRef = useRef(true);
   const scheduleRef = useRef(null);
@@ -55,6 +55,14 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
       c2d.clearRect(0, 0, drawW, height);
       if (!nb || !bufDur) return;
       const mid = height / 2;
+      let peakScale = volume * 0.92 * ampZoom;
+      if (normalizeToPeak) {
+        let maxPeak = Number.isFinite(track.peakAmp) ? track.peakAmp : 0;
+        if (maxPeak <= 0) {
+          for (let i = 0; i < peaks.length; i++) maxPeak = Math.max(maxPeak, Math.abs(peaks[i] || 0));
+        }
+        peakScale = maxPeak > 1e-6 ? 0.94 / maxPeak : 0;
+      }
       clipArr.forEach((clip) => {
         const clipStartX = clip.start * pxPerSec;
         const clipEndX = clip.end * pxPerSec;
@@ -78,7 +86,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
           const bufPos = clip.offset + clipPx / clipW * (clip.end - clip.start);
           const bIdx = Math.floor(bufPos / bufDur * nb);
           const max = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2 + 1] || 0;
-          c2d.lineTo(x, mid - max * volume * mid * 0.92 * ampZoom);
+          c2d.lineTo(x, mid - max * mid * peakScale);
         }
         for (let x = x1; x >= x0; x--) {
           const timelinePx = drawStart + x;
@@ -86,7 +94,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
           const bufPos = clip.offset + clipPx / clipW * (clip.end - clip.start);
           const bIdx = Math.floor(bufPos / bufDur * nb);
           const min = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2] || 0;
-          c2d.lineTo(x, mid - min * volume * mid * 0.92 * ampZoom);
+          c2d.lineTo(x, mid - min * mid * peakScale);
         }
         c2d.closePath();
         c2d.fill();
@@ -104,8 +112,8 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
             const maxPk = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2 + 1] || 0;
             const minPk = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2] || 0;
             if (maxPk * volume > 1 || Math.abs(minPk) * volume > 1) {
-              const yTop = Math.max(0, mid - maxPk * volume * mid * 0.92 * ampZoom);
-              const yBot = Math.min(height, mid - minPk * volume * mid * 0.92 * ampZoom);
+              const yTop = Math.max(0, mid - maxPk * mid * peakScale);
+              const yBot = Math.min(height, mid - minPk * mid * peakScale);
               c2d.rect(x, yTop, 1, Math.max(1, yBot - yTop));
             }
           }
@@ -143,7 +151,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1 }) {
       scrollHost && scrollHost.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
-  }, [pxPerSec, ampZoom, height, laneW, track, clips, track.audioRev, volume]);
+  }, [pxPerSec, ampZoom, height, laneW, track, clips, track.audioRev, volume, normalizeToPeak]);
   return /* @__PURE__ */ React.createElement("canvas", { ref, style: { position: "absolute", top: 0, height, display: "block" } });
 }
 function AutomationOverlay({ track, pxPerSec, height, onBeforeChange }) {
@@ -682,6 +690,143 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
     /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 } })
   ));
 }
+function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, playhead }) {
+  const laneW = Math.max(1, DAW.duration * pxPerSec);
+  const phx = playhead / Math.max(1e-3, DAW.duration) * laneW;
+  const label = collapsed ? "Expand file tracks" : "Collapse file tracks";
+  const rowH = 38;
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content", height: rowH } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: onToggle,
+      "aria-expanded": !collapsed,
+      "aria-label": label,
+      title: label,
+      style: {
+        width: HEADER_W,
+        flex: `0 0 ${HEADER_W}px`,
+        position: "sticky",
+        left: 0,
+        zIndex: 7,
+        height: rowH,
+        padding: "0 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        background: "color-mix(in srgb, var(--surface2) 88%, var(--amber) 12%)",
+        color: "var(--cream-2)",
+        border: 0,
+        borderRight: "1px solid var(--line-strong)",
+        borderBottom: "1px solid var(--line-strong)",
+        cursor: "pointer",
+        textAlign: "left"
+      }
+    },
+    /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true", style: {
+      width: 18,
+      height: 18,
+      display: "grid",
+      placeItems: "center",
+      color: "var(--amber)",
+      transition: "transform .16s ease",
+      transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)"
+    } }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 20 20", width: "15", height: "15" }, /* @__PURE__ */ React.createElement(
+      "path",
+      {
+        d: "M4 7l6 6 6-6",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: "2",
+        strokeLinecap: "round",
+        strokeLinejoin: "round"
+      }
+    ))),
+    /* @__PURE__ */ React.createElement("span", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 1 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 750, letterSpacing: ".08em", textTransform: "uppercase" } }, "File Tracks"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9.5, color: "var(--muted)", fontWeight: 600 } }, count, " ", count === 1 ? "track" : "tracks")),
+    /* @__PURE__ */ React.createElement("span", { style: {
+      marginLeft: "auto",
+      fontSize: 9,
+      color: "var(--dim)",
+      letterSpacing: ".04em",
+      textTransform: "uppercase"
+    } }, collapsed ? "Show" : "Hide")
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: onToggle,
+      "aria-label": label,
+      tabIndex: -1,
+      style: {
+        position: "relative",
+        width: laneW,
+        height: rowH,
+        padding: "0 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        overflow: "hidden",
+        background: "color-mix(in srgb, var(--surface2) 94%, var(--amber) 6%)",
+        color: "var(--muted)",
+        border: 0,
+        borderBottom: "1px solid var(--line-strong)",
+        cursor: "pointer",
+        textAlign: "left"
+      }
+    },
+    collapsed && /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true", style: { position: "absolute", inset: 0, pointerEvents: "none" } }, (tracks || []).filter((track) => !(track.params && track.params.mute)).map((track) => /* @__PURE__ */ React.createElement("span", { key: track.id, style: { position: "absolute", inset: 0, opacity: 0.42 } }, /* @__PURE__ */ React.createElement(
+      Waveform,
+      {
+        track,
+        clips: track.clips,
+        pxPerSec,
+        ampZoom: 1,
+        height: rowH,
+        volume: 1,
+        normalizeToPeak: true
+      }
+    )))),
+    /* @__PURE__ */ React.createElement("span", { style: {
+      width: 18,
+      height: 14,
+      borderRadius: "3px 3px 2px 2px",
+      border: "1px solid var(--amber-deep)",
+      background: "var(--amber-soft)",
+      position: "relative",
+      flex: "0 0 auto",
+      zIndex: 2
+    } }, /* @__PURE__ */ React.createElement("span", { style: {
+      position: "absolute",
+      left: 2,
+      top: -4,
+      width: 8,
+      height: 4,
+      borderRadius: "2px 2px 0 0",
+      background: "var(--amber-deep)"
+    } })),
+    /* @__PURE__ */ React.createElement("span", { style: {
+      position: "relative",
+      zIndex: 2,
+      fontSize: 10.5,
+      fontWeight: 600,
+      padding: "2px 6px",
+      borderRadius: 5,
+      background: collapsed ? "color-mix(in srgb, var(--bg2) 78%, transparent)" : "transparent",
+      textShadow: collapsed ? "0 1px 3px var(--bg)" : "none"
+    } }, collapsed ? `${count} file ${count === 1 ? "track" : "tracks"} hidden` : "File-based tracks"),
+    /* @__PURE__ */ React.createElement("span", { style: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: phx,
+      width: 1.5,
+      background: "var(--amber)",
+      opacity: 0.8,
+      pointerEvents: "none",
+      zIndex: 3
+    } })
+  ));
+}
 function TimeGrid({ pxPerSec, height }) {
   const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
   const majorStep = steps.find((s) => s * pxPerSec >= 96) || steps[steps.length - 1];
@@ -778,5 +923,5 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
     } }, marks, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--amber)", zIndex: 10 } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: phx - 5, width: 10, height: 8, background: "var(--amber)", clipPath: "polygon(0 0,100% 0,50% 100%)", zIndex: 10 } })))
   );
 }
-Object.assign(window, { Waveform, AutomationOverlay, TrackHeader, TrackRow, Ruler, TimeGrid, HEADER_W });
+Object.assign(window, { Waveform, AutomationOverlay, TrackHeader, TrackRow, FileTrackGroupHeader, Ruler, TimeGrid, HEADER_W });
 

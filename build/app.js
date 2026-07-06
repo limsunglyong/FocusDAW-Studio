@@ -1238,6 +1238,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [pxPerSec, setPx] = useState(96);
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
   const [ampZoom, setAmp] = useState(1);
+  const [fileTracksCollapsed, setFileTracksCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("focusdaw-file-tracks-collapsed") === "true";
+    } catch (e) {
+      return false;
+    }
+  });
   const [showMixer, setShowMixer] = useState(false);
   const [showAdvancedPan, setShowAdvancedPan] = useState(false);
   const mixerChannelRef = useRef(null);
@@ -1514,10 +1521,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const MAX_UNDO = 50;
   const stretchPreparing = !!DAW._stretchPreviewPreparing;
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
+  const fileTracks = DAW.tracks.filter((t) => !t.kind || t.kind === "file" || t.kind === "bounce");
+  const nonFileTracks = DAW.tracks.filter((t) => t.kind && t.kind !== "file" && t.kind !== "bounce");
+  const visibleTrackCount = nonFileTracks.length + (fileTracksCollapsed ? 0 : fileTracks.length);
   const arrangeNode = arrangeRef.current;
   const rulerH = 30;
   const trackStackTop = rulerH;
-  const trackStackBottom = rulerH + Math.max(1, DAW.tracks.length) * laneH;
+  const fileGroupH = fileTracks.length ? 38 : 0;
+  const trackStackBottom = rulerH + fileGroupH + Math.max(1, visibleTrackCount) * laneH;
   const visibleTop = arrangeNode ? Math.max(trackStackTop, arrangeNode.scrollTop) : trackStackTop;
   const visibleBottom = arrangeNode ? Math.min(trackStackBottom, arrangeNode.scrollTop + arrangeNode.clientHeight) : trackStackBottom;
   const overlayY = visibleBottom > visibleTop ? (visibleTop + visibleBottom) / 2 : (trackStackTop + trackStackBottom) / 2;
@@ -1528,6 +1539,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const selectedBpmTrackIndex = selectedBpmTrack ? DAW.tracks.findIndex((t) => t.id === selectedBpmTrack.id) + 1 : null;
   const touchBpmPanel = useCallback(() => setBpmTouchedAt(Date.now()), []);
   const touchKeyPanel = useCallback(() => setKeyTouchedAt(Date.now()), []);
+  const toggleFileTracks = useCallback(() => {
+    setFileTracksCollapsed((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem("focusdaw-file-tracks-collapsed", String(next));
+      } catch (e) {
+      }
+      return next;
+    });
+  }, []);
   const updateTimelineView = useCallback(() => {
     const el = arrangeRef.current;
     if (!el) return;
@@ -2046,7 +2067,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [updateTimelineView, updateVScroll, pxPerSec, sessionDuration]);
   useEffect(() => {
     updateVScroll();
-  }, [updateVScroll, laneH, DAW.tracks.length]);
+  }, [updateVScroll, laneH, DAW.tracks.length, fileTracksCollapsed]);
   useEffect(() => {
     const next = updateTimeMin();
     setPx((px) => fitTimelineRef.current ? next : Math.max(next, Math.min(TIME_ZOOM_MAX, px)));
@@ -2573,30 +2594,69 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     empty ? /* @__PURE__ */ React.createElement(EmptyState, { dragOver, onPick: pickAudioFiles, onPickFolder: pickAudioFolder, onDemo: loadDemo }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(Ruler, { pxPerSec, playhead, onSeek: (t) => {
       DAW.userSeek(t);
       force((n) => n + 1);
-    }, onAddTrack: pickAudioFiles }), DAW.tracks.map((t, i) => /* @__PURE__ */ React.createElement(
-      TrackRow,
+    }, onAddTrack: pickAudioFiles }), fileTracks.length > 0 && /* @__PURE__ */ React.createElement(
+      FileTrackGroupHeader,
       {
-        key: t.id,
-        track: t,
-        idx: i,
+        tracks: fileTracks,
+        count: fileTracks.length,
+        collapsed: fileTracksCollapsed,
+        onToggle: toggleFileTracks,
         pxPerSec,
-        ampZoom,
-        laneH,
-        playhead,
-        level: DAW.getTrackLevel(t.id),
-        onParam: param(t.id),
-        onRemove: () => removeTrack(t.id),
-        onSeek: (time) => {
-          DAW.userSeek(time);
-          force((n) => n + 1);
-        },
-        onFocusFx: focusMixerFx,
-        tool,
-        onSplit: handleSplit,
-        onJoin: handleJoin,
-        onBeforeChange: pushUndo
+        playhead
       }
-    )), /* @__PURE__ */ React.createElement(
+    ), !fileTracksCollapsed && fileTracks.map((t) => {
+      const i = DAW.tracks.findIndex((track) => track.id === t.id);
+      return /* @__PURE__ */ React.createElement(
+        TrackRow,
+        {
+          key: t.id,
+          track: t,
+          idx: i,
+          pxPerSec,
+          ampZoom,
+          laneH,
+          playhead,
+          level: DAW.getTrackLevel(t.id),
+          onParam: param(t.id),
+          onRemove: () => removeTrack(t.id),
+          onSeek: (time) => {
+            DAW.userSeek(time);
+            force((n) => n + 1);
+          },
+          onFocusFx: focusMixerFx,
+          tool,
+          onSplit: handleSplit,
+          onJoin: handleJoin,
+          onBeforeChange: pushUndo
+        }
+      );
+    }), nonFileTracks.map((t) => {
+      const i = DAW.tracks.findIndex((track) => track.id === t.id);
+      return /* @__PURE__ */ React.createElement(
+        TrackRow,
+        {
+          key: t.id,
+          track: t,
+          idx: i,
+          pxPerSec,
+          ampZoom,
+          laneH,
+          playhead,
+          level: DAW.getTrackLevel(t.id),
+          onParam: param(t.id),
+          onRemove: () => removeTrack(t.id),
+          onSeek: (time) => {
+            DAW.userSeek(time);
+            force((n) => n + 1);
+          },
+          onFocusFx: focusMixerFx,
+          tool,
+          onSplit: handleSplit,
+          onJoin: handleJoin,
+          onBeforeChange: pushUndo
+        }
+      );
+    }), /* @__PURE__ */ React.createElement(
       OutputTrack,
       {
         pxPerSec,
