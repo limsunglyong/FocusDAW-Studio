@@ -570,18 +570,23 @@ public:
         // setAutomation() swaps in a NEW object, so a concurrent edit can never realloc
         // the data we're reading — avoids the heap corruption (0xC0000374) a plain
         // unlocked vector read would risk. The lock is held only for a shared_ptr copy.
+        double phaseStart = 0.0, phaseEnd = 0.0;
         float autoGainStart = 1.0f, autoGainEnd = 1.0f;
         std::shared_ptr<const TrackAutomation> autoSnap = automationSnapshot();
         const bool autoActive = autoSnap && autoSnap->on && !autoSnap->t.empty();
+        const bool realtimeLooping = !offlineRendering.load()
+            && totalLength > 0 && readerSource && readerSource->isLooping();
         if (autoActive) {
-            double phaseStart, phaseEnd;
             if (offlineRendering.load()) {
                 phaseStart = offlineAutoPhaseStart;
                 phaseEnd   = offlineAutoPhaseEnd;
             } else if (totalLength > 0) {
-                phaseStart = (double)beforeReadPosition / (double)totalLength;
-                phaseEnd   = (double)afterReadPosition  / (double)totalLength;
-                if (phaseEnd < phaseStart) phaseEnd = phaseStart; // loop wrap within block
+                const auto wrappedBefore = realtimeLooping
+                    ? beforeReadPosition % totalLength : beforeReadPosition;
+                const auto wrappedAfter = realtimeLooping
+                    ? afterReadPosition % totalLength : afterReadPosition;
+                phaseStart = (double)wrappedBefore / (double)totalLength;
+                phaseEnd   = (double)wrappedAfter  / (double)totalLength;
             } else {
                 phaseStart = phaseEnd = 0.0;
             }
@@ -595,12 +600,56 @@ public:
                     if (channel == 0 && pan > 0.0f) panFactor = (1.0f - pan);
                     else if (channel == 1 && pan < 0.0f) panFactor = (1.0f + pan);
                 }
-                float gStart = volume * autoGainStart * panFactor;
-                float gEnd   = volume * autoGainEnd   * panFactor;
-                if (gStart == gEnd)
-                    bufferToFill.buffer->applyGain(channel, bufferToFill.startSample, bufferToFill.numSamples, gStart);
-                else
-                    bufferToFill.buffer->applyGainRamp(channel, bufferToFill.startSample, bufferToFill.numSamples, gStart, gEnd);
+                const auto applyGainRange = [&](int startSample, int numSamples,
+                                                float rangeGainStart, float rangeGainEnd) {
+                    const float gStart = volume * rangeGainStart * panFactor;
+                    const float gEnd   = volume * rangeGainEnd   * panFactor;
+                    if (gStart == gEnd)
+                        bufferToFill.buffer->applyGain(channel, startSample, numSamples, gStart);
+                    else
+                        bufferToFill.buffer->applyGainRamp(channel, startSample, numSamples, gStart, gEnd);
+                };
+
+                const juce::int64 sourceAdvance = afterReadPosition - beforeReadPosition;
+                if (autoActive && realtimeLooping && sourceAdvance > 0
+                    && bufferToFill.numSamples > 0) {
+                    // MemoryAudioSource exposes a monotonic counter while looping.
+                    // Split a block at each loop boundary so automation restarts at
+                    // phase zero instead of ramping from the song end to its start.
+                    const double sourcePerOutputSample =
+                        (double)sourceAdvance / (double)bufferToFill.numSamples;
+                    double wrappedSourcePosition =
+                        (double)(beforeReadPosition % totalLength);
+                    int outputOffset = 0;
+
+                    while (outputOffset < bufferToFill.numSamples) {
+                        const double sourceUntilBoundary =
+                            (double)totalLength - wrappedSourcePosition;
+                        int segmentSamples = (int)std::ceil(
+                            sourceUntilBoundary / sourcePerOutputSample);
+                        segmentSamples = juce::jlimit(
+                            1, bufferToFill.numSamples - outputOffset, segmentSamples);
+
+                        const double segmentSourceEnd = juce::jmin(
+                            (double)totalLength,
+                            wrappedSourcePosition + sourcePerOutputSample * segmentSamples);
+                        const float segmentGainStart =
+                            autoSnap->sample(wrappedSourcePosition / (double)totalLength);
+                        const float segmentGainEnd =
+                            autoSnap->sample(segmentSourceEnd / (double)totalLength);
+                        applyGainRange(bufferToFill.startSample + outputOffset,
+                                       segmentSamples, segmentGainStart, segmentGainEnd);
+
+                        outputOffset += segmentSamples;
+                        wrappedSourcePosition += sourcePerOutputSample * segmentSamples;
+                        if (wrappedSourcePosition >= (double)totalLength)
+                            wrappedSourcePosition =
+                                std::fmod(wrappedSourcePosition, (double)totalLength);
+                    }
+                } else {
+                    applyGainRange(bufferToFill.startSample, bufferToFill.numSamples,
+                                   autoGainStart, autoGainEnd);
+                }
             }
         }
 
@@ -1028,10 +1077,9 @@ public:
         // 9. Apply Soft-clipper to prevent clipping
         applySoftClipping(*bufferToFill.buffer, bufferToFill.startSample, bufferToFill.numSamples);
 
-        // 9b. Master fade in/out — a one-shot gesture over the song / export timeline.
-        // The engine resets fadePosSamples on play/seek (realtime) or at the start of
-        // each export pass; here we just advance and apply per block. fadeGainAt returns
-        // 1.0 once past the window so subsequent realtime loop passes play at full level.
+        // 9b. Master fade in/out over the song / export timeline. During realtime loop
+        // playback the fade position wraps with the song. Split a block that crosses
+        // the boundary so fade-out finishes before fade-in starts again.
         if (fadeActive.load())
         {
             juce::int64 total = fadeTotalSamples.load();
@@ -1039,14 +1087,28 @@ public:
             {
                 juce::int64 pos = fadePosSamples.load();
                 int n = bufferToFill.numSamples;
-                float gStart = fadeGainAt(pos);
-                float gEnd = fadeGainAt(pos + n);
-                if (gStart != 1.0f || gEnd != 1.0f)
+                int offset = 0;
+                while (offset < n)
                 {
-                    for (int ch = 0; ch < bufferToFill.buffer->getNumChannels(); ++ch)
-                        bufferToFill.buffer->applyGainRamp(ch, bufferToFill.startSample, n, gStart, gEnd);
+                    const juce::int64 fadePosition = fadeLooping.load() ? pos % total : pos;
+                    int segmentSamples = n - offset;
+                    if (fadeLooping.load())
+                        segmentSamples = (int)juce::jmin(
+                            (juce::int64)segmentSamples, total - fadePosition);
+
+                    const float gStart = fadeGainAt(fadePosition);
+                    const float gEnd = fadeGainAt(fadePosition + segmentSamples);
+                    if (gStart != 1.0f || gEnd != 1.0f)
+                    {
+                        for (int ch = 0; ch < bufferToFill.buffer->getNumChannels(); ++ch)
+                            bufferToFill.buffer->applyGainRamp(
+                                ch, bufferToFill.startSample + offset,
+                                segmentSamples, gStart, gEnd);
+                    }
+                    pos += segmentSamples;
+                    offset += segmentSamples;
                 }
-                fadePosSamples.store(pos + n);
+                fadePosSamples.store(pos);
             }
         }
 
@@ -1119,12 +1181,15 @@ public:
     }
     void setFadePosition(juce::int64 posSamples) { fadePosSamples.store(posSamples); }
     void setFadeActive(bool active) { fadeActive.store(active); }
+    void setFadeLooping(bool looping) { fadeLooping.store(looping); }
 
     // Linear fade gain at an output-sample position (matches audio-engine.js fadeVal).
     float fadeGainAt(juce::int64 p) const
     {
         juce::int64 total = fadeTotalSamples.load();
-        if (total <= 0 || p >= total) return 1.0f; // one-shot done → full level afterwards
+        if (total > 0 && p == total)
+            return fadeOutSamples.load() > 0 ? 0.0f : 1.0f;
+        if (total <= 0 || p >= total) return 1.0f;
         juce::int64 fi = fadeInSamples.load();
         juce::int64 fo = fadeOutSamples.load();
         if (fi > 0 && p < fi) return (float)((double)p / (double)fi);
@@ -1342,6 +1407,7 @@ private:
     std::atomic<juce::int64> fadeTotalSamples { 0 };
     std::atomic<juce::int64> fadePosSamples { 0 };
     std::atomic<bool> fadeActive { false };
+    std::atomic<bool> fadeLooping { false };
 };
 
 #endif

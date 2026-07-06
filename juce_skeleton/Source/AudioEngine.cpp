@@ -179,6 +179,7 @@ void AudioEngine::setLoop(bool enabled)
     {
         track->setLooping(loopEnabled);
     }
+    if (masterEffectsSource) masterEffectsSource->setFadeLooping(loopEnabled);
 #endif
 
     LOG_DBG << "[AudioEngine] Loop " << (loopEnabled ? "enabled" : "disabled") << std::endl;

@@ -1659,7 +1659,6 @@
       const rate = this._activePlaybackRate();
       const pos = this._projectPositionAt(now, rate) % dur;
       g.cancelScheduledValues(now);
-      // simple: only apply fade on first loop pass
       const base = now - (pos / rate);
       g.setValueAtTime(fadeVal(pos, dur, fi, fo), now);
       // ramp through the rest of this loop
@@ -1669,8 +1668,19 @@
         if (lp <= pos) continue;
         g.linearRampToValueAtTime(fadeVal(lp, dur, fi, fo), base + (lp / rate));
       }
-      // subsequent loops: keep at 1 (fades are a one-shot master gesture)
-      g.setValueAtTime(1, base + (dur / rate));
+      // Schedule the same fade envelope for subsequent loop passes.
+      const loops = 64;
+      for (let loop = 1; loop <= loops; loop++) {
+        const loopStart = base + loop * (dur / rate);
+        g.setValueAtTime(fadeVal(0, dur, fi, fo), loopStart);
+        for (let i = 1; i <= steps; i++) {
+          const lp = (i / steps) * dur;
+          g.linearRampToValueAtTime(
+            fadeVal(lp, dur, fi, fo),
+            loopStart + (lp / rate)
+          );
+        }
+      }
     },
 
     setLoop(val) { this.loopEnabled = !!val; },
