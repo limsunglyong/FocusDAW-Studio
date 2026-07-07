@@ -50,6 +50,18 @@ function assertFilePath(filePath, extensionPattern, label) {
   return path.resolve(filePath);
 }
 
+function assertDirectoryPath(dirPath) {
+  if (typeof dirPath !== 'string' || !path.isAbsolute(dirPath)) {
+    throw new Error('Invalid folder path.');
+  }
+  const resolved = path.resolve(dirPath);
+  const stat = fs.statSync(resolved);
+  if (!stat.isDirectory()) {
+    throw new Error('Path is not a folder.');
+  }
+  return resolved;
+}
+
 function assertTempWavPath(filePath) {
   const resolved = assertFilePath(filePath, /\.wav$/i, 'temporary audio');
   const relative = path.relative(path.resolve(os.tmpdir()), resolved);
@@ -92,6 +104,14 @@ function audioItem(filePath) {
     size: stat ? stat.size : null,
     mtimeMs: stat ? stat.mtimeMs : null,
   };
+}
+
+function scanAudioFolderRoot(dirPath) {
+  const dir = assertDirectoryPath(dirPath);
+  const items = fs.readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isFile() && AUDIO_EXT.test(entry.name))
+    .map(entry => audioItem(path.join(dir, entry.name)));
+  return { folderName: path.basename(dir), items };
 }
 
 function safeFileBase(name) {
@@ -301,10 +321,12 @@ ipcMain.handle('open-folder', async (event) => {
     title: 'Select Stem Folder',
   });
   if (canceled || !filePaths[0]) return [];
-  const dir = filePaths[0];
-  return fs.readdirSync(dir)
-    .filter(f => AUDIO_EXT.test(f))
-    .map(f => audioItem(path.join(dir, f)));
+  return scanAudioFolderRoot(filePaths[0]).items;
+});
+
+ipcMain.handle('scan-audio-folder', async (event, folderPath) => {
+  assertTrustedIpc(event);
+  return scanAudioFolderRoot(folderPath);
 });
 
 // Select individual audio files
@@ -368,6 +390,16 @@ ipcMain.handle('open-project', async (event) => {
     text: fs.readFileSync(filePath, 'utf8'),
     path: filePath,
     dir: path.dirname(filePath),
+  };
+});
+
+ipcMain.handle('read-project-file', async (event, filePath) => {
+  assertTrustedIpc(event);
+  const safePath = assertFilePath(filePath, PROJECT_EXT, 'project');
+  return {
+    text: fs.readFileSync(safePath, 'utf8'),
+    path: safePath,
+    dir: path.dirname(safePath),
   };
 });
 

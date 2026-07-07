@@ -16,6 +16,30 @@ function parentFolderName(filePath) {
   const parts = (filePath || "").split(/[\\/]/).filter(Boolean);
   return parts.length >= 2 ? parts[parts.length - 2] : "";
 }
+function readDirectoryEntryRootFiles(entry) {
+  return new Promise((resolve) => {
+    if (!entry || !entry.isDirectory || !entry.createReader) {
+      resolve([]);
+      return;
+    }
+    const reader = entry.createReader();
+    const entries = [];
+    const readNext = () => {
+      reader.readEntries((batch) => {
+        if (!batch.length) {
+          const fileEntries = entries.filter((item) => item && item.isFile && item.file);
+          Promise.all(fileEntries.map((fileEntry) => new Promise((done) => {
+            fileEntry.file((file) => done(file), () => done(null));
+          }))).then((files) => resolve(files.filter(Boolean)));
+          return;
+        }
+        entries.push(...batch);
+        readNext();
+      }, () => resolve([]));
+    };
+    readNext();
+  });
+}
 function recentProjectId(projectName, projectPath) {
   return projectPath ? `path:${projectPath}` : `autosave:${projectName || DEFAULT_PROJECT_NAME}`;
 }
@@ -210,7 +234,7 @@ function recentDateLabel(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onHelpManual, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onSaveAs, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onHelpManual, onHelpReleaseNotes, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -247,6 +271,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { sep: true },
     { label: "Open Project\u2026", icon: "folder", hint: "\u2318O", onClick: onOpenProject, submenu: recentSubmenu },
     { label: "Save Project", icon: "download", hint: "\u2318S", onClick: onSave },
+    { label: "Save As\u2026", icon: "download", onClick: onSaveAs },
     { sep: true },
     { label: "Import Stem Folder\u2026", icon: "folder", onClick: onImportFolder },
     { label: "Import Audio Files\u2026", icon: "wave", onClick: onImport },
@@ -267,6 +292,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
   ];
   const helpItems = [
     { label: "Manual", icon: "book", onClick: onHelpManual },
+    { label: "Release Notes", icon: "info", onClick: onHelpReleaseNotes },
     { label: "About", icon: "info", onClick: onHelpAbout }
   ];
   return /* @__PURE__ */ React.createElement("div", { className: "menubar" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingRight: 6 } }, /* @__PURE__ */ React.createElement(Logo, { size: 30 })), /* @__PURE__ */ React.createElement(Dropdown, { label: "Project", items: projectItems, accent: true }), /* @__PURE__ */ React.createElement(Dropdown, { label: "Edit", items: editItems }), /* @__PURE__ */ React.createElement(Dropdown, { label: "Advanced Effects", items: advancedItems }), /* @__PURE__ */ React.createElement("div", { className: "menu-item", onClick: onSettings, style: { cursor: "pointer" } }, "Settings"), /* @__PURE__ */ React.createElement(Dropdown, { label: "Help", items: helpItems }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", top: 0, height: "100%", transform: "translateX(-50%)", display: "flex", alignItems: "center", zIndex: 3 } }, /* @__PURE__ */ React.createElement(MenuTransport, null)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), editing ? /* @__PURE__ */ React.createElement(
@@ -2114,14 +2140,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       setTapInfo({ bpm: null, count: 0 });
     }
   }, [bpmOpen]);
-  const saveProject = useCallback(async () => {
+  const saveProject = useCallback(async (forceDialog = false) => {
     const currentName = projectNameRef && projectNameRef.current || projectName || DEFAULT_PROJECT_NAME;
     const json = DAW.exportProject(currentName);
     let savedPath = projectPath || null;
     if (window.electronAPI) {
-      const currentBase = safeFileBase(currentName);
-      const pathBase = projectPath ? safeFileBase(projectNameFromPath(projectPath)) : null;
-      const targetPath = currentBase === pathBase ? projectPath : null;
+      const targetPath = !forceDialog ? projectPath : null;
       const result = await window.electronAPI.saveProject(json, currentName, targetPath);
       if (!result || result.saved === false) return;
       if (result.path && onProjectPathChange) onProjectPathChange(result.path);
@@ -2139,8 +2163,20 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
     saveRecentProject(currentName, savedPath, { updateSavedList: !!savedPath });
   }, [projectName, projectNameRef, projectPath, onProjectPathChange]);
+  const saveProjectAs = useCallback(() => saveProject(true), [saveProject]);
   const playPause = useCallback(() => {
     DAW.isPlaying ? DAW.pause() : DAW.play();
+  }, []);
+  const electronFilePath = useCallback((file) => {
+    if (!file) return "";
+    if (file.path) return file.path;
+    if (window.electronAPI && window.electronAPI.getPathForFile) {
+      try {
+        return window.electronAPI.getPathForFile(file) || "";
+      } catch (e) {
+      }
+    }
+    return "";
   }, []);
   useEffect(() => {
     const id = setInterval(() => saveRecentProject(projectName, projectPath), 1500);
@@ -2166,7 +2202,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       setLoading({ active: true, total: missing.length, done: i, label: basenameFromPath(track.filePath) || track.name });
       try {
         const ab = await window.electronAPI.readAudioFile(track.filePath);
-        await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath });
+        await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath, reconnectTrackId: track.id });
       } catch (err) {
         console.warn("Failed to reconnect audio:", track.filePath, err);
       }
@@ -2194,10 +2230,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       let text;
       let openedPath = null;
       if (window.electronAPI) {
-        const opened = await window.electronAPI.openProject();
-        if (!opened) return;
-        text = typeof opened === "string" ? opened : opened.text;
-        openedPath = typeof opened === "string" ? null : opened.path;
+        const filePath = electronFilePath(file);
+        if (filePath && window.electronAPI.readProjectFile) {
+          const opened = await window.electronAPI.readProjectFile(filePath);
+          if (!opened) return;
+          text = opened.text;
+          openedPath = opened.path;
+        } else if (file && typeof file.text === "function") {
+          text = await file.text();
+          openedPath = file.name;
+        } else {
+          const opened = await window.electronAPI.openProject();
+          if (!opened) return;
+          text = typeof opened === "string" ? opened : opened.text;
+          openedPath = typeof opened === "string" ? null : opened.path;
+        }
       } else if (file) {
         text = await file.text();
         openedPath = file.name;
@@ -2209,7 +2256,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     } catch (err) {
       console.error("Failed to open project:", err);
     }
-  }, [loadProjectJson]);
+  }, [loadProjectJson, electronFilePath]);
   useEffect(() => {
     const isTextInput = (el) => {
       if (!el) return false;
@@ -2401,6 +2448,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onLoadDemo: loadDemo,
       onExport: () => setShowExport(true),
       onSave: saveProject,
+      onSaveAs: saveProjectAs,
       onOpenProject: window.electronAPI ? () => openProjectFile(null) : () => focusRef.current && focusRef.current.click(),
       onOpenRecentProject: (json, path) => loadProjectJson(json, path || null),
       onOpenAdvancedAmbience: openAdvancedAmbience,
@@ -2410,7 +2458,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onRedo: redo,
       onDeleteAllTracks: requestDeleteAllTracks
     });
-  }, [registerHandlers, saveProject, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks]);
+  }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks]);
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) {
@@ -2433,12 +2481,57 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
-  const onDrop = (e) => {
+  const onDrop = async (e) => {
     e.preventDefault();
     setDragOver(false);
     const files = [...e.dataTransfer.files];
+    const focusFile = files.find((f) => /\.focus$/i.test(f.name));
+    if (focusFile) {
+      await openProjectFile(focusFile);
+      return;
+    }
+    const transferItems = [...e.dataTransfer.items || []];
+    const droppedFolders = transferItems.map((item) => {
+      if (!item || item.kind !== "file" || !item.webkitGetAsEntry) return null;
+      const entry = item.webkitGetAsEntry();
+      if (!entry || !entry.isDirectory) return null;
+      const file = (item.getAsFile ? item.getAsFile() : null) || files.find((f) => f && f.name === entry.name) || null;
+      return { entry, file, name: entry.name || file && file.name || "", path: electronFilePath(file) };
+    }).filter(Boolean);
+    if (droppedFolders.length && window.electronAPI && window.electronAPI.scanAudioFolder) {
+      const scannedItems = [];
+      let folderName = droppedFolders[0].name;
+      for (const folder of droppedFolders) {
+        if (!folder.path) continue;
+        try {
+          const result = await window.electronAPI.scanAudioFolder(folder.path);
+          if (result && result.folderName && !folderName) folderName = result.folderName;
+          if (result && Array.isArray(result.items)) scannedItems.push(...result.items);
+        } catch (err) {
+          console.error("Failed to scan dropped folder", folder.path, err);
+        }
+      }
+      if (scannedItems.length) {
+        addElectronFiles(scannedItems, { folderName });
+      }
+      return;
+    }
+    if (droppedFolders.length && !window.electronAPI) {
+      const folder = droppedFolders[0];
+      const rootFiles = await readDirectoryEntryRootFiles(folder.entry);
+      if (rootFiles.length) {
+        await addFiles(rootFiles, false, folder.name);
+      }
+      return;
+    }
     if (window.electronAPI) {
-      const items = files.filter((f) => /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(f.name) && f.path).map((f) => ({ name: f.name, displayName: f.name.replace(/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i, ""), path: f.path }));
+      const items = files.map((f) => ({ file: f, path: electronFilePath(f) })).filter((item) => /\.(mp3|wav|aiff?|m4a|ogg|flac)$/i.test(item.file.name) && item.path).map((item) => ({
+        name: item.file.name,
+        displayName: item.file.name.replace(/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i, ""),
+        path: item.path,
+        size: item.file.size,
+        mtimeMs: item.file.lastModified
+      }));
       if (items.length) {
         addElectronFiles(items);
         return;
@@ -2757,6 +2850,7 @@ function App() {
   const [, force] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
@@ -2814,6 +2908,7 @@ function App() {
       onLoadDemo: () => H.onLoadDemo && H.onLoadDemo(),
       onExport: () => H.onExport && H.onExport(),
       onSave: () => H.onSave && H.onSave(),
+      onSaveAs: () => H.onSaveAs && H.onSaveAs(),
       onOpenProject: () => H.onOpenProject && H.onOpenProject(),
       onOpenRecentProject: (json, path) => H.onOpenRecentProject && H.onOpenRecentProject(json, path),
       onSettings: () => setShowSettings(true),
@@ -2826,6 +2921,7 @@ function App() {
       canRedo: undoState.canRedo,
       onDeleteAllTracks: () => H.onDeleteAllTracks && H.onDeleteAllTracks(),
       onHelpManual: openHelpManual,
+      onHelpReleaseNotes: () => setShowReleaseNotes(true),
       onHelpAbout: () => setShowAbout(true)
     }
   ), /* @__PURE__ */ React.createElement(
@@ -2841,7 +2937,7 @@ function App() {
       onUndoStateChange: setUndoState,
       theme
     }
-  ), showSettings && /* @__PURE__ */ React.createElement(SettingsDialog, { currentTheme: theme, onThemeChange: setTheme, onClose: () => setShowSettings(false) }), showHelp && /* @__PURE__ */ React.createElement(HelpDialog, { onClose: () => setShowHelp(false) }), showAbout && /* @__PURE__ */ React.createElement(AboutDialog, { onClose: () => setShowAbout(false) }), /* @__PURE__ */ React.createElement("div", { className: "bottombar" }, /* @__PURE__ */ React.createElement("span", { className: "bottom-project mono" }, projectName || DEFAULT_PROJECT_NAME), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, color: "var(--dim)", fontWeight: 600, letterSpacing: ".03em" } }, "FocusDAW Studio"), /* @__PURE__ */ React.createElement("span", { className: "version-badge" }, APP_VERSION))));
+  ), showSettings && /* @__PURE__ */ React.createElement(SettingsDialog, { currentTheme: theme, onThemeChange: setTheme, onClose: () => setShowSettings(false) }), showHelp && /* @__PURE__ */ React.createElement(HelpDialog, { onClose: () => setShowHelp(false) }), showReleaseNotes && /* @__PURE__ */ React.createElement(ReleaseNotesDialog, { onClose: () => setShowReleaseNotes(false) }), showAbout && /* @__PURE__ */ React.createElement(AboutDialog, { onClose: () => setShowAbout(false) }), /* @__PURE__ */ React.createElement("div", { className: "bottombar" }, /* @__PURE__ */ React.createElement("span", { className: "bottom-project mono" }, projectName || DEFAULT_PROJECT_NAME), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, color: "var(--dim)", fontWeight: 600, letterSpacing: ".03em" } }, "FocusDAW Studio"), /* @__PURE__ */ React.createElement("span", { className: "version-badge" }, APP_VERSION))));
 }
 DAW.init();
 ReactDOM.createRoot(document.getElementById("root")).render(/* @__PURE__ */ React.createElement(App, null));

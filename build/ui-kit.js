@@ -208,8 +208,8 @@ function Meter({ level, height = 120, width = 8, stereo = false }) {
   }
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column-reverse", gap, width, height } }, cells);
 }
-function SoloBtn({ on, onClick, size = 24 }) {
-  return /* @__PURE__ */ React.createElement("button", { onClick, title: "Solo", style: {
+function SoloBtn({ on, onClick, size = 24, disabled = false }) {
+  return /* @__PURE__ */ React.createElement("button", { onClick: disabled ? void 0 : onClick, disabled, title: disabled ? "Solo unavailable until audio is re-linked" : "Solo", style: {
     width: size,
     height: size,
     borderRadius: 6,
@@ -218,16 +218,19 @@ function SoloBtn({ on, onClick, size = 24 }) {
     background: on ? "var(--amber)" : "var(--surface2)",
     color: on ? "#241a0a" : "var(--dim)",
     border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"),
-    boxShadow: on ? "0 0 10px rgba(232,176,75,.5)" : "none"
+    boxShadow: on ? "0 0 10px rgba(232,176,75,.5)" : "none",
+    opacity: disabled ? 0.38 : 1,
+    cursor: disabled ? "not-allowed" : "pointer"
   } }, "S");
 }
-function MuteBtn({ on, auto, onClick, size = 24 }) {
+function MuteBtn({ on, auto, onClick, size = 24, disabled = false }) {
   const active = on || auto;
   return /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick,
-      title: !on && auto ? "Muted (Solo active elsewhere)" : "Mute",
+      onClick: disabled ? void 0 : onClick,
+      disabled,
+      title: disabled ? "Mute unavailable until audio is re-linked" : !on && auto ? "Muted (Solo active elsewhere)" : "Mute",
       style: {
         width: size,
         height: size,
@@ -237,7 +240,9 @@ function MuteBtn({ on, auto, onClick, size = 24 }) {
         background: active ? "var(--red)" : "var(--surface2)",
         color: active ? "#fff" : "var(--dim)",
         border: "1px solid " + (active ? "var(--red)" : "var(--line-strong)"),
-        boxShadow: active ? "0 0 10px rgba(217,106,78,.5)" : "none"
+        boxShadow: active ? "0 0 10px rgba(217,106,78,.5)" : "none",
+        opacity: disabled ? 0.38 : 1,
+        cursor: disabled ? "not-allowed" : "pointer"
       }
     },
     "M"

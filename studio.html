@@ -188,6 +188,12 @@ button:focus,button:focus-visible,[role=button]:focus,[role=button]:focus-visibl
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#3a342c;border-radius:6px;border:3px solid var(--bg)}
 ::-webkit-scrollbar-thumb:hover{background:#4a4338}
+.theme-scroll,.release-notes-scroll{scrollbar-color:var(--surface3) transparent;scrollbar-width:thin}
+.theme-scroll::-webkit-scrollbar,.release-notes-scroll::-webkit-scrollbar{width:11px;height:11px}
+.theme-scroll::-webkit-scrollbar-track,.release-notes-scroll::-webkit-scrollbar-track{background:transparent}
+.theme-scroll::-webkit-scrollbar-thumb,.release-notes-scroll::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:6px;border:3px solid var(--bg2)}
+.theme-scroll::-webkit-scrollbar-thumb:hover,.release-notes-scroll::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--surface3) 72%,var(--cream) 28%)}
+.theme-scroll::-webkit-scrollbar-corner,.release-notes-scroll::-webkit-scrollbar-corner{background:transparent}
 /* Arrange timeline: keep horizontal scrolling available through the minimap,
    Shift+wheel and trackpads, but hide its native bar. The transparent corner
    also removes the white square where the two native scrollbars intersect. */

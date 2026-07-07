@@ -96,6 +96,24 @@
     LocalDAW._emit();
   }
 
+  function resetNativeProjectState() {
+    sendToNative({ command: "clearTracks" });
+    pendingNativeLoads.clear();
+    clearTimeout(handoverFallbackTimer);
+    handoverFallbackTimer = null;
+    nativeOutputActive = false;
+    nativeState.isPlaying = false;
+    nativeState.offset = 0;
+    nativeState.startTime = 0;
+    nativeState.lastPlaySentAt = 0;
+    nativeState.lastSeekSentAt = 0;
+    nativeState.trackLevels = {};
+    nativeState.masterStereo = { l: 0, r: 0 };
+    nativeState.masterBandLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    nativeState.hasNativeBandData = false;
+    try { LocalDAW.setOutputMuted(false); } catch (e) {}
+  }
+
   // If the engine never reports its loads (e.g. an outdated binary without the
   // trackLoaded event), fall back to activating after 15s without progress so we
   // don't stay on the web engine forever.
@@ -289,14 +307,16 @@
     },
 
     setTrackParam(id, key, val) {
+      const track = LocalDAW.tracks.find((t) => t.id === id);
       LocalDAW.setTrackParam(id, key, val);
+      if ((key === "solo" || key === "mute" || key === "bpmSource") && track && track.needsAudio) return;
       if (this.isNative) {
         // Volume automation (points array, on/off, curve toggle) is not a scalar —
         // forward the full automation state via a dedicated command so the native
         // engine can apply it during offline export.
         if (key === "automation" || key === "autoOn" || key === "autoCurve") {
-          const track = LocalDAW.tracks.find((t) => t.id === id);
-          if (track) sendTrackAutomationToNative(track);
+          const automationTrack = LocalDAW.tracks.find((t) => t.id === id);
+          if (automationTrack) sendTrackAutomationToNative(automationTrack);
         } else {
           sendToNative({ command: "setTrackParam", trackId: id, key, value: val });
         }
@@ -596,10 +616,9 @@
       // The EFFECT bypass is a transient A/B state — a newly opened project
       // always starts with its effects audible.
       if (LocalDAW.masterFxBypassed) LocalDAW.setMasterFxBypass(false);
+      if (this.isNative) resetNativeProjectState();
       LocalDAW.importProject(json);
       if (this.isNative) {
-        // Send full sync project configuration to native C++ engine
-        sendToNative({ command: "importProject", project: json });
         sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
         // The native engine has no importProject handler, so explicitly push tempo +
         // key (transpose) state — otherwise an imported project plays at the original
@@ -608,9 +627,10 @@
         // The FULL master state (volume/EQ/sends/room/fades) must likewise be pushed
         // explicitly — LocalDAW.importProject only applied it to the web engine.
         syncMasterToNative();
-        // Since JUCE engine needs actual files, let's trigger loading for any files that have filePath
+        // Only load tracks that already have decoded audio. Missing placeholders are
+        // reconnected by app.jsx first; this avoids native keeping or retrying stale paths.
         LocalDAW.tracks.forEach(track => {
-          if (track.filePath) {
+          if (track.filePath && !track.needsAudio) {
             sendLoadTrack({ command: "loadTrack", trackId: track.id, filePath: track.filePath });
           }
         });

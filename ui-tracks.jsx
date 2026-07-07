@@ -334,6 +334,7 @@ function FxTag({ label, color, on, onClick }) {
 
 function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx }) {
   const p = track.params;
+  const noAudio = !!track.needsAudio;
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const volRef = useRef(null);
@@ -360,6 +361,8 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx })
     color: p.bpmSource ? "var(--accent-fg)" : "var(--cream-2)",
     border: "1px solid " + (p.bpmSource ? "var(--amber)" : "var(--line-strong)"),
     boxShadow: p.bpmSource ? "0 0 10px rgba(232,176,75,.5)" : "none",
+    opacity: noAudio ? .38 : 1,
+    cursor: noAudio ? "not-allowed" : "pointer",
   };
   return (
     <React.Fragment>
@@ -373,9 +376,9 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx })
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
         <ScrollingTrackTitle name={track.name} compact={compact} />
-        <button title="Use this track for BPM detection" onClick={() => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>
-        <SoloBtn size={buttonSize} on={p.solo} onClick={() => onParam("solo", !p.solo)} />
-        <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} onClick={() => onParam("mute", !p.mute)} />
+        <button title={noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection"} disabled={noAudio} onClick={noAudio ? undefined : () => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>
+        <SoloBtn size={buttonSize} on={p.solo} disabled={noAudio} onClick={() => onParam("solo", !p.solo)} />
+        <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} onClick={() => onParam("mute", !p.mute)} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 }}>
         {/* horizontal volume fader */}

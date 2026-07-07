@@ -396,7 +396,7 @@ function HelpDialog({ onClose, standalone = false }) {
         {/* Dual Panel Body */}
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {/* Left Sidebar */}
-          <div style={{ width: 220, borderRight: "1px solid var(--line)", overflowY: "auto", padding: "14px 10px", background: "var(--bg)" }}>
+          <div className="theme-scroll" style={{ width: 220, borderRight: "1px solid var(--line)", overflowY: "auto", padding: "14px 10px", background: "var(--bg)" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", padding: "0 12px 8px" }}>
               {lang === "ko" ? "목차" : "Chapters"}
             </div>
@@ -415,7 +415,7 @@ function HelpDialog({ onClose, standalone = false }) {
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="manual-container"
+            className="manual-container theme-scroll"
             style={{ flex: 1, overflowY: "auto", padding: "24px 30px", background: "var(--surface)" }}
           >
             {/* 1. 앱 개요 / App Overview */}
@@ -1669,6 +1669,101 @@ function HelpDialog({ onClose, standalone = false }) {
                 : "FocusDAW Studio User Manual · Written for version v" + (window.APP_VERSION || "0.0.0")}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const RELEASE_NOTES = {
+  range: "v1.17.4 - v1.17.10",
+  date: "2026-07-08",
+  features: [
+    "Added the Source/Clip project model with schemaVersion 2, track kind, locked-to-zero file tracks, sources, clips, and takes metadata.",
+    "Added project file drag and drop, so .focus files can be opened directly from the arrange view.",
+    "Added a dedicated Save As... command while keeping Save Project for the current project path.",
+    "Added file-track fold and unfold workflow with a collapsed waveform overlay for dense stem sessions.",
+  ],
+  improvements: [
+    "Improved project audio reconnection: missing placeholders reconnect only by original file path or explicit track id, while same-name files from another folder import as new tracks.",
+    "Improved native engine project switching by clearing stale native tracks and pending loads before a new project is imported.",
+    "Improved hot-loaded file playback sync so decoded tracks join the current transport position with a short fade-in.",
+    "Refined track scrolling and file-track overlay rendering for cleaner, more stable arrange navigation.",
+    "NO AUDIO tracks now keep BPM Source, Solo, and Mute controls disabled until audio is re-linked.",
+  ],
+  fixes: [
+    "Fixed hidden previous-project audio continuing to play after opening another project.",
+    "Fixed repeated native File not found retries for missing placeholder paths during project import.",
+    "Fixed NO AUDIO Solo state causing UI mute indicators and actual playback to disagree.",
+    "Fixed newly imported audio from a different folder becoming NO AUDIO after saving and reopening.",
+    "Fixed Save Project opening the save dialog when the project name and .focus file name differed.",
+    "Fixed an Electron first-repeat handover case where the playhead could jump to the loop start unexpectedly.",
+  ],
+};
+
+function ReleaseNotesDialog({ onClose }) {
+  const sectionStyle = { marginTop: 18 };
+  const headingStyle = {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: ".10em",
+    textTransform: "uppercase",
+    color: "var(--amber)",
+    margin: "0 0 10px",
+  };
+  const listStyle = {
+    margin: 0,
+    paddingLeft: 19,
+    color: "var(--cream-2)",
+    fontSize: 13.5,
+    lineHeight: 1.55,
+  };
+  const renderList = (items) => (
+    <ul style={listStyle}>
+      {items.map((item, i) => <li key={i} style={{ marginBottom: 8 }}>{item}</li>)}
+    </ul>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 860, userSelect: "none", WebkitUserSelect: "none" }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "var(--bg2)", border: "1px solid color-mix(in srgb, var(--cream) 30%, transparent)", borderRadius: 14, width: 560, maxWidth: "94vw", maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "var(--shadow)", overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid color-mix(in srgb, var(--cream) 30%, transparent)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: ".06em", color: "var(--cream-2)", textTransform: "uppercase" }}>RELEASE NOTES</span>
+          <button className="iconbtn" onClick={onClose} style={{ fontSize: 18, lineHeight: 1, padding: 0, minWidth: 0, width: "auto", height: "auto", background: "none", border: "none", color: "var(--muted)", cursor: "pointer" }}>×</button>
+        </div>
+
+        <div className="theme-scroll release-notes-scroll" style={{ padding: "24px 28px 18px", overflowY: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: "color-mix(in srgb, var(--surface) 60%, transparent)", border: "1px solid color-mix(in srgb, var(--cream) 16%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow)", flex: "0 0 auto" }}>
+              <Logo size={38} style={{ borderRadius: 9 }} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: '"Cinzel", serif', fontSize: 22, fontWeight: 400, color: "var(--cream)", lineHeight: 1.15 }}>What's New</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 12.5, color: "var(--dim)" }}>
+                <span className="mono" style={{ color: "var(--cream-2)", fontWeight: 700 }}>{RELEASE_NOTES.range}</span>
+                <span>·</span>
+                <span>{RELEASE_NOTES.date}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={sectionStyle}>
+            <h3 style={headingStyle}>New Features</h3>
+            {renderList(RELEASE_NOTES.features)}
+          </div>
+          <div style={sectionStyle}>
+            <h3 style={headingStyle}>Improvements</h3>
+            {renderList(RELEASE_NOTES.improvements)}
+          </div>
+          <div style={sectionStyle}>
+            <h3 style={headingStyle}>Fixes</h3>
+            {renderList(RELEASE_NOTES.fixes)}
+          </div>
+        </div>
+
+        <div style={{ padding: "12px 16px 18px", display: "flex", justifyContent: "center", borderTop: "1px solid color-mix(in srgb, var(--cream) 14%, transparent)" }}>
+          <button className="btn" onClick={onClose} style={{ minWidth: 90, height: 32, justifyContent: "center" }}>OK</button>
         </div>
       </div>
     </div>

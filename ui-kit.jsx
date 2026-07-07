@@ -193,20 +193,22 @@ function Meter({ level, height = 120, width = 8, stereo = false }) {
 }
 
 /* ---------- solo / mute buttons ---------- */
-function SoloBtn({ on, onClick, size = 24 }) {
-  return <button onClick={onClick} title="Solo" style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
+function SoloBtn({ on, onClick, size = 24, disabled = false }) {
+  return <button onClick={disabled ? undefined : onClick} disabled={disabled} title={disabled ? "Solo unavailable until audio is re-linked" : "Solo"} style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
     background: on ? "var(--amber)" : "var(--surface2)", color: on ? "#241a0a" : "var(--dim)",
-    border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"), boxShadow: on ? "0 0 10px rgba(232,176,75,.5)" : "none" }}>S</button>;
+    border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"), boxShadow: on ? "0 0 10px rgba(232,176,75,.5)" : "none",
+    opacity: disabled ? .38 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>S</button>;
 }
-function MuteBtn({ on, auto, onClick, size = 24 }) {
+function MuteBtn({ on, auto, onClick, size = 24, disabled = false }) {
   // `auto` = implicitly muted because another track is soloed (display only)
   const active = on || auto;
-  return <button onClick={onClick} title={!on && auto ? "Muted (Solo active elsewhere)" : "Mute"}
+  return <button onClick={disabled ? undefined : onClick} disabled={disabled} title={disabled ? "Mute unavailable until audio is re-linked" : (!on && auto ? "Muted (Solo active elsewhere)" : "Mute")}
     style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
     background: active ? "var(--red)" : "var(--surface2)",
     color: active ? "#fff" : "var(--dim)",
     border: "1px solid " + (active ? "var(--red)" : "var(--line-strong)"),
-    boxShadow: active ? "0 0 10px rgba(217,106,78,.5)" : "none" }}>M</button>;
+    boxShadow: active ? "0 0 10px rgba(217,106,78,.5)" : "none",
+    opacity: disabled ? .38 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>M</button>;
 }
 
 /* ---------- segmented toggle ---------- */

@@ -1,19 +1,22 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform:      process.platform,
 
   // File system
   openFolder:     ()              => ipcRenderer.invoke('open-folder'),
+  scanAudioFolder:(folderPath)    => ipcRenderer.invoke('scan-audio-folder', folderPath),
   selectFiles:    ()              => ipcRenderer.invoke('select-files'),
+  getPathForFile: (file)          => webUtils && webUtils.getPathForFile ? webUtils.getPathForFile(file) : (file && file.path) || '',
   readAudioFile:  (filePath)      => ipcRenderer.invoke('read-audio-file', filePath),
   writeTempAudio: (wavBuf, fileName) => ipcRenderer.invoke('write-temp-audio', wavBuf, fileName),
 
   // Project persistence
   saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),
   openProject:    ()              => ipcRenderer.invoke('open-project'),
+  readProjectFile:(filePath)      => ipcRenderer.invoke('read-project-file', filePath),
 
   // MP3 encoding via ffmpeg (opts.cover = { data: base64, mime } for album art)
   encodeMp3:      (wavBuf, opts)  => ipcRenderer.invoke('encode-mp3', wavBuf, opts),

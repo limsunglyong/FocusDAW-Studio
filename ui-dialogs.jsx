@@ -835,8 +835,8 @@ function AudioDeviceSection() {
   };
 
   return (
-    <div style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>Audio Output Device</div>
+      <div style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>■ Audio Output Device</div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "8px 0" }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cream)" }}>Output Device</div>
@@ -919,8 +919,8 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
           <button className="iconbtn" onClick={onClose} style={{ fontSize: 18, lineHeight: 1 }}>×</button>
         </div>
         {/* body */}
-        <div style={{ padding: "20px 22px 24px", overflowY: "auto" }}>
-          <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 14 }}>Color Theme</div>
+        <div className="theme-scroll" style={{ padding: "20px 22px 24px", overflowY: "auto" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 14 }}>■ Color Theme</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 26 }}>
             {THEMES.map(t => (
               <ThemeSwatch key={t.id} theme={t} active={currentTheme === t.id} onClick={() => onThemeChange(t.id)} />
@@ -928,7 +928,7 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
           </div>
 
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 18 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>Mixer Console Window</div>
+            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>■ Mixer Console Window</div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cream)" }}>Reset Window Bounds</div>
