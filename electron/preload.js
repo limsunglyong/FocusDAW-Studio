@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPathForFile: (file)          => webUtils && webUtils.getPathForFile ? webUtils.getPathForFile(file) : (file && file.path) || '',
   readAudioFile:  (filePath)      => ipcRenderer.invoke('read-audio-file', filePath),
   writeTempAudio: (wavBuf, fileName) => ipcRenderer.invoke('write-temp-audio', wavBuf, fileName),
+  saveBounceAudio: (wavBuf, projectPath, fileName, sourcePath) => ipcRenderer.invoke('save-bounce-audio', wavBuf, projectPath, fileName, sourcePath),
 
   // Project persistence
   saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),

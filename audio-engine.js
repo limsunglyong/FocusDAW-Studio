@@ -421,6 +421,7 @@
         sampleRate: s.sampleRate || null,
         channels: s.channels || null,
         needsAudio: !!s.needsAudio,
+        sourceTrackIds: Array.isArray(s.sourceTrackIds) ? [...s.sourceTrackIds] : [],
       }));
     },
     _serializedClips(track) {
@@ -840,6 +841,49 @@
       this.duration = Math.max(this.duration, this._projectClipDuration());
       this._startHotAddedTrack(t);
       return t;
+    },
+
+    addBounceTrack(name, buffer, options = {}) {
+      this.init();
+      if (!buffer) throw new Error("Bounce buffer is empty.");
+      const fileName = options.fileName || `${name || "Bounce"}.wav`;
+      const filePath = options.filePath || null;
+      const displayName = options.displayName || this._displayName(name || fileName) || "Bounce";
+      const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
+      const color = options.color || palette[this.tracks.length % palette.length];
+      const sourceId = this._sourceId();
+      const source = {
+        id: sourceId,
+        filePath,
+        fileName,
+        duration: buffer.duration,
+        sampleRate: buffer.sampleRate,
+        channels: buffer.numberOfChannels,
+        needsAudio: false,
+        sourceTrackIds: Array.isArray(options.sourceTrackIds) ? [...options.sourceTrackIds] : [],
+      };
+      const t = this._addTrack({
+        name: displayName,
+        type: "audio",
+        color,
+        buffer,
+        peaks: computePeakLevels(buffer),
+        fileName,
+        filePath,
+        kind: "bounce",
+        lockedToZero: false,
+        sources: [source],
+        clips: [this._normalizeClip({ start: 0, end: buffer.duration, offset: 0 }, sourceId, buffer.duration)],
+      });
+      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this._startHotAddedTrack(t);
+      return t;
+    },
+
+    async mergeTracks(trackIds, onProgress, options = {}) {
+      const ids = Array.isArray(trackIds) ? trackIds.filter(Boolean) : [];
+      if (ids.length < 2) throw new Error("Select at least two tracks to merge.");
+      return this.renderMix(onProgress, { ...options, trackIds: ids, forceLocal: true });
     },
 
     _anySolo() { return this.tracks.some((t) => t.params.solo && !t.needsAudio && t.buffer); },
@@ -1565,6 +1609,7 @@
 
     getSnapshot() {
       return {
+        duration: this.duration,
         master: {
           volume: this.master.volume,
           reverb: this.master.reverb,
@@ -1578,8 +1623,16 @@
         tempo: { ...this.tempo },
         tracks: this.tracks.map(t => ({
           id: t.id,
+          name: t.name,
+          type: t.type,
+          color: t.color,
           kind: t.kind || "file",
           lockedToZero: t.lockedToZero !== undefined ? !!t.lockedToZero : true,
+          isDemo: !!t.isDemo,
+          fileName: t.fileName || null,
+          filePath: t.filePath || null,
+          needsAudio: !!t.needsAudio,
+          buffer: t.buffer || null,
           sources: this._serializedSources(t),
           params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })) },
           clips: this._serializedClips(t),
@@ -1617,19 +1670,64 @@
           variKey: !!snap.tempo.variKey,
         };
       }
-      for (const st of snap.tracks) {
-        const t = this.tracks.find(x => x.id === st.id);
-        if (!t) continue;
-        const { automation, ...rest } = st.params;
+      const snapTracks = Array.isArray(snap.tracks) ? snap.tracks : [];
+      const snapIds = new Set(snapTracks.map(st => st && st.id).filter(Boolean));
+      this.tracks.slice().forEach((t) => {
+        if (!snapIds.has(t.id)) this.removeTrack(t.id);
+      });
+      for (const st of snapTracks) {
+        let t = this.tracks.find(x => x.id === st.id);
+        if (!t) {
+          const source = Array.isArray(st.sources) && st.sources[0] ? st.sources[0] : null;
+          const sourceDuration = (source && source.duration) || (st.buffer ? st.buffer.duration : this.duration);
+          const buffer = st.buffer || ctx.createBuffer(1, Math.max(1, Math.ceil(sourceDuration * ctx.sampleRate)), ctx.sampleRate);
+          t = this._addTrack({
+            name: st.name || st.fileName || "Track",
+            type: st.type || "audio",
+            color: st.color,
+            buffer,
+            kind: st.kind || "file",
+            lockedToZero: st.lockedToZero,
+            sources: Array.isArray(st.sources) ? st.sources.map(s => ({ ...s })) : null,
+            clips: Array.isArray(st.clips) ? st.clips.map(c => ({ ...c })) : null,
+            takes: Array.isArray(st.takes) ? st.takes.map(take => ({ ...take })) : [],
+            isDemo: !!st.isDemo,
+            fileName: st.fileName || (source && source.fileName) || null,
+            filePath: st.filePath || (source && source.filePath) || null,
+            needsAudio: !!st.needsAudio,
+          });
+          t.id = st.id;
+        } else {
+          if (st.name !== undefined) t.name = st.name;
+          if (st.type !== undefined) t.type = st.type;
+          if (st.color !== undefined) t.color = st.color;
+          if (st.fileName !== undefined) t.fileName = st.fileName;
+          if (st.filePath !== undefined) t.filePath = st.filePath;
+          if (st.needsAudio !== undefined) t.needsAudio = !!st.needsAudio;
+          if (st.buffer) {
+            t.buffer = st.buffer;
+            const peaks = computePeakLevels(st.buffer);
+            t.peaks = peaks.fine;
+            t.peaksMedium = peaks.medium;
+            t.peaksCoarse = peaks.coarse;
+            t.peakAmp = maxAbsPeak(peaks.coarse);
+          }
+        }
+        const { automation, ...rest } = st.params || {};
         Object.assign(t.params, rest);
-        t.params.automation = automation.map(p => ({ ...p }));
+        t.params.automation = Array.isArray(automation) ? automation.map(p => ({ ...p })) : defaultAutomation(t.type);
         if (st.kind) t.kind = st.kind;
         if (st.lockedToZero !== undefined) t.lockedToZero = !!st.lockedToZero;
         if (Array.isArray(st.sources)) t.sources = st.sources.map(s => ({ ...s }));
         if (Array.isArray(st.takes)) t.takes = st.takes.map(take => ({ ...take }));
-        t.clips = st.clips.map(c => ({ ...c }));
+        if (Array.isArray(st.clips)) t.clips = st.clips.map(c => ({ ...c }));
         this._normalizeTrackLayout(t);
       }
+      if (snapTracks.length) {
+        const order = new Map(snapTracks.map((st, i) => [st.id, i]));
+        this.tracks.sort((a, b) => (order.get(a.id) ?? 999999) - (order.get(b.id) ?? 999999));
+      }
+      this.duration = Math.max(snap.duration || DURATION, this._projectClipDuration());
       this._applyMix();
       if (this.isPlaying) this._scheduleAutomationSoon();
     },
@@ -2136,6 +2234,11 @@
     // ---- offline render to WAV (for export) ----
     async renderMix(onProgress, options = {}) {
       this.init();
+      const trackIds = Array.isArray(options.trackIds) ? options.trackIds.filter(Boolean) : null;
+      const selectedTrackSet = trackIds && trackIds.length ? new Set(trackIds) : null;
+      const tracksForRender = selectedTrackSet
+        ? this.tracks.filter((t) => selectedTrackSet.has(t.id))
+        : this.tracks;
       // Render at the requested target sample rate (export dialog), not the system
       // device rate. Source buffers are auto-resampled by OfflineAudioContext.
       const reqSr = options.sampleRate || ctx.sampleRate;
@@ -2145,8 +2248,11 @@
       const graphRate = preservePitch ? 1 : renderRate;
       const renderDuration = this.duration / graphRate;
       const targetDuration = this.duration / renderRate;
-      const cacheKey = this._renderCacheSignature(sr, options.normalize, renderRate, preservePitch);
-      if (this._renderCacheKey === cacheKey && this._renderCacheBuffer) {
+      const hasRenderRange = options.range && Number.isFinite(options.range.start) && Number.isFinite(options.range.end) && options.range.end > options.range.start;
+      const outputChannels = (options.channels === 1 || options.channels === "mono") ? 1 : 2;
+      const cacheable = !selectedTrackSet && !hasRenderRange && outputChannels === 2;
+      const cacheKey = cacheable ? this._renderCacheSignature(sr, options.normalize, renderRate, preservePitch) : null;
+      if (cacheable && this._renderCacheKey === cacheKey && this._renderCacheBuffer) {
         if (onProgress) onProgress(1);
         return this._renderCacheBuffer;
       }
@@ -2279,15 +2385,16 @@
       if (fi > 0) fade.gain.linearRampToValueAtTime(1, fi);
       if (fo > 0) { fade.gain.setValueAtTime(1, renderDuration - fo); fade.gain.linearRampToValueAtTime(0, renderDuration); }
 
-      const anySolo = this._anySolo();
+      const anySolo = options.respectSolo === false ? false : this._anySolo();
       // Pitch-shift (Vari Key) for the offline render. Baked into the source buffer so
       // the exported file matches realtime playback. Tempo is still applied by graphRate
       // (playbackRate) below; for the common Vari-Key-only case graphRate is 1 so the
       // shift is exact.
       const exportSemis = this._exportKeyShiftSemis();
-      this.tracks.forEach((t) => {
+      tracksForRender.forEach((t) => {
+        if (!t || !t.buffer || t.needsAudio) return;
         const p = t.params;
-        const audible = p.mute ? 0 : (anySolo && !p.solo ? 0 : 1);
+        const audible = options.respectMute === false ? 1 : (p.mute ? 0 : (anySolo && !p.solo ? 0 : 1));
         let srcBuffer = t.buffer;
         if (exportSemis !== 0 && t.buffer) {
           const kp = t._keyShiftPreview;
@@ -2348,8 +2455,30 @@
       if (preservePitch) {
         result = timeStretchBuffer(off, result, renderRate, Math.max(1, Math.ceil(targetDuration * sr)));
       }
-      this._renderCacheKey = cacheKey;
-      this._renderCacheBuffer = result;
+      if (hasRenderRange) {
+        const startFrame = Math.max(0, Math.floor((options.range.start / Math.max(0.001, renderRate)) * result.sampleRate));
+        const endFrame = Math.min(result.length, Math.ceil((options.range.end / Math.max(0.001, renderRate)) * result.sampleRate));
+        const outLen = Math.max(1, endFrame - startFrame);
+        const ranged = off.createBuffer(result.numberOfChannels, outLen, result.sampleRate);
+        for (let c = 0; c < result.numberOfChannels; c++) {
+          ranged.getChannelData(c).set(result.getChannelData(c).subarray(startFrame, endFrame));
+        }
+        result = ranged;
+      }
+      if (outputChannels === 1 && result.numberOfChannels > 1) {
+        const mono = off.createBuffer(1, result.length, result.sampleRate);
+        const dst = mono.getChannelData(0);
+        const channels = result.numberOfChannels;
+        for (let c = 0; c < channels; c++) {
+          const src = result.getChannelData(c);
+          for (let i = 0; i < result.length; i++) dst[i] += src[i] / channels;
+        }
+        result = mono;
+      }
+      if (cacheable) {
+        this._renderCacheKey = cacheKey;
+        this._renderCacheBuffer = result;
+      }
       return result;
     },
   };

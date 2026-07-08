@@ -542,6 +542,14 @@
       return track;
     },
 
+    addBounceTrack(name, buffer, options = {}) {
+      const track = LocalDAW.addBounceTrack(name, buffer, options);
+      if (this.isNative && track) {
+        syncTrackToNative(track);
+      }
+      return track;
+    },
+
     addDemoTracks() {
       LocalDAW.addDemoTracks();
       if (this.isNative) {
@@ -609,6 +617,23 @@
         if (fxWasBypassed && !LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
         nativeState.offset = 0;
         nativeState.isPlaying = false;
+      }
+    },
+
+    applySnapshot(snap) {
+      const wasNative = this.isNative;
+      if (wasNative) resetNativeProjectState();
+      LocalDAW.applySnapshot(snap);
+      if (wasNative) {
+        syncTempoKeyToNative();
+        syncMasterToNative();
+        LocalDAW.tracks.forEach(track => {
+          if (track && track.buffer && !track.needsAudio) syncTrackToNative(track);
+        });
+        sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+        if (LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
+        maybeActivateNativeOutput();
+        if (!nativeOutputActive) armHandoverFallback();
       }
     },
 
@@ -686,6 +711,10 @@
           fadeOut: fadeInOut(m.fadeOut)
         });
       });
+    },
+
+    async mergeTracks(trackIds, onProgress, options = {}) {
+      return LocalDAW.mergeTracks(trackIds, onProgress, { ...options, forceLocal: true });
     }
   };
 

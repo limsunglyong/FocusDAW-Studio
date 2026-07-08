@@ -332,7 +332,7 @@ function FxTag({ label, color, on, onClick }) {
   );
 }
 
-function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx }) {
+function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, selected = false, onSelect }) {
   const p = track.params;
   const noAudio = !!track.needsAudio;
   const [confirmReset, setConfirmReset] = useState(false);
@@ -366,12 +366,16 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx })
   };
   return (
     <React.Fragment>
-    <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 6,
-      background: p.solo
-        ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))"
-        : "linear-gradient(180deg,var(--surface),var(--bg2))", borderRight: "1px solid var(--line-strong)",
+    <div onMouseDown={onSelect}
+      style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 6,
+      background: selected
+        ? "linear-gradient(180deg, color-mix(in srgb, var(--surface3) 84%, var(--amber) 16%), color-mix(in srgb, var(--bg2) 88%, var(--amber) 12%))"
+        : p.solo
+          ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))"
+          : "linear-gradient(180deg,var(--surface),var(--bg2))", borderRight: "1px solid var(--line-strong)",
       borderBottom: "1px solid var(--line)", padding: pad, height: laneH, minHeight: laneH,
-      overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: compact ? "space-between" : "flex-start", gap }}>
+      overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: compact ? "space-between" : "flex-start", gap,
+      boxShadow: selected ? "inset 4px 0 0 var(--amber)" : "none" }}>
       <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 }}>
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
@@ -495,7 +499,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx })
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -535,10 +539,12 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
 
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
-      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} laneH={laneH} onFocusFx={onFocusFx} />
-      <div onMouseDown={laneClick} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
+      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} laneH={laneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} />
+      <div onMouseDown={(e) => { if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
-          background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
+          background: selected
+            ? "linear-gradient(90deg, rgba(232,176,75,.08), transparent 38%)"
+            : idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
           // isolate: make the lane its own stacking context so the absolutely-positioned playhead
           // (and any overlay) can never paint above the sibling sticky TrackHeader when it scrolls
           // left of the viewport (seek-back + time zoom-in). Header (zIndex 6) sits above the lane.
@@ -576,11 +582,16 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
 }
 
 /* ---------- collapsible file-track group ---------- */
-function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, playhead }) {
+function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, playhead, stats, selectedCount = 0, onMergeSelected }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / Math.max(0.001, DAW.duration)) * laneW;
   const label = collapsed ? "Expand file tracks" : "Collapse file tracks";
   const rowH = 38;
+  const mutedCount = stats && stats.mutedCount || 0;
+  const soloCount = stats && stats.soloCount || 0;
+  const audibleCount = stats && stats.audibleCount || 0;
+  const groupLevel = stats && Number.isFinite(stats.level) ? stats.level : 0;
+  const canMerge = selectedCount >= 2;
 
   return (
     <div style={{ display: "flex", minWidth: "min-content", height: rowH }}>
@@ -602,13 +613,20 @@ function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, pl
           <span style={{ fontSize: 11, fontWeight: 750, letterSpacing: ".08em", textTransform: "uppercase" }}>
             File Tracks
           </span>
-          <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 600 }}>
-            {count} {count === 1 ? "track" : "tracks"}
+          <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
+            {count} trk · {audibleCount} active
           </span>
         </span>
-        <span style={{ marginLeft: "auto", fontSize: 9, color: "var(--dim)", letterSpacing: ".04em",
-          textTransform: "uppercase" }}>
-          {collapsed ? "Show" : "Hide"}
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+          {soloCount > 0 && <span title={`${soloCount} soloed file track${soloCount === 1 ? "" : "s"}`}
+            style={{ minWidth: 18, height: 17, borderRadius: 4, display: "grid", placeItems: "center",
+              background: "var(--amber)", color: "var(--accent-fg)", fontSize: 9, fontWeight: 800 }}>S{soloCount > 1 ? soloCount : ""}</span>}
+          {mutedCount > 0 && <span title={`${mutedCount} muted file track${mutedCount === 1 ? "" : "s"}`}
+            style={{ minWidth: 18, height: 17, borderRadius: 4, display: "grid", placeItems: "center",
+              background: "var(--red)", color: "#fff", fontSize: 9, fontWeight: 800 }}>M{mutedCount > 1 ? mutedCount : ""}</span>}
+          <span style={{ fontSize: 9, color: "var(--dim)", letterSpacing: ".04em", textTransform: "uppercase" }}>
+            {collapsed ? "Show" : "Hide"}
+          </span>
         </span>
       </button>
       <button type="button" onClick={onToggle} aria-label={label} tabIndex={-1}
@@ -638,6 +656,35 @@ function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, pl
           background: collapsed ? "color-mix(in srgb, var(--bg2) 78%, transparent)" : "transparent",
           textShadow: collapsed ? "0 1px 3px var(--bg)" : "none" }}>
           {collapsed ? `${count} file ${count === 1 ? "track" : "tracks"} hidden` : "File-based tracks"}
+        </span>
+        <span style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", gap: 6,
+          fontSize: 9.5, fontWeight: 650, color: "var(--cream-2)" }}>
+          <span style={{ width: 46, height: 6, borderRadius: 999, overflow: "hidden",
+            background: "rgba(0,0,0,.32)", border: "1px solid var(--line)" }}>
+            <span style={{ display: "block", width: `${Math.max(0, Math.min(1, groupLevel)) * 100}%`,
+              height: "100%", borderRadius: 999, background: "var(--green)", boxShadow: "0 0 5px var(--green)" }} />
+          </span>
+        </span>
+        <span onClick={(e) => { e.stopPropagation(); if (canMerge && onMergeSelected) onMergeSelected(); }}
+          title={canMerge ? "Merge selected file tracks" : "Select two or more file tracks"}
+          aria-disabled={!canMerge}
+          style={{ position: "relative", zIndex: 4, marginLeft: "auto", height: 22, padding: "0 9px",
+            borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+            fontSize: 9.5, fontWeight: 750, letterSpacing: ".04em", textTransform: "uppercase",
+            background: canMerge ? "var(--amber-soft)" : "rgba(255,255,255,.035)",
+            color: canMerge ? "var(--amber)" : "var(--dim)",
+            border: "1px solid " + (canMerge ? "var(--amber-deep)" : "var(--line-strong)"),
+            cursor: canMerge ? "pointer" : "default" }}>
+          {selectedCount > 0 && <span className="mono" style={{ fontSize: 9, minWidth: 12, textAlign: "center" }}>
+            {selectedCount}
+          </span>}
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"
+            style={{ flex: "0 0 auto", color: canMerge ? "var(--amber)" : "var(--dim)" }}>
+            <path d="M3 1.8h6.4L13 5.4v8.8H3z" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
+            <path d="M9.4 1.8v3.6H13" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
+            <path d="M5.3 7.8h5.2M5.3 10.2h5.2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" opacity=".72" />
+          </svg>
+          Merge Tracks...
         </span>
         <span style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5,
           background: "var(--amber)", opacity: .8, pointerEvents: "none", zIndex: 3 }} />

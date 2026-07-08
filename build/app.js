@@ -1271,6 +1271,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       return false;
     }
   });
+  const [selectedFileTrackIds, setSelectedFileTrackIds] = useState([]);
+  const lastSelectedFileTrackId = useRef(null);
+  const [mergeTracksNotice, setMergeTracksNotice] = useState(false);
+  const [mergeTracksName, setMergeTracksName] = useState("");
+  const [mergeTracksOptions, setMergeTracksOptions] = useState({ channels: "stereo", originals: "mute" });
+  const [mergeTracksBusy, setMergeTracksBusy] = useState(false);
   const [showMixer, setShowMixer] = useState(false);
   const [showAdvancedPan, setShowAdvancedPan] = useState(false);
   const mixerChannelRef = useRef(null);
@@ -1549,6 +1555,31 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
   const fileTracks = DAW.tracks.filter((t) => !t.kind || t.kind === "file" || t.kind === "bounce");
   const nonFileTracks = DAW.tracks.filter((t) => t.kind && t.kind !== "file" && t.kind !== "bounce");
+  const fileTrackIdSet = useMemo(() => new Set(fileTracks.map((t) => t.id)), [fileTracks.map((t) => t.id).join("|")]);
+  const selectedFileTrackSet = useMemo(() => new Set(selectedFileTrackIds), [selectedFileTrackIds.join("|")]);
+  const selectedFileTracks = fileTracks.filter((t) => selectedFileTrackSet.has(t.id));
+  const getDefaultMergeTracksName = useCallback((tracks = selectedFileTracks) => {
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
+    const firstTrackBase = tracks[0] && (tracks[0].name || tracks[0].fileName);
+    const baseName = safeFileBase(projectName && projectName !== DEFAULT_PROJECT_NAME ? projectName : firstTrackBase || DEFAULT_PROJECT_NAME);
+    return `${baseName} Bounce ${stamp}`;
+  }, [projectName, selectedFileTracks]);
+  const fileTrackStats = (() => {
+    const anySolo = DAW._anySolo ? DAW._anySolo() : false;
+    let mutedCount = 0;
+    let soloCount = 0;
+    let audibleCount = 0;
+    let level = 0;
+    fileTracks.forEach((track) => {
+      const p = track.params || {};
+      if (p.mute) mutedCount += 1;
+      if (p.solo) soloCount += 1;
+      const audible = !!(track.buffer && !track.needsAudio && !p.mute && !(anySolo && !p.solo));
+      if (audible) audibleCount += 1;
+      level = Math.max(level, DAW.getTrackLevel(track.id) || 0);
+    });
+    return { mutedCount, soloCount, audibleCount, level };
+  })();
   const visibleTrackCount = nonFileTracks.length + (fileTracksCollapsed ? 0 : fileTracks.length);
   const arrangeNode = arrangeRef.current;
   const rulerH = 30;
@@ -1575,6 +1606,51 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       return next;
     });
   }, []);
+  useEffect(() => {
+    setSelectedFileTrackIds((ids) => ids.filter((id) => fileTrackIdSet.has(id)));
+    if (lastSelectedFileTrackId.current && !fileTrackIdSet.has(lastSelectedFileTrackId.current)) {
+      lastSelectedFileTrackId.current = null;
+    }
+  }, [fileTrackIdSet]);
+  const selectFileTrack = useCallback((trackId, e) => {
+    if (!fileTrackIdSet.has(trackId)) return;
+    const ctrl = !!(e && (e.ctrlKey || e.metaKey));
+    const shift = !!(e && e.shiftKey);
+    if (e && e.target && e.target.closest && e.target.closest("button,input,select,textarea") && !ctrl && !shift) return;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const orderedIds = fileTracks.map((track) => track.id);
+    setSelectedFileTrackIds((current) => {
+      const anchorId = lastSelectedFileTrackId.current && fileTrackIdSet.has(lastSelectedFileTrackId.current) ? lastSelectedFileTrackId.current : current.find((id) => fileTrackIdSet.has(id));
+      if (shift && anchorId) {
+        const from = orderedIds.indexOf(anchorId);
+        const to = orderedIds.indexOf(trackId);
+        if (from >= 0 && to >= 0) {
+          const [start, end] = from < to ? [from, to] : [to, from];
+          const range = orderedIds.slice(start, end + 1);
+          return ctrl ? Array.from(/* @__PURE__ */ new Set([...current, ...range])) : range;
+        }
+      }
+      if (ctrl) {
+        return current.includes(trackId) ? current.filter((id) => id !== trackId) : [...current, trackId];
+      }
+      if (current.length === 1 && current[0] === trackId) {
+        lastSelectedFileTrackId.current = null;
+        return [];
+      }
+      return [trackId];
+    });
+    if (!shift) lastSelectedFileTrackId.current = trackId;
+  }, [fileTracks, fileTrackIdSet]);
+  const updateMergeTracksOption = useCallback((key, value) => {
+    setMergeTracksOptions((current) => ({ ...current, [key]: value }));
+  }, []);
+  const openMergeTracksDialog = useCallback(() => {
+    setMergeTracksName(getDefaultMergeTracksName());
+    setMergeTracksNotice(true);
+  }, [getDefaultMergeTracksName]);
   const updateTimelineView = useCallback(() => {
     const el = arrangeRef.current;
     if (!el) return;
@@ -1615,6 +1691,58 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     redoStack.current = [];
     if (onUndoStateChange) onUndoStateChange({ canUndo: true, canRedo: false });
   }, [onUndoStateChange]);
+  const renderMergedTracks = useCallback(async () => {
+    const tracks = selectedFileTracks.filter((track) => track && track.buffer && !track.needsAudio);
+    if (tracks.length < 2 || mergeTracksBusy) return;
+    const selectedIds = tracks.map((track) => track.id);
+    const firstTrackPath = tracks[0] && (tracks[0].filePath || tracks[0].sources && tracks[0].sources[0] && tracks[0].sources[0].filePath || null);
+    const bounceName = (mergeTracksName || "").trim() || getDefaultMergeTracksName(tracks);
+    const wavName = `${safeFileBase(bounceName)}.wav`;
+    setMergeTracksBusy(true);
+    setMergeTracksNotice(false);
+    setLoading({ active: true, total: 100, done: 0, label: "Rendering bounce..." });
+    try {
+      const rendered = await DAW.mergeTracks(selectedIds, (p) => {
+        setLoading({ active: true, total: 100, done: Math.round(Math.max(0, Math.min(1, p || 0)) * 100), label: "Rendering bounce..." });
+      }, {
+        sampleRate: 44100,
+        channels: mergeTracksOptions.channels === "mono" ? 1 : 2,
+        normalize: true,
+        respectMute: true,
+        respectSolo: false,
+        forceLocal: true
+      });
+      let saved = null;
+      if (window.electronAPI && window.electronAPI.saveBounceAudio && (projectPath || firstTrackPath)) {
+        const wavBlob = audioBufferToWav(rendered);
+        const wavBuffer = await wavBlob.arrayBuffer();
+        saved = await window.electronAPI.saveBounceAudio(wavBuffer, projectPath || null, wavName, firstTrackPath || null);
+      }
+      pushUndo();
+      const bounceTrack = DAW.addBounceTrack(bounceName, rendered, {
+        fileName: saved && saved.fileName || wavName,
+        filePath: saved && saved.path || null,
+        sourceTrackIds: selectedIds
+      });
+      if (mergeTracksOptions.originals === "mute") {
+        selectedIds.forEach((id) => DAW.setTrackParam(id, "mute", true));
+      } else if (mergeTracksOptions.originals === "delete") {
+        selectedIds.forEach((id) => DAW.removeTrack(id));
+      }
+      lastSelectedFileTrackId.current = bounceTrack.id;
+      setSelectedFileTrackIds([bounceTrack.id]);
+      saveRecentProject(projectName, projectPath);
+      force((n) => n + 1);
+      setLoading({ active: true, total: 100, done: 100, label: saved && saved.path ? "Saved to Bounces." : "Bounce track created." });
+      setTimeout(() => setLoading(null), 350);
+    } catch (err) {
+      console.error("Merge Tracks failed:", err);
+      setLoading(null);
+      window.alert(`Merge Tracks failed: ${err && err.message ? err.message : err}`);
+    } finally {
+      setMergeTracksBusy(false);
+    }
+  }, [selectedFileTracks, mergeTracksBusy, mergeTracksOptions, mergeTracksName, getDefaultMergeTracksName, projectPath, pushUndo]);
   const setProjectBpmFromInput = useCallback((value) => {
     const next = Number(value);
     if (!Number.isFinite(next)) return;
@@ -2476,8 +2604,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     force((n) => n + 1);
   }, [pushUndo, projectName, projectPath]);
   const removeTrack = (id) => {
-    pushUndo();
+    const deletingLastTrack = DAW.tracks.length === 1 && DAW.tracks[0] && DAW.tracks[0].id === id;
+    if (deletingLastTrack) {
+      undoStack.current = [];
+      redoStack.current = [];
+      lastUndoKey.current = null;
+      if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
+    } else {
+      pushUndo();
+    }
     DAW.removeTrack(id);
+    setSelectedFileTrackIds((ids) => ids.filter((trackId) => trackId !== id));
+    if (deletingLastTrack) {
+      fitTimelineRef.current = true;
+      updateTimeMin();
+    }
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
@@ -2695,7 +2836,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         collapsed: fileTracksCollapsed,
         onToggle: toggleFileTracks,
         pxPerSec,
-        playhead
+        playhead,
+        stats: fileTrackStats,
+        selectedCount: selectedFileTracks.length,
+        onMergeSelected: openMergeTracksDialog
       }
     ), !fileTracksCollapsed && fileTracks.map((t) => {
       const i = DAW.tracks.findIndex((track) => track.id === t.id);
@@ -2717,6 +2861,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             force((n) => n + 1);
           },
           onFocusFx: focusMixerFx,
+          selected: selectedFileTrackSet.has(t.id),
+          onSelect: (e) => selectFileTrack(t.id, e),
           tool,
           onSplit: handleSplit,
           onJoin: handleJoin,
@@ -2807,7 +2953,70 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         }
       ))
     )), /* @__PURE__ */ React.createElement("div", { style: { height: 40 } }))
-  ), !empty && vScroll.up && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow up", onClick: () => scrollArrangeV(-1), title: "Scroll up", "aria-label": "Scroll tracks up" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 15 12 7 20 15", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), !empty && vScroll.down && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow down", onClick: () => scrollArrangeV(1), title: "Scroll down", "aria-label": "Scroll tracks down" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 9 12 17 20 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), confirmDeleteAll && /* @__PURE__ */ React.createElement(
+  ), !empty && vScroll.up && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow up", onClick: () => scrollArrangeV(-1), title: "Scroll up", "aria-label": "Scroll tracks up" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 15 12 7 20 15", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), !empty && vScroll.down && /* @__PURE__ */ React.createElement("button", { className: "arrange-scroll-arrow down", onClick: () => scrollArrangeV(1), title: "Scroll down", "aria-label": "Scroll tracks down" }, /* @__PURE__ */ React.createElement("span", { className: "arrange-scroll-disc" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("polyline", { points: "4 9 12 17 20 9", fill: "none", stroke: "currentColor", strokeWidth: "2.4", strokeLinecap: "round", strokeLinejoin: "round" })))), showExport && /* @__PURE__ */ React.createElement(ExportDialog, { projectName, onClose: () => setShowExport(false) }), mergeTracksNotice && /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      style: { position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" },
+      onMouseDown: () => {
+        if (!mergeTracksBusy) setMergeTracksNotice(false);
+      }
+    },
+    /* @__PURE__ */ React.createElement("div", { onMouseDown: (e) => e.stopPropagation(), style: { width: 460, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(Icon, { name: "mixer", size: 17, style: { color: "var(--amber)" } }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, fontSize: 14 } }, "Merge Tracks")), /* @__PURE__ */ React.createElement("div", { style: { padding: "18px 20px", display: "grid", gap: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 12px", borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--line)", color: "var(--cream-2)", fontSize: 12.5, lineHeight: 1.5 } }, selectedFileTracks.map((track) => track.name).join(", ")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "110px 1fr", gap: "12px 14px", alignItems: "center", fontSize: 12.5 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "var(--muted)", fontWeight: 600 } }, "Track Name"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        value: mergeTracksName,
+        disabled: mergeTracksBusy,
+        onChange: (e) => setMergeTracksName(e.target.value),
+        style: { width: "100%", minWidth: 0, height: 32, borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--cream)", padding: "0 10px", outline: "none", fontSize: 12.5 },
+        onFocus: (e) => e.target.select()
+      }
+    ), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--muted)", fontWeight: 600 } }, "Channels"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: mergeTracksOptions.channels === "stereo" ? "btn primary" : "btn",
+        disabled: mergeTracksBusy,
+        onClick: () => updateMergeTracksOption("channels", "stereo"),
+        style: { padding: "7px 12px" }
+      },
+      "Stereo"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: mergeTracksOptions.channels === "mono" ? "btn primary" : "btn",
+        disabled: mergeTracksBusy,
+        onClick: () => updateMergeTracksOption("channels", "mono"),
+        style: { padding: "7px 12px" }
+      },
+      "Mono"
+    )), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--muted)", fontWeight: 600 } }, "Originals"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: mergeTracksOptions.originals === "mute" ? "btn primary" : "btn",
+        disabled: mergeTracksBusy,
+        onClick: () => updateMergeTracksOption("originals", "mute"),
+        style: { padding: "7px 12px" }
+      },
+      "Keep + Mute"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: mergeTracksOptions.originals === "keep" ? "btn primary" : "btn",
+        disabled: mergeTracksBusy,
+        onClick: () => updateMergeTracksOption("originals", "keep"),
+        style: { padding: "7px 12px" }
+      },
+      "Keep"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: mergeTracksOptions.originals === "delete" ? "btn primary" : "btn",
+        disabled: mergeTracksBusy,
+        onClick: () => updateMergeTracksOption("originals", "delete"),
+        style: { padding: "7px 12px" }
+      },
+      "Delete"
+    ))), /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--line)", paddingTop: 14, display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 2 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", disabled: mergeTracksBusy, onClick: () => setMergeTracksNotice(false) }, "Cancel"), /* @__PURE__ */ React.createElement("button", { className: "btn primary", disabled: mergeTracksBusy || selectedFileTracks.length < 2, onClick: renderMergedTracks }, mergeTracksBusy ? "Rendering..." : "Create Bounce"))))
+  ), confirmDeleteAll && /* @__PURE__ */ React.createElement(
     "div",
     {
       style: { position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" },

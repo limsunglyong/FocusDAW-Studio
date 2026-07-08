@@ -363,7 +363,7 @@ function FxTag({ label, color, on, onClick }) {
     label
   );
 }
-function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx }) {
+function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, selected = false, onSelect }) {
   const p = track.params;
   const noAudio = !!track.needsAudio;
   const [confirmReset, setConfirmReset] = useState(false);
@@ -394,174 +394,185 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx })
     opacity: noAudio ? 0.38 : 1,
     cursor: noAudio ? "not-allowed" : "pointer"
   };
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: {
-    width: HEADER_W,
-    flex: `0 0 ${HEADER_W}px`,
-    position: "sticky",
-    left: 0,
-    zIndex: 6,
-    background: p.solo ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))" : "linear-gradient(180deg,var(--surface),var(--bg2))",
-    borderRight: "1px solid var(--line-strong)",
-    borderBottom: "1px solid var(--line)",
-    padding: pad,
-    height: laneH,
-    minHeight: laneH,
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: compact ? "space-between" : "flex-start",
-    gap
-  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact }), /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: () => onParam("mute", !p.mute) })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 } }, /* @__PURE__ */ React.createElement(Icon, { name: "wave", size: compact ? 12 : 13, style: { color: "var(--muted)", flex: "0 0 auto" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 0 } }, /* @__PURE__ */ React.createElement(
-    "input",
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+    "div",
     {
-      ref: volRef,
-      type: "range",
-      min: "0",
-      max: "2.0",
-      step: "0.005",
-      value: p.volume,
-      onChange: (e) => onParam("volume", +e.target.value),
-      style: { width: "100%", display: "block" }
-    }
-  ), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: 0, transform: "translateX(-50%)", width: 1.5, height: 4, background: "var(--muted)", borderRadius: 1, pointerEvents: "none" } })), !compact && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)", width: 28, textAlign: "right", flex: "0 0 auto" } }, fmtDb(p.volume))), /* @__PURE__ */ React.createElement(
-    Knob,
-    {
-      value: p.pan,
-      min: -1,
-      max: 1,
-      size: knobSize,
-      color: "var(--pan-arc, var(--cream-2))",
-      onChange: (v) => onParam("pan", v)
-    }
-  ), /* @__PURE__ */ React.createElement(Meter, { level, height: meterH, width: 6 })), !compact && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22 } }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      title: "Volume automation on/off",
-      onClick: () => onParam("autoOn", !p.autoOn),
+      onMouseDown: onSelect,
       style: {
+        width: HEADER_W,
+        flex: `0 0 ${HEADER_W}px`,
+        position: "sticky",
+        left: 0,
+        zIndex: 6,
+        background: selected ? "linear-gradient(180deg, color-mix(in srgb, var(--surface3) 84%, var(--amber) 16%), color-mix(in srgb, var(--bg2) 88%, var(--amber) 12%))" : p.solo ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))" : "linear-gradient(180deg,var(--surface),var(--bg2))",
+        borderRight: "1px solid var(--line-strong)",
+        borderBottom: "1px solid var(--line)",
+        padding: pad,
+        height: laneH,
+        minHeight: laneH,
+        overflow: "hidden",
         display: "flex",
-        alignItems: "center",
-        gap: 5,
-        height: 22,
-        padding: "0 9px",
-        borderRadius: 6,
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: ".04em",
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-        flex: "0 0 auto",
-        background: p.autoOn ? "var(--amber-soft)" : "transparent",
-        color: p.autoOn ? "var(--amber)" : "var(--muted)",
-        border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)")
+        flexDirection: "column",
+        justifyContent: compact ? "space-between" : "flex-start",
+        gap,
+        boxShadow: selected ? "inset 4px 0 0 var(--amber)" : "none"
       }
     },
-    /* @__PURE__ */ React.createElement(Icon, { name: "auto", size: 13 }),
-    " AUTO"
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, flex: "0 0 auto" } }, /* @__PURE__ */ React.createElement(
-    FxTag,
-    {
-      label: "VRB",
-      color: "var(--violet)",
-      on: p.reverb > 1e-3,
-      onClick: onFocusFx ? () => onFocusFx(track.id, "reverb") : void 0
-    }
-  ), /* @__PURE__ */ React.createElement(
-    FxTag,
-    {
-      label: "ECHO",
-      color: "var(--blue)",
-      on: p.echo > 1e-3,
-      onClick: onFocusFx ? () => onFocusFx(track.id, "echo") : void 0
-    }
-  )), DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && /* @__PURE__ */ React.createElement(VariBpmTag, null), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), track.needsAudio ? /* @__PURE__ */ React.createElement("span", { title: "Drop the audio file here to re-link", style: {
-    fontSize: 9,
-    padding: "2px 4px",
-    borderRadius: 4,
-    fontWeight: 400,
-    letterSpacing: ".04em",
-    background: "rgba(217,106,78,.18)",
-    color: "var(--red)",
-    border: "1px solid rgba(217,106,78,.28)"
-  } }, "NO AUDIO") : /* @__PURE__ */ React.createElement("span", { className: "chip", style: { fontSize: 9, padding: "2px 4px", fontWeight: 400 } }, track.type), onRemove && /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      title: "Remove track",
-      onClick: () => setConfirmRemove(true),
-      style: {
-        width: 22,
-        height: 22,
-        borderRadius: 5,
-        display: "grid",
-        placeItems: "center",
-        background: "var(--surface2)",
-        color: "var(--cream-2)",
-        border: "1px solid var(--line-strong)",
-        fontSize: 14,
-        fontWeight: 700,
-        lineHeight: 1,
-        cursor: "pointer",
-        transition: ".12s"
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact }), /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: () => onParam("mute", !p.mute) })),
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 } }, /* @__PURE__ */ React.createElement(Icon, { name: "wave", size: compact ? 12 : 13, style: { color: "var(--muted)", flex: "0 0 auto" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 0 } }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        ref: volRef,
+        type: "range",
+        min: "0",
+        max: "2.0",
+        step: "0.005",
+        value: p.volume,
+        onChange: (e) => onParam("volume", +e.target.value),
+        style: { width: "100%", display: "block" }
+      }
+    ), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: 0, transform: "translateX(-50%)", width: 1.5, height: 4, background: "var(--muted)", borderRadius: 1, pointerEvents: "none" } })), !compact && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)", width: 28, textAlign: "right", flex: "0 0 auto" } }, fmtDb(p.volume))), /* @__PURE__ */ React.createElement(
+      Knob,
+      {
+        value: p.pan,
+        min: -1,
+        max: 1,
+        size: knobSize,
+        color: "var(--pan-arc, var(--cream-2))",
+        onChange: (v) => onParam("pan", v)
+      }
+    ), /* @__PURE__ */ React.createElement(Meter, { level, height: meterH, width: 6 })),
+    !compact && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22 } }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        title: "Volume automation on/off",
+        onClick: () => onParam("autoOn", !p.autoOn),
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          height: 22,
+          padding: "0 9px",
+          borderRadius: 6,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: ".04em",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+          flex: "0 0 auto",
+          background: p.autoOn ? "var(--amber-soft)" : "transparent",
+          color: p.autoOn ? "var(--amber)" : "var(--muted)",
+          border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)")
+        }
       },
-      onMouseEnter: (e) => {
-        e.currentTarget.style.background = "var(--red)";
-        e.currentTarget.style.color = "#fff";
-        e.currentTarget.style.borderColor = "var(--red)";
+      /* @__PURE__ */ React.createElement(Icon, { name: "auto", size: 13 }),
+      " AUTO"
+    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, flex: "0 0 auto" } }, /* @__PURE__ */ React.createElement(
+      FxTag,
+      {
+        label: "VRB",
+        color: "var(--violet)",
+        on: p.reverb > 1e-3,
+        onClick: onFocusFx ? () => onFocusFx(track.id, "reverb") : void 0
+      }
+    ), /* @__PURE__ */ React.createElement(
+      FxTag,
+      {
+        label: "ECHO",
+        color: "var(--blue)",
+        on: p.echo > 1e-3,
+        onClick: onFocusFx ? () => onFocusFx(track.id, "echo") : void 0
+      }
+    )), DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && /* @__PURE__ */ React.createElement(VariBpmTag, null), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), track.needsAudio ? /* @__PURE__ */ React.createElement("span", { title: "Drop the audio file here to re-link", style: {
+      fontSize: 9,
+      padding: "2px 4px",
+      borderRadius: 4,
+      fontWeight: 400,
+      letterSpacing: ".04em",
+      background: "rgba(217,106,78,.18)",
+      color: "var(--red)",
+      border: "1px solid rgba(217,106,78,.28)"
+    } }, "NO AUDIO") : /* @__PURE__ */ React.createElement("span", { className: "chip", style: { fontSize: 9, padding: "2px 4px", fontWeight: 400 } }, track.type), onRemove && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        title: "Remove track",
+        onClick: () => setConfirmRemove(true),
+        style: {
+          width: 22,
+          height: 22,
+          borderRadius: 5,
+          display: "grid",
+          placeItems: "center",
+          background: "var(--surface2)",
+          color: "var(--cream-2)",
+          border: "1px solid var(--line-strong)",
+          fontSize: 14,
+          fontWeight: 700,
+          lineHeight: 1,
+          cursor: "pointer",
+          transition: ".12s"
+        },
+        onMouseEnter: (e) => {
+          e.currentTarget.style.background = "var(--red)";
+          e.currentTarget.style.color = "#fff";
+          e.currentTarget.style.borderColor = "var(--red)";
+        },
+        onMouseLeave: (e) => {
+          e.currentTarget.style.background = "var(--surface2)";
+          e.currentTarget.style.color = "var(--cream-2)";
+          e.currentTarget.style.borderColor = "var(--line-strong)";
+        }
       },
-      onMouseLeave: (e) => {
-        e.currentTarget.style.background = "var(--surface2)";
-        e.currentTarget.style.color = "var(--cream-2)";
-        e.currentTarget.style.borderColor = "var(--line-strong)";
-      }
-    },
-    "\u2212"
-  )), !compact && !medium && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, minHeight: 18 } }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      title: "Reset automation graph",
-      onClick: () => setConfirmReset(true),
-      style: {
-        flex: 1,
-        height: 20,
-        borderRadius: 6,
-        fontSize: 10,
-        fontWeight: 600,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        background: "transparent",
-        color: "var(--muted)",
-        border: "1px solid var(--line-strong)"
-      }
-    },
-    /* @__PURE__ */ React.createElement(Icon, { name: "loop", size: 12 }),
-    " Reset"
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      title: "Curve fitting on/off",
-      onClick: () => onParam("autoCurve", !p.autoCurve),
-      style: {
-        flex: 1,
-        height: 20,
-        borderRadius: 6,
-        fontSize: 10,
-        fontWeight: 600,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        background: p.autoCurve ? "var(--amber-soft)" : "transparent",
-        color: p.autoCurve ? "var(--amber)" : "var(--muted)",
-        border: "1px solid " + (p.autoCurve ? "var(--amber-deep)" : "var(--line-strong)")
-      }
-    },
-    /* @__PURE__ */ React.createElement(Icon, { name: "auto", size: 12 }),
-    " Curve"
-  ))), confirmReset && /* @__PURE__ */ React.createElement(
+      "\u2212"
+    )),
+    !compact && !medium && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, minHeight: 18 } }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        title: "Reset automation graph",
+        onClick: () => setConfirmReset(true),
+        style: {
+          flex: 1,
+          height: 20,
+          borderRadius: 6,
+          fontSize: 10,
+          fontWeight: 600,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          background: "transparent",
+          color: "var(--muted)",
+          border: "1px solid var(--line-strong)"
+        }
+      },
+      /* @__PURE__ */ React.createElement(Icon, { name: "loop", size: 12 }),
+      " Reset"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        title: "Curve fitting on/off",
+        onClick: () => onParam("autoCurve", !p.autoCurve),
+        style: {
+          flex: 1,
+          height: 20,
+          borderRadius: 6,
+          fontSize: 10,
+          fontWeight: 600,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          background: p.autoCurve ? "var(--amber-soft)" : "transparent",
+          color: p.autoCurve ? "var(--amber)" : "var(--muted)",
+          border: "1px solid " + (p.autoCurve ? "var(--amber-deep)" : "var(--line-strong)")
+        }
+      },
+      /* @__PURE__ */ React.createElement(Icon, { name: "auto", size: 12 }),
+      " Curve"
+    ))
+  ), confirmReset && /* @__PURE__ */ React.createElement(
     "div",
     {
       style: { position: "fixed", inset: 0, zIndex: 1200, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" },
@@ -599,7 +610,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx })
     ))))
   ));
 }
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = playhead / DAW.duration * laneW;
   const p = track.params;
@@ -635,17 +646,20 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
     onSeek(sec);
   };
   const toolCursor = tool === "scissors" ? "crosshair" : tool === "join" ? "cell" : "text";
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, level, onParam, onRemove, laneH, onFocusFx }), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, level, onParam, onRemove, laneH, onFocusFx, selected, onSelect }), /* @__PURE__ */ React.createElement(
     "div",
     {
-      onMouseDown: laneClick,
+      onMouseDown: (e) => {
+        if (onSelect) onSelect(e);
+        if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e);
+      },
       onMouseMove: laneMouseMove,
       onMouseLeave: () => setHoveredClipId(null),
       style: {
         position: "relative",
         width: laneW,
         height: laneH,
-        background: idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
+        background: selected ? "linear-gradient(90deg, rgba(232,176,75,.08), transparent 38%)" : idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
         // isolate: make the lane its own stacking context so the absolutely-positioned playhead
         // (and any overlay) can never paint above the sibling sticky TrackHeader when it scrolls
         // left of the viewport (seek-back + time zoom-in). Header (zIndex 6) sits above the lane.
@@ -693,11 +707,16 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
     /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 } })
   ));
 }
-function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, playhead }) {
+function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, playhead, stats, selectedCount = 0, onMergeSelected }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = playhead / Math.max(1e-3, DAW.duration) * laneW;
   const label = collapsed ? "Expand file tracks" : "Collapse file tracks";
   const rowH = 38;
+  const mutedCount = stats && stats.mutedCount || 0;
+  const soloCount = stats && stats.soloCount || 0;
+  const audibleCount = stats && stats.audibleCount || 0;
+  const groupLevel = stats && Number.isFinite(stats.level) ? stats.level : 0;
+  const canMerge = selectedCount >= 2;
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content", height: rowH } }, /* @__PURE__ */ React.createElement(
     "button",
     {
@@ -745,14 +764,44 @@ function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, pl
         strokeLinejoin: "round"
       }
     ))),
-    /* @__PURE__ */ React.createElement("span", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 1 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 750, letterSpacing: ".08em", textTransform: "uppercase" } }, "File Tracks"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9.5, color: "var(--muted)", fontWeight: 600 } }, count, " ", count === 1 ? "track" : "tracks")),
-    /* @__PURE__ */ React.createElement("span", { style: {
-      marginLeft: "auto",
-      fontSize: 9,
-      color: "var(--dim)",
-      letterSpacing: ".04em",
-      textTransform: "uppercase"
-    } }, collapsed ? "Show" : "Hide")
+    /* @__PURE__ */ React.createElement("span", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 1 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 750, letterSpacing: ".08em", textTransform: "uppercase" } }, "File Tracks"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9.5, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" } }, count, " trk \xB7 ", audibleCount, " active")),
+    /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 } }, soloCount > 0 && /* @__PURE__ */ React.createElement(
+      "span",
+      {
+        title: `${soloCount} soloed file track${soloCount === 1 ? "" : "s"}`,
+        style: {
+          minWidth: 18,
+          height: 17,
+          borderRadius: 4,
+          display: "grid",
+          placeItems: "center",
+          background: "var(--amber)",
+          color: "var(--accent-fg)",
+          fontSize: 9,
+          fontWeight: 800
+        }
+      },
+      "S",
+      soloCount > 1 ? soloCount : ""
+    ), mutedCount > 0 && /* @__PURE__ */ React.createElement(
+      "span",
+      {
+        title: `${mutedCount} muted file track${mutedCount === 1 ? "" : "s"}`,
+        style: {
+          minWidth: 18,
+          height: 17,
+          borderRadius: 4,
+          display: "grid",
+          placeItems: "center",
+          background: "var(--red)",
+          color: "#fff",
+          fontSize: 9,
+          fontWeight: 800
+        }
+      },
+      "M",
+      mutedCount > 1 ? mutedCount : ""
+    ), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "var(--dim)", letterSpacing: ".04em", textTransform: "uppercase" } }, collapsed ? "Show" : "Hide"))
   ), /* @__PURE__ */ React.createElement(
     "button",
     {
@@ -817,6 +866,76 @@ function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, pl
       background: collapsed ? "color-mix(in srgb, var(--bg2) 78%, transparent)" : "transparent",
       textShadow: collapsed ? "0 1px 3px var(--bg)" : "none"
     } }, collapsed ? `${count} file ${count === 1 ? "track" : "tracks"} hidden` : "File-based tracks"),
+    /* @__PURE__ */ React.createElement("span", { style: {
+      position: "relative",
+      zIndex: 2,
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      fontSize: 9.5,
+      fontWeight: 650,
+      color: "var(--cream-2)"
+    } }, /* @__PURE__ */ React.createElement("span", { style: {
+      width: 46,
+      height: 6,
+      borderRadius: 999,
+      overflow: "hidden",
+      background: "rgba(0,0,0,.32)",
+      border: "1px solid var(--line)"
+    } }, /* @__PURE__ */ React.createElement("span", { style: {
+      display: "block",
+      width: `${Math.max(0, Math.min(1, groupLevel)) * 100}%`,
+      height: "100%",
+      borderRadius: 999,
+      background: "var(--green)",
+      boxShadow: "0 0 5px var(--green)"
+    } }))),
+    /* @__PURE__ */ React.createElement(
+      "span",
+      {
+        onClick: (e) => {
+          e.stopPropagation();
+          if (canMerge && onMergeSelected) onMergeSelected();
+        },
+        title: canMerge ? "Merge selected file tracks" : "Select two or more file tracks",
+        "aria-disabled": !canMerge,
+        style: {
+          position: "relative",
+          zIndex: 4,
+          marginLeft: "auto",
+          height: 22,
+          padding: "0 9px",
+          borderRadius: 6,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          fontSize: 9.5,
+          fontWeight: 750,
+          letterSpacing: ".04em",
+          textTransform: "uppercase",
+          background: canMerge ? "var(--amber-soft)" : "rgba(255,255,255,.035)",
+          color: canMerge ? "var(--amber)" : "var(--dim)",
+          border: "1px solid " + (canMerge ? "var(--amber-deep)" : "var(--line-strong)"),
+          cursor: canMerge ? "pointer" : "default"
+        }
+      },
+      selectedCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, minWidth: 12, textAlign: "center" } }, selectedCount),
+      /* @__PURE__ */ React.createElement(
+        "svg",
+        {
+          viewBox: "0 0 16 16",
+          width: "14",
+          height: "14",
+          "aria-hidden": "true",
+          style: { flex: "0 0 auto", color: canMerge ? "var(--amber)" : "var(--dim)" }
+        },
+        /* @__PURE__ */ React.createElement("path", { d: "M3 1.8h6.4L13 5.4v8.8H3z", fill: "none", stroke: "currentColor", strokeWidth: "1.35", strokeLinejoin: "round" }),
+        /* @__PURE__ */ React.createElement("path", { d: "M9.4 1.8v3.6H13", fill: "none", stroke: "currentColor", strokeWidth: "1.35", strokeLinejoin: "round" }),
+        /* @__PURE__ */ React.createElement("path", { d: "M5.3 7.8h5.2M5.3 10.2h5.2", fill: "none", stroke: "currentColor", strokeWidth: "1.1", strokeLinecap: "round", opacity: ".72" })
+      ),
+      "Merge Tracks..."
+    ),
     /* @__PURE__ */ React.createElement("span", { style: {
       position: "absolute",
       top: 0,

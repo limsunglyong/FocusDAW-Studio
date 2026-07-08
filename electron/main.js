@@ -122,6 +122,18 @@ function safeFileBase(name) {
   return cleaned || 'untitled';
 }
 
+function uniqueFilePath(dir, baseName, extension) {
+  const safeBase = safeFileBase(baseName);
+  const ext = String(extension || '').replace(/^\./, '') || 'wav';
+  let candidate = path.join(dir, `${safeBase}.${ext}`);
+  let index = 2;
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(dir, `${safeBase} ${index}.${ext}`);
+    index += 1;
+  }
+  return candidate;
+}
+
 function buildAtempoFilter(rate) {
   let r = Number(rate);
   if (!Number.isFinite(r) || r <= 0) return null;
@@ -356,6 +368,35 @@ ipcMain.handle('write-temp-audio', async (event, wavBuffer, fileName) => {
   const tmpWav = tempFilePath(base, 'wav');
   fs.writeFileSync(tmpWav, Buffer.from(wavBuffer));
   return tmpWav;
+});
+
+// Save a rendered bounce without prompting:
+//   D:\Audio\stem.wav -> D:\Audio\Bounces\Bounce ....wav
+// Project path is only a fallback for rare in-memory tracks without sourcePath.
+ipcMain.handle('save-bounce-audio', async (event, wavBuffer, projectPath, fileName, sourcePath) => {
+  assertTrustedIpc(event);
+  let bounceDir = null;
+  if (sourcePath) {
+    const safeSourcePath = assertFilePath(sourcePath, AUDIO_EXT, 'source audio');
+    bounceDir = path.join(path.dirname(safeSourcePath), 'Bounces');
+  } else if (projectPath) {
+    const safeProjectPath = assertFilePath(projectPath, PROJECT_EXT, 'project');
+    const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
+    bounceDir = path.join(path.dirname(safeProjectPath), `${projectBase} Audio`, 'Bounces');
+  } else {
+    throw new Error('No project or source audio path available for bounce save.');
+  }
+  fs.mkdirSync(bounceDir, { recursive: true });
+  const rawName = String(fileName || 'Bounce.wav');
+  const base = safeFileBase(path.basename(rawName, path.extname(rawName) || '.wav'));
+  const outPath = uniqueFilePath(bounceDir, base, 'wav');
+  fs.writeFileSync(outPath, Buffer.from(wavBuffer));
+  return {
+    saved: true,
+    path: outPath,
+    fileName: path.basename(outPath),
+    dir: bounceDir,
+  };
 });
 
 // Save project via native Save dialog
