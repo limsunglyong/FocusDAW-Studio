@@ -381,6 +381,9 @@ function MenuTransport() {
   const playing = DAW.isPlaying;
   const playhead = DAW.getPlayhead();
   const duration = DAW.duration || 0;
+  const armedInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+  const recordingInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
+  const canRecord = !!(armedInput || recordingInput);
   const playPause = () => {
     DAW.isPlaying ? DAW.pause() : DAW.play();
     force((n) => n + 1);
@@ -406,7 +409,30 @@ function MenuTransport() {
   } }, /* @__PURE__ */ React.createElement(Icon, { name: "toStart", size: 13 })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Stop", onClick: () => {
     DAW.stop();
     force((n) => n + 1);
-  } }, /* @__PURE__ */ React.createElement(Icon, { name: "stop", size: 11, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Play / Pause", active: playing, wide: true, onClick: playPause }, /* @__PURE__ */ React.createElement(Icon, { name: playing ? "pause" : "play", size: 14, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Loop", active: loop, onClick: toggleLoop }, /* @__PURE__ */ React.createElement(Icon, { name: "repeat", size: 13 }))), /* @__PURE__ */ React.createElement("div", { title: `${fmtTransportTime(playhead)} / ${fmtTransportTime(duration)}`, style: {
+  } }, /* @__PURE__ */ React.createElement(Icon, { name: "stop", size: 11, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Play / Pause", active: playing, wide: true, onClick: playPause }, /* @__PURE__ */ React.createElement(Icon, { name: playing ? "pause" : "play", size: 14, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Loop", active: loop, onClick: toggleLoop }, /* @__PURE__ */ React.createElement(Icon, { name: "repeat", size: 13 })), /* @__PURE__ */ React.createElement(
+    MenuTransportButton,
+    {
+      title: recordingInput ? "Stop recording" : canRecord ? "Record armed Audio In track" : "Arm an Audio In track first",
+      active: !!recordingInput,
+      onClick: () => {
+        if (canRecord) window.dispatchEvent(new CustomEvent("focusdaw-record-toggle"));
+      }
+    },
+    /* @__PURE__ */ React.createElement(
+      "span",
+      {
+        className: recordingInput ? "record-blink" : void 0,
+        style: {
+          display: "block",
+          width: recordingInput ? 11 : 9,
+          height: recordingInput ? 11 : 9,
+          borderRadius: recordingInput ? 4 : "50%",
+          background: canRecord ? "var(--red)" : "var(--dim)",
+          transformOrigin: "center"
+        }
+      }
+    )
+  )), /* @__PURE__ */ React.createElement("div", { title: `${fmtTransportTime(playhead)} / ${fmtTransportTime(duration)}`, style: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -521,8 +547,8 @@ function ToolIcon({ name, size }) {
   if (name === "join") return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M2 8h5M9 8h5" }), /* @__PURE__ */ React.createElement("path", { d: "M7 5l-2 3 2 3M9 5l2 3-2 3" }));
   return null;
 }
-function ActionBar({ onMixer, mixerOpen, onExport }) {
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { className: "btn" + (mixerOpen ? " primary" : ""), onClick: (e) => {
+function ActionBar({ onMixer, mixerOpen, onExport, onAudioIn }) {
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: onAudioIn, title: "Add a recordable input track" }, "+ Audio In"), /* @__PURE__ */ React.createElement("button", { className: "btn" + (mixerOpen ? " primary" : ""), onClick: (e) => {
     onMixer();
     e.currentTarget.blur();
   } }, /* @__PURE__ */ React.createElement(Icon, { name: "mixer", size: 15 }), " Mixer"), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: onExport, title: "Export mixdown (MP3 / WAV)" }, /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 15 }), " Export"));
@@ -1550,6 +1576,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const lastUndoKey = useRef(null);
+  const recordingRef = useRef(null);
   const MAX_UNDO = 50;
   const stretchPreparing = !!DAW._stretchPreviewPreparing;
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
@@ -1585,7 +1612,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const rulerH = 30;
   const trackStackTop = rulerH;
   const fileGroupH = fileTracks.length ? 38 : 0;
-  const trackStackBottom = rulerH + fileGroupH + Math.max(1, visibleTrackCount) * laneH;
+  const audioInLaneHeight = laneH <= 68 ? laneH : Math.max(164, laneH);
+  const visibleTrackHeight = (fileTracksCollapsed ? 0 : fileTracks.length * laneH) + nonFileTracks.reduce((sum, track) => sum + (track.kind === "audioIn" ? audioInLaneHeight : laneH), 0);
+  const trackStackBottom = rulerH + fileGroupH + Math.max(laneH, visibleTrackHeight);
   const visibleTop = arrangeNode ? Math.max(trackStackTop, arrangeNode.scrollTop) : trackStackTop;
   const visibleBottom = arrangeNode ? Math.min(trackStackBottom, arrangeNode.scrollTop + arrangeNode.clientHeight) : trackStackBottom;
   const overlayY = visibleBottom > visibleTop ? (visibleTop + visibleBottom) / 2 : (trackStackTop + trackStackBottom) / 2;
@@ -2525,6 +2554,83 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       folderRef.current && folderRef.current.click();
     }
   }, [addElectronFiles]);
+  const addAudioInTrack = useCallback(() => {
+    const count = DAW.tracks.filter((t) => t.kind === "audioIn").length + 1;
+    DAW.addAudioInTrack(`Audio In ${count}`);
+    const input = DAW.getSavedAudioInput && DAW.getSavedAudioInput() || {
+      type: "",
+      name: "",
+      channel: 0,
+      stereo: false,
+      sampleRate: 0,
+      bufferSize: 0
+    };
+    if (DAW.setAudioInput) DAW.setAudioInput(input);
+    force((n) => n + 1);
+  }, []);
+  const toggleRecording = useCallback(async (track) => {
+    if (!window.electronAPI || !DAW.isNative) {
+      alert("Audio recording requires the desktop app and native audio engine.");
+      return;
+    }
+    if (track.recording) {
+      const active = recordingRef.current;
+      if (!active || active.trackId !== track.id) return;
+      DAW.stopRecording(active.partPath);
+      try {
+        await active.promise;
+        const saved = await window.electronAPI.finalizeRecording(active.partPath, active.finalPath);
+        const bytes = await window.electronAPI.readAudioFile(saved.path);
+        await DAW.attachRecording(track.id, saved.fileName, bytes, { filePath: saved.path, start: active.start });
+      } catch (e) {
+        alert(`Recording could not be finalized: ${e.message || e}`);
+      }
+      track.recording = false;
+      recordingRef.current = null;
+      fitTimelineToProject();
+      force((n) => n + 1);
+      return;
+    }
+    if (recordingRef.current) {
+      alert("Only one Audio In track can record at a time.");
+      return;
+    }
+    const sourcePath = DAW.tracks.find((t) => t.filePath)?.filePath || null;
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
+    const target = await window.electronAPI.prepareRecordingPath(projectPath, `${track.name} ${stamp}.wav`, sourcePath);
+    const input = DAW.getSavedAudioInput && DAW.getSavedAudioInput() || {};
+    const start = DAW.getPlayhead();
+    track.recording = true;
+    track._recordingStart = start;
+    track._recordingPeaks = [];
+    track._recordingSampleRate = 44100;
+    const promise = DAW.startRecording({
+      filePath: target.partPath,
+      channel: input.channel || 0,
+      stereo: !!input.stereo,
+      gain: track.params.inputGain || 1,
+      monitor: !!track.params.monitor,
+      limiter: track.params.limiter !== false
+    });
+    recordingRef.current = { trackId: track.id, ...target, start, promise };
+    promise.catch((e) => {
+      if (recordingRef.current && recordingRef.current.trackId === track.id) {
+        track.recording = false;
+        recordingRef.current = null;
+        alert(e.message || String(e));
+        force((n) => n + 1);
+      }
+    });
+    force((n) => n + 1);
+  }, [projectPath, fitTimelineToProject]);
+  useEffect(() => {
+    const onRecordToggle = () => {
+      const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording) || DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+      if (target) toggleRecording(target);
+    };
+    window.addEventListener("focusdaw-record-toggle", onRecordToggle);
+    return () => window.removeEventListener("focusdaw-record-toggle", onRecordToggle);
+  }, [toggleRecording]);
   const newProject = () => {
     const nextName = DEFAULT_PROJECT_NAME;
     DAW.clearTracks();
@@ -2592,6 +2698,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (lastUndoKey.current !== undoKey) {
       pushUndo();
       lastUndoKey.current = undoKey;
+    }
+    if (k === "arm" && v) {
+      DAW.tracks.forEach((track) => {
+        if (track.id !== id && track.kind === "audioIn" && track.params && track.params.arm)
+          DAW.setTrackParam(track.id, "arm", false);
+      });
+      const input = DAW.getSavedAudioInput && DAW.getSavedAudioInput() || {
+        type: "",
+        name: "",
+        channel: 0,
+        stereo: false,
+        sampleRate: 0,
+        bufferSize: 0
+      };
+      if (DAW.setAudioInput) DAW.setAudioInput(input);
     }
     DAW.setTrackParam(id, k, v);
     saveRecentProject(projectName, projectPath);
@@ -2814,7 +2935,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onDetect: detectKey,
       onApplyKey: applyKey
     }
-  ), /* @__PURE__ */ React.createElement(VariKeySwitch, { on: !!(DAW.tempo && DAW.tempo.variKey), onToggle: toggleVariKey }), /* @__PURE__ */ React.createElement(ToolbarDivider, null), /* @__PURE__ */ React.createElement(ActionBar, { onMixer: toggleMixer, mixerOpen: showMixer, onExport: () => setShowExport(true) }))), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement(VariKeySwitch, { on: !!(DAW.tempo && DAW.tempo.variKey), onToggle: toggleVariKey }), /* @__PURE__ */ React.createElement(ToolbarDivider, null), /* @__PURE__ */ React.createElement(ActionBar, { onMixer: toggleMixer, mixerOpen: showMixer, onExport: () => setShowExport(true), onAudioIn: addAudioInTrack }))), /* @__PURE__ */ React.createElement(
     "div",
     {
       ref: arrangeRef,
@@ -2828,7 +2949,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     empty ? /* @__PURE__ */ React.createElement(EmptyState, { dragOver, onPick: pickAudioFiles, onPickFolder: pickAudioFolder, onDemo: loadDemo }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(Ruler, { pxPerSec, playhead, onSeek: (t) => {
       DAW.userSeek(t);
       force((n) => n + 1);
-    }, onAddTrack: pickAudioFiles }), fileTracks.length > 0 && /* @__PURE__ */ React.createElement(
+    }, onAddTrack: pickAudioFiles, onAddAudioIn: addAudioInTrack }), fileTracks.length > 0 && /* @__PURE__ */ React.createElement(
       FileTrackGroupHeader,
       {
         tracks: fileTracks,
@@ -2852,6 +2973,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           pxPerSec,
           ampZoom,
           laneH,
+          headerIndent: 15,
           playhead,
           level: DAW.getTrackLevel(t.id),
           onParam: param(t.id),
@@ -2871,6 +2993,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       );
     }), nonFileTracks.map((t) => {
       const i = DAW.tracks.findIndex((track) => track.id === t.id);
+      const trackLaneH = t.kind === "audioIn" ? audioInLaneHeight : laneH;
       return /* @__PURE__ */ React.createElement(
         TrackRow,
         {
@@ -2879,9 +3002,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           idx: i,
           pxPerSec,
           ampZoom,
-          laneH,
+          laneH: trackLaneH,
+          sizeLaneH: laneH,
           playhead,
-          level: DAW.getTrackLevel(t.id),
+          level: t.kind === "audioIn" ? DAW.getInputLevel() : DAW.getTrackLevel(t.id),
           onParam: param(t.id),
           onRemove: () => removeTrack(t.id),
           onSeek: (time) => {
@@ -2914,7 +3038,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       {
         style: {
           position: "absolute",
-          left: (window.HEADER_W || 244) + DAW.loopRange.start / DAW.duration * Math.max(1, DAW.duration * pxPerSec),
+          left: (window.HEADER_W || 274) + DAW.loopRange.start / DAW.duration * Math.max(1, DAW.duration * pxPerSec),
           width: (DAW.loopRange.end - DAW.loopRange.start) / DAW.duration * Math.max(1, DAW.duration * pxPerSec),
           top: 0,
           bottom: 0,

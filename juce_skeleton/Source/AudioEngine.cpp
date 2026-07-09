@@ -8,6 +8,125 @@
 #include <sstream>
 #include <functional>
 
+#if USE_JUCE
+bool InputRecorder::start(const juce::File& file, double sr, int inputChannel, bool stereo,
+                          float gain, bool monitor, bool limiter)
+{
+    stop();
+    file.deleteFile();
+    auto stream = file.createOutputStream();
+    if (!stream) return false;
+    juce::WavAudioFormat wav;
+    auto* rawWriter = wav.createWriterFor(stream.release(), sr, stereo ? 2u : 1u, 24, {}, 0);
+    if (!rawWriter) return false;
+    {
+        std::lock_guard<std::mutex> lock(writerMutex);
+        threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(
+            rawWriter, writerThread, 32768);
+        recordingFile = file;
+        channel = juce::jmax(0, inputChannel);
+        channelCount = stereo ? 2 : 1;
+        inputGain = juce::jlimit(0.0f, 4.0f, gain);
+        monitoring = monitor;
+        limiterOn = limiter;
+        samplesWritten = 0;
+        level = 0.0f;
+        peakRead = 0;
+        peakWrite = 0;
+        recording = true;
+    }
+    return true;
+}
+
+void InputRecorder::stop()
+{
+    recording = false;
+    std::lock_guard<std::mutex> lock(writerMutex);
+    threadedWriter.reset();
+}
+
+void InputRecorder::cancel()
+{
+    stop();
+    recordingFile.deleteFile();
+}
+
+void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, int numInputs,
+    float* const* output, int numOutputs, int numSamples, const juce::AudioIODeviceCallbackContext&)
+{
+    // AudioDeviceManager does not clear the temporary output buffer supplied to
+    // secondary callbacks. This recorder contributes silence unless monitoring is
+    // enabled, so always initialise its entire output contribution. Leaving this
+    // memory untouched produces a persistent full-scale buzz that is then summed
+    // with normal playback.
+    if (output != nullptr)
+        for (int ch = 0; ch < numOutputs; ++ch)
+            if (output[ch] != nullptr)
+                juce::FloatVectorOperations::clear(output[ch], numSamples);
+
+    if (input == nullptr || numInputs <= 0) return;
+    const int channelsToWrite = juce::jmin(channelCount, juce::jmax(0, numInputs - channel));
+    if (channelsToWrite <= 0) return;
+    if (!recording.load())
+    {
+        float idlePeak = 0.0f;
+        for (int ch = 0; ch < channelsToWrite; ++ch)
+            if (input[channel + ch] != nullptr)
+                for (int i = 0; i < numSamples; ++i)
+                    idlePeak = juce::jmax(idlePeak, std::abs(input[channel + ch][i]));
+        level = juce::jmax(idlePeak, level.load() * 0.82f);
+        return;
+    }
+    juce::AudioBuffer<float> block(channelCount, numSamples);
+    float peak = 0.0f;
+    float blockMin = 0.0f;
+    float blockMax = 0.0f;
+    for (int ch = 0; ch < channelCount; ++ch)
+    {
+        const int sourceChannel = channel + juce::jmin(ch, channelsToWrite - 1);
+        block.copyFrom(ch, 0, input[sourceChannel], numSamples, inputGain);
+        float* data = block.getWritePointer(ch);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            if (limiterOn) data[i] = std::tanh(data[i] * 1.18f) / std::tanh(1.18f) * 0.89125f;
+            peak = juce::jmax(peak, std::abs(data[i]));
+            blockMin = juce::jmin(blockMin, data[i]);
+            blockMax = juce::jmax(blockMax, data[i]);
+            if (monitoring && output != nullptr && ch < numOutputs && output[ch] != nullptr)
+                output[ch][i] += data[i];
+        }
+    }
+    level = juce::jmax(peak, level.load() * 0.82f);
+    std::lock_guard<std::mutex> lock(writerMutex);
+    if (threadedWriter && recording.load())
+    {
+        threadedWriter->write(block.getArrayOfReadPointers(), numSamples);
+        const auto endSample = samplesWritten.fetch_add(numSamples) + numSamples;
+        const auto write = peakWrite.load(std::memory_order_relaxed);
+        const auto next = (write + 1) % peakCapacity;
+        if (next != peakRead.load(std::memory_order_acquire))
+        {
+            peakRing[write] = { endSample, blockMin, blockMax };
+            peakWrite.store(next, std::memory_order_release);
+        }
+    }
+}
+
+std::vector<InputRecorder::PeakPoint> InputRecorder::drainPeaks()
+{
+    std::vector<PeakPoint> result;
+    auto read = peakRead.load(std::memory_order_relaxed);
+    const auto write = peakWrite.load(std::memory_order_acquire);
+    while (read != write)
+    {
+        result.push_back(peakRing[read]);
+        read = (read + 1) % peakCapacity;
+    }
+    peakRead.store(read, std::memory_order_release);
+    return result;
+}
+#endif
+
 AudioEngine::AudioEngine()
 {
 #if USE_JUCE
@@ -32,6 +151,8 @@ AudioEngine::~AudioEngine()
     if (loaderThread.joinable()) loaderThread.join();
 
 #if USE_JUCE
+    inputRecorder.stop();
+    deviceManager.removeAudioCallback(&inputRecorder);
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
     masterEffectsSource.reset();
@@ -48,10 +169,15 @@ void AudioEngine::init(int sr)
     LOG_DBG << "[AudioEngine] Initialized with sample rate: " << sampleRate << std::endl;
 
 #if USE_JUCE
+    // Open output first. Requiring a default input here makes the entire device
+    // initialisation fail on machines with no enabled/default recording endpoint,
+    // which also leaves playback silent. Device Setup opens the selected input
+    // later via setAudioInput() while preserving this output.
     juce::String err = deviceManager.initialiseWithDefaultDevices(0, 2);
     if (err.isEmpty())
     {
         deviceManager.addAudioCallback(&sourcePlayer);
+        deviceManager.addAudioCallback(&inputRecorder);
         if (auto* currentDevice = deviceManager.getCurrentAudioDevice())
         {
             sampleRate = currentDevice->getCurrentSampleRate();
@@ -1555,6 +1681,7 @@ std::string AudioEngine::getAudioDevicesJson()
         json << "{\"event\":\"audioDevices\",\"current\":{"
              << "\"type\":\"" << jsonEscapeString(deviceManager.getCurrentAudioDeviceType().toStdString()) << "\","
              << "\"name\":\"" << jsonEscapeString(setup.outputDeviceName.toStdString()) << "\","
+             << "\"inputName\":\"" << jsonEscapeString(setup.inputDeviceName.toStdString()) << "\","
              << "\"sampleRate\":" << sr << ",\"bufferSize\":" << buf << "},\"types\":[";
 
         const auto& types = deviceManager.getAvailableDeviceTypes();
@@ -1563,11 +1690,18 @@ std::string AudioEngine::getAudioDevicesJson()
             auto* type = types.getUnchecked(i);
             type->scanForDevices();
             juce::StringArray names = type->getDeviceNames(false); // output devices
+            juce::StringArray inputNames = type->getDeviceNames(true);
             json << "{\"type\":\"" << jsonEscapeString(type->getTypeName().toStdString()) << "\",\"devices\":[";
             for (int d = 0; d < names.size(); ++d)
             {
                 json << "\"" << jsonEscapeString(names[d].toStdString()) << "\"";
                 if (d + 1 < names.size()) json << ",";
+            }
+            json << "],\"inputDevices\":[";
+            for (int d = 0; d < inputNames.size(); ++d)
+            {
+                json << "\"" << jsonEscapeString(inputNames[d].toStdString()) << "\"";
+                if (d + 1 < inputNames.size()) json << ",";
             }
             json << "]}";
             if (i + 1 < types.size()) json << ",";
@@ -1611,7 +1745,7 @@ std::string AudioEngine::setAudioDevice(const std::string& typeName, const std::
 
         juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager.getAudioDeviceSetup();
         setup.outputDeviceName = wantedName;
-        setup.inputDeviceName = juce::String();
+        // Preserve the selected input while switching output devices.
         setup.useDefaultOutputChannels = true;
         juce::String err = deviceManager.setAudioDeviceSetup(setup, true);
         if (err.isNotEmpty()) return err.toStdString();
@@ -1628,6 +1762,139 @@ std::string AudioEngine::setAudioDevice(const std::string& typeName, const std::
 #else
     (void)typeName; (void)deviceName;
     return "native engine not available";
+#endif
+}
+
+std::string AudioEngine::setAudioInput(const std::string& typeName, const std::string& deviceName,
+                                       int channel, bool stereo, double requestedSampleRate, int requestedBufferSize)
+{
+#if USE_JUCE
+    return runOnMessageThread([this, typeName, deviceName, channel, stereo, requestedSampleRate, requestedBufferSize]() -> std::string
+    {
+        const auto& types = deviceManager.getAvailableDeviceTypes();
+        if (types.isEmpty()) return "no audio device types available";
+        juce::String wantedType = typeName.empty() ? deviceManager.getCurrentAudioDeviceType()
+                                                   : juce::String::fromUTF8(typeName.c_str());
+        juce::AudioIODeviceType* typeObj = nullptr;
+        for (auto* type : types)
+            if (type->getTypeName() == wantedType) { typeObj = type; break; }
+        if (!typeObj) return "unknown device type: " + typeName;
+        typeObj->scanForDevices();
+        auto names = typeObj->getDeviceNames(true);
+        juce::String wantedName = deviceName.empty()
+            ? (names.isEmpty() ? juce::String() : names[juce::jlimit(0, names.size() - 1, typeObj->getDefaultDeviceIndex(true))])
+            : juce::String::fromUTF8(deviceName.c_str());
+        if (wantedName.isNotEmpty() && !names.contains(wantedName)) return "unknown input device: " + deviceName;
+        if (deviceManager.getCurrentAudioDeviceType() != wantedType)
+            deviceManager.setCurrentAudioDeviceType(wantedType, true);
+        auto setup = deviceManager.getAudioDeviceSetup();
+        setup.inputDeviceName = wantedName;
+        setup.useDefaultInputChannels = false;
+        setup.inputChannels.clear();
+        setup.inputChannels.setBit(juce::jmax(0, channel));
+        if (stereo) setup.inputChannels.setBit(juce::jmax(0, channel) + 1);
+        if (requestedSampleRate > 0) setup.sampleRate = requestedSampleRate;
+        if (requestedBufferSize > 0) setup.bufferSize = requestedBufferSize;
+        auto err = deviceManager.setAudioDeviceSetup(setup, true);
+        if (err.isNotEmpty()) return err.toStdString();
+        auto* active = deviceManager.getCurrentAudioDevice();
+        if (!active || active->getActiveInputChannels().countNumberOfSetBits() == 0)
+            return "The selected input device opened without an active channel.";
+        return {};
+    }, "input device switch timed out");
+#else
+    (void)typeName; (void)deviceName; (void)channel; (void)stereo; (void)requestedSampleRate; (void)requestedBufferSize;
+    return "native engine not available";
+#endif
+}
+
+std::string AudioEngine::startRecording(const std::string& filePath, int channel, bool stereo,
+                                        float gain, bool monitor, bool limiter)
+{
+#if USE_JUCE
+    auto* dev = deviceManager.getCurrentAudioDevice();
+    if (!dev) return "audio device is not available";
+    if (dev->getActiveInputChannels().countNumberOfSetBits() == 0)
+    {
+        // Output is intentionally opened first at startup so playback remains
+        // available even when Windows has no default recording endpoint. If the
+        // user leaves Device Setup on "System Default Input", lazily open that
+        // input on the first Record press.
+        const auto inputErr = setAudioInput("", "", channel, stereo, 0.0, 0);
+        if (!inputErr.empty()) return inputErr;
+        dev = deviceManager.getCurrentAudioDevice();
+    }
+    if (!dev || dev->getActiveInputChannels().countNumberOfSetBits() == 0)
+        return "No active input channel. Select an Audio Input Device in Settings.";
+    if (!inputRecorder.start(juce::File(juce::String::fromUTF8(filePath.c_str())),
+                             dev->getCurrentSampleRate(), channel, stereo, gain, monitor, limiter))
+        return "could not create recording file";
+    return {};
+#else
+    (void)filePath; (void)channel; (void)stereo; (void)gain; (void)monitor; (void)limiter;
+    return "native engine not available";
+#endif
+}
+
+std::string AudioEngine::stopRecording()
+{
+#if USE_JUCE
+    inputRecorder.stop();
+    // Some Windows audio drivers rebuild their callback graph when an input stream
+    // is finalized. Re-register the playback callback explicitly so metering cannot
+    // continue while the physical output remains detached after recording.
+    return runOnMessageThread([this]() -> std::string
+    {
+        deviceManager.removeAudioCallback(&sourcePlayer);
+        sourcePlayer.setSource(masterEffectsSource.get());
+        deviceManager.addAudioCallback(&sourcePlayer);
+        return {};
+    }, "playback output recovery timed out");
+#else
+    return "native engine not available";
+#endif
+}
+
+void AudioEngine::cancelRecording()
+{
+#if USE_JUCE
+    inputRecorder.cancel();
+#endif
+}
+
+bool AudioEngine::isRecording() const
+{
+#if USE_JUCE
+    return inputRecorder.isRecording();
+#else
+    return false;
+#endif
+}
+
+float AudioEngine::getInputMagnitude() const
+{
+#if USE_JUCE
+    return inputRecorder.getLevel();
+#else
+    return 0.0f;
+#endif
+}
+
+long long AudioEngine::getRecordedSamples() const
+{
+#if USE_JUCE
+    return (long long)inputRecorder.getSamplesWritten();
+#else
+    return 0;
+#endif
+}
+
+std::vector<InputRecorder::PeakPoint> AudioEngine::drainRecordingPeaks()
+{
+#if USE_JUCE
+    return inputRecorder.drainPeaks();
+#else
+    return {};
 #endif
 }
 

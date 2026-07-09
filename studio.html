@@ -29,6 +29,7 @@
   --mixer-bar-bg:linear-gradient(#efe7d6,#e3d8c0); --mixer-bar-fg:#241a0a;
   /* OUTPUT FX (master) track label — darker than normal tracks per theme */
   --outfx-bg:linear-gradient(rgba(0,0,0,.26),rgba(0,0,0,.26)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
+  --audio-in-track-bg:linear-gradient(180deg,color-mix(in srgb,var(--surface) 80%,var(--blue) 20%),color-mix(in srgb,var(--bg2) 88%,var(--blue) 12%));
   --outfx-chip-off-fg:var(--faint);
   --bpm-bg:linear-gradient(180deg,#17120d,#0e0c09); --bpm-fg:var(--cream); --bpm-label-fg:var(--cream-2);
 }
@@ -319,6 +320,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 .arrange-scroll-arrow:hover .arrange-scroll-disc{color:var(--amber);border-color:var(--amber);box-shadow:0 0 22px var(--amber-soft),0 0 9px var(--amber-soft),inset 0 0 8px var(--amber-soft);transform:scale(1.08)}
 .arrange-scroll-arrow:active .arrange-scroll-disc{transform:scale(.95)}
 .arrange-scroll-arrow:focus,.arrange-scroll-arrow:focus-visible{outline:none}
+@keyframes recordBlink{0%,44%{opacity:1}45%,94%{opacity:.22}95%,100%{opacity:1}}
+.record-blink{animation:recordBlink 1s steps(1,end) infinite}
+.input-level-slider::-webkit-slider-runnable-track{background:transparent}
 /* Prevent accidental text selection and native element/image dragging across the app —
    the "object stuck to the cursor" ghost + the import dropzone dashed outline it triggered.
    Real form inputs stay selectable. The only intended drag is an external OS file drop,

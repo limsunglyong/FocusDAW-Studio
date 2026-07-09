@@ -399,6 +399,34 @@ ipcMain.handle('save-bounce-audio', async (event, wavBuffer, projectPath, fileNa
   };
 });
 
+ipcMain.handle('prepare-recording-path', async (event, projectPath, fileName, sourcePath) => {
+  assertTrustedIpc(event);
+  let recordingDir;
+  if (projectPath) {
+    const safeProjectPath = assertFilePath(projectPath, PROJECT_EXT, 'project');
+    const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
+    recordingDir = path.join(path.dirname(safeProjectPath), `${projectBase} Audio`, 'Recordings');
+  } else if (sourcePath) {
+    const safeSourcePath = assertFilePath(sourcePath, AUDIO_EXT, 'source audio');
+    recordingDir = path.join(path.dirname(safeSourcePath), 'Recordings');
+  } else {
+    recordingDir = path.join(app.getPath('temp'), 'FocusDAW Recordings');
+  }
+  fs.mkdirSync(recordingDir, { recursive: true });
+  const base = safeFileBase(path.basename(String(fileName || 'Recording'), path.extname(String(fileName || 'Recording'))));
+  const finalPath = uniqueFilePath(recordingDir, base, 'wav');
+  return { partPath: `${finalPath}.part`, finalPath };
+});
+
+ipcMain.handle('finalize-recording', async (event, partPath, finalPath) => {
+  assertTrustedIpc(event);
+  const part = path.resolve(String(partPath || ''));
+  const final = assertFilePath(finalPath, AUDIO_EXT, 'recording');
+  if (part !== `${final}.part`) throw new Error('Invalid recording temporary path.');
+  fs.renameSync(part, final);
+  return { path: final, fileName: path.basename(final) };
+});
+
 // Save project via native Save dialog
 ipcMain.handle('save-project', async (event, json, defaultName, targetPath) => {
   assertTrustedIpc(event);

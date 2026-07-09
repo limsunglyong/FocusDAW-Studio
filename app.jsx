@@ -369,6 +369,9 @@ function MenuTransport() {
   const playing = DAW.isPlaying;
   const playhead = DAW.getPlayhead();
   const duration = DAW.duration || 0;
+  const armedInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+  const recordingInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
+  const canRecord = !!(armedInput || recordingInput);
   const playPause = () => { DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
   const toggleLoop = () => { const next = !loop; setLoop(next); DAW.setLoop(next); };
   return (
@@ -387,6 +390,15 @@ function MenuTransport() {
         </MenuTransportButton>
         <MenuTransportButton title="Loop" active={loop} onClick={toggleLoop}>
           <Icon name="repeat" size={13} />
+        </MenuTransportButton>
+        <MenuTransportButton title={recordingInput ? "Stop recording" : canRecord ? "Record armed Audio In track" : "Arm an Audio In track first"}
+          active={!!recordingInput} onClick={() => {
+            if (canRecord) window.dispatchEvent(new CustomEvent("focusdaw-record-toggle"));
+          }}>
+          <span className={recordingInput ? "record-blink" : undefined}
+            style={{ display: "block", width: recordingInput ? 11 : 9, height: recordingInput ? 11 : 9,
+              borderRadius: recordingInput ? 4 : "50%", background: canRecord ? "var(--red)" : "var(--dim)",
+              transformOrigin: "center" }} />
         </MenuTransportButton>
       </div>
       <div title={`${fmtTransportTime(playhead)} / ${fmtTransportTime(duration)}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "0 15px",
@@ -510,9 +522,10 @@ function ToolIcon({ name, size }) {
   );
   return null;
 }
-function ActionBar({ onMixer, mixerOpen, onExport }) {
+function ActionBar({ onMixer, mixerOpen, onExport, onAudioIn }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" }}>
+      <button className="btn" onClick={onAudioIn} title="Add a recordable input track">+ Audio In</button>
       <button className={"btn" + (mixerOpen ? " primary" : "")} onClick={(e) => { onMixer(); e.currentTarget.blur(); }}><Icon name="mixer" size={15} /> Mixer</button>
       <button className="btn" onClick={onExport} title="Export mixdown (MP3 / WAV)"><Icon name="download" size={15} /> Export</button>
     </div>
@@ -1408,6 +1421,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const lastUndoKey = useRef(null);
+  const recordingRef = useRef(null);
   const MAX_UNDO = 50;
   const stretchPreparing = !!DAW._stretchPreviewPreparing;
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
@@ -1443,7 +1457,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const rulerH = 30;
   const trackStackTop = rulerH;
   const fileGroupH = fileTracks.length ? 38 : 0;
-  const trackStackBottom = rulerH + fileGroupH + Math.max(1, visibleTrackCount) * laneH;
+  const audioInLaneHeight = laneH <= 68 ? laneH : Math.max(164, laneH);
+  const visibleTrackHeight = (fileTracksCollapsed ? 0 : fileTracks.length * laneH)
+    + nonFileTracks.reduce((sum, track) => sum + (track.kind === "audioIn" ? audioInLaneHeight : laneH), 0);
+  const trackStackBottom = rulerH + fileGroupH + Math.max(laneH, visibleTrackHeight);
   const visibleTop = arrangeNode ? Math.max(trackStackTop, arrangeNode.scrollTop) : trackStackTop;
   const visibleBottom = arrangeNode ? Math.min(trackStackBottom, arrangeNode.scrollTop + arrangeNode.clientHeight) : trackStackBottom;
   const overlayY = visibleBottom > visibleTop ? (visibleTop + visibleBottom) / 2 : (trackStackTop + trackStackBottom) / 2;
@@ -2469,6 +2486,78 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
   }, [addElectronFiles]);
 
+  const addAudioInTrack = useCallback(() => {
+    const count = DAW.tracks.filter((t) => t.kind === "audioIn").length + 1;
+    DAW.addAudioInTrack(`Audio In ${count}`);
+    const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
+      type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
+    };
+    if (DAW.setAudioInput) DAW.setAudioInput(input);
+    force((n) => n + 1);
+  }, []);
+
+  const toggleRecording = useCallback(async (track) => {
+    if (!window.electronAPI || !DAW.isNative) {
+      alert("Audio recording requires the desktop app and native audio engine.");
+      return;
+    }
+    if (track.recording) {
+      const active = recordingRef.current;
+      if (!active || active.trackId !== track.id) return;
+      DAW.stopRecording(active.partPath);
+      try {
+        await active.promise;
+        const saved = await window.electronAPI.finalizeRecording(active.partPath, active.finalPath);
+        const bytes = await window.electronAPI.readAudioFile(saved.path);
+        await DAW.attachRecording(track.id, saved.fileName, bytes, { filePath: saved.path, start: active.start });
+      } catch (e) {
+        alert(`Recording could not be finalized: ${e.message || e}`);
+      }
+      track.recording = false;
+      recordingRef.current = null;
+      fitTimelineToProject();
+      force((n) => n + 1);
+      return;
+    }
+    if (recordingRef.current) {
+      alert("Only one Audio In track can record at a time.");
+      return;
+    }
+    const sourcePath = DAW.tracks.find((t) => t.filePath)?.filePath || null;
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
+    const target = await window.electronAPI.prepareRecordingPath(projectPath, `${track.name} ${stamp}.wav`, sourcePath);
+    const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {};
+    const start = DAW.getPlayhead();
+    track.recording = true;
+    track._recordingStart = start;
+    track._recordingPeaks = [];
+    track._recordingSampleRate = 44100;
+    const promise = DAW.startRecording({
+      filePath: target.partPath, channel: input.channel || 0, stereo: !!input.stereo,
+      gain: track.params.inputGain || 1, monitor: !!track.params.monitor, limiter: track.params.limiter !== false,
+    });
+    recordingRef.current = { trackId: track.id, ...target, start, promise };
+    promise.catch((e) => {
+      if (recordingRef.current && recordingRef.current.trackId === track.id) {
+        track.recording = false;
+        recordingRef.current = null;
+        alert(e.message || String(e));
+        force((n) => n + 1);
+      }
+    });
+    force((n) => n + 1);
+  }, [projectPath, fitTimelineToProject]);
+
+  useEffect(() => {
+    const onRecordToggle = () => {
+      const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording)
+        || DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+      if (target) toggleRecording(target);
+    };
+    window.addEventListener("focusdaw-record-toggle", onRecordToggle);
+    return () => window.removeEventListener("focusdaw-record-toggle", onRecordToggle);
+  }, [toggleRecording]);
+
   const newProject = () => {
     const nextName = DEFAULT_PROJECT_NAME;
     DAW.clearTracks();
@@ -2543,6 +2632,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const param = (id) => (k, v) => {
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) { pushUndo(); lastUndoKey.current = undoKey; }
+    if (k === "arm" && v) {
+      DAW.tracks.forEach((track) => {
+        if (track.id !== id && track.kind === "audioIn" && track.params && track.params.arm)
+          DAW.setTrackParam(track.id, "arm", false);
+      });
+      const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
+        type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
+      };
+      if (DAW.setAudioInput) DAW.setAudioInput(input);
+    }
     DAW.setTrackParam(id, k, v);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
@@ -2732,7 +2831,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           />
           <VariKeySwitch on={!!(DAW.tempo && DAW.tempo.variKey)} onToggle={toggleVariKey} />
           <ToolbarDivider />
-          <ActionBar onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
+          <ActionBar onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} onAudioIn={addAudioInTrack} />
         </div>
       </div>
 
@@ -2745,7 +2844,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         ) : (
           <React.Fragment>
             <div style={{ position: "relative", minWidth: "min-content" }}>
-              <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.userSeek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} />
+              <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.userSeek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} onAddAudioIn={addAudioInTrack} />
               {fileTracks.length > 0 && (
                 <FileTrackGroupHeader tracks={fileTracks} count={fileTracks.length} collapsed={fileTracksCollapsed}
                   onToggle={toggleFileTracks} pxPerSec={pxPerSec} playhead={playhead}
@@ -2755,6 +2854,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               {!fileTracksCollapsed && fileTracks.map((t) => {
                 const i = DAW.tracks.findIndex((track) => track.id === t.id);
                 return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
+                  headerIndent={15}
                   playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                   onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
                   onFocusFx={focusMixerFx}
@@ -2764,8 +2864,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               })}
               {nonFileTracks.map((t) => {
                 const i = DAW.tracks.findIndex((track) => track.id === t.id);
-                return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
-                  playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
+                const trackLaneH = t.kind === "audioIn" ? audioInLaneHeight : laneH;
+                return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={trackLaneH} sizeLaneH={laneH}
+                  playhead={playhead} level={t.kind === "audioIn" ? DAW.getInputLevel() : DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                   onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
                   onFocusFx={focusMixerFx}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
@@ -2778,7 +2879,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                 <div
                   style={{
                     position: "absolute",
-                    left: (window.HEADER_W || 244) + (DAW.loopRange.start / DAW.duration) * Math.max(1, DAW.duration * pxPerSec),
+                    left: (window.HEADER_W || 274) + (DAW.loopRange.start / DAW.duration) * Math.max(1, DAW.duration * pxPerSec),
                     width: ((DAW.loopRange.end - DAW.loopRange.start) / DAW.duration) * Math.max(1, DAW.duration * pxPerSec),
                     top: 0,
                     bottom: 0,

@@ -1,4 +1,4 @@
-const HEADER_W = 244;
+const HEADER_W = 274;
 function choosePeaks(track, pxPerSec) {
   const bufDur = track.buffer ? track.buffer.duration : 0;
   if (!bufDur || !track.peaksCoarse) return track.peaks || [];
@@ -33,7 +33,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
     const dpr = window.devicePixelRatio || 1;
     const peaks = choosePeaks(track, pxPerSec);
     const nb = peaks.length / 2;
-    const bufDur = track.buffer.duration;
+    const bufDur = track.buffer ? track.buffer.duration : 0;
     const clipArr = clips || [{ start: 0, end: bufDur, offset: 0, params: null }];
     let raf = null;
     const draw = () => {
@@ -53,6 +53,37 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
       const c2d = cv.getContext("2d");
       c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
       c2d.clearRect(0, 0, drawW, height);
+      const livePeaks = track.recording && Array.isArray(track._recordingPeaks) ? track._recordingPeaks : null;
+      if (livePeaks && livePeaks.length >= 3) {
+        const sr = track._recordingSampleRate || 44100;
+        const recordingStart = track._recordingStart || 0;
+        const pointCount = Math.floor(livePeaks.length / 3);
+        const lastSample = livePeaks[(pointCount - 1) * 3] || 1;
+        const totalSeconds = lastSample / sr;
+        const visibleStartSeconds = Math.max(0, drawStart / pxPerSec - recordingStart);
+        const visibleEndSeconds = Math.min(totalSeconds, (drawStart + drawW) / pxPerSec - recordingStart);
+        const firstPoint = Math.max(0, Math.floor(visibleStartSeconds / Math.max(totalSeconds, 1e-3) * pointCount) - 2);
+        const lastPoint = Math.min(pointCount, Math.ceil(visibleEndSeconds / Math.max(totalSeconds, 1e-3) * pointCount) + 2);
+        const stride = Math.max(1, Math.floor((lastPoint - firstPoint) / Math.max(1, drawW * 1.5)));
+        const mid2 = height / 2;
+        c2d.strokeStyle = track.color;
+        c2d.lineWidth = 1;
+        c2d.globalAlpha = 0.9;
+        c2d.beginPath();
+        for (let i = firstPoint; i < lastPoint; i += stride) {
+          const sample = livePeaks[i * 3];
+          const min = livePeaks[i * 3 + 1] || 0;
+          const max = livePeaks[i * 3 + 2] || 0;
+          const x = (recordingStart + sample / sr) * pxPerSec - drawStart;
+          c2d.moveTo(x, mid2 - max * mid2 * 0.92 * ampZoom);
+          c2d.lineTo(x, mid2 - min * mid2 * 0.92 * ampZoom);
+        }
+        c2d.stroke();
+        c2d.globalAlpha = 1;
+        const endX = (recordingStart + totalSeconds) * pxPerSec - drawStart;
+        c2d.fillStyle = "#df5b52";
+        c2d.fillRect(endX, 0, 1.5, height);
+      }
       if (!nb || !bufDur) return;
       const mid = height / 2;
       let peakScale = volume * 0.92 * ampZoom;
@@ -363,15 +394,16 @@ function FxTag({ label, color, on, onClick }) {
     label
   );
 }
-function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, selected = false, onSelect }) {
+function TrackHeader({ track, idx, level, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0 }) {
   const p = track.params;
   const noAudio = !!track.needsAudio;
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const volRef = useRef(null);
   useWheelStep(volRef, (dir) => onParam("volume", nudgeGainDb(p.volume, dir, 2, 0.1)));
-  const compact = laneH <= 76;
-  const medium = laneH <= 104 && !compact;
+  const effectiveSizeLaneH = sizeLaneH;
+  const compact = effectiveSizeLaneH <= 76;
+  const medium = effectiveSizeLaneH <= 104 && !compact;
   const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
   const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
@@ -399,12 +431,13 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
     {
       onMouseDown: onSelect,
       style: {
-        width: HEADER_W,
-        flex: `0 0 ${HEADER_W}px`,
+        width: HEADER_W - indent,
+        flex: `0 0 ${HEADER_W - indent}px`,
+        marginLeft: indent,
         position: "sticky",
-        left: 0,
+        left: indent,
         zIndex: 6,
-        background: selected ? "linear-gradient(180deg, color-mix(in srgb, var(--surface3) 84%, var(--amber) 16%), color-mix(in srgb, var(--bg2) 88%, var(--amber) 12%))" : p.solo ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))" : "linear-gradient(180deg,var(--surface),var(--bg2))",
+        background: track.kind === "audioIn" ? "var(--audio-in-track-bg)" : selected ? "linear-gradient(180deg, color-mix(in srgb, var(--surface3) 84%, var(--amber) 16%), color-mix(in srgb, var(--bg2) 88%, var(--amber) 12%))" : p.solo ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))" : "linear-gradient(180deg,var(--surface),var(--bg2))",
         borderRight: "1px solid var(--line-strong)",
         borderBottom: "1px solid var(--line)",
         padding: pad,
@@ -418,7 +451,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
         boxShadow: selected ? "inset 4px 0 0 var(--amber)" : "none"
       }
     },
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact }), /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: () => onParam("mute", !p.mute) })),
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact }), track.kind !== "audioIn" && /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: () => onParam("mute", !p.mute) })),
     /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 } }, /* @__PURE__ */ React.createElement(Icon, { name: "wave", size: compact ? 12 : 13, style: { color: "var(--muted)", flex: "0 0 auto" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 0 } }, /* @__PURE__ */ React.createElement(
       "input",
       {
@@ -442,7 +475,67 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
         onChange: (v) => onParam("pan", v)
       }
     ), /* @__PURE__ */ React.createElement(Meter, { level, height: meterH, width: 6 })),
-    !compact && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22 } }, /* @__PURE__ */ React.createElement(
+    !compact && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, minHeight: 22 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("arm", !p.arm), style: {
+      height: 22,
+      padding: "0 7px",
+      borderRadius: 5,
+      fontSize: 9,
+      fontWeight: 750,
+      background: p.arm ? "var(--red)" : "transparent",
+      color: p.arm ? "#fff" : "var(--muted)",
+      border: "1px solid " + (p.arm ? "var(--red)" : "var(--line-strong)")
+    } }, "ARM"), /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("monitor", !p.monitor), style: {
+      height: 22,
+      padding: "0 7px",
+      borderRadius: 5,
+      fontSize: 9,
+      fontWeight: 700,
+      background: p.monitor ? "var(--amber-soft)" : "transparent",
+      color: p.monitor ? "var(--amber)" : "var(--muted)",
+      border: "1px solid " + (p.monitor ? "var(--amber-deep)" : "var(--line-strong)")
+    } }, "MON"), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => onParam("limiter", p.limiter === false),
+        title: "Input limiter \xB7 ceiling -1.0 dBFS",
+        style: {
+          height: 22,
+          padding: "0 5px",
+          borderRadius: 5,
+          fontSize: 8.5,
+          fontWeight: 700,
+          background: p.limiter !== false ? "var(--amber-soft)" : "transparent",
+          color: p.limiter !== false ? "var(--amber)" : "var(--muted)",
+          border: "1px solid " + (p.limiter !== false ? "var(--amber-deep)" : "var(--line-strong)")
+        }
+      },
+      "LIM"
+    ), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 8.5, color: "var(--dim)" } }, "IN"), /* @__PURE__ */ React.createElement("span", { style: { position: "relative", width: 69, height: 16, display: "block" } }, /* @__PURE__ */ React.createElement("span", { style: { position: "absolute", left: 0, right: 0, top: 6, height: 4, borderRadius: 3, background: "#3a342c", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "block", width: `${Math.max(0, Math.min(1, level || 0)) * 100}%`, height: "100%", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("span", { style: {
+      display: "block",
+      width: 69,
+      height: "100%",
+      background: "linear-gradient(90deg,#55c879 0%,#55c879 64%,#e5c84b 74%,#e5c84b 84%,#df5b52 92%,#df5b52 100%)"
+    } }))), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "input-level-slider",
+        title: `Input gain ${fmtDb(p.inputGain || 1)}`,
+        type: "range",
+        min: "0",
+        max: "4",
+        step: "0.01",
+        value: p.inputGain == null ? 1 : p.inputGain,
+        onChange: (e) => onParam("inputGain", +e.target.value),
+        style: { position: "absolute", inset: 0, width: 69, margin: 0 }
+      }
+    )))),
+    !compact && /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      minHeight: medium ? 20 : 22,
+      marginTop: track.kind === "audioIn" && medium ? "auto" : 0
+    } }, /* @__PURE__ */ React.createElement(
       "button",
       {
         title: "Volume automation on/off",
@@ -610,7 +703,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
     ))))
   ));
 }
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = playhead / DAW.duration * laneW;
   const p = track.params;
@@ -646,7 +739,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
     onSeek(sec);
   };
   const toolCursor = tool === "scissors" ? "crosshair" : tool === "join" ? "cell" : "text";
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, level, onParam, onRemove, laneH, onFocusFx, selected, onSelect }), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, level, onParam, onRemove, laneH, sizeLaneH, onFocusFx, selected, onSelect, indent: headerIndent }), /* @__PURE__ */ React.createElement(
     "div",
     {
       onMouseDown: (e) => {
@@ -659,7 +752,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
         position: "relative",
         width: laneW,
         height: laneH,
-        background: selected ? "linear-gradient(90deg, rgba(232,176,75,.08), transparent 38%)" : idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
+        background: track.kind === "audioIn" ? "linear-gradient(90deg,color-mix(in srgb,var(--blue) 8%,transparent),transparent 42%)" : selected ? "linear-gradient(90deg, rgba(232,176,75,.08), transparent 38%)" : idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
         // isolate: make the lane its own stacking context so the absolutely-positioned playhead
         // (and any overlay) can never paint above the sibling sticky TrackHeader when it scrolls
         // left of the viewport (seek-back + time zoom-in). Header (zIndex 6) sits above the lane.
@@ -974,7 +1067,7 @@ function rulerLabel(t, step) {
   if (step < 1) return `${m}:${String(Math.floor(s)).padStart(2, "0")}.${Math.round(s % 1 * 10)}`;
   return `${m}:${String(Math.floor(s)).padStart(2, "0")}`;
 }
-function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
+function Ruler({ pxPerSec, playhead, onSeek, onAddTrack, onAddAudioIn }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
   const step = STEPS.find((s) => s * pxPerSec >= 76) || STEPS[STEPS.length - 1];
@@ -1033,6 +1126,25 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
         }
       },
       /* @__PURE__ */ React.createElement(Icon, { name: "plus", size: 12 })
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: onAddAudioIn,
+        title: "Add Audio In track",
+        style: {
+          height: 18,
+          padding: "0 6px",
+          borderRadius: 5,
+          flex: "0 0 auto",
+          fontSize: 9,
+          fontWeight: 700,
+          background: "var(--surface2)",
+          color: "var(--cream-2)",
+          border: "1px solid var(--line-strong)",
+          cursor: "pointer"
+        }
+      },
+      "+ Audio In"
     ), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" } }, "Time"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9.5, color: "var(--faint)" } }, "m:ss"))), /* @__PURE__ */ React.createElement("div", { onMouseDown: seek, style: {
       position: "relative",
       width: laneW,

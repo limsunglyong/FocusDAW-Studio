@@ -1,5 +1,5 @@
 /* ================= FocusDAW — track lanes, waveforms, automation ================= */
-const HEADER_W = 244;
+const HEADER_W = 274;
 
 // Select the coarsest peak level that still provides ≥1 bucket per pixel.
 // Falls back to fine (highest resolution) when needed.
@@ -41,7 +41,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
     const dpr = window.devicePixelRatio || 1;
     const peaks = choosePeaks(track, pxPerSec);
     const nb = peaks.length / 2;
-    const bufDur = track.buffer.duration;
+    const bufDur = track.buffer ? track.buffer.duration : 0;
     const clipArr = clips || [{ start: 0, end: bufDur, offset: 0, params: null }];
     let raf = null;
 
@@ -63,6 +63,37 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
       const c2d = cv.getContext("2d");
       c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
       c2d.clearRect(0, 0, drawW, height);
+      const livePeaks = track.recording && Array.isArray(track._recordingPeaks) ? track._recordingPeaks : null;
+      if (livePeaks && livePeaks.length >= 3) {
+        const sr = track._recordingSampleRate || 44100;
+        const recordingStart = track._recordingStart || 0;
+        const pointCount = Math.floor(livePeaks.length / 3);
+        const lastSample = livePeaks[(pointCount - 1) * 3] || 1;
+        const totalSeconds = lastSample / sr;
+        const visibleStartSeconds = Math.max(0, drawStart / pxPerSec - recordingStart);
+        const visibleEndSeconds = Math.min(totalSeconds, (drawStart + drawW) / pxPerSec - recordingStart);
+        const firstPoint = Math.max(0, Math.floor((visibleStartSeconds / Math.max(totalSeconds, .001)) * pointCount) - 2);
+        const lastPoint = Math.min(pointCount, Math.ceil((visibleEndSeconds / Math.max(totalSeconds, .001)) * pointCount) + 2);
+        const stride = Math.max(1, Math.floor((lastPoint - firstPoint) / Math.max(1, drawW * 1.5)));
+        const mid = height / 2;
+        c2d.strokeStyle = track.color;
+        c2d.lineWidth = 1;
+        c2d.globalAlpha = .9;
+        c2d.beginPath();
+        for (let i = firstPoint; i < lastPoint; i += stride) {
+          const sample = livePeaks[i * 3];
+          const min = livePeaks[i * 3 + 1] || 0;
+          const max = livePeaks[i * 3 + 2] || 0;
+          const x = (recordingStart + sample / sr) * pxPerSec - drawStart;
+          c2d.moveTo(x, mid - max * mid * .92 * ampZoom);
+          c2d.lineTo(x, mid - min * mid * .92 * ampZoom);
+        }
+        c2d.stroke();
+        c2d.globalAlpha = 1;
+        const endX = (recordingStart + totalSeconds) * pxPerSec - drawStart;
+        c2d.fillStyle = "#df5b52";
+        c2d.fillRect(endX, 0, 1.5, height);
+      }
       if (!nb || !bufDur) return;
 
       const mid = height / 2;
@@ -332,7 +363,7 @@ function FxTag({ label, color, on, onClick }) {
   );
 }
 
-function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, selected = false, onSelect }) {
+function TrackHeader({ track, idx, level, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0 }) {
   const p = track.params;
   const noAudio = !!track.needsAudio;
   const [confirmReset, setConfirmReset] = useState(false);
@@ -340,8 +371,9 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
   const volRef = useRef(null);
   // wheel over the volume fader = 0.1 dB per notch (display is dB)
   useWheelStep(volRef, (dir) => onParam("volume", nudgeGainDb(p.volume, dir, 2, 0.1)));
-  const compact = laneH <= 76;
-  const medium = laneH <= 104 && !compact;
+  const effectiveSizeLaneH = sizeLaneH;
+  const compact = effectiveSizeLaneH <= 76;
+  const medium = effectiveSizeLaneH <= 104 && !compact;
   const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
   const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
@@ -367,8 +399,10 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
   return (
     <React.Fragment>
     <div onMouseDown={onSelect}
-      style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 6,
-      background: selected
+      style={{ width: HEADER_W - indent, flex: `0 0 ${HEADER_W - indent}px`, marginLeft: indent, position: "sticky", left: indent, zIndex: 6,
+      background: track.kind === "audioIn"
+        ? "var(--audio-in-track-bg)"
+        : selected
         ? "linear-gradient(180deg, color-mix(in srgb, var(--surface3) 84%, var(--amber) 16%), color-mix(in srgb, var(--bg2) 88%, var(--amber) 12%))"
         : p.solo
           ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))"
@@ -380,7 +414,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
         <ScrollingTrackTitle name={track.name} compact={compact} />
-        <button title={noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection"} disabled={noAudio} onClick={noAudio ? undefined : () => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>
+        {track.kind !== "audioIn" && <button title={noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection"} disabled={noAudio} onClick={noAudio ? undefined : () => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>}
         <SoloBtn size={buttonSize} on={p.solo} disabled={noAudio} onClick={() => onParam("solo", !p.solo)} />
         <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} onClick={() => onParam("mute", !p.mute)} />
       </div>
@@ -400,7 +434,32 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
           onChange={(v) => onParam("pan", v)} />
         <Meter level={level} height={meterH} width={6} />
       </div>
-      {!compact && <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22 }}>
+      {!compact && track.kind === "audioIn" && <div style={{ display: "flex", alignItems: "center", gap: 5, minHeight: 22 }}>
+        <button onClick={() => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 7px", borderRadius: 5, fontSize: 9, fontWeight: 750,
+          background: p.arm ? "var(--red)" : "transparent", color: p.arm ? "#fff" : "var(--muted)", border: "1px solid " + (p.arm ? "var(--red)" : "var(--line-strong)") }}>ARM</button>
+        <button onClick={() => onParam("monitor", !p.monitor)} style={{ height: 22, padding: "0 7px", borderRadius: 5, fontSize: 9, fontWeight: 700,
+          background: p.monitor ? "var(--amber-soft)" : "transparent", color: p.monitor ? "var(--amber)" : "var(--muted)", border: "1px solid " + (p.monitor ? "var(--amber-deep)" : "var(--line-strong)") }}>MON</button>
+        <button onClick={() => onParam("limiter", p.limiter === false)} title="Input limiter · ceiling -1.0 dBFS"
+          style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 8.5, fontWeight: 700,
+            background: p.limiter !== false ? "var(--amber-soft)" : "transparent", color: p.limiter !== false ? "var(--amber)" : "var(--muted)",
+            border: "1px solid " + (p.limiter !== false ? "var(--amber-deep)" : "var(--line-strong)") }}>LIM</button>
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+          <span className="mono" style={{ fontSize: 8.5, color: "var(--dim)" }}>IN</span>
+          <span style={{ position: "relative", width: 69, height: 16, display: "block" }}>
+            <span style={{ position: "absolute", left: 0, right: 0, top: 6, height: 4, borderRadius: 3, background: "#3a342c", overflow: "hidden" }}>
+              <span style={{ display: "block", width: `${Math.max(0, Math.min(1, level || 0)) * 100}%`, height: "100%", overflow: "hidden" }}>
+                <span style={{ display: "block", width: 69, height: "100%",
+                  background: "linear-gradient(90deg,#55c879 0%,#55c879 64%,#e5c84b 74%,#e5c84b 84%,#df5b52 92%,#df5b52 100%)" }} />
+              </span>
+            </span>
+            <input className="input-level-slider" title={`Input gain ${fmtDb(p.inputGain || 1)}`} type="range" min="0" max="4" step="0.01"
+              value={p.inputGain == null ? 1 : p.inputGain} onChange={(e) => onParam("inputGain", +e.target.value)}
+              style={{ position: "absolute", inset: 0, width: 69, margin: 0 }} />
+          </span>
+        </span>
+      </div>}
+      {!compact && <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22,
+        marginTop: track.kind === "audioIn" && medium ? "auto" : 0 }}>
         {/* VOL AUTO — rounded toggle (replaces the old icon button) */}
         <button title="Volume automation on/off" onClick={() => onParam("autoOn", !p.autoOn)}
           style={{ display: "flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 6,
@@ -499,7 +558,7 @@ function TrackHeader({ track, idx, level, onParam, onRemove, laneH, onFocusFx, s
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, level, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -539,10 +598,12 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, playhead, level, onPar
 
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
-      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} laneH={laneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} />
+      <TrackHeader track={track} idx={idx} level={level} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} />
       <div onMouseDown={(e) => { if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
-          background: selected
+          background: track.kind === "audioIn"
+            ? "linear-gradient(90deg,color-mix(in srgb,var(--blue) 8%,transparent),transparent 42%)"
+            : selected
             ? "linear-gradient(90deg, rgba(232,176,75,.08), transparent 38%)"
             : idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
           // isolate: make the lane its own stacking context so the absolutely-positioned playhead
@@ -715,7 +776,7 @@ function rulerLabel(t, step) {
   if (step < 1) return `${m}:${String(Math.floor(s)).padStart(2, "0")}.${Math.round((s % 1) * 10)}`;
   return `${m}:${String(Math.floor(s)).padStart(2, "0")}`;
 }
-function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
+function Ruler({ pxPerSec, playhead, onSeek, onAddTrack, onAddAudioIn }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
   const step = STEPS.find((s) => s * pxPerSec >= 76) || STEPS[STEPS.length - 1];
@@ -750,6 +811,11 @@ function Ruler({ pxPerSec, playhead, onSeek, onAddTrack }) {
           style={{ width: 18, height: 18, display: "grid", placeItems: "center", borderRadius: 5, flex: "0 0 auto",
             background: "var(--surface2)", color: "var(--cream-2)", border: "1px solid var(--line-strong)", cursor: "pointer", padding: 0 }}>
           <Icon name="plus" size={12} />
+        </button>
+        <button onClick={onAddAudioIn} title="Add Audio In track"
+          style={{ height: 18, padding: "0 6px", borderRadius: 5, flex: "0 0 auto", fontSize: 9, fontWeight: 700,
+            background: "var(--surface2)", color: "var(--cream-2)", border: "1px solid var(--line-strong)", cursor: "pointer" }}>
+          + Audio In
         </button>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--muted)", textTransform: "uppercase" }}>Time</span>

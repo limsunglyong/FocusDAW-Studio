@@ -22,10 +22,52 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <array>
 
 #if USE_JUCE
 #include "SoundTouch.h"
 #include <juce_dsp/juce_dsp.h>
+
+class InputRecorder : public juce::AudioIODeviceCallback
+{
+public:
+    struct PeakPoint { juce::int64 endSample = 0; float min = 0.0f; float max = 0.0f; };
+    InputRecorder() : writerThread("FocusDAW Recording Writer") { writerThread.startThread(); }
+    ~InputRecorder() override { stop(); writerThread.stopThread(3000); }
+
+    bool start(const juce::File& file, double sampleRate, int inputChannel, bool stereo,
+               float gain, bool monitor, bool limiter);
+    void stop();
+    void cancel();
+    bool isRecording() const { return recording.load(); }
+    float getLevel() const { return level.load(); }
+    juce::int64 getSamplesWritten() const { return samplesWritten.load(); }
+    std::vector<PeakPoint> drainPeaks();
+
+    void audioDeviceIOCallbackWithContext(const float* const* input, int numInputs,
+        float* const* output, int numOutputs, int numSamples,
+        const juce::AudioIODeviceCallbackContext&) override;
+    void audioDeviceAboutToStart(juce::AudioIODevice*) override {}
+    void audioDeviceStopped() override {}
+
+private:
+    juce::TimeSliceThread writerThread;
+    std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> threadedWriter;
+    juce::File recordingFile;
+    std::mutex writerMutex;
+    std::atomic<bool> recording { false };
+    std::atomic<float> level { 0.0f };
+    std::atomic<juce::int64> samplesWritten { 0 };
+    int channel = 0;
+    int channelCount = 1;
+    float inputGain = 1.0f;
+    bool monitoring = false;
+    bool limiterOn = true;
+    static constexpr int peakCapacity = 4096;
+    std::array<PeakPoint, peakCapacity> peakRing {};
+    std::atomic<unsigned int> peakWrite { 0 };
+    std::atomic<unsigned int> peakRead { 0 };
+};
 #endif
 
 struct TrackInfo
@@ -1504,6 +1546,17 @@ public:
     // string ("" = success). Empty type/name select the system defaults.
     std::string getAudioDevicesJson();
     std::string setAudioDevice(const std::string& typeName, const std::string& deviceName);
+    std::string setAudioInput(const std::string& typeName, const std::string& deviceName,
+                              int channel, bool stereo, double requestedSampleRate, int requestedBufferSize);
+    std::string startRecording(const std::string& filePath, int channel, bool stereo,
+                               float gain, bool monitor, bool limiter);
+    std::string stopRecording();
+    void cancelRecording();
+    bool isRecording() const;
+    float getInputMagnitude() const;
+    long long getRecordedSamples() const;
+    std::vector<InputRecorder::PeakPoint> drainRecordingPeaks();
+    double getCurrentSampleRate() const { return sampleRate; }
 
     // Getters for status updates
     bool isPlaying() const { return playing; }
@@ -1543,6 +1596,7 @@ private:
 #if USE_JUCE
     juce::AudioDeviceManager deviceManager;
     juce::AudioSourcePlayer sourcePlayer;
+    InputRecorder inputRecorder;
     juce::MixerAudioSource mixerSource;
     juce::AudioFormatManager formatManager;
     std::unique_ptr<GainAudioSource> masterGainSource;

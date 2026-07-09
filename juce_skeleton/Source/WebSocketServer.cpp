@@ -164,6 +164,13 @@ bool getJsonBoolVal(const std::string& json, const std::string& key) {
     return false;
 }
 
+static std::string escapeJson(const std::string& value)
+{
+    std::string out;
+    for (char c : value) { if (c == '"' || c == '\\') out += '\\'; out += c; }
+    return out;
+}
+
 std::vector<float> getJsonFloatArrayVal(const std::string& json, const std::string& key) {
     std::vector<float> result;
     size_t pos = json.find("\"" + key + "\"");
@@ -618,6 +625,47 @@ void WebSocketServer::clientLoop(void* socketHandle)
             // Follow with the refreshed list so the UI reflects the device actually in use.
             broadcast(audioEngine.getAudioDevicesJson());
         }
+        else if (cmd == "setAudioInput")
+        {
+            auto type = getJsonStringVal(frameText, "type");
+            auto name = getJsonStringVal(frameText, "name");
+            int channel = (int)getJsonDoubleVal(frameText, "channel");
+            bool stereo = getJsonBoolVal(frameText, "stereo");
+            double sr = getJsonDoubleVal(frameText, "sampleRate");
+            int bufferSize = (int)getJsonDoubleVal(frameText, "bufferSize");
+            auto err = audioEngine.setAudioInput(type, name, channel, stereo, sr, bufferSize);
+            broadcast(std::string("{\"event\":\"audioInputChanged\",\"ok\":") +
+                (err.empty() ? "true" : "false") +
+                (err.empty() ? "}" : ",\"error\":\"" + escapeJson(err) + "\"}"));
+            broadcast(audioEngine.getAudioDevicesJson());
+        }
+        else if (cmd == "startRecording")
+        {
+            auto path = getJsonStringVal(frameText, "filePath");
+            auto err = audioEngine.startRecording(path,
+                (int)getJsonDoubleVal(frameText, "channel"),
+                getJsonBoolVal(frameText, "stereo"),
+                (float)getJsonDoubleVal(frameText, "gain"),
+                getJsonBoolVal(frameText, "monitor"),
+                getJsonBoolVal(frameText, "limiter"));
+            broadcast(std::string("{\"event\":\"recordingStarted\",\"ok\":") +
+                (err.empty() ? "true" : "false") +
+                (err.empty() ? ",\"filePath\":\"" + escapeJson(path) + "\"}" : ",\"error\":\"" + escapeJson(err) + "\"}"));
+        }
+        else if (cmd == "stopRecording")
+        {
+            auto path = getJsonStringVal(frameText, "filePath");
+            auto err = audioEngine.stopRecording();
+            broadcast(std::string("{\"event\":\"recordingStopped\",\"ok\":") +
+                (err.empty() ? "true" : "false") + ",\"filePath\":\"" + escapeJson(path) +
+                "\",\"samples\":" + std::to_string(audioEngine.getRecordedSamples()) +
+                (err.empty() ? "}" : ",\"error\":\"" + escapeJson(err) + "\"}"));
+        }
+        else if (cmd == "cancelRecording")
+        {
+            audioEngine.cancelRecording();
+            broadcast("{\"event\":\"recordingCancelled\"}");
+        }
         else if (cmd == "export")
         {
             std::string exportId = getJsonStringVal(frameText, "exportId");
@@ -705,6 +753,23 @@ void WebSocketServer::timerLoop()
                 << ",\"isPlaying\":" << (playing ? "true" : "false") << "}";
         broadcast(posJson.str());
 
+        {
+            const auto peaks = audioEngine.drainRecordingPeaks();
+            if (!peaks.empty())
+            {
+                std::ostringstream peakJson;
+                peakJson << "{\"event\":\"recordingPeaks\",\"sampleRate\":"
+                         << audioEngine.getCurrentSampleRate() << ",\"points\":[";
+                for (size_t i = 0; i < peaks.size(); ++i)
+                {
+                    peakJson << peaks[i].endSample << "," << peaks[i].min << "," << peaks[i].max;
+                    if (i + 1 < peaks.size()) peakJson << ",";
+                }
+                peakJson << "]}";
+                broadcast(peakJson.str());
+            }
+        }
+
         // Always broadcast level meters. When stopped/paused the magnitude getters
         // return 0, so the meters fall to silence instead of freezing at the last
         // played level (which they did when we only broadcast while playing).
@@ -712,6 +777,8 @@ void WebSocketServer::timerLoop()
             std::ostringstream lvJson;
             auto masterMag = audioEngine.getMasterMagnitude();
             lvJson << "{\"event\":\"levels\",\"master\":{\"l\":" << masterMag.first << ",\"r\":" << masterMag.second << "}";
+            lvJson << ",\"input\":" << audioEngine.getInputMagnitude()
+                   << ",\"recording\":" << (audioEngine.isRecording() ? "true" : "false");
 
             // Master band levels for the spectrum meter — without these the web UI
             // borrows the muted web engine's analyser, which shows its reverb tail.

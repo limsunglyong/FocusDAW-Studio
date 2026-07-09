@@ -638,7 +638,9 @@
       panner.connect(echoSend); echoSend.connect(delay);
       delay.connect(fb); fb.connect(delay); delay.connect(echoReturn); echoReturn.connect(masterBus); // echo (wet ×0.45)
 
-      const { coarse, medium, fine } = peaks || computePeakLevels(buffer);
+      const { coarse, medium, fine } = peaks || (buffer ? computePeakLevels(buffer) : {
+        coarse: new Float32Array(0), medium: new Float32Array(0), fine: new Float32Array(0),
+      });
       const trackKind = this._trackKindFor({ kind, isDemo });
       const sourceId = (sources && sources[0] && sources[0].id) || this._sourceId();
       const sourceDuration = buffer ? buffer.duration : 0;
@@ -652,6 +654,7 @@
           volume: 1.0, pan: 0, mute: false, solo: false,
           reverb: 0, echo: 0,
           bpmSource: false,
+          inputGain: 1.0, arm: false, monitor: false, limiter: true,
           autoOn: false,
           autoCurve: false,
           automation: defaultAutomation(type),
@@ -673,6 +676,42 @@
       this._normalizeTrackLayout(track);
       this.tracks.push(track);
       this._applyMix();
+      return track;
+    },
+
+    addAudioInTrack(name = "Audio In") {
+      this.init();
+      const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
+      return this._addTrack({
+        name, type: "audio", color: palette[this.tracks.length % palette.length],
+        buffer: null, kind: "audioIn", lockedToZero: false, needsAudio: false,
+        sources: [], clips: [],
+      });
+    },
+
+    async attachRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = this.tracks.find((t) => t.id === trackId && t.kind === "audioIn");
+      if (!track) throw new Error("Audio In track was not found.");
+      const decoded = await this._decodeAudio(arrayBuffer, null);
+      track.buffer = decoded.buffer;
+      track.peaks = decoded.peaks.fine;
+      track.peaksMedium = decoded.peaks.medium;
+      track.peaksCoarse = decoded.peaks.coarse;
+      track.peakAmp = maxAbsPeak(decoded.peaks.coarse);
+      track.fileName = name;
+      track.filePath = options.filePath || null;
+      const sourceId = this._sourceId();
+      track.sources = [{
+        id: sourceId, filePath: track.filePath, fileName: name,
+        duration: decoded.buffer.duration, sampleRate: decoded.buffer.sampleRate,
+        channels: decoded.buffer.numberOfChannels, needsAudio: false,
+      }];
+      const start = Math.max(0, options.start || 0);
+      track.clips = [this._normalizeClip({ start, end: start + decoded.buffer.duration, offset: 0 }, sourceId, decoded.buffer.duration)];
+      track.audioRev = (track.audioRev || 0) + 1;
+      this.duration = Math.max(this.duration, start + decoded.buffer.duration);
+      this._applyMix();
+      this._startHotAddedTrack(track);
       return track;
     },
 

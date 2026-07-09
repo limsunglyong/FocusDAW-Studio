@@ -24,13 +24,18 @@
     hasNativeBandData: false, // true once the native engine broadcasts masterBands
     stretchPreviewPreparing: false,
     audioDevices: null,        // last "audioDevices" event from the native engine
-    audioDeviceResolvers: []   // pending requestAudioDevices() promises
+    audioDeviceResolvers: [],  // pending requestAudioDevices() promises
+    inputLevel: 0,
+    recording: false,
+    recordingResolve: null,
+    recordingReject: null
   };
 
   // App-specific audio output device (Settings dialog). Stored locally — this is
   // an app preference, not project data. { type, name } with JUCE's names; absent
   // or empty = system default device.
   const AUDIO_DEVICE_KEY = "focusdaw-audio-device";
+  const AUDIO_INPUT_KEY = "focusdaw-audio-input";
   function loadSavedAudioDevice() {
     try { return JSON.parse(localStorage.getItem(AUDIO_DEVICE_KEY) || "null"); } catch (e) { return null; }
   }
@@ -226,6 +231,39 @@
       } catch (e) {}
       LocalDAW.setOutputDevice(name || "");
       if (this.isNative) sendToNative({ command: "setAudioDevice", type: type || "", name: name || "" });
+    },
+
+    getSavedAudioInput() {
+      try { return JSON.parse(localStorage.getItem(AUDIO_INPUT_KEY) || "null"); } catch (e) { return null; }
+    },
+
+    setAudioInput(settings) {
+      const next = settings || {};
+      try { localStorage.setItem(AUDIO_INPUT_KEY, JSON.stringify(next)); } catch (e) {}
+      if (this.isNative) sendToNative({ command: "setAudioInput", ...next });
+    },
+
+    getInputLevel() { return nativeState.inputLevel || 0; },
+
+    startRecording(options) {
+      if (!this.isNative) return Promise.reject(new Error("Native audio engine is required for recording."));
+      if (nativeState.recordingResolve) return Promise.reject(new Error("A recording is already active."));
+      return new Promise((resolve, reject) => {
+        nativeState.recordingResolve = resolve;
+        nativeState.recordingReject = reject;
+        sendToNative({ command: "startRecording", ...options });
+      });
+    },
+
+    stopRecording(filePath) {
+      if (this.isNative) sendToNative({ command: "stopRecording", filePath });
+    },
+
+    cancelRecording() {
+      if (this.isNative) sendToNative({ command: "cancelRecording" });
+      nativeState.recording = false;
+      nativeState.recordingResolve = null;
+      nativeState.recordingReject = null;
     },
 
     // Temporary master-FX bypass (Output FX EFFECT button). The web engine
@@ -550,6 +588,16 @@
       return track;
     },
 
+    addAudioInTrack(name) {
+      return LocalDAW.addAudioInTrack(name);
+    },
+
+    async attachRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = await LocalDAW.attachRecording(trackId, name, arrayBuffer, options);
+      if (this.isNative && track) syncTrackToNative(track);
+      return track;
+    },
+
     addDemoTracks() {
       LocalDAW.addDemoTracks();
       if (this.isNative) {
@@ -754,6 +802,10 @@
       if (savedDev && (savedDev.type || savedDev.name)) {
         sendToNative({ command: "setAudioDevice", type: savedDev.type || "", name: savedDev.name || "" });
       }
+      try {
+        const savedInput = JSON.parse(localStorage.getItem(AUDIO_INPUT_KEY) || "null");
+        if (savedInput && savedInput.name) sendToNative({ command: "setAudioInput", ...savedInput });
+      } catch (e) {}
 
       // Sync current tempo & key settings (incl. keyShift — see syncTempoKeyToNative).
       syncTempoKeyToNative();
@@ -952,6 +1004,8 @@
         nativeState.masterBandLevels = msg.masterBands;
         nativeState.hasNativeBandData = true;
       }
+      if (typeof msg.input === "number") nativeState.inputLevel = msg.input;
+      if (typeof msg.recording === "boolean") nativeState.recording = msg.recording;
       // Do not call _emit on every level message to avoid React overload, React uses useTick polling
     } else if (msg.event === "audioDevices") {
       nativeState.audioDevices = msg;
@@ -959,6 +1013,41 @@
       LocalDAW._emit();
     } else if (msg.event === "audioDeviceChanged") {
       if (!msg.ok) console.warn("[AudioBridge] Audio device change failed:", msg.error);
+      LocalDAW._emit();
+    } else if (msg.event === "audioInputChanged") {
+      if (!msg.ok) console.warn("[AudioBridge] Audio input change failed:", msg.error);
+      LocalDAW._emit();
+    } else if (msg.event === "recordingStarted") {
+      nativeState.recording = !!msg.ok;
+      if (!msg.ok && nativeState.recordingReject) {
+        nativeState.recordingReject(new Error(msg.error || "Recording could not start."));
+        nativeState.recordingResolve = null;
+        nativeState.recordingReject = null;
+      }
+      LocalDAW._emit();
+    } else if (msg.event === "recordingPeaks") {
+      const track = LocalDAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
+      if (track && Array.isArray(msg.points)) {
+        if (!Array.isArray(track._recordingPeaks)) track._recordingPeaks = [];
+        track._recordingPeaks.push(...msg.points);
+        track._recordingSampleRate = Number(msg.sampleRate) || track._recordingSampleRate || 44100;
+        const lastSample = msg.points.length >= 3 ? Number(msg.points[msg.points.length - 3]) : 0;
+        const recordedEnd = (track._recordingStart || 0) + lastSample / track._recordingSampleRate;
+        if (recordedEnd >= LocalDAW.duration - 1) LocalDAW.duration = recordedEnd + 60;
+        track.audioRev = (track.audioRev || 0) + 1;
+        LocalDAW._emit();
+      }
+    } else if (msg.event === "recordingStopped") {
+      nativeState.recording = false;
+      if (msg.ok && nativeState.recordingResolve) nativeState.recordingResolve(msg);
+      else if (nativeState.recordingReject) nativeState.recordingReject(new Error(msg.error || "Recording failed."));
+      nativeState.recordingResolve = null;
+      nativeState.recordingReject = null;
+      LocalDAW._emit();
+    } else if (msg.event === "recordingCancelled") {
+      nativeState.recording = false;
+      nativeState.recordingResolve = null;
+      nativeState.recordingReject = null;
       LocalDAW._emit();
     } else if (msg.event === "stretchPreviewPreparing") {
       nativeState.stretchPreviewPreparing = !!msg.preparing;
