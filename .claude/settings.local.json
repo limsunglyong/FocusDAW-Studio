@@ -68,7 +68,12 @@
       "Bash(grep -iE \"error|built build\\\\\\\\\\\\\\\\\\(app|ui-tracks|ui-mixer|mixer-app\\)\")",
       "Bash(awk '{print $6, $7}')",
       "Bash(grep -oE \"if \\\\\\(el\\\\\\) \\\\{.{0,320}\" build/mixer-app.js)",
-      "PowerShell(\"stopped\")"
+      "PowerShell(\"stopped\")",
+      "Bash(python3 -)",
+      "PowerShell(cmd /c \"e:\\\\programmings\\\\FocusDAW-Studio\\\\juce_skeleton\\\\build_native.bat\" 2>&1 | Tee-Object -FilePath \"$env:TEMP\\\\focusdaw_native_build.log\" | Select-Object -Last 5)",
+      "PowerShell(cmd /c \"e:\\\\programmings\\\\FocusDAW-Studio\\\\juce_skeleton\\\\build_native.bat\" 2>&1 | Tee-Object -FilePath \"$env:TEMP\\\\focusdaw_native_build2.log\" | Select-Object -Last 8)",
+      "PowerShell(Stop-Process -Name electron -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(npm run build:renderers 2>&1 | Select-Object -Last 1; Remove-Item \"$env:TEMP\\\\focusdaw_mixer_shot.png\" -ErrorAction SilentlyContinue; Write-Output \"built\")"
     ]
   }
 }

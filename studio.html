@@ -322,7 +322,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 .arrange-scroll-arrow:focus,.arrange-scroll-arrow:focus-visible{outline:none}
 @keyframes recordBlink{0%,44%{opacity:1}45%,94%{opacity:.22}95%,100%{opacity:1}}
 .record-blink{animation:recordBlink 1s steps(1,end) infinite}
-.input-level-slider::-webkit-slider-runnable-track{background:transparent}
+.input-level-slider[type=range]{background:transparent}
+.input-level-slider[type=range]::-webkit-slider-runnable-track{
+  background:transparent!important;box-shadow:none}
 /* Prevent accidental text selection and native element/image dragging across the app —
    the "object stuck to the cursor" ghost + the import dropzone dashed outline it triggered.
    Real form inputs stay selectable. The only intended drag is an external OS file drop,

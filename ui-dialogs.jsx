@@ -927,7 +927,7 @@ function DeviceSetupSection() {
   const apply = (patch) => {
     const next = { ...settings, ...patch };
     setSettings(next);
-    if (DAW.setAudioInput) DAW.setAudioInput(next);
+    if (DAW.setAudioInput) DAW.setAudioInput(next).catch((e) => console.warn("[AudioInput] settings apply failed:", e));
   };
   return (
     <section id="settings-device-setup" style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22, scrollMarginTop: 20 }}>

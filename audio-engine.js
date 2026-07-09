@@ -706,6 +706,11 @@
         duration: decoded.buffer.duration, sampleRate: decoded.buffer.sampleRate,
         channels: decoded.buffer.numberOfChannels, needsAudio: false,
       }];
+      // Re-recording onto a reopened (placeholder) Audio In track must clear the
+      // track-level needsAudio too. Leaving it true keeps the NO AUDIO badge and
+      // makes setTrackParam drop Solo/Mute/bpmSource (audio-engine setTrackParam /
+      // audio-bridge gate), even though the buffer now plays fine.
+      track.needsAudio = false;
       const start = Math.max(0, options.start || 0);
       track.clips = [this._normalizeClip({ start, end: start + decoded.buffer.duration, offset: 0 }, sourceId, decoded.buffer.duration)];
       track.audioRev = (track.audioRev || 0) + 1;
@@ -1931,6 +1936,10 @@
       const total = Math.floor(this.duration * sr);
       const mono = new Float32Array(total);
       this.tracks.forEach((t) => {
+        // Audio In tracks start with a null buffer (empty until recorded) and
+        // reopened placeholders are needsAudio — skip both, or getChannelData(0)
+        // on null throws and blanks the mixer window (which pulls the spectrum).
+        if (!t.buffer || t.needsAudio) return;
         const ch = t.buffer.getChannelData(0);
         const m = Math.min(total, ch.length);
         for (let i = 0; i < m; i++) mono[i] += ch[i];

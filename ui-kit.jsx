@@ -134,13 +134,33 @@ function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, la
 }
 
 /* ---------- vertical fader ---------- */
+/* ---------- fader taper ----------
+ * The slider position maps to LOUDNESS (dB), not raw gain. A linear-gain fader
+ * spends its top half on just 0..-6 dB and crams all the audible attenuation into
+ * the bottom sliver, so most travel feels inert. Here position p∈[0,1] maps to
+ * dB∈[FADER_MIN_DB, maxDb] (maxDb = 20log10(max): 0 dB at max=1, +6 dB at max=2),
+ * and p=0 is true silence (-∞). Equal travel ≈ equal dB change. */
+const FADER_MIN_DB = -60;
+function faderPosToGain(p, max) {
+  if (p <= 0) return 0;
+  const maxDb = 20 * Math.log10(max);
+  const db = FADER_MIN_DB + p * (maxDb - FADER_MIN_DB);
+  if (db <= FADER_MIN_DB) return 0;
+  return Math.pow(10, db / 20);
+}
+function faderGainToPos(g, max) {
+  if (g <= 0) return 0;
+  const maxDb = 20 * Math.log10(max);
+  const db = 20 * Math.log10(g);
+  return Math.max(0, Math.min(1, (db - FADER_MIN_DB) / (maxDb - FADER_MIN_DB)));
+}
 function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--amber)", showVal, max = 1 }) {
   const ref = useRef(null);
-  const norm = Math.max(0, Math.min(1, value / max));
+  const norm = faderGainToPos(value, max);
   const set = (clientY) => {
     const el = ref.current; const r = el.getBoundingClientRect();
     let n = 1 - (clientY - r.top) / r.height;
-    onChange(Math.max(0, Math.min(max, n * max)));
+    onChange(faderPosToGain(Math.max(0, Math.min(1, n)), max));
   };
   const onDown = (e) => {
     e.preventDefault();
@@ -162,8 +182,8 @@ function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--a
     <div ref={ref} onMouseDown={onDown} style={{ width: 26, height, position: "relative", cursor: "ns-resize" }}>
       <div style={{ position: "absolute", left: "50%", top: 4, bottom: 4, width: 4, transform: "translateX(-50%)", background: "#1a1611", borderRadius: 3, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.5)" }} />
       <div style={{ position: "absolute", left: "50%", bottom: `calc(${norm * 100}% - 8px)`, width: 4, transform: "translateX(-50%)", height: 4, background: color, borderRadius: 3, top: 4 }} />
-      {/* 0dB marker — shown when max > 1 */}
-      {max > 1 && <div style={{ position: "absolute", left: "50%", bottom: trackH / max, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" }} />}
+      {/* 0dB marker — shown when max > 1; positioned on the dB taper (unity gain) */}
+      {max > 1 && <div style={{ position: "absolute", left: "50%", bottom: faderGainToPos(1, max) * trackH, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" }} />}
       <div style={{ position: "absolute", left: "50%", bottom: norm * trackH, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "var(--fader-knob, linear-gradient(#4a4338,#2c2720))", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" }}>
         <div style={{ position: "absolute", top: "50%", left: 3, right: 3, height: 1.5, transform: "translateY(-50%)", background: color, opacity: .8 }} />
       </div>

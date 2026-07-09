@@ -24,9 +24,10 @@ bool InputRecorder::start(const juce::File& file, double sr, int inputChannel, b
         threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(
             rawWriter, writerThread, 32768);
         recordingFile = file;
-        channel = juce::jmax(0, inputChannel);
-        channelCount = stereo ? 2 : 1;
-        inputGain = juce::jlimit(0.0f, 4.0f, gain);
+        configureInput(inputChannel, stereo);
+        const float clampedGain = juce::jlimit(0.1f, 4.0f, gain);
+        inputGain.store(clampedGain);
+        currentInputGain = clampedGain;
         monitoring = monitor;
         limiterOn = limiter;
         samplesWritten = 0;
@@ -65,30 +66,60 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
                 juce::FloatVectorOperations::clear(output[ch], numSamples);
 
     if (input == nullptr || numInputs <= 0) return;
-    const int channelsToWrite = juce::jmin(channelCount, juce::jmax(0, numInputs - channel));
-    if (channelsToWrite <= 0) return;
+    const int selectedChannel = channel.load();
+    const int selectedChannelCount = channelCount.load();
+    int primaryChannel = -1;
+    if (selectedChannel < numInputs && input[selectedChannel] != nullptr)
+        primaryChannel = selectedChannel;
+    else
+        for (int ch = 0; ch < numInputs; ++ch)
+            if (input[ch] != nullptr) { primaryChannel = ch; break; }
+    if (primaryChannel < 0) return;
+
+    auto sourceForOutput = [&](int outputChannel) -> const float*
+    {
+        const int requested = selectedChannel + outputChannel;
+        // Mono devices can still be requested as Stereo by a saved setting. JUCE
+        // exposes the unavailable channel as nullptr; duplicate the first valid
+        // input instead of dereferencing it and crashing with 0xC0000005.
+        return requested < numInputs && input[requested] != nullptr
+            ? input[requested]
+            : input[primaryChannel];
+    };
     if (!recording.load())
     {
         float idlePeak = 0.0f;
-        for (int ch = 0; ch < channelsToWrite; ++ch)
-            if (input[channel + ch] != nullptr)
-                for (int i = 0; i < numSamples; ++i)
-                    idlePeak = juce::jmax(idlePeak, std::abs(input[channel + ch][i]));
+        const float meterGain = inputGain.load();
+        for (int ch = 0; ch < selectedChannelCount; ++ch)
+        {
+            const float* source = sourceForOutput(ch);
+            for (int i = 0; i < numSamples; ++i)
+                idlePeak = juce::jmax(idlePeak, std::abs(source[i] * meterGain));
+        }
         level = juce::jmax(idlePeak, level.load() * 0.82f);
         return;
     }
-    juce::AudioBuffer<float> block(channelCount, numSamples);
+    juce::AudioBuffer<float> block(selectedChannelCount, numSamples);
     float peak = 0.0f;
     float blockMin = 0.0f;
     float blockMax = 0.0f;
-    for (int ch = 0; ch < channelCount; ++ch)
+    const float targetInputGain = inputGain.load();
+    // Soft-clip limiter with a true -1.0 dBFS ceiling. c*tanh(x/c) has unity
+    // slope at low level (transparent, no makeup boost) and asymptotes to c,
+    // so the output can never exceed the ceiling no matter how hot the input
+    // gain drives it. The previous `tanh(x*1.18)/tanh(1.18)*c` form added a
+    // ~+2.1 dB low-level boost and overshot the ceiling to +0.65 dBFS.
+    const float ceiling = 0.89125f; // 10^(-1/20) = -1.0 dBFS
+    for (int ch = 0; ch < selectedChannelCount; ++ch)
     {
-        const int sourceChannel = channel + juce::jmin(ch, channelsToWrite - 1);
-        block.copyFrom(ch, 0, input[sourceChannel], numSamples, inputGain);
+        block.copyFrom(ch, 0, sourceForOutput(ch), numSamples);
+        // Ramp over one device block so a live slider move cannot introduce a
+        // discontinuity/click in the recorded or monitored signal.
+        block.applyGainRamp(ch, 0, numSamples, currentInputGain, targetInputGain);
         float* data = block.getWritePointer(ch);
         for (int i = 0; i < numSamples; ++i)
         {
-            if (limiterOn) data[i] = std::tanh(data[i] * 1.18f) / std::tanh(1.18f) * 0.89125f;
+            if (limiterOn) data[i] = ceiling * std::tanh(data[i] / ceiling);
             peak = juce::jmax(peak, std::abs(data[i]));
             blockMin = juce::jmin(blockMin, data[i]);
             blockMax = juce::jmax(blockMax, data[i]);
@@ -96,6 +127,7 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
                 output[ch][i] += data[i];
         }
     }
+    currentInputGain = targetInputGain;
     level = juce::jmax(peak, level.load() * 0.82f);
     std::lock_guard<std::mutex> lock(writerMutex);
     if (threadedWriter && recording.load())
@@ -164,8 +196,18 @@ AudioEngine::~AudioEngine()
 
 void AudioEngine::init(int sr)
 {
-    std::lock_guard<std::mutex> lock(engineMutex);
-    sampleRate = sr;
+    // Main.cpp opens the device before starting the WebSocket server. The renderer
+    // also sends a legacy "init" command immediately after connecting; treating it
+    // as a second device initialisation can register callbacks twice, and when the
+    // server is brought up early it can even race the first initialisation
+    // (AudioDeviceManager access violation 0xC0000005).
+    if (initialized.exchange(true))
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        sampleRate = sr;
+    }
     LOG_DBG << "[AudioEngine] Initialized with sample rate: " << sampleRate << std::endl;
 
 #if USE_JUCE
@@ -180,7 +222,10 @@ void AudioEngine::init(int sr)
         deviceManager.addAudioCallback(&inputRecorder);
         if (auto* currentDevice = deviceManager.getCurrentAudioDevice())
         {
-            sampleRate = currentDevice->getCurrentSampleRate();
+            {
+                std::lock_guard<std::mutex> lock(engineMutex);
+                sampleRate = currentDevice->getCurrentSampleRate();
+            }
             LOG_DBG << "[AudioEngine] JUCE audio device opened successfully. Sample Rate: " << sampleRate 
                       << ", Buffer Size: " << currentDevice->getCurrentBufferSizeSamples() << std::endl;
         }
@@ -311,7 +356,8 @@ void AudioEngine::setLoop(bool enabled)
     LOG_DBG << "[AudioEngine] Loop " << (loopEnabled ? "enabled" : "disabled") << std::endl;
 }
 
-void AudioEngine::loadTrack(const std::string& trackId, const std::string& filePath)
+void AudioEngine::loadTrack(const std::string& trackId, const std::string& filePath,
+                            double startSeconds, double songLength)
 {
     // Register the track metadata synchronously (params arriving right after this
     // command land in TrackInfo and are applied when the decode finishes), then
@@ -321,6 +367,8 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
     LoadJob job;
     job.trackId = trackId;
     job.filePath = filePath;
+    job.startSeconds = startSeconds;
+    job.songLength = songLength;
     {
         std::lock_guard<std::mutex> lock(engineMutex);
 
@@ -489,6 +537,45 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
     reader->read(&decoded, 0, (int)totalLen, 0, true, true);
     reader.reset();
     if (tempWav != juce::File()) tempWav.deleteFile(); // PCM is now in `decoded`
+
+    // The native mixer is stereo. MemoryAudioSource keeps the buffer's original
+    // channel count, so a mono recording would otherwise fill channel 0 only and
+    // play from the left speaker. Expand mono PCM to dual-mono before constructing
+    // the source, matching Web Audio's default mono-to-stereo speaker upmix.
+    if (decoded.getNumChannels() == 1)
+    {
+        decoded.setSize(2, decoded.getNumSamples(), true, true, true);
+        decoded.copyFrom(1, 0, decoded, 0, 0, decoded.getNumSamples());
+    }
+
+    // Place the clip on the song timeline. Native loops each track at its own buffer
+    // length, so a short Audio In recording (e.g. 1s) among full-length stems would
+    // repeat every second. Prepend lead-in silence for the clip's start offset and
+    // pad the tail out to the song length so per-track looping wraps at the SONG
+    // boundary, in sync with the stems — and the recording plays at its real position.
+    // A 50ms tolerance leaves full-length stems (start=0, len≈song) untouched, so
+    // their well-tested playback is unchanged.
+    {
+        const juce::int64 clipSamples = decoded.getNumSamples();
+        const juce::int64 tol = (juce::int64)(0.05 * fileSampleRate);
+        const juce::int64 leadSamples = job.startSeconds > 0.0
+            ? (juce::int64)std::llround(job.startSeconds * fileSampleRate) : 0;
+        const juce::int64 songSamples = job.songLength > 0.0
+            ? (juce::int64)std::llround(job.songLength * fileSampleRate) : 0;
+        juce::int64 totalSamples = leadSamples + clipSamples;
+        if (songSamples > totalSamples) totalSamples = songSamples;
+        if (leadSamples > tol || totalSamples > clipSamples + tol)
+        {
+            juce::AudioBuffer<float> placed(decoded.getNumChannels(), (int)totalSamples);
+            placed.clear();
+            for (int ch = 0; ch < decoded.getNumChannels(); ++ch)
+                placed.copyFrom(ch, (int)leadSamples, decoded, ch, 0, (int)clipSamples);
+            decoded = std::move(placed);
+            LOG_DBG << "[AudioEngine] Track " << trackId << " placed: lead=" << leadSamples
+                      << ", clip=" << clipSamples << ", total=" << totalSamples
+                      << " samples @ " << fileSampleRate << " Hz" << std::endl;
+        }
+    }
 
     double deviceSampleRate = 44100.0;
     if (auto* currentDevice = deviceManager.getCurrentAudioDevice())
@@ -1795,11 +1882,35 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
         if (stereo) setup.inputChannels.setBit(juce::jmax(0, channel) + 1);
         if (requestedSampleRate > 0) setup.sampleRate = requestedSampleRate;
         if (requestedBufferSize > 0) setup.bufferSize = requestedBufferSize;
+
+        // Arming and Record may both request the same input. Re-applying an
+        // identical setup makes WASAPI tear down and reopen its stream, which is
+        // especially visible as a several-second delay on the first recording.
+        // Keep the already-warm callback graph when every requested field matches.
+        if (auto* active = deviceManager.getCurrentAudioDevice())
+        {
+            const auto activeSetup = deviceManager.getAudioDeviceSetup();
+            const bool sameType = deviceManager.getCurrentAudioDeviceType() == wantedType;
+            const bool sameDevice = activeSetup.inputDeviceName == wantedName;
+            const bool sameChannels = activeSetup.inputChannels == setup.inputChannels;
+            const bool sameRate = requestedSampleRate <= 0
+                || std::abs(active->getCurrentSampleRate() - requestedSampleRate) < 0.5;
+            const bool sameBuffer = requestedBufferSize <= 0
+                || active->getCurrentBufferSizeSamples() == requestedBufferSize;
+            if (sameType && sameDevice && sameChannels && sameRate && sameBuffer
+                && active->getActiveInputChannels().countNumberOfSetBits() > 0)
+            {
+                inputRecorder.configureInput(channel, stereo);
+                return {};
+            }
+        }
+
         auto err = deviceManager.setAudioDeviceSetup(setup, true);
         if (err.isNotEmpty()) return err.toStdString();
         auto* active = deviceManager.getCurrentAudioDevice();
         if (!active || active->getActiveInputChannels().countNumberOfSetBits() == 0)
             return "The selected input device opened without an active channel.";
+        inputRecorder.configureInput(channel, stereo);
         return {};
     }, "input device switch timed out");
 #else

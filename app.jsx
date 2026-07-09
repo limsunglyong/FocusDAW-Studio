@@ -1194,6 +1194,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           id: t.id,
           name: t.name,
           color: t.color,
+          kind: t.kind,
           params: { ...t.params },
         })),
         master: {
@@ -1850,6 +1851,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               id: t.id,
               name: t.name,
               color: t.color,
+              kind: t.kind,
               params: { ...t.params },
             })),
             master: {
@@ -2492,7 +2494,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
       type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
     };
-    if (DAW.setAudioInput) DAW.setAudioInput(input);
+    if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] prepare failed:", e));
     force((n) => n + 1);
   }, []);
 
@@ -2527,6 +2529,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
     const target = await window.electronAPI.prepareRecordingPath(projectPath, `${track.name} ${stamp}.wav`, sourcePath);
     const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {};
+    try {
+      if (DAW.setAudioInput) await DAW.setAudioInput(input);
+    } catch (e) {
+      alert(e.message || String(e));
+      return;
+    }
     const start = DAW.getPlayhead();
     track.recording = true;
     track._recordingStart = start;
@@ -2534,7 +2542,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     track._recordingSampleRate = 44100;
     const promise = DAW.startRecording({
       filePath: target.partPath, channel: input.channel || 0, stereo: !!input.stereo,
-      gain: track.params.inputGain || 1, monitor: !!track.params.monitor, limiter: track.params.limiter !== false,
+      gain: Math.max(0.1, Math.min(4, track.params.inputGain == null ? 1 : track.params.inputGain)),
+      monitor: !!track.params.monitor, limiter: track.params.limiter !== false,
     });
     recordingRef.current = { trackId: track.id, ...target, start, promise };
     promise.catch((e) => {
@@ -2630,6 +2639,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks]);
 
   const param = (id) => (k, v) => {
+    const targetTrack = DAW.tracks.find((track) => track.id === id);
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) { pushUndo(); lastUndoKey.current = undoKey; }
     if (k === "arm" && v) {
@@ -2640,8 +2650,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
         type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
       };
-      if (DAW.setAudioInput) DAW.setAudioInput(input);
+      if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] arm prepare failed:", e));
+      if (DAW.setInputGain) DAW.setInputGain(
+        Math.max(0.1, Math.min(4, targetTrack && targetTrack.params && targetTrack.params.inputGain != null
+          ? targetTrack.params.inputGain : 1))
+      );
     }
+    if (k === "arm" && !v && DAW.setInputGain) DAW.setInputGain(1);
+    if (k === "inputGain" && targetTrack && targetTrack.kind === "audioIn"
+        && targetTrack.params && (targetTrack.params.arm || targetTrack.recording)
+        && DAW.setInputGain)
+      DAW.setInputGain(v);
     DAW.setTrackParam(id, k, v);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
@@ -2855,7 +2874,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                 const i = DAW.tracks.findIndex((track) => track.id === t.id);
                 return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                   headerIndent={15}
-                  playhead={playhead} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
+                  playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                   onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
                   onFocusFx={focusMixerFx}
                   selected={selectedFileTrackSet.has(t.id)}
@@ -2866,7 +2885,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                 const i = DAW.tracks.findIndex((track) => track.id === t.id);
                 const trackLaneH = t.kind === "audioIn" ? audioInLaneHeight : laneH;
                 return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={trackLaneH} sizeLaneH={laneH}
-                  playhead={playhead} level={t.kind === "audioIn" ? DAW.getInputLevel() : DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
+                  playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)}
+                  inputLevel={t.kind === "audioIn" ? DAW.getInputLevel() : 0}
+                  onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                   onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
                   onFocusFx={focusMixerFx}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;

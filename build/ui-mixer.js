@@ -20,7 +20,9 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
     padding: "10px 6px",
     borderRight: "1px solid var(--line)",
     gap: 8,
-    background: p.solo ? "rgba(232,176,75,.05)" : "transparent"
+    // Audio In channels get the same blue tint as their arrange-view header
+    // (--audio-in-track-bg in studio.html) so they read as recordings, not file stems.
+    background: track.kind === "audioIn" ? "linear-gradient(180deg,color-mix(in srgb,var(--surface) 80%,var(--blue) 20%),color-mix(in srgb,var(--bg2) 88%,var(--blue) 12%))" : p.solo ? "rgba(232,176,75,.05)" : "transparent"
   } }, /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "reverb", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) })), /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "echo", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, size: 22, onClick: () => {
     onBeforeChange && onBeforeChange();
     onParam("solo", !p.solo);

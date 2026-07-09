@@ -13,7 +13,12 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
   }, []);
   return (
     <div style={{ width: 92, flex: "0 0 92px", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center",
-      padding: "10px 6px", borderRight: "1px solid var(--line)", gap: 8, background: p.solo ? "rgba(232,176,75,.05)" : "transparent" }}>
+      padding: "10px 6px", borderRight: "1px solid var(--line)", gap: 8,
+      // Audio In channels get the same blue tint as their arrange-view header
+      // (--audio-in-track-bg in studio.html) so they read as recordings, not file stems.
+      background: track.kind === "audioIn"
+        ? "linear-gradient(180deg,color-mix(in srgb,var(--surface) 80%,var(--blue) 20%),color-mix(in srgb,var(--bg2) 88%,var(--blue) 12%))"
+        : p.solo ? "rgba(232,176,75,.05)" : "transparent" }}>
       <div style={{ height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` }} />
       <div style={{ fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 }}>{track.name}</div>
       {/* FX knobs — data-fx tags let a track-header VRB/ECHO click (FOCUS_KNOB msg) locate & pulse them */}

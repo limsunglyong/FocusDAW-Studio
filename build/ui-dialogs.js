@@ -862,7 +862,7 @@ function DeviceSetupSection() {
   const apply = (patch) => {
     const next = { ...settings, ...patch };
     setSettings(next);
-    if (DAW.setAudioInput) DAW.setAudioInput(next);
+    if (DAW.setAudioInput) DAW.setAudioInput(next).catch((e) => console.warn("[AudioInput] settings apply failed:", e));
   };
   return /* @__PURE__ */ React.createElement("section", { id: "settings-device-setup", style: { borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22, scrollMarginTop: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 } }, "\u25A0 Audio Input Device"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginBottom: 12 } }, "Choose the input used by new Audio In tracks. This setting is stored for the app, not the project."), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "minmax(190px, 1fr) 120px 105px 110px", gap: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Audio Input", /* @__PURE__ */ React.createElement("select", { value, disabled: !DAW.isNative || loading, onChange: (e) => {
     const [type, name] = e.target.value ? JSON.parse(e.target.value) : ["", ""];

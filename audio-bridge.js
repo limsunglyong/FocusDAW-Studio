@@ -25,8 +25,13 @@
     stretchPreviewPreparing: false,
     audioDevices: null,        // last "audioDevices" event from the native engine
     audioDeviceResolvers: [],  // pending requestAudioDevices() promises
+    audioInputKey: null,
+    audioInputRequestSeq: 0,
+    audioInputPending: {},
+    audioInputResolvers: [],
     inputLevel: 0,
     recording: false,
+    recordingRequestedAt: 0,
     recordingResolve: null,
     recordingReject: null
   };
@@ -238,12 +243,35 @@
     },
 
     setAudioInput(settings) {
-      const next = settings || {};
+      const next = {
+        type: settings && settings.type || "",
+        name: settings && settings.name || "",
+        channel: Number(settings && settings.channel) || 0,
+        stereo: !!(settings && settings.stereo),
+        sampleRate: Number(settings && settings.sampleRate) || 0,
+        bufferSize: Number(settings && settings.bufferSize) || 0
+      };
       try { localStorage.setItem(AUDIO_INPUT_KEY, JSON.stringify(next)); } catch (e) {}
-      if (this.isNative) sendToNative({ command: "setAudioInput", ...next });
+      if (!this.isNative) return Promise.resolve();
+      const key = JSON.stringify(next);
+      if (nativeState.audioInputKey === key) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        let requestId = nativeState.audioInputPending[key];
+        if (!requestId) {
+          requestId = `input-${++nativeState.audioInputRequestSeq}`;
+          nativeState.audioInputPending[key] = requestId;
+          sendToNative({ command: "setAudioInput", requestId, ...next });
+        }
+        nativeState.audioInputResolvers.push({ requestId, key, resolve, reject, sentAt: performance.now() });
+      });
     },
 
     getInputLevel() { return nativeState.inputLevel || 0; },
+
+    setInputGain(gain) {
+      const value = Math.max(0.1, Math.min(4, Number.isFinite(+gain) ? +gain : 1));
+      if (this.isNative) sendToNative({ command: "setInputGain", gain: value });
+    },
 
     startRecording(options) {
       if (!this.isNative) return Promise.reject(new Error("Native audio engine is required for recording."));
@@ -251,6 +279,7 @@
       return new Promise((resolve, reject) => {
         nativeState.recordingResolve = resolve;
         nativeState.recordingReject = reject;
+        nativeState.recordingRequestedAt = performance.now();
         sendToNative({ command: "startRecording", ...options });
       });
     },
@@ -704,7 +733,10 @@
         // reconnected by app.jsx first; this avoids native keeping or retrying stale paths.
         LocalDAW.tracks.forEach(track => {
           if (track.filePath && !track.needsAudio) {
-            sendLoadTrack({ command: "loadTrack", trackId: track.id, filePath: track.filePath });
+            const clip = Array.isArray(track.clips) ? track.clips[0] : null;
+            sendLoadTrack({ command: "loadTrack", trackId: track.id, filePath: track.filePath,
+              startSeconds: clip && clip.start > 0 ? clip.start : 0,
+              songLength: LocalDAW.duration || 0 });
           }
         });
       }
@@ -1015,10 +1047,25 @@
       if (!msg.ok) console.warn("[AudioBridge] Audio device change failed:", msg.error);
       LocalDAW._emit();
     } else if (msg.event === "audioInputChanged") {
+      const requestId = msg.requestId || (nativeState.audioInputResolvers[0] && nativeState.audioInputResolvers[0].requestId);
+      const matching = nativeState.audioInputResolvers.filter((entry) => entry.requestId === requestId);
+      nativeState.audioInputResolvers = nativeState.audioInputResolvers.filter((entry) => entry.requestId !== requestId);
+      const completedKey = matching[0] && matching[0].key;
+      if (completedKey) delete nativeState.audioInputPending[completedKey];
+      if (msg.ok && completedKey) nativeState.audioInputKey = completedKey;
+      matching.forEach((entry) => {
+        console.log(`[AudioInputTiming] setAudioInput ${msg.ok ? "ready" : "failed"} in ${(performance.now() - entry.sentAt).toFixed(1)}ms`);
+        if (msg.ok) entry.resolve();
+        else entry.reject(new Error(msg.error || "Audio input could not be prepared."));
+      });
       if (!msg.ok) console.warn("[AudioBridge] Audio input change failed:", msg.error);
       LocalDAW._emit();
     } else if (msg.event === "recordingStarted") {
       nativeState.recording = !!msg.ok;
+      if (nativeState.recordingRequestedAt) {
+        console.log(`[AudioInputTiming] recordingStarted ${msg.ok ? "ready" : "failed"} in ${(performance.now() - nativeState.recordingRequestedAt).toFixed(1)}ms (native ${Number(msg.elapsedMs) || 0}ms)`);
+        nativeState.recordingRequestedAt = 0;
+      }
       if (!msg.ok && nativeState.recordingReject) {
         nativeState.recordingReject(new Error(msg.error || "Recording could not start."));
         nativeState.recordingResolve = null;
@@ -1073,16 +1120,32 @@
     }
   }
 
+  // The native engine plays each track as a single in-memory buffer looped at its
+  // OWN length. A short Audio In recording (e.g. 1s) among full-length stems would
+  // therefore repeat every second. Pass the clip's timeline start and the song
+  // length so native can place the clip with lead-in silence and pad it out to the
+  // song length — then per-track looping wraps at the song boundary, in sync.
+  function trackTimelinePlacement(track) {
+    const clip = track && Array.isArray(track.clips) ? track.clips[0] : null;
+    return {
+      startSeconds: clip && clip.start > 0 ? clip.start : 0,
+      songLength: (LocalDAW && LocalDAW.duration) || 0,
+    };
+  }
+
   // Helper to synchronize a newly added track to JUCE C++ engine
   function syncTrackToNative(track) {
     if (!track) return;
+    const place = trackTimelinePlacement(track);
     if (track.filePath) {
       sendLoadTrack({
         command: "loadTrack",
         trackId: track.id,
         filePath: track.filePath,
         type: track.type,
-        color: track.color
+        color: track.color,
+        startSeconds: place.startSeconds,
+        songLength: place.songLength
       });
     } else {
       // If it's a demo or synthesized track, we need its PCM data.
@@ -1099,7 +1162,9 @@
             trackId: track.id,
             filePath: tmpPath,
             type: track.type,
-            color: track.color
+            color: track.color,
+            startSeconds: place.startSeconds,
+            songLength: place.songLength
           });
         }).catch((err) => {
           console.warn("[AudioBridge] writeTempAudio failed:", err);

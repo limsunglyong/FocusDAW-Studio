@@ -37,6 +37,12 @@ public:
 
     bool start(const juce::File& file, double sampleRate, int inputChannel, bool stereo,
                float gain, bool monitor, bool limiter);
+    void configureInput(int inputChannel, bool stereo)
+    {
+        channel.store(juce::jmax(0, inputChannel));
+        channelCount.store(stereo ? 2 : 1);
+    }
+    void setInputGain(float gain) { inputGain.store(juce::jlimit(0.1f, 4.0f, gain)); }
     void stop();
     void cancel();
     bool isRecording() const { return recording.load(); }
@@ -58,9 +64,10 @@ private:
     std::atomic<bool> recording { false };
     std::atomic<float> level { 0.0f };
     std::atomic<juce::int64> samplesWritten { 0 };
-    int channel = 0;
-    int channelCount = 1;
-    float inputGain = 1.0f;
+    std::atomic<int> channel { 0 };
+    std::atomic<int> channelCount { 1 };
+    std::atomic<float> inputGain { 1.0f };
+    float currentInputGain = 1.0f; // audio callback thread only; ramp start
     bool monitoring = false;
     bool limiterOn = true;
     static constexpr int peakCapacity = 4096;
@@ -1497,7 +1504,8 @@ public:
     void seek(double positionSeconds);
     void setLoop(bool enabled);
     
-    void loadTrack(const std::string& trackId, const std::string& filePath);
+    void loadTrack(const std::string& trackId, const std::string& filePath,
+                   double startSeconds = 0.0, double songLength = 0.0);
     void removeTrack(const std::string& trackId);
     void setTrackParam(const std::string& trackId, const std::string& key, float value);
     void setTrackAutomation(const std::string& trackId, bool autoOn, bool curved, const std::vector<float>& flatPoints);
@@ -1548,6 +1556,7 @@ public:
     std::string setAudioDevice(const std::string& typeName, const std::string& deviceName);
     std::string setAudioInput(const std::string& typeName, const std::string& deviceName,
                               int channel, bool stereo, double requestedSampleRate, int requestedBufferSize);
+    void setInputGain(float gain) { inputRecorder.setInputGain(gain); }
     std::string startRecording(const std::string& filePath, int channel, bool stereo,
                                float gain, bool monitor, bool limiter);
     std::string stopRecording();
@@ -1573,6 +1582,7 @@ public:
 
 private:
     mutable std::mutex engineMutex; // mutable so const getters (getPlayhead) can lock too
+    std::atomic<bool> initialized { false };
     bool playing = false;
     bool loopEnabled = true;
     double playheadSeconds = 0.0;
@@ -1620,6 +1630,8 @@ private:
     {
         std::string trackId;
         std::string filePath;
+        double startSeconds = 0.0; // clip position on the song timeline (lead-in silence)
+        double songLength = 0.0;   // pad the buffer to this length so looping wraps at the song boundary
         uint64_t generation = 0; // voided by clearTracks
         uint64_t seq = 0;        // superseded by a newer load of the same track
     };

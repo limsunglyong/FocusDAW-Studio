@@ -311,10 +311,14 @@ bool WebSocketServer::handleHandshake(void* socketHandle)
     buffer[bytesReceived] = '\0';
 
     std::string req(buffer);
-    size_t keyPos = req.find("Sec-WebSocket-Key: ");
+    std::string lowerReq = req;
+    std::transform(lowerReq.begin(), lowerReq.end(), lowerReq.begin(),
+        [](unsigned char c) { return (char)std::tolower(c); });
+    size_t keyPos = lowerReq.find("sec-websocket-key:");
     if (keyPos == std::string::npos) return false;
 
-    keyPos += 19;
+    keyPos += 18;
+    while (keyPos < req.size() && (req[keyPos] == ' ' || req[keyPos] == '\t')) ++keyPos;
     size_t keyEnd = req.find("\r\n", keyPos);
     if (keyEnd == std::string::npos) return false;
 
@@ -499,7 +503,11 @@ void WebSocketServer::clientLoop(void* socketHandle)
         {
             std::string trackId = getJsonStringVal(frameText, "trackId");
             std::string filePath = getJsonStringVal(frameText, "filePath");
-            audioEngine.loadTrack(trackId, filePath);
+            // Timeline placement: lead-in silence = clip start, pad to song length so a
+            // short Audio In recording loops at the song boundary, not its own length.
+            double startSeconds = getJsonDoubleVal(frameText, "startSeconds");
+            double songLength = getJsonDoubleVal(frameText, "songLength");
+            audioEngine.loadTrack(trackId, filePath, startSeconds, songLength);
         }
         else if (cmd == "removeTrack")
         {
@@ -627,6 +635,8 @@ void WebSocketServer::clientLoop(void* socketHandle)
         }
         else if (cmd == "setAudioInput")
         {
+            const auto requestStarted = std::chrono::steady_clock::now();
+            const auto requestId = getJsonStringVal(frameText, "requestId");
             auto type = getJsonStringVal(frameText, "type");
             auto name = getJsonStringVal(frameText, "name");
             int channel = (int)getJsonDoubleVal(frameText, "channel");
@@ -634,13 +644,17 @@ void WebSocketServer::clientLoop(void* socketHandle)
             double sr = getJsonDoubleVal(frameText, "sampleRate");
             int bufferSize = (int)getJsonDoubleVal(frameText, "bufferSize");
             auto err = audioEngine.setAudioInput(type, name, channel, stereo, sr, bufferSize);
+            const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - requestStarted).count();
             broadcast(std::string("{\"event\":\"audioInputChanged\",\"ok\":") +
-                (err.empty() ? "true" : "false") +
+                (err.empty() ? "true" : "false") + ",\"elapsedMs\":" + std::to_string(elapsedMs) +
+                (requestId.empty() ? "" : ",\"requestId\":\"" + escapeJson(requestId) + "\"") +
                 (err.empty() ? "}" : ",\"error\":\"" + escapeJson(err) + "\"}"));
             broadcast(audioEngine.getAudioDevicesJson());
         }
         else if (cmd == "startRecording")
         {
+            const auto requestStarted = std::chrono::steady_clock::now();
             auto path = getJsonStringVal(frameText, "filePath");
             auto err = audioEngine.startRecording(path,
                 (int)getJsonDoubleVal(frameText, "channel"),
@@ -648,8 +662,11 @@ void WebSocketServer::clientLoop(void* socketHandle)
                 (float)getJsonDoubleVal(frameText, "gain"),
                 getJsonBoolVal(frameText, "monitor"),
                 getJsonBoolVal(frameText, "limiter"));
+            const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - requestStarted).count();
             broadcast(std::string("{\"event\":\"recordingStarted\",\"ok\":") +
                 (err.empty() ? "true" : "false") +
+                ",\"elapsedMs\":" + std::to_string(elapsedMs) +
                 (err.empty() ? ",\"filePath\":\"" + escapeJson(path) + "\"}" : ",\"error\":\"" + escapeJson(err) + "\"}"));
         }
         else if (cmd == "stopRecording")
@@ -660,6 +677,10 @@ void WebSocketServer::clientLoop(void* socketHandle)
                 (err.empty() ? "true" : "false") + ",\"filePath\":\"" + escapeJson(path) +
                 "\",\"samples\":" + std::to_string(audioEngine.getRecordedSamples()) +
                 (err.empty() ? "}" : ",\"error\":\"" + escapeJson(err) + "\"}"));
+        }
+        else if (cmd == "setInputGain")
+        {
+            audioEngine.setInputGain((float)getJsonDoubleVal(frameText, "gain"));
         }
         else if (cmd == "cancelRecording")
         {
