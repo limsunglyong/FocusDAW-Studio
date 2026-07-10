@@ -701,11 +701,16 @@ function hideAdvancedPanWindow() {
   }
 }
 
-function preferredMixerWidth(tracksCount) {
+function preferredMixerWidth(trackInfo) {
   const channelW = 92;
+  const audioInChannelW = 138;
   const masterW = 400;
-  const count = typeof tracksCount === 'number' ? tracksCount : 0;
-  const contentWidth = count * channelW + masterW + 2;
+  const count = typeof trackInfo === 'number' ? trackInfo : (trackInfo && typeof trackInfo.tracksCount === 'number' ? trackInfo.tracksCount : 0);
+  const audioInCount = trackInfo && typeof trackInfo === 'object' && typeof trackInfo.audioInCount === 'number'
+    ? Math.max(0, Math.min(count, trackInfo.audioInCount))
+    : 0;
+  const fileCount = Math.max(0, count - audioInCount);
+  const contentWidth = fileCount * channelW + audioInCount * audioInChannelW + masterW + 2;
   return Math.max(600, Math.min(1440, contentWidth));
 }
 

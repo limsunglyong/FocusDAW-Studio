@@ -177,14 +177,15 @@ function faderGainToPos(g, max) {
   const db = 20 * Math.log10(g);
   return Math.max(0, Math.min(1, (db - FADER_MIN_DB) / (maxDb - FADER_MIN_DB)));
 }
-function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--amber)", showVal, max = 1 }) {
+function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--amber)", showVal, max = 1, scale = "db" }) {
   const ref = useRef(null);
-  const norm = faderGainToPos(value, max);
+  const norm = scale === "linear" ? Math.max(0, Math.min(1, value / max)) : faderGainToPos(value, max);
   const set = (clientY) => {
     const el = ref.current;
     const r = el.getBoundingClientRect();
     let n = 1 - (clientY - r.top) / r.height;
-    onChange(faderPosToGain(Math.max(0, Math.min(1, n)), max));
+    n = Math.max(0, Math.min(1, n));
+    onChange(scale === "linear" ? n * max : faderPosToGain(n, max));
   };
   const onDown = (e) => {
     e.preventDefault();
@@ -205,7 +206,7 @@ function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--a
     onChange(nv);
   });
   const trackH = height - 8;
-  return /* @__PURE__ */ React.createElement("div", { ref, onMouseDown: onDown, style: { width: 26, height, position: "relative", cursor: "ns-resize" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", top: 4, bottom: 4, width: 4, transform: "translateX(-50%)", background: "#1a1611", borderRadius: 3, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.5)" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: `calc(${norm * 100}% - 8px)`, width: 4, transform: "translateX(-50%)", height: 4, background: color, borderRadius: 3, top: 4 } }), max > 1 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: faderGainToPos(1, max) * trackH, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: norm * trackH, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "var(--fader-knob, linear-gradient(#4a4338,#2c2720))", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: "50%", left: 3, right: 3, height: 1.5, transform: "translateY(-50%)", background: color, opacity: 0.8 } })));
+  return /* @__PURE__ */ React.createElement("div", { ref, onMouseDown: onDown, style: { width: 26, height, position: "relative", cursor: "ns-resize" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", top: 4, bottom: 4, width: 4, transform: "translateX(-50%)", background: "#1a1611", borderRadius: 3, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.5)" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: `calc(${norm * 100}% - 8px)`, width: 4, transform: "translateX(-50%)", height: 4, background: color, borderRadius: 3, top: 4 } }), max > 1 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: (scale === "linear" ? 1 / max : faderGainToPos(1, max)) * trackH, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: "50%", bottom: norm * trackH, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "var(--fader-knob, linear-gradient(#4a4338,#2c2720))", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: "50%", left: 3, right: 3, height: 1.5, transform: "translateY(-50%)", background: color, opacity: 0.8 } })));
 }
 function Meter({ level, height = 120, width = 8, stereo = false }) {
   const gap = 1.5;

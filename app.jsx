@@ -522,10 +522,9 @@ function ToolIcon({ name, size }) {
   );
   return null;
 }
-function ActionBar({ onMixer, mixerOpen, onExport, onAudioIn }) {
+function ActionBar({ onMixer, mixerOpen, onExport }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" }}>
-      <button className="btn" onClick={onAudioIn} title="Add a recordable input track">+ Audio In</button>
       <button className={"btn" + (mixerOpen ? " primary" : "")} onClick={(e) => { onMixer(); e.currentTarget.blur(); }}><Icon name="mixer" size={15} /> Mixer</button>
       <button className="btn" onClick={onExport} title="Export mixdown (MP3 / WAV)"><Icon name="download" size={15} /> Export</button>
     </div>
@@ -1107,7 +1106,7 @@ function TimeStretchBusyBadge({ active, x, y }) {
 }
 
 /* ---------- studio (arrange) ---------- */
-function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange, theme }) {
+function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange, theme, mixerTexture }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
@@ -1124,6 +1123,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [mergeTracksBusy, setMergeTracksBusy] = useState(false);
   const [showMixer, setShowMixer] = useState(false);
   const [showAdvancedPan, setShowAdvancedPan] = useState(false);
+  const audioInTrackCount = DAW.tracks.filter((t) => t.kind === "audioIn").length;
+  const mixerTrackInfo = useMemo(() => ({
+    tracksCount: DAW.tracks.length,
+    audioInCount: audioInTrackCount,
+  }), [DAW.tracks.length, audioInTrackCount]);
   const mixerChannelRef = useRef(null);
   const advancedChannelRef = useRef(null);
   // Pending "focus this knob" request while the mixer window is still opening; flushed on MIXER_READY.
@@ -1143,6 +1147,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       mixerChannelRef.current.postMessage({
         type: "LEVEL_METERS",
         trackLevels,
+        inputLevel: DAW.getInputLevel ? DAW.getInputLevel() : 0,
         masterLevel: DAW.getMasterLevel(),
         masterStereo: DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : null,
         masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
@@ -1166,7 +1171,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   // Track project parameters and broadcast changes to mixer window
   const currentTracksStateStr = JSON.stringify(
-    DAW.tracks.map((t) => ({ id: t.id, name: t.name, color: t.color, params: t.params }))
+    DAW.tracks.map((t) => ({ id: t.id, name: t.name, color: t.color, kind: t.kind, needsAudio: !!t.needsAudio, recording: !!t.recording, params: t.params }))
   );
   const currentMasterStateStr = JSON.stringify({
     volume: DAW.master.volume,
@@ -1195,6 +1200,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           name: t.name,
           color: t.color,
           kind: t.kind,
+          needsAudio: !!t.needsAudio,
+          recording: !!t.recording,
           params: { ...t.params },
         })),
         master: {
@@ -1215,11 +1222,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           fadeOut: DAW.master.fadeOut,
         },
         theme,
+        mixerTexture,
         isPlaying: DAW.isPlaying,
         playhead: DAW.getPlayhead(),
       });
     }
-  }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme]);
+  }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme, mixerTexture]);
 
   useEffect(() => {
     if (showAdvancedPan && advancedChannelRef.current) {
@@ -1250,16 +1258,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // compounded the Windows frameless getBounds() drift and grew the window.
   useEffect(() => {
     if (showMixer && window.electronAPI && window.electronAPI.resizeMixer) {
-      window.electronAPI.resizeMixer(DAW.tracks.length);
+      window.electronAPI.resizeMixer(mixerTrackInfo);
     }
-  }, [showMixer, DAW.tracks.length]);
+  }, [showMixer, mixerTrackInfo]);
 
   const toggleMixer = useCallback(() => {
     if (window.electronAPI) {
       if (showMixer) {
         window.electronAPI.closeMixer();
       } else {
-        window.electronAPI.openMixer(DAW.tracks.length);
+        window.electronAPI.openMixer(mixerTrackInfo);
       }
     } else {
       if (showMixer) {
@@ -1270,8 +1278,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       } else {
         const MIXER_BOUNDS_KEY = "focusdaw-mixer-bounds";
         const channelW = 92;
+        const audioInChannelW = 138;
         const masterW = 400;
-        const contentW = DAW.tracks.length * channelW + masterW;
+        const contentW = DAW.tracks.reduce((sum, track) => sum + (track.kind === "audioIn" ? audioInChannelW : channelW), 0) + masterW;
         let popW = Math.max(600, Math.min(1440, contentW));
         let popH = 515;
         let popLeft = null;
@@ -1323,7 +1332,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         }, 500);
       }
     }
-  }, [showMixer]);
+  }, [showMixer, mixerTrackInfo]);
 
   // Open the mixer only if it isn't already open (no-op when open).
   const openMixerIfClosed = useCallback(() => {
@@ -1338,7 +1347,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const focusMixerFx = useCallback((trackId, param) => {
     pendingMixerFocusRef.current = { trackId, param };
     if (showMixer) {
-      if (window.electronAPI) window.electronAPI.openMixer(DAW.tracks.length);
+      if (window.electronAPI) window.electronAPI.openMixer(mixerTrackInfo);
       else if (window.mixerPopup && !window.mixerPopup.closed) { try { window.mixerPopup.focus(); } catch (e) {} }
       const pf = pendingMixerFocusRef.current;
       if (pf && mixerChannelRef.current) {
@@ -1348,7 +1357,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     } else {
       toggleMixer();
     }
-  }, [showMixer, toggleMixer]);
+  }, [showMixer, toggleMixer, mixerTrackInfo]);
 
   const openAdvancedPan = useCallback(() => {
     if (window.electronAPI && window.electronAPI.openAdvancedPan) {
@@ -1852,6 +1861,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               name: t.name,
               color: t.color,
               kind: t.kind,
+              needsAudio: !!t.needsAudio,
+              recording: !!t.recording,
               params: { ...t.params },
             })),
             master: {
@@ -1872,6 +1883,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               fadeOut: DAW.master.fadeOut,
             },
             theme: localStorage.getItem("focusdaw-theme") || "default",
+            mixerTexture: localStorage.getItem("focusdaw-mixer-texture") || "none",
             isPlaying: DAW.isPlaying,
             playhead: DAW.getPlayhead(),
           });
@@ -1920,6 +1932,35 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           break;
 
         case "SET_TRACK_PARAM":
+          {
+            const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            if (targetTrack && targetTrack.needsAudio && (msg.k === "solo" || msg.k === "mute")) {
+              break;
+            }
+          }
+          if (msg.k === "arm" && msg.v) {
+            DAW.tracks.forEach((track) => {
+              if (track.id !== msg.id && track.kind === "audioIn" && track.params && track.params.arm)
+                DAW.setTrackParam(track.id, "arm", false);
+            });
+            const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
+              type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
+            };
+            if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] mixer arm prepare failed:", e));
+            const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            if (DAW.setInputGain) DAW.setInputGain(
+              Math.max(0.1, Math.min(4, targetTrack && targetTrack.params && targetTrack.params.inputGain != null
+                ? targetTrack.params.inputGain : 1))
+            );
+          }
+          if (msg.k === "arm" && !msg.v && DAW.setInputGain) DAW.setInputGain(1);
+          if (msg.k === "inputGain") {
+            const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            if (targetTrack && targetTrack.kind === "audioIn"
+                && targetTrack.params && (targetTrack.params.arm || targetTrack.recording)
+                && DAW.setInputGain)
+              DAW.setInputGain(msg.v);
+          }
           DAW.setTrackParam(msg.id, msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
@@ -2850,7 +2891,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           />
           <VariKeySwitch on={!!(DAW.tempo && DAW.tempo.variKey)} onToggle={toggleVariKey} />
           <ToolbarDivider />
-          <ActionBar onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} onAudioIn={addAudioInTrack} />
+          <ActionBar onMixer={toggleMixer} mixerOpen={showMixer} onExport={() => setShowExport(true)} />
         </div>
       </div>
 
@@ -3064,6 +3105,7 @@ function App() {
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
+  const [mixerTexture, setMixerTexture] = useState(() => localStorage.getItem("focusdaw-mixer-texture") || "none");
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const registerHandlers = useCallback((h) => { handlersRef.current = h; }, []);
   const renameProject = useCallback((name) => {
@@ -3094,6 +3136,10 @@ function App() {
       channel.close();
     } catch (e) {}
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem("focusdaw-mixer-texture", mixerTexture || "none");
+  }, [mixerTexture]);
 
   useEffect(() => {
     document.title = `${projectName || DEFAULT_PROJECT_NAME}-FocusDAW Studio`;
@@ -3135,8 +3181,11 @@ function App() {
         onRenameProject={renameProject}
         onProjectPathChange={setProjectPath}
         onUndoStateChange={setUndoState}
-        theme={theme} />
-      {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme} onClose={() => setShowSettings(false)} />}
+        theme={theme}
+        mixerTexture={mixerTexture} />
+      {showSettings && <SettingsDialog currentTheme={theme} onThemeChange={setTheme}
+        mixerTexture={mixerTexture} onMixerTextureChange={setMixerTexture}
+        onClose={() => setShowSettings(false)} />}
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
       {showReleaseNotes && <ReleaseNotesDialog onClose={() => setShowReleaseNotes(false)} />}
       {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}

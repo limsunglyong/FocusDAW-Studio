@@ -154,13 +154,14 @@ function faderGainToPos(g, max) {
   const db = 20 * Math.log10(g);
   return Math.max(0, Math.min(1, (db - FADER_MIN_DB) / (maxDb - FADER_MIN_DB)));
 }
-function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--amber)", showVal, max = 1 }) {
+function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--amber)", showVal, max = 1, scale = "db" }) {
   const ref = useRef(null);
-  const norm = faderGainToPos(value, max);
+  const norm = scale === "linear" ? Math.max(0, Math.min(1, value / max)) : faderGainToPos(value, max);
   const set = (clientY) => {
     const el = ref.current; const r = el.getBoundingClientRect();
     let n = 1 - (clientY - r.top) / r.height;
-    onChange(faderPosToGain(Math.max(0, Math.min(1, n)), max));
+    n = Math.max(0, Math.min(1, n));
+    onChange(scale === "linear" ? n * max : faderPosToGain(n, max));
   };
   const onDown = (e) => {
     e.preventDefault();
@@ -183,7 +184,7 @@ function Fader({ value, onChange, onBeforeChange, height = 120, color = "var(--a
       <div style={{ position: "absolute", left: "50%", top: 4, bottom: 4, width: 4, transform: "translateX(-50%)", background: "#1a1611", borderRadius: 3, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.5)" }} />
       <div style={{ position: "absolute", left: "50%", bottom: `calc(${norm * 100}% - 8px)`, width: 4, transform: "translateX(-50%)", height: 4, background: color, borderRadius: 3, top: 4 }} />
       {/* 0dB marker — shown when max > 1; positioned on the dB taper (unity gain) */}
-      {max > 1 && <div style={{ position: "absolute", left: "50%", bottom: faderGainToPos(1, max) * trackH, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" }} />}
+      {max > 1 && <div style={{ position: "absolute", left: "50%", bottom: (scale === "linear" ? 1 / max : faderGainToPos(1, max)) * trackH, transform: "translate(-50%, 50%)", width: 20, height: 1.5, background: "var(--faint)", borderRadius: 1, pointerEvents: "none" }} />}
       <div style={{ position: "absolute", left: "50%", bottom: norm * trackH, transform: "translate(-50%,50%)", width: 22, height: 13, borderRadius: 3, background: "var(--fader-knob, linear-gradient(#4a4338,#2c2720))", border: "1px solid rgba(0,0,0,.5)", boxShadow: "0 2px 4px rgba(0,0,0,.5)" }}>
         <div style={{ position: "absolute", top: "50%", left: 3, right: 3, height: 1.5, transform: "translateY(-50%)", background: color, opacity: .8 }} />
       </div>

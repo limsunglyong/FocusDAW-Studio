@@ -17,6 +17,7 @@ window.DAW = {
   _masterLevel: 0,
   _masterStereo: { l: 0, r: 0 },
   _masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  _inputLevel: 0,
   _fftData: [],
   _isPlaying: false,
   _playhead: 0,
@@ -35,11 +36,15 @@ window.DAW = {
   getMasterBandLevels() {
     return this._masterBandLevels;
   },
+  getInputLevel() {
+    return this._inputLevel || 0;
+  },
   computeSpectrum() {
     return this._fftData;
   },
   setTrackParam(id, k, v) {
     const t = this.tracks.find((tr) => tr.id === id);
+    if (t && t.needsAudio && (k === "solo" || k === "mute")) return;
     if (t) {
       t.params[k] = v;
     }
@@ -90,6 +95,7 @@ function focusFxKnob(trackId, param) {
 function MixerApp() {
   useTick();
   const [theme, setTheme] = React.useState("default");
+  const [mixerTexture, setMixerTexture] = React.useState("none");
   const [, force] = React.useState(0);
   React.useEffect(() => {
     channel.postMessage({ type: "MIXER_READY" });
@@ -100,6 +106,7 @@ function MixerApp() {
         window.DAW.tracks = msg.tracks;
         window.DAW.master = msg.master;
         setTheme(msg.theme);
+        setMixerTexture(msg.mixerTexture || "none");
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
         force((n) => n + 1);
@@ -107,6 +114,7 @@ function MixerApp() {
         window.DAW.tracks = msg.tracks;
         window.DAW.master = msg.master;
         if (msg.theme) setTheme(msg.theme);
+        if (msg.mixerTexture) setMixerTexture(msg.mixerTexture);
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
         force((n) => n + 1);
@@ -114,6 +122,7 @@ function MixerApp() {
         focusFxKnob(msg.trackId, msg.param);
       } else if (msg.type === "LEVEL_METERS") {
         window.DAW._levels = msg.trackLevels;
+        window.DAW._inputLevel = msg.inputLevel || 0;
         window.DAW._masterLevel = msg.masterLevel;
         window.DAW._masterStereo = msg.masterStereo || { l: msg.masterLevel, r: msg.masterLevel };
         window.DAW._masterBandLevels = msg.masterBandLevels;
@@ -253,6 +262,7 @@ function MixerApp() {
     {
       key: t.id,
       track: t,
+      texture: mixerTexture,
       level: window.DAW.getTrackLevel(t.id),
       onBeforeChange: () => channel.postMessage({ type: "BEFORE_CHANGE" }),
       onParam: (k, v) => {

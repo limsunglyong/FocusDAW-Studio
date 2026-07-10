@@ -547,8 +547,8 @@ function ToolIcon({ name, size }) {
   if (name === "join") return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M2 8h5M9 8h5" }), /* @__PURE__ */ React.createElement("path", { d: "M7 5l-2 3 2 3M9 5l2 3-2 3" }));
   return null;
 }
-function ActionBar({ onMixer, mixerOpen, onExport, onAudioIn }) {
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: onAudioIn, title: "Add a recordable input track" }, "+ Audio In"), /* @__PURE__ */ React.createElement("button", { className: "btn" + (mixerOpen ? " primary" : ""), onClick: (e) => {
+function ActionBar({ onMixer, mixerOpen, onExport }) {
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { className: "btn" + (mixerOpen ? " primary" : ""), onClick: (e) => {
     onMixer();
     e.currentTarget.blur();
   } }, /* @__PURE__ */ React.createElement(Icon, { name: "mixer", size: 15 }), " Mixer"), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: onExport, title: "Export mixdown (MP3 / WAV)" }, /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 15 }), " Export"));
@@ -1285,7 +1285,7 @@ function TimeStretchBusyBadge({ active, x, y }) {
     } })
   );
 }
-function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange, theme }) {
+function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange, theme, mixerTexture }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
   const [timeMinPx, setTimeMinPx] = useState(TIME_ZOOM_BASE_MIN);
@@ -1305,6 +1305,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [mergeTracksBusy, setMergeTracksBusy] = useState(false);
   const [showMixer, setShowMixer] = useState(false);
   const [showAdvancedPan, setShowAdvancedPan] = useState(false);
+  const audioInTrackCount = DAW.tracks.filter((t) => t.kind === "audioIn").length;
+  const mixerTrackInfo = useMemo(() => ({
+    tracksCount: DAW.tracks.length,
+    audioInCount: audioInTrackCount
+  }), [DAW.tracks.length, audioInTrackCount]);
   const mixerChannelRef = useRef(null);
   const advancedChannelRef = useRef(null);
   const pendingMixerFocusRef = useRef(null);
@@ -1319,6 +1324,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       mixerChannelRef.current.postMessage({
         type: "LEVEL_METERS",
         trackLevels,
+        inputLevel: DAW.getInputLevel ? DAW.getInputLevel() : 0,
         masterLevel: DAW.getMasterLevel(),
         masterStereo: DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : null,
         masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
@@ -1339,7 +1345,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
   });
   const currentTracksStateStr = JSON.stringify(
-    DAW.tracks.map((t) => ({ id: t.id, name: t.name, color: t.color, params: t.params }))
+    DAW.tracks.map((t) => ({ id: t.id, name: t.name, color: t.color, kind: t.kind, needsAudio: !!t.needsAudio, recording: !!t.recording, params: t.params }))
   );
   const currentMasterStateStr = JSON.stringify({
     volume: DAW.master.volume,
@@ -1367,6 +1373,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           name: t.name,
           color: t.color,
           kind: t.kind,
+          needsAudio: !!t.needsAudio,
+          recording: !!t.recording,
           params: { ...t.params }
         })),
         master: {
@@ -1387,11 +1395,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           fadeOut: DAW.master.fadeOut
         },
         theme,
+        mixerTexture,
         isPlaying: DAW.isPlaying,
         playhead: DAW.getPlayhead()
       });
     }
-  }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme]);
+  }, [showMixer, currentTracksStateStr, currentMasterStateStr, theme, mixerTexture]);
   useEffect(() => {
     if (showAdvancedPan && advancedChannelRef.current) {
       advancedChannelRef.current.postMessage({
@@ -1416,15 +1425,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [showAdvancedPan, currentTracksStateStr, currentMasterStateStr, theme]);
   useEffect(() => {
     if (showMixer && window.electronAPI && window.electronAPI.resizeMixer) {
-      window.electronAPI.resizeMixer(DAW.tracks.length);
+      window.electronAPI.resizeMixer(mixerTrackInfo);
     }
-  }, [showMixer, DAW.tracks.length]);
+  }, [showMixer, mixerTrackInfo]);
   const toggleMixer = useCallback(() => {
     if (window.electronAPI) {
       if (showMixer) {
         window.electronAPI.closeMixer();
       } else {
-        window.electronAPI.openMixer(DAW.tracks.length);
+        window.electronAPI.openMixer(mixerTrackInfo);
       }
     } else {
       if (showMixer) {
@@ -1435,8 +1444,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       } else {
         const MIXER_BOUNDS_KEY = "focusdaw-mixer-bounds";
         const channelW = 92;
+        const audioInChannelW = 138;
         const masterW = 400;
-        const contentW = DAW.tracks.length * channelW + masterW;
+        const contentW = DAW.tracks.reduce((sum, track) => sum + (track.kind === "audioIn" ? audioInChannelW : channelW), 0) + masterW;
         let popW = Math.max(600, Math.min(1440, contentW));
         let popH = 515;
         let popLeft = null;
@@ -1486,14 +1496,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         }, 500);
       }
     }
-  }, [showMixer]);
+  }, [showMixer, mixerTrackInfo]);
   const openMixerIfClosed = useCallback(() => {
     if (!showMixer) toggleMixer();
   }, [showMixer, toggleMixer]);
   const focusMixerFx = useCallback((trackId, param2) => {
     pendingMixerFocusRef.current = { trackId, param: param2 };
     if (showMixer) {
-      if (window.electronAPI) window.electronAPI.openMixer(DAW.tracks.length);
+      if (window.electronAPI) window.electronAPI.openMixer(mixerTrackInfo);
       else if (window.mixerPopup && !window.mixerPopup.closed) {
         try {
           window.mixerPopup.focus();
@@ -1508,7 +1518,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     } else {
       toggleMixer();
     }
-  }, [showMixer, toggleMixer]);
+  }, [showMixer, toggleMixer, mixerTrackInfo]);
   const openAdvancedPan = useCallback(() => {
     if (window.electronAPI && window.electronAPI.openAdvancedPan) {
       window.electronAPI.openAdvancedPan("pan");
@@ -1964,6 +1974,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               name: t.name,
               color: t.color,
               kind: t.kind,
+              needsAudio: !!t.needsAudio,
+              recording: !!t.recording,
               params: { ...t.params }
             })),
             master: {
@@ -1984,6 +1996,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               fadeOut: DAW.master.fadeOut
             },
             theme: localStorage.getItem("focusdaw-theme") || "default",
+            mixerTexture: localStorage.getItem("focusdaw-mixer-texture") || "none",
             isPlaying: DAW.isPlaying,
             playhead: DAW.getPlayhead()
           });
@@ -2021,6 +2034,37 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           openAdvancedPan();
           break;
         case "SET_TRACK_PARAM":
+          {
+            const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            if (targetTrack && targetTrack.needsAudio && (msg.k === "solo" || msg.k === "mute")) {
+              break;
+            }
+          }
+          if (msg.k === "arm" && msg.v) {
+            DAW.tracks.forEach((track) => {
+              if (track.id !== msg.id && track.kind === "audioIn" && track.params && track.params.arm)
+                DAW.setTrackParam(track.id, "arm", false);
+            });
+            const input = DAW.getSavedAudioInput && DAW.getSavedAudioInput() || {
+              type: "",
+              name: "",
+              channel: 0,
+              stereo: false,
+              sampleRate: 0,
+              bufferSize: 0
+            };
+            if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e2) => console.warn("[AudioInput] mixer arm prepare failed:", e2));
+            const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            if (DAW.setInputGain) DAW.setInputGain(
+              Math.max(0.1, Math.min(4, targetTrack && targetTrack.params && targetTrack.params.inputGain != null ? targetTrack.params.inputGain : 1))
+            );
+          }
+          if (msg.k === "arm" && !msg.v && DAW.setInputGain) DAW.setInputGain(1);
+          if (msg.k === "inputGain") {
+            const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            if (targetTrack && targetTrack.kind === "audioIn" && targetTrack.params && (targetTrack.params.arm || targetTrack.recording) && DAW.setInputGain)
+              DAW.setInputGain(msg.v);
+          }
           DAW.setTrackParam(msg.id, msg.k, msg.v);
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
@@ -2950,7 +2994,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onDetect: detectKey,
       onApplyKey: applyKey
     }
-  ), /* @__PURE__ */ React.createElement(VariKeySwitch, { on: !!(DAW.tempo && DAW.tempo.variKey), onToggle: toggleVariKey }), /* @__PURE__ */ React.createElement(ToolbarDivider, null), /* @__PURE__ */ React.createElement(ActionBar, { onMixer: toggleMixer, mixerOpen: showMixer, onExport: () => setShowExport(true), onAudioIn: addAudioInTrack }))), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement(VariKeySwitch, { on: !!(DAW.tempo && DAW.tempo.variKey), onToggle: toggleVariKey }), /* @__PURE__ */ React.createElement(ToolbarDivider, null), /* @__PURE__ */ React.createElement(ActionBar, { onMixer: toggleMixer, mixerOpen: showMixer, onExport: () => setShowExport(true) }))), /* @__PURE__ */ React.createElement(
     "div",
     {
       ref: arrangeRef,
@@ -3202,6 +3246,7 @@ function App() {
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
+  const [mixerTexture, setMixerTexture] = useState(() => localStorage.getItem("focusdaw-mixer-texture") || "none");
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const registerHandlers = useCallback((h) => {
     handlersRef.current = h;
@@ -3233,6 +3278,9 @@ function App() {
     } catch (e) {
     }
   }, [theme]);
+  useEffect(() => {
+    localStorage.setItem("focusdaw-mixer-texture", mixerTexture || "none");
+  }, [mixerTexture]);
   useEffect(() => {
     document.title = `${projectName || DEFAULT_PROJECT_NAME}-FocusDAW Studio`;
   }, [projectName]);
@@ -3284,9 +3332,19 @@ function App() {
       onRenameProject: renameProject,
       onProjectPathChange: setProjectPath,
       onUndoStateChange: setUndoState,
-      theme
+      theme,
+      mixerTexture
     }
-  ), showSettings && /* @__PURE__ */ React.createElement(SettingsDialog, { currentTheme: theme, onThemeChange: setTheme, onClose: () => setShowSettings(false) }), showHelp && /* @__PURE__ */ React.createElement(HelpDialog, { onClose: () => setShowHelp(false) }), showReleaseNotes && /* @__PURE__ */ React.createElement(ReleaseNotesDialog, { onClose: () => setShowReleaseNotes(false) }), showAbout && /* @__PURE__ */ React.createElement(AboutDialog, { onClose: () => setShowAbout(false) }), /* @__PURE__ */ React.createElement("div", { className: "bottombar" }, /* @__PURE__ */ React.createElement("span", { className: "bottom-project mono" }, projectName || DEFAULT_PROJECT_NAME), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, color: "var(--dim)", fontWeight: 600, letterSpacing: ".03em" } }, "FocusDAW Studio"), /* @__PURE__ */ React.createElement("span", { className: "version-badge" }, APP_VERSION))));
+  ), showSettings && /* @__PURE__ */ React.createElement(
+    SettingsDialog,
+    {
+      currentTheme: theme,
+      onThemeChange: setTheme,
+      mixerTexture,
+      onMixerTextureChange: setMixerTexture,
+      onClose: () => setShowSettings(false)
+    }
+  ), showHelp && /* @__PURE__ */ React.createElement(HelpDialog, { onClose: () => setShowHelp(false) }), showReleaseNotes && /* @__PURE__ */ React.createElement(ReleaseNotesDialog, { onClose: () => setShowReleaseNotes(false) }), showAbout && /* @__PURE__ */ React.createElement(AboutDialog, { onClose: () => setShowAbout(false) }), /* @__PURE__ */ React.createElement("div", { className: "bottombar" }, /* @__PURE__ */ React.createElement("span", { className: "bottom-project mono" }, projectName || DEFAULT_PROJECT_NAME), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, color: "var(--dim)", fontWeight: 600, letterSpacing: ".03em" } }, "FocusDAW Studio"), /* @__PURE__ */ React.createElement("span", { className: "version-badge" }, APP_VERSION))));
 }
 DAW.init();
 ReactDOM.createRoot(document.getElementById("root")).render(/* @__PURE__ */ React.createElement(App, null));

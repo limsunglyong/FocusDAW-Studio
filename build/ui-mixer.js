@@ -1,7 +1,173 @@
-function ChannelStrip({ track, level, onParam, onBeforeChange }) {
+const AUDIO_INPUT_TEXTURES = {
+  none: {
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
+    backgroundSize: "auto",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat"
+  },
+  diagonal: {
+    backgroundImage: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
+    backgroundSize: "11px 100%,11px 100%,auto",
+    backgroundPosition: "left top,right top,center",
+    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
+    capImage: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
+    capSize: "100% 11px,100% 11px",
+    capPosition: "left top,left bottom",
+    capRepeat: "no-repeat,no-repeat"
+  },
+  dots: {
+    backgroundImage: "radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px),radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
+    backgroundSize: "8px 8px,8px 8px,auto",
+    backgroundPosition: "left top,right top,center",
+    backgroundRepeat: "repeat-y,repeat-y,no-repeat",
+    capImage: "radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px)",
+    capSize: "8px 8px,8px 8px",
+    capPosition: "left top,left bottom",
+    capRepeat: "repeat-x,repeat-x"
+  },
+  brushed: {
+    backgroundImage: "repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px),repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
+    backgroundSize: "11px 100%,11px 100%,auto",
+    backgroundPosition: "left top,right top,center",
+    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
+    capImage: "repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px)",
+    capSize: "100% 11px,100% 11px",
+    capPosition: "left top,left bottom",
+    capRepeat: "no-repeat,no-repeat"
+  },
+  edges: {
+    backgroundImage: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
+    backgroundSize: "11px 100%,11px 100%,auto",
+    backgroundPosition: "left top,right top,center",
+    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
+    capImage: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
+    capSize: "100% 11px,100% 11px",
+    capPosition: "left top,left bottom",
+    capRepeat: "no-repeat,no-repeat"
+  }
+};
+const MIXER_CHANNEL_W = 92;
+const MIXER_AUDIO_IN_CHANNEL_W = 138;
+function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--amber)", activeBorder = "var(--amber-deep)" }) {
+  return /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      title,
+      onClick,
+      style: {
+        flex: 1,
+        minWidth: 0,
+        height: 21,
+        borderRadius: 5,
+        padding: "0 4px",
+        fontSize: 8.5,
+        fontWeight: 800,
+        letterSpacing: ".04em",
+        background: active ? activeBg : "rgba(0,0,0,.14)",
+        color: active ? activeColor : "var(--muted)",
+        border: "1px solid " + (active ? activeBorder : "var(--line-strong)")
+      }
+    },
+    children
+  );
+}
+function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
+  const p = track.params || {};
+  const inputGain = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
+  const armed = !!p.arm;
+  const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
+  const hot = liveLevel >= 0.92;
+  const pct = (inputGain - 0.1) / 3.9 * 100;
+  const commit = (k, v) => {
+    onBeforeChange && onBeforeChange();
+    onParam(k, v);
+  };
+  return /* @__PURE__ */ React.createElement("div", { style: {
+    width: "100%",
+    display: "grid",
+    gap: 5,
+    padding: "6px 7px",
+    borderRadius: 7,
+    background: "rgba(0,0,0,.16)",
+    border: "1px solid var(--line)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement(
+    AudioInputButton,
+    {
+      active: armed,
+      title: "Arm this input track for recording",
+      activeBg: "var(--red)",
+      activeColor: "#fff",
+      activeBorder: "var(--red)",
+      onClick: () => commit("arm", !p.arm)
+    },
+    "ARM"
+  ), /* @__PURE__ */ React.createElement(
+    AudioInputButton,
+    {
+      active: !!p.monitor,
+      title: "Monitor this input while recording",
+      onClick: () => commit("monitor", !p.monitor)
+    },
+    "MON"
+  ), /* @__PURE__ */ React.createElement(
+    AudioInputButton,
+    {
+      active: p.limiter !== false,
+      title: "Input limiter \xB7 ceiling -1.0 dBFS",
+      onClick: () => commit("limiter", p.limiter === false)
+    },
+    "LIM"
+  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+    width: 18,
+    fontSize: 8.5,
+    fontWeight: 800,
+    color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)"
+  } }, "IN"), /* @__PURE__ */ React.createElement("div", { title: "Live microphone input level", style: {
+    flex: 1,
+    height: 6,
+    borderRadius: 999,
+    overflow: "hidden",
+    background: "rgba(0,0,0,.34)",
+    border: "1px solid var(--line)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: {
+    width: `${liveLevel * 100}%`,
+    height: "100%",
+    background: hot ? "var(--red)" : "var(--green)",
+    boxShadow: liveLevel > 0 ? `0 0 6px ${hot ? "var(--red)" : "var(--green)"}` : "none"
+  } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".08em" } }, "GAIN"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 8.5, color: "var(--cream-2)", fontWeight: 700 } }, fmtDb(inputGain))), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "range",
+      min: "0.1",
+      max: "4",
+      step: "0.1",
+      value: inputGain,
+      title: `Input gain ${fmtDb(inputGain)}`,
+      onMouseDown: () => onBeforeChange && onBeforeChange(),
+      onChange: (e) => onParam("inputGain", +e.target.value),
+      style: { width: "100%", accentColor: "var(--amber)", background: `linear-gradient(90deg,var(--amber) 0 ${pct}%,rgba(0,0,0,.36) ${pct}% 100%)` }
+    }
+  )));
+}
+function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange }) {
   const p = track.params;
+  const isAudioIn = track.kind === "audioIn";
+  const noAudio = !!track.needsAudio;
   const faderAreaRef = useRef(null);
   const [faderH, setFaderH] = useState(120);
+  const textureStyle = isAudioIn ? AUDIO_INPUT_TEXTURES[texture] || AUDIO_INPUT_TEXTURES.none : null;
+  const audioInputNoneBg = "linear-gradient(180deg,rgba(127,176,196,.13),rgba(127,176,196,.05)),linear-gradient(180deg,var(--surface),var(--bg2))";
+  const audioInputTexturedBg = "linear-gradient(180deg,rgba(127,176,196,.028),rgba(127,176,196,.01)),linear-gradient(180deg,var(--surface),var(--bg2))";
+  const audioInputCapBg = "linear-gradient(180deg,rgba(255,255,255,.055) 0,rgba(255,255,255,.025) 4px,rgba(0,0,0,.09) 11px,transparent 24%,transparent 76%,rgba(0,0,0,.11) calc(100% - 11px),rgba(255,255,255,.025) calc(100% - 4px),rgba(255,255,255,.05) 100%)";
+  const audioInputBaseBg = texture === "none" ? audioInputNoneBg : audioInputTexturedBg;
+  const textureCapBg = textureStyle && textureStyle.capImage ? `${textureStyle.capImage},${textureStyle.capImage},` : "";
+  const textureCapSize = textureStyle && textureStyle.capSize ? `${textureStyle.capSize},` : "";
+  const textureCapPosition = textureStyle && textureStyle.capPosition ? `${textureStyle.capPosition},` : "";
+  const textureCapRepeat = textureStyle && textureStyle.capRepeat ? `${textureStyle.capRepeat},` : "";
+  const audioInputBg = textureStyle ? `${textureStyle.backgroundImage}, ${textureCapBg} ${audioInputCapBg}, ${audioInputBaseBg}` : void 0;
+  const audioInputBgSize = textureStyle ? `${textureStyle.backgroundSize}, ${textureCapSize} auto, auto` : void 0;
+  const audioInputBgPosition = textureStyle ? `${textureStyle.backgroundPosition}, ${textureCapPosition} center, center` : void 0;
+  const audioInputBgRepeat = textureStyle ? `${textureStyle.backgroundRepeat}, ${textureCapRepeat} no-repeat, no-repeat` : void 0;
   useEffect(() => {
     const el = faderAreaRef.current;
     if (!el) return;
@@ -10,8 +176,8 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
     return () => obs.disconnect();
   }, []);
   return /* @__PURE__ */ React.createElement("div", { style: {
-    width: 92,
-    flex: "0 0 92px",
+    width: isAudioIn ? MIXER_AUDIO_IN_CHANNEL_W : MIXER_CHANNEL_W,
+    flex: `0 0 ${isAudioIn ? MIXER_AUDIO_IN_CHANNEL_W : MIXER_CHANNEL_W}px`,
     height: "100%",
     boxSizing: "border-box",
     display: "flex",
@@ -20,13 +186,17 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
     padding: "10px 6px",
     borderRight: "1px solid var(--line)",
     gap: 8,
-    // Audio In channels get the same blue tint as their arrange-view header
-    // (--audio-in-track-bg in studio.html) so they read as recordings, not file stems.
-    background: track.kind === "audioIn" ? "linear-gradient(180deg,color-mix(in srgb,var(--surface) 80%,var(--blue) 20%),color-mix(in srgb,var(--bg2) 88%,var(--blue) 12%))" : p.solo ? "rgba(232,176,75,.05)" : "transparent"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "reverb", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) })), /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "echo", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, size: 22, onClick: () => {
+    position: "relative",
+    overflow: "hidden",
+    background: isAudioIn ? "var(--bg2)" : p.solo ? "rgba(232,176,75,.05)" : "transparent",
+    backgroundImage: isAudioIn ? audioInputBg : void 0,
+    backgroundSize: isAudioIn ? audioInputBgSize : void 0,
+    backgroundPosition: isAudioIn ? audioInputBgPosition : void 0,
+    backgroundRepeat: isAudioIn ? audioInputBgRepeat : void 0
+  } }, /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "reverb", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) })), /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "echo", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, disabled: noAudio, size: 22, onClick: () => {
     onBeforeChange && onBeforeChange();
     onParam("solo", !p.solo);
-  } }), /* @__PURE__ */ React.createElement(MuteBtn, { on: p.mute, auto: DAW._anySolo() && !p.solo, size: 22, onClick: () => {
+  } }), /* @__PURE__ */ React.createElement(MuteBtn, { on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, size: 22, onClick: () => {
     onBeforeChange && onBeforeChange();
     onParam("mute", !p.mute);
   } })), /* @__PURE__ */ React.createElement(
@@ -42,7 +212,7 @@ function ChannelStrip({ track, level, onParam, onBeforeChange }) {
       onChange: (v) => onParam("pan", v),
       format: (v) => Math.abs(v) < 0.02 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100)
     }
-  ), /* @__PURE__ */ React.createElement("div", { ref: faderAreaRef, style: { display: "flex", gap: 6, alignItems: "flex-end", flex: 1, minHeight: 0, justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Fader, { value: p.volume, height: faderH, max: 2, onBeforeChange, onChange: (v) => onParam("volume", v) }), /* @__PURE__ */ React.createElement(Meter, { level, height: faderH, width: 7 })), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)" } }, fmtDb(p.volume), " dB"));
+  ), /* @__PURE__ */ React.createElement("div", { ref: faderAreaRef, style: { display: "flex", gap: 6, alignItems: "flex-end", flex: 1, minHeight: 0, justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Fader, { value: p.volume, height: faderH, max: 2, scale: "linear", onBeforeChange, onChange: (v) => onParam("volume", v) }), /* @__PURE__ */ React.createElement(Meter, { level, height: faderH, width: 7 })), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)" } }, fmtDb(p.volume), " dB"), isAudioIn && /* @__PURE__ */ React.createElement(AudioInputControls, { track, inputLevel: DAW.getInputLevel ? DAW.getInputLevel() : 0, onParam, onBeforeChange }));
 }
 function smoothPath(P) {
   if (P.length < 2) return "";
@@ -371,7 +541,7 @@ function MasterPanel({ level, master, onMaster, onBeforeChange, onOpenAdvancedPa
     gap: 11,
     background: "linear-gradient(180deg,rgba(232,176,75,.06),transparent 40%)",
     borderLeft: "1px solid var(--line-strong)"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: "var(--amber)" } }, "MASTER"), /* @__PURE__ */ React.createElement(MasterViewTab, { active: view === "eq", onClick: () => setView("eq") }, "Graphic EQ \xB7 FFT"), /* @__PURE__ */ React.createElement(MasterViewTab, { active: view === "meter", onClick: () => setView("meter") }, "Level meter"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--cream-2)" } }, fmtDb(master.volume), " dB")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { paddingBottom: 14 } }, view === "eq" ? /* @__PURE__ */ React.createElement(MasterEQ, { width: 300, height: 156, onBeforeChange }) : /* @__PURE__ */ React.createElement(MasterLevelMeter, { width: 300, height: 156, onBeforeChange })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "var(--muted)", fontWeight: 600, letterSpacing: ".08em" } }, "VOL"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement(Fader, { value: master.volume, height: 132, color: "var(--amber)", onBeforeChange, onChange: (v) => onMaster("volume", v) }), /* @__PURE__ */ React.createElement(Meter, { level: stereo.l, height: 132, width: 7 }), /* @__PURE__ */ React.createElement(Meter, { level: stereo.r, height: 132, width: 7 })))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" } }, "EQ\xA0PRESET"), EQ_PRESET_BTNS.map(([lbl, name, col]) => /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: "var(--amber)" } }, "MASTER"), /* @__PURE__ */ React.createElement(MasterViewTab, { active: view === "eq", onClick: () => setView("eq") }, "Graphic EQ \xB7 FFT"), /* @__PURE__ */ React.createElement(MasterViewTab, { active: view === "meter", onClick: () => setView("meter") }, "Level meter"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--cream-2)" } }, fmtDb(master.volume), " dB")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { paddingBottom: 14 } }, view === "eq" ? /* @__PURE__ */ React.createElement(MasterEQ, { width: 300, height: 156, onBeforeChange }) : /* @__PURE__ */ React.createElement(MasterLevelMeter, { width: 300, height: 156, onBeforeChange })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "var(--muted)", fontWeight: 600, letterSpacing: ".08em" } }, "VOL"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement(Fader, { value: master.volume, height: 132, max: 2, scale: "linear", color: "var(--amber)", onBeforeChange, onChange: (v) => onMaster("volume", v) }), /* @__PURE__ */ React.createElement(Meter, { level: stereo.l, height: 132, width: 7 }), /* @__PURE__ */ React.createElement(Meter, { level: stereo.r, height: 132, width: 7 })))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, fontWeight: 700, letterSpacing: ".08em", color: "var(--muted)" } }, "EQ\xA0PRESET"), EQ_PRESET_BTNS.map(([lbl, name, col]) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: name,
@@ -423,9 +593,8 @@ function MasterPanel({ level, master, onMaster, onBeforeChange, onOpenAdvancedPa
 }
 function MixerWindow({ onClose, onBeforeChange }) {
   useTick();
-  const channelW = 92;
   const masterW = 400;
-  const bodyW = DAW.tracks.length * channelW + masterW;
+  const bodyW = DAW.tracks.reduce((sum, track) => sum + (track.kind === "audioIn" ? MIXER_AUDIO_IN_CHANNEL_W : MIXER_CHANNEL_W), 0) + masterW;
   const windowW = Math.min(window.innerWidth - 56, bodyW + 2);
   const [pos, setPos] = useState({ x: Math.max(28, window.innerWidth - windowW - 52), y: 96 });
   const dragRef = useRef(null);

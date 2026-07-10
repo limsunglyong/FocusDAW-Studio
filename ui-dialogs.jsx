@@ -751,6 +751,59 @@ const THEMES = [
   },
 ];
 
+const MIXER_TEXTURE_PREVIEW_CAP = "linear-gradient(180deg,rgba(255,255,255,.06) 0,rgba(255,255,255,.03) 4px,rgba(0,0,0,.16) 11px,transparent 24%,transparent 76%,rgba(0,0,0,.18) calc(100% - 11px),rgba(255,255,255,.03) calc(100% - 4px),rgba(255,255,255,.055) 100%)";
+
+const MIXER_TEXTURES = [
+  {
+    id: "none", name: "None", desc: "concave channel",
+    preview: "linear-gradient(90deg,rgba(255,255,255,.055) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
+  },
+  {
+    id: "diagonal", name: "Diagonal", desc: "edge stripe",
+    preview: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.42) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.42) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
+    previewSize: "11px 100%,11px 100%,auto",
+    previewPosition: "left top,right top,center",
+    previewRepeat: "no-repeat,no-repeat,no-repeat",
+    capPreview: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.42) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
+    capPreviewSize: "100% 11px,100% 11px",
+    capPreviewPosition: "left top,left bottom",
+    capPreviewRepeat: "no-repeat,no-repeat",
+  },
+  {
+    id: "dots", name: "Dots", desc: "edge dot grid",
+    preview: "radial-gradient(circle,rgba(0,0,0,.34) 0 2px,transparent 2.8px),radial-gradient(circle,rgba(0,0,0,.34) 0 2px,transparent 2.8px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
+    previewSize: "8px 8px,8px 8px,auto",
+    previewPosition: "left top,right top,center",
+    previewRepeat: "repeat-y,repeat-y,no-repeat",
+    capPreview: "radial-gradient(circle,rgba(0,0,0,.34) 0 2px,transparent 2.8px)",
+    capPreviewSize: "8px 8px,8px 8px",
+    capPreviewPosition: "left top,left bottom",
+    capPreviewRepeat: "repeat-x,repeat-x",
+  },
+  {
+    id: "brushed", name: "Brushed", desc: "edge grain",
+    preview: "repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.32) 3px 5px,transparent 5px 10px),repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.32) 3px 5px,transparent 5px 10px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
+    previewSize: "11px 100%,11px 100%,auto",
+    previewPosition: "left top,right top,center",
+    previewRepeat: "no-repeat,no-repeat,no-repeat",
+    capPreview: "repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.32) 3px 5px,transparent 5px 10px)",
+    capPreviewSize: "100% 11px,100% 11px",
+    capPreviewPosition: "left top,left bottom",
+    capPreviewRepeat: "no-repeat,no-repeat",
+  },
+  {
+    id: "edges", name: "Edge Lines", desc: "side grooves",
+    preview: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.42) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.42) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.28) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.26) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
+    previewSize: "11px 100%,11px 100%,auto",
+    previewPosition: "left top,right top,center",
+    previewRepeat: "no-repeat,no-repeat,no-repeat",
+    capPreview: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.42) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
+    capPreviewSize: "100% 11px,100% 11px",
+    capPreviewPosition: "left top,left bottom",
+    capPreviewRepeat: "no-repeat,no-repeat",
+  },
+];
+
 function ThemeSwatch({ theme, active, onClick }) {
   const t = theme;
   return (
@@ -970,7 +1023,7 @@ function DeviceSetupSection() {
   );
 }
 
-function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
+function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", onMixerTextureChange, onClose }) {
   const sections = [
     { id: "settings-color-theme", label: "Color Theme" },
     { id: "settings-mixer-console", label: "Mixer Console Window" },
@@ -1041,6 +1094,34 @@ function SettingsDialog({ currentTheme, onThemeChange, onClose }) {
                 {THEMES.map(t => (
                   <ThemeSwatch key={t.id} theme={t} active={currentTheme === t.id} onClick={() => onThemeChange(t.id)} />
                 ))}
+              </div>
+              <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, marginBottom: 26 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>Audio Input Texture</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+                  {MIXER_TEXTURES.map((tex) => {
+                    const active = mixerTexture === tex.id;
+                    const capPreview = tex.capPreview ? `${tex.capPreview},${tex.capPreview},` : "";
+                    const capPreviewSize = tex.capPreviewSize ? `${tex.capPreviewSize},` : "";
+                    const capPreviewPosition = tex.capPreviewPosition ? `${tex.capPreviewPosition},` : "";
+                    const capPreviewRepeat = tex.capPreviewRepeat ? `${tex.capPreviewRepeat},` : "";
+                    return (
+                      <button key={tex.id} type="button" onClick={() => onMixerTextureChange && onMixerTextureChange(tex.id)}
+                        style={{ minWidth: 0, padding: 10, borderRadius: 8, textAlign: "left",
+                          background: active ? "var(--surface3)" : "var(--surface)",
+                          border: "1px solid " + (active ? "var(--amber)" : "var(--line)"),
+                          color: "var(--cream)", boxShadow: active ? "0 0 0 2px var(--amber-soft)" : "none" }}>
+                        <span aria-hidden="true" style={{ display: "block", height: 34, borderRadius: 6, marginBottom: 8,
+                          backgroundColor: "var(--bg2)", backgroundImage: `${tex.preview}, ${capPreview} ${MIXER_TEXTURE_PREVIEW_CAP}`,
+                          backgroundSize: tex.previewSize ? `${tex.previewSize}, ${capPreviewSize} auto` : "auto, auto",
+                          backgroundPosition: tex.previewPosition ? `${tex.previewPosition}, ${capPreviewPosition} center` : "center, center",
+                          backgroundRepeat: tex.previewRepeat ? `${tex.previewRepeat}, ${capPreviewRepeat} no-repeat` : "no-repeat, no-repeat",
+                          border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)" }} />
+                        <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{tex.name}</span>
+                        <span style={{ display: "block", marginTop: 3, fontSize: 10.5, color: "var(--muted)", lineHeight: 1.25 }}>{tex.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </section>
 
