@@ -335,28 +335,12 @@ function ScrollingTrackTitle({ name, compact }) {
   );
 }
 
-// Vari BPM indicator. The blink is synced across all tracks by aligning each
-// tag's animation to a shared global clock via a negative animation-delay,
-// computed once at mount (recomputing on re-render would break the phase).
-const VARI_BPM_BLINK_MS = 1600;
-function VariBpmTag() {
-  const delayRef = React.useRef(-((performance.now() % VARI_BPM_BLINK_MS) / 1000));
-  return (
-    <span className="vari-bpm-tag" title="Vari BPM active — playback tempo applied to this track"
-      style={{ fontSize: 9, padding: "2px 4px", borderRadius: 4, fontWeight: 400, letterSpacing: ".04em",
-        textTransform: "uppercase", cursor: "default", animationDelay: delayRef.current + "s",
-        background: "rgba(217,106,78,.18)", color: "var(--red)", border: "1px solid rgba(217,106,78,.28)" }}>
-      BPM
-    </span>
-  );
-}
-
 // Per-track FX indicator tag (VRB / ECHO). Sits in a fixed slot next to VOL AUTO: the slot
 // always occupies its space (visibility toggles, not mounting) so VRB/ECHO never shift position
 // when the other is off. Shown only when the effect send amount is non-zero.
-function FxTag({ label, color, on, onClick }) {
+function FxTag({ label, color, on, onClick, title }) {
   return (
-    <span title={on ? `믹서에서 ${label} 노브 열기` : undefined}
+    <span title={on ? (title != null ? title : `믹서에서 ${label} 노브 열기`) : undefined}
       onClick={on && onClick ? onClick : undefined}
       style={{ fontSize: 7.5, padding: "1px 2px", borderRadius: 3, fontWeight: 700, letterSpacing: 0,
         lineHeight: 1, whiteSpace: "nowrap", flex: "0 0 auto",
@@ -371,10 +355,35 @@ function FxTag({ label, color, on, onClick }) {
   );
 }
 
+const TRACK_ARM_BUTTON_BG = "linear-gradient(180deg,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 78%,#fff 22%) 0%,var(--input-gain-arm-button, #e33a48) 52%,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 76%,#000 24%) 100%)";
+const TRACK_ARM_BUTTON_SHADOW = "inset 0 1px 0 rgba(255,255,255,.36), inset 0 -2px 0 rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.22), 0 0 8px color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 38%,transparent)";
+const TRACK_AUDIO_INPUT_PORT_OPTIONS = [
+  { label: "Input 1", channel: 0, stereo: false },
+  { label: "Input 2", channel: 1, stereo: false },
+  { label: "Input 1-2", channel: 0, stereo: true },
+];
+const INPUT_GAIN_SLIDER_WIDTH = 69;
+const INPUT_GAIN_THUMB_SIZE = 13;
+const INPUT_GAIN_MIN = 0.1;
+const INPUT_GAIN_MAX = 4;
+
+function inputGainTickLeft(value) {
+  const norm = Math.max(0, Math.min(1, (value - INPUT_GAIN_MIN) / (INPUT_GAIN_MAX - INPUT_GAIN_MIN)));
+  const pad = INPUT_GAIN_THUMB_SIZE / 2;
+  return pad + norm * (INPUT_GAIN_SLIDER_WIDTH - INPUT_GAIN_THUMB_SIZE);
+}
+
 function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0 }) {
   const p = track.params;
   const inputGainValue = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
-  const inputGainTickLeft = (value) => `${((value - 0.1) / 3.9) * 100}%`;
+  const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
+  const inputStereo = !!p.inputStereo;
+  const inputPortValue = `${inputStereo ? "stereo" : "mono"}:${inputChannel}`;
+  const commitInputPort = (value) => {
+    const [mode, ch] = String(value || "mono:0").split(":");
+    onParam("inputChannel", Math.max(0, Number(ch) || 0));
+    onParam("inputStereo", mode === "stereo");
+  };
   const armedInputLevel = p.arm ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const inputOverload = p.arm && armedInputLevel >= .92;
   const noAudio = !!track.needsAudio;
@@ -391,7 +400,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
   const effectiveSizeLaneH = sizeLaneH;
   const compact = effectiveSizeLaneH <= 76;
   const medium = effectiveSizeLaneH <= 104 && !compact;
-  const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
+  const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 11px";
   const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
   const knobSize = compact ? 24 : 28;
@@ -451,15 +460,36 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
           onChange={(v) => onParam("pan", v)} />
         <Meter level={playbackLevel} height={meterH} width={6} />
       </div>
-      {!compact && track.kind === "audioIn" && <div style={{ display: "flex", alignItems: "flex-start", gap: 3, minHeight: 31 }}>
-        <button onClick={() => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 750,
-          background: p.arm ? "var(--red)" : "transparent", color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)", border: "1px solid " + (p.arm ? "var(--red)" : "var(--line-strong)") }}>ARM</button>
-        <button onClick={() => onParam("monitor", !p.monitor)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 700,
-          background: p.monitor ? "var(--amber-soft)" : "transparent", color: p.monitor ? "var(--amber)" : "var(--muted)", border: "1px solid " + (p.monitor ? "var(--amber-deep)" : "var(--line-strong)") }}>MON</button>
-        <button onClick={() => onParam("limiter", p.limiter === false)} title="Input limiter · ceiling -1.0 dBFS"
-          style={{ height: 22, padding: "0 4px", borderRadius: 5, fontSize: 8.5, fontWeight: 700,
-            background: p.limiter !== false ? "var(--amber-soft)" : "transparent", color: p.limiter !== false ? "var(--amber)" : "var(--muted)",
-            border: "1px solid " + (p.limiter !== false ? "var(--amber-deep)" : "var(--line-strong)") }}>LIM</button>
+      {!compact && track.kind === "audioIn" && <div style={{ display: "flex", alignItems: "flex-start", gap: 6, minHeight: 48 }}>
+        <span style={{ display: "grid", gap: 4, width: 86, flex: "0 0 86px" }}>
+          <span style={{ display: "flex", gap: 3 }}>
+            <button onClick={() => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 750,
+              background: p.arm ? TRACK_ARM_BUTTON_BG : "transparent", color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)",
+              border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
+              boxShadow: p.arm ? TRACK_ARM_BUTTON_SHADOW : "inset 0 1px 0 rgba(255,255,255,.05)",
+              transform: p.arm ? "translateY(1px)" : "none" }}>ARM</button>
+            <button onClick={() => onParam("monitor", !p.monitor)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 700,
+              background: p.monitor ? "var(--amber-soft)" : "transparent", color: p.monitor ? "var(--amber)" : "var(--muted)", border: "1px solid " + (p.monitor ? "var(--amber-deep)" : "var(--line-strong)") }}>MON</button>
+            <button onClick={() => onParam("limiter", p.limiter === false)} title="Input limiter · ceiling -1.0 dBFS"
+              style={{ height: 22, padding: "0 4px", borderRadius: 5, fontSize: 8.5, fontWeight: 700,
+                background: p.limiter !== false ? "var(--amber-soft)" : "transparent", color: p.limiter !== false ? "var(--amber)" : "var(--muted)",
+                border: "1px solid " + (p.limiter !== false ? "var(--amber-deep)" : "var(--line-strong)") }}>LIM</button>
+          </span>
+          <select className="audio-input-port-select" value={inputPortValue} title="Input port for this Audio In track"
+            onChange={(e) => commitInputPort(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: "100%", height: 20, borderRadius: 5, padding: "0 5px",
+              background: "var(--audio-input-port-bg, var(--surface2))",
+              color: "var(--audio-input-port-fg, var(--cream-2))", border: "1px solid var(--line-strong)",
+              fontSize: 9.5, fontWeight: 650, outline: "none" }}>
+            {TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => (
+              <option key={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`} value={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`}
+                style={{ background: "var(--bg)", color: "var(--cream)" }}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "flex-start", gap: 3 }}>
           <span className="mono" title={`Current input gain ${fmtDb(inputGainValue)} dB`}
             style={{ width: 28, height: 16, display: "grid", placeItems: "center", borderRadius: 3,
@@ -471,28 +501,24 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
             color: inputOverload ? "var(--red)" : p.arm ? "#55c879" : "var(--dim)",
             textShadow: inputOverload ? "0 0 5px rgba(223,91,82,.75)"
               : p.arm ? "0 0 4px rgba(85,200,121,.45)" : "none" }}>IN</span>
-          <span style={{ position: "relative", width: 69, height: 31, display: "block" }}>
+          <span style={{ position: "relative", width: INPUT_GAIN_SLIDER_WIDTH, height: 25, display: "block" }}>
             <span style={{ position: "absolute", left: 0, right: 0, top: 6, height: 4, borderRadius: 3, background: "#3a342c", overflow: "hidden" }}>
               <span style={{ display: "block", width: `${armedInputLevel * 100}%`, height: "100%", overflow: "hidden" }}>
-                <span style={{ display: "block", width: 69, height: "100%",
+                <span style={{ display: "block", width: INPUT_GAIN_SLIDER_WIDTH, height: "100%",
                   background: "linear-gradient(90deg,#55c879 0%,#55c879 64%,#e5c84b 74%,#e5c84b 84%,#df5b52 92%,#df5b52 100%)" }} />
               </span>
             </span>
             <input ref={inputGainRef} className="input-level-slider" title={`Input gain ${fmtDb(inputGainValue)} dB · mouse wheel ±0.1`} type="range" min="0.1" max="4" step="0.1"
               value={inputGainValue} onChange={(e) => onParam("inputGain", +e.target.value)}
-              style={{ position: "absolute", left: 0, top: 0, width: 69, height: 16, margin: 0 }} />
-            <span aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top: 16, height: 15, pointerEvents: "none" }}>
+              style={{ position: "absolute", left: 0, top: 0, width: INPUT_GAIN_SLIDER_WIDTH, height: 16, margin: 0 }} />
+            <span aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top: 16, height: 8, pointerEvents: "none" }}>
               {[0.5, 1.5, 2.5, 3.5].map((value) =>
                 <span key={value} style={{ position: "absolute", left: inputGainTickLeft(value), top: 0, width: 1, height: 3,
                   background: "var(--dim)", transform: "translateX(-50%)" }} />
               )}
               {[1, 2, 3, 4].map((value) =>
-                <React.Fragment key={value}>
-                  <span style={{ position: "absolute", left: inputGainTickLeft(value), top: 0, width: 1, height: 6,
-                    background: "var(--cream-2)", transform: "translateX(-50%)" }} />
-                  <span className="mono" style={{ position: "absolute", left: inputGainTickLeft(value), top: 6,
-                    color: "var(--dim)", fontSize: 6.5, lineHeight: 1, transform: "translateX(-50%)" }}>{value}</span>
-                </React.Fragment>
+                <span key={value} style={{ position: "absolute", left: inputGainTickLeft(value), top: 0, width: 1, height: 6,
+                  background: "var(--cream-2)", transform: "translateX(-50%)" }} />
               )}
             </span>
           </span>
@@ -510,15 +536,18 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
             border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)") }}>
           <Icon name="auto" size={13} /> AUTO
         </button>
-        {/* fixed-position VRB / ECHO send indicators (colors match the mixer VRB/ECHO knobs).
-            Grouped so the row spends one gap, not two, on this tight (244px) header. */}
+        {/* fixed-position VRB / ECHO / BPM indicators (colors match the mixer VRB/ECHO knobs).
+            Grouped so the row spends one gap, not two, on this tight (244px) header.
+            BPM lights up (no animation) when Vari BPM playback tempo applies to this track. */}
         <div style={{ display: "flex", gap: 2, flex: "0 0 auto" }}>
           <FxTag label="VRB" color="var(--violet)" on={p.reverb > 0.001}
             onClick={onFocusFx ? () => onFocusFx(track.id, "reverb") : undefined} />
           <FxTag label="ECHO" color="var(--blue)" on={p.echo > 0.001}
             onClick={onFocusFx ? () => onFocusFx(track.id, "echo") : undefined} />
+          <FxTag label="BPM" color="var(--red)"
+            on={!!(DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo))}
+            title="Vari BPM active — playback tempo applied to this track" />
         </div>
-        {DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && <VariBpmTag />}
         <div style={{ flex: 1 }} />
         {track.needsAudio
           ? <span title="Drop the audio file here to re-link" style={{ fontSize: 9, padding: "2px 4px", borderRadius: 4,

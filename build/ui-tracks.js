@@ -355,36 +355,11 @@ function ScrollingTrackTitle({ name, compact }) {
     /* @__PURE__ */ React.createElement("span", { ref: textRef, className: "track-title-text" }, name)
   );
 }
-const VARI_BPM_BLINK_MS = 1600;
-function VariBpmTag() {
-  const delayRef = React.useRef(-(performance.now() % VARI_BPM_BLINK_MS / 1e3));
+function FxTag({ label, color, on, onClick, title }) {
   return /* @__PURE__ */ React.createElement(
     "span",
     {
-      className: "vari-bpm-tag",
-      title: "Vari BPM active \u2014 playback tempo applied to this track",
-      style: {
-        fontSize: 9,
-        padding: "2px 4px",
-        borderRadius: 4,
-        fontWeight: 400,
-        letterSpacing: ".04em",
-        textTransform: "uppercase",
-        cursor: "default",
-        animationDelay: delayRef.current + "s",
-        background: "rgba(217,106,78,.18)",
-        color: "var(--red)",
-        border: "1px solid rgba(217,106,78,.28)"
-      }
-    },
-    "BPM"
-  );
-}
-function FxTag({ label, color, on, onClick }) {
-  return /* @__PURE__ */ React.createElement(
-    "span",
-    {
-      title: on ? `\uBBF9\uC11C\uC5D0\uC11C ${label} \uB178\uBE0C \uC5F4\uAE30` : void 0,
+      title: on ? title != null ? title : `\uBBF9\uC11C\uC5D0\uC11C ${label} \uB178\uBE0C \uC5F4\uAE30` : void 0,
       onClick: on && onClick ? onClick : void 0,
       style: {
         fontSize: 7.5,
@@ -411,10 +386,33 @@ function FxTag({ label, color, on, onClick }) {
     label
   );
 }
+const TRACK_ARM_BUTTON_BG = "linear-gradient(180deg,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 78%,#fff 22%) 0%,var(--input-gain-arm-button, #e33a48) 52%,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 76%,#000 24%) 100%)";
+const TRACK_ARM_BUTTON_SHADOW = "inset 0 1px 0 rgba(255,255,255,.36), inset 0 -2px 0 rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.22), 0 0 8px color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 38%,transparent)";
+const TRACK_AUDIO_INPUT_PORT_OPTIONS = [
+  { label: "Input 1", channel: 0, stereo: false },
+  { label: "Input 2", channel: 1, stereo: false },
+  { label: "Input 1-2", channel: 0, stereo: true }
+];
+const INPUT_GAIN_SLIDER_WIDTH = 69;
+const INPUT_GAIN_THUMB_SIZE = 13;
+const INPUT_GAIN_MIN = 0.1;
+const INPUT_GAIN_MAX = 4;
+function inputGainTickLeft(value) {
+  const norm = Math.max(0, Math.min(1, (value - INPUT_GAIN_MIN) / (INPUT_GAIN_MAX - INPUT_GAIN_MIN)));
+  const pad = INPUT_GAIN_THUMB_SIZE / 2;
+  return pad + norm * (INPUT_GAIN_SLIDER_WIDTH - INPUT_GAIN_THUMB_SIZE);
+}
 function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0 }) {
   const p = track.params;
   const inputGainValue = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
-  const inputGainTickLeft = (value) => `${(value - 0.1) / 3.9 * 100}%`;
+  const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
+  const inputStereo = !!p.inputStereo;
+  const inputPortValue = `${inputStereo ? "stereo" : "mono"}:${inputChannel}`;
+  const commitInputPort = (value) => {
+    const [mode, ch] = String(value || "mono:0").split(":");
+    onParam("inputChannel", Math.max(0, Number(ch) || 0));
+    onParam("inputStereo", mode === "stereo");
+  };
   const armedInputLevel = p.arm ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const inputOverload = p.arm && armedInputLevel >= 0.92;
   const noAudio = !!track.needsAudio;
@@ -430,7 +428,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
   const effectiveSizeLaneH = sizeLaneH;
   const compact = effectiveSizeLaneH <= 76;
   const medium = effectiveSizeLaneH <= 104 && !compact;
-  const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 12px";
+  const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 11px";
   const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
   const knobSize = compact ? 24 : 28;
@@ -501,15 +499,17 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         onChange: (v) => onParam("pan", v)
       }
     ), /* @__PURE__ */ React.createElement(Meter, { level: playbackLevel, height: meterH, width: 6 })),
-    !compact && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 3, minHeight: 31 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("arm", !p.arm), style: {
+    !compact && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6, minHeight: 48 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "grid", gap: 4, width: 86, flex: "0 0 86px" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", gap: 3 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("arm", !p.arm), style: {
       height: 22,
       padding: "0 5px",
       borderRadius: 5,
       fontSize: 9,
       fontWeight: 750,
-      background: p.arm ? "var(--red)" : "transparent",
+      background: p.arm ? TRACK_ARM_BUTTON_BG : "transparent",
       color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)",
-      border: "1px solid " + (p.arm ? "var(--red)" : "var(--line-strong)")
+      border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
+      boxShadow: p.arm ? TRACK_ARM_BUTTON_SHADOW : "inset 0 1px 0 rgba(255,255,255,.05)",
+      transform: p.arm ? "translateY(1px)" : "none"
     } }, "ARM"), /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("monitor", !p.monitor), style: {
       height: 22,
       padding: "0 5px",
@@ -536,7 +536,37 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         }
       },
       "LIM"
-    ), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "flex-start", gap: 3 } }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        className: "audio-input-port-select",
+        value: inputPortValue,
+        title: "Input port for this Audio In track",
+        onChange: (e) => commitInputPort(e.target.value),
+        onMouseDown: (e) => e.stopPropagation(),
+        style: {
+          width: "100%",
+          height: 20,
+          borderRadius: 5,
+          padding: "0 5px",
+          background: "var(--audio-input-port-bg, var(--surface2))",
+          color: "var(--audio-input-port-fg, var(--cream-2))",
+          border: "1px solid var(--line-strong)",
+          fontSize: 9.5,
+          fontWeight: 650,
+          outline: "none"
+        }
+      },
+      TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => /* @__PURE__ */ React.createElement(
+        "option",
+        {
+          key: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,
+          value: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,
+          style: { background: "var(--bg)", color: "var(--cream)" }
+        },
+        opt.label
+      ))
+    )), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "flex-start", gap: 3 } }, /* @__PURE__ */ React.createElement(
       "span",
       {
         className: "mono",
@@ -559,9 +589,9 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
       fontSize: 8.5,
       color: inputOverload ? "var(--red)" : p.arm ? "#55c879" : "var(--dim)",
       textShadow: inputOverload ? "0 0 5px rgba(223,91,82,.75)" : p.arm ? "0 0 4px rgba(85,200,121,.45)" : "none"
-    } }, "IN"), /* @__PURE__ */ React.createElement("span", { style: { position: "relative", width: 69, height: 31, display: "block" } }, /* @__PURE__ */ React.createElement("span", { style: { position: "absolute", left: 0, right: 0, top: 6, height: 4, borderRadius: 3, background: "#3a342c", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "block", width: `${armedInputLevel * 100}%`, height: "100%", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("span", { style: {
+    } }, "IN"), /* @__PURE__ */ React.createElement("span", { style: { position: "relative", width: INPUT_GAIN_SLIDER_WIDTH, height: 25, display: "block" } }, /* @__PURE__ */ React.createElement("span", { style: { position: "absolute", left: 0, right: 0, top: 6, height: 4, borderRadius: 3, background: "#3a342c", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "block", width: `${armedInputLevel * 100}%`, height: "100%", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("span", { style: {
       display: "block",
-      width: 69,
+      width: INPUT_GAIN_SLIDER_WIDTH,
       height: "100%",
       background: "linear-gradient(90deg,#55c879 0%,#55c879 64%,#e5c84b 74%,#e5c84b 84%,#df5b52 92%,#df5b52 100%)"
     } }))), /* @__PURE__ */ React.createElement(
@@ -576,9 +606,9 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         step: "0.1",
         value: inputGainValue,
         onChange: (e) => onParam("inputGain", +e.target.value),
-        style: { position: "absolute", left: 0, top: 0, width: 69, height: 16, margin: 0 }
+        style: { position: "absolute", left: 0, top: 0, width: INPUT_GAIN_SLIDER_WIDTH, height: 16, margin: 0 }
       }
-    ), /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true", style: { position: "absolute", left: 0, right: 0, top: 16, height: 15, pointerEvents: "none" } }, [0.5, 1.5, 2.5, 3.5].map(
+    ), /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true", style: { position: "absolute", left: 0, right: 0, top: 16, height: 8, pointerEvents: "none" } }, [0.5, 1.5, 2.5, 3.5].map(
       (value) => /* @__PURE__ */ React.createElement("span", { key: value, style: {
         position: "absolute",
         left: inputGainTickLeft(value),
@@ -589,7 +619,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         transform: "translateX(-50%)"
       } })
     ), [1, 2, 3, 4].map(
-      (value) => /* @__PURE__ */ React.createElement(React.Fragment, { key: value }, /* @__PURE__ */ React.createElement("span", { style: {
+      (value) => /* @__PURE__ */ React.createElement("span", { key: value, style: {
         position: "absolute",
         left: inputGainTickLeft(value),
         top: 0,
@@ -597,15 +627,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         height: 6,
         background: "var(--cream-2)",
         transform: "translateX(-50%)"
-      } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
-        position: "absolute",
-        left: inputGainTickLeft(value),
-        top: 6,
-        color: "var(--dim)",
-        fontSize: 6.5,
-        lineHeight: 1,
-        transform: "translateX(-50%)"
-      } }, value))
+      } })
     ))))),
     !compact && /* @__PURE__ */ React.createElement("div", { style: {
       display: "flex",
@@ -654,7 +676,15 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         on: p.echo > 1e-3,
         onClick: onFocusFx ? () => onFocusFx(track.id, "echo") : void 0
       }
-    )), DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo) && /* @__PURE__ */ React.createElement(VariBpmTag, null), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), track.needsAudio ? /* @__PURE__ */ React.createElement("span", { title: "Drop the audio file here to re-link", style: {
+    ), /* @__PURE__ */ React.createElement(
+      FxTag,
+      {
+        label: "BPM",
+        color: "var(--red)",
+        on: !!(DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo)),
+        title: "Vari BPM active \u2014 playback tempo applied to this track"
+      }
+    )), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), track.needsAudio ? /* @__PURE__ */ React.createElement("span", { title: "Drop the audio file here to re-link", style: {
       fontSize: 9,
       padding: "2px 4px",
       borderRadius: 4,

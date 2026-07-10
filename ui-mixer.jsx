@@ -44,14 +44,24 @@ const AUDIO_INPUT_TEXTURES = {
 const MIXER_CHANNEL_W = 92;
 const MIXER_AUDIO_IN_CHANNEL_W = 138;
 
-function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--amber)", activeBorder = "var(--amber-deep)" }) {
+const ARM_BUTTON_BG = "linear-gradient(180deg,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 78%,#fff 22%) 0%,var(--input-gain-arm-button, #e33a48) 52%,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 76%,#000 24%) 100%)";
+const ARM_BUTTON_SHADOW = "inset 0 1px 0 rgba(255,255,255,.36), inset 0 -2px 0 rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.22), 0 0 8px color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 38%,transparent)";
+const AUDIO_INPUT_PORT_OPTIONS = [
+  { label: "Input 1", channel: 0, stereo: false },
+  { label: "Input 2", channel: 1, stereo: false },
+  { label: "Input 1-2", channel: 0, stereo: true },
+];
+
+function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--audio-input-button-active-fg, var(--amber))", activeBorder = "var(--amber-deep)", activeShadow = "none" }) {
   return (
     <button title={title} onClick={onClick}
       style={{ flex: 1, minWidth: 0, height: 21, borderRadius: 5, padding: "0 4px",
         fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em",
         background: active ? activeBg : "rgba(0,0,0,.14)",
-        color: active ? activeColor : "var(--muted)",
-        border: "1px solid " + (active ? activeBorder : "var(--line-strong)") }}>
+        color: active ? activeColor : "var(--audio-input-button-fg, var(--muted))",
+        border: "1px solid " + (active ? activeBorder : "var(--line-strong)"),
+        boxShadow: active ? activeShadow : "inset 0 1px 0 rgba(255,255,255,.05)",
+        transform: active ? "translateY(1px)" : "none" }}>
       {children}
     </button>
   );
@@ -101,11 +111,11 @@ function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
     const on = f <= norm + 1e-6;         // rim now fills to the gain value (single soft color)
     const a = GAIN_START + f * GAIN_SWEEP;
     const [x1, y1] = pol(40, a), [x2, y2] = pol(46, a);
-    // thin lit ticks with a soft glow — pale white on dark themes / grey on light (var(--dim) adapts)
+    // thin lit ticks with a soft glow; light themes can override this for contrast.
     ticks.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
-      stroke={on ? "var(--dim)" : "var(--line-strong)"} strokeOpacity={on ? 1 : 0.9}
+      stroke={on ? "var(--input-gain-led, var(--dim))" : "var(--line-strong)"} strokeOpacity={on ? 1 : 0.9}
       strokeWidth={on ? 1.4 : 1.2} strokeLinecap="round"
-      style={on ? { filter: "drop-shadow(0 0 2.5px rgba(255,255,255,.6)) drop-shadow(0 0 1px var(--dim))" } : undefined} />);
+      style={on ? { filter: "drop-shadow(0 0 2.5px var(--input-gain-led-glow, rgba(255,255,255,.6))) drop-shadow(0 0 1px var(--input-gain-led, var(--dim)))" } : undefined} />);
   }
   const [inx, iny] = pol(33, ang);     // indicator notch — outer, on the knob skirt
   const [ibx, iby] = pol(28, ang);     // indicator notch — inner
@@ -139,9 +149,12 @@ function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
             <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
           </radialGradient>
-          {/* soft glow for the armed state */}
-          <filter id="igkGlow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="2.2" />
+          {/* tight falloff glows for the armed state */}
+          <filter id="igkGlowOuter" x="-34%" y="-34%" width="168%" height="168%">
+            <feGaussianBlur stdDeviation="1.65" />
+          </filter>
+          <filter id="igkGlowCore" x="-24%" y="-24%" width="148%" height="148%">
+            <feGaussianBlur stdDeviation="1.05" />
           </filter>
         </defs>
         {/* bezel / recessed housing — darkened theme tint */}
@@ -153,8 +166,11 @@ function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
         <ellipse cx="50" cy="52.5" rx="34" ry="34" fill="#000" opacity="0.5" />
         <circle cx="50" cy="50" r="34" fill="url(#igkMetal)" stroke="var(--line-strong)" strokeWidth="0.5" />
         <circle cx="50" cy="50" r="34" fill="url(#igkSheen)" />
-        {/* armed: white halo glowing outward from the center cap */}
-        {active && <circle cx="50" cy="50" r="27" fill="none" stroke="#ffffff" strokeWidth="2.4" opacity="0.55" filter="url(#igkGlow)" />}
+        {/* armed: strong true-red halo glowing outward from the center cap */}
+        {active && <>
+          <circle cx="50" cy="50" r="29" fill="none" stroke="var(--input-gain-arm-glow-outer, #c9001b)" strokeWidth="1.9" opacity="0.5" filter="url(#igkGlowOuter)" />
+          <circle cx="50" cy="50" r="27" fill="none" stroke="var(--input-gain-arm-glow-core, #ff1730)" strokeWidth="3.8" opacity="0.98" filter="url(#igkGlowCore)" />
+        </>}
         {/* center cap — brushed metal dome */}
         <circle cx="50" cy="50" r="27" fill="url(#igkCap)" stroke="var(--line-strong)" strokeWidth="0.5" />
         <circle cx="50" cy="50" r="27" fill="url(#igkSheen)" opacity="0.6" />
@@ -196,19 +212,44 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
   const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const hot = liveLevel >= .92;
   const commit = (k, v) => { onBeforeChange && onBeforeChange(); onParam(k, v); };
+  const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
+  const inputStereo = !!p.inputStereo;
+  const inputPortValue = `${inputStereo ? "stereo" : "mono"}:${inputChannel}`;
+  const commitInputPort = (value) => {
+    const [mode, ch] = String(value || "mono:0").split(":");
+    const nextChannel = Math.max(0, Number(ch) || 0);
+    const nextStereo = mode === "stereo";
+    onBeforeChange && onBeforeChange();
+    onParam("inputChannel", nextChannel);
+    onParam("inputStereo", nextStereo);
+  };
 
   return (
     <div style={{ width: "100%", display: "grid", gap: 5, padding: "6px 7px",
       borderRadius: 7, background: "rgba(0,0,0,.16)", border: "1px solid var(--line)" }}>
       <div style={{ display: "flex", gap: 4 }}>
         <AudioInputButton active={armed} title="Arm this input track for recording"
-          activeBg="var(--red)" activeColor="var(--arm-on-fg, #0d0d0d)" activeBorder="var(--red)"
+          activeBg={ARM_BUTTON_BG} activeColor="var(--arm-on-fg, #0d0d0d)" activeBorder="color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" activeShadow={ARM_BUTTON_SHADOW}
           onClick={() => commit("arm", !p.arm)}>ARM</AudioInputButton>
         <AudioInputButton active={!!p.monitor} title="Monitor this input while recording"
           onClick={() => commit("monitor", !p.monitor)}>MON</AudioInputButton>
         <AudioInputButton active={p.limiter !== false} title="Input limiter · ceiling -1.0 dBFS"
           onClick={() => commit("limiter", p.limiter === false)}>LIM</AudioInputButton>
       </div>
+      <select className="audio-input-port-select" value={inputPortValue} title="Input port for this Audio In track"
+        onChange={(e) => commitInputPort(e.target.value)}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ width: "100%", height: 23, borderRadius: 5, padding: "0 6px",
+          background: "var(--audio-input-port-bg, var(--surface2))",
+          color: "var(--audio-input-port-fg, var(--cream-2))", border: "1px solid var(--line-strong)",
+          fontSize: 10.5, fontWeight: 650, outline: "none" }}>
+        {AUDIO_INPUT_PORT_OPTIONS.map((opt) => (
+          <option key={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`} value={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`}
+            style={{ background: "var(--bg)", color: "var(--cream)" }}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: "2px 0 1px" }}>
         {/* input-gain knob + dB readout below */}
         <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
@@ -729,15 +770,30 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   // master state, undo history and project data stay untouched.
   const fxOn = !DAW.masterFxBypassed;
   const toggleAllFx = () => DAW.setMasterFxBypass(fxOn);
-  // Active-effect badges shown under the EQ graph. Amount > 0 = applied.
+  // Fixed effect buttons shown under the EQ graph. Amount > 0 = applied.
   // Colors match each effect's FxCard icon background in the mixer (MasterPanel).
   const fxBadges = [
-    ["R", "Reverb", m.reverb > 0.001, "var(--violet)"],
-    ["D", "Delay", m.echo > 0.001, "var(--blue)"],
-    ["S", "Saturation", m.saturation > 0.001, "var(--red)"],
-    ["W", "Widener", m.widener > 0.001, "var(--amber)"],
-    ["E", "Exciter", m.exciter > 0.001, "var(--green)"],
-  ].filter(([, , on]) => on);
+    ["R", "Reverb", "reverb", m.reverb > 0.001, "var(--violet)"],
+    ["D", "Delay", "echo", m.echo > 0.001, "var(--blue)"],
+    ["S", "Saturation", "saturation", m.saturation > 0.001, "var(--red)"],
+    ["W", "Widener", "widener", m.widener > 0.001, "var(--amber)"],
+    ["E", "Exciter", "exciter", m.exciter > 0.001, "var(--green)"],
+  ];
+  const toggleOutputFx = (paramKey) => {
+    const value = m[paramKey] || 0;
+    const storedKey = paramKey + "Stored";
+    const stored = m[storedKey];
+    const on = value > 0.001;
+    const canEnable = stored === undefined || stored > 0.001;
+    if (on) {
+      onBeforeChange && onBeforeChange();
+      DAW.setMaster(storedKey, value);
+      DAW.setMaster(paramKey, 0);
+    } else if (canEnable) {
+      onBeforeChange && onBeforeChange();
+      DAW.setMaster(paramKey, stored === undefined ? 0.4 : stored);
+    }
+  };
   const ROOM_BADGE = { studio: "Studio", home: "Home", concert: "Concert", far: "Far", tunnel: "Tunnel", custom: "Custom" };
   const roomWet = (m.roomParams && m.roomParams.wet) || 0;
   const roomBadge = m.room !== "none" && roomWet > 0.001 ? ROOM_BADGE[m.room] : null;
@@ -846,16 +902,27 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
               <FxChip label="EFFECT" active={fxOn} color="var(--green)" onClick={toggleAllFx} />
               <div style={{ flex: 1 }} />
             </div>
-            {/* applied-effect badges (below the EQ graph) — dimmed while bypassed */}
+            {/* fixed-position effect toggles (below the EQ graph) — dimmed while bypassed */}
             <div style={{ display: "flex", alignItems: "center", gap: 3, minHeight: 15, flexWrap: "nowrap", overflow: "hidden",
               opacity: fxOn ? 1 : 0.35, transition: "opacity .2s" }}>
-              {fxBadges.map(([abbr, name, , color]) => (
-                <span key={abbr} title={name + (fxOn ? "" : " (bypassed)")} className="mono"
-                  style={{ fontSize: 8.5, fontWeight: 700, lineHeight: 1, padding: "3px 4.5px", borderRadius: 4,
-                    color, border: "1px solid " + color, flexShrink: 0, cursor: "default", userSelect: "none" }}>
+              {fxBadges.map(([abbr, name, paramKey, on, color]) => {
+                const stored = m[paramKey + "Stored"];
+                const canEnable = stored === undefined || stored > 0.001;
+                return (
+                <button key={abbr} title={`${name} ${on ? "ON — click to bypass" : canEnable ? "OFF — click to enable" : "OFF — raise the slider in mixer to enable"}${fxOn ? "" : " (all effects bypassed)"}`}
+                  onClick={(e) => { e.currentTarget.blur(); toggleOutputFx(paramKey); }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="mono"
+                  style={{ width: 19, height: 15, display: "grid", placeItems: "center", padding: 0, borderRadius: 4,
+                    fontSize: 8.5, fontWeight: 700, lineHeight: 1, flex: "0 0 19px",
+                    color: on ? color : "var(--outfx-chip-off-fg, var(--faint))",
+                    background: on ? `color-mix(in srgb, ${color} 16%, transparent)` : "rgba(0,0,0,.18)",
+                    border: "1px solid " + (on ? color : "rgba(232,212,170,.10)"),
+                    boxShadow: on ? `0 0 6px ${color}66` : "none",
+                    cursor: on || canEnable ? "pointer" : "default", userSelect: "none", outline: "none" }}>
                   {abbr}
-                </span>
-              ))}
+                </button>
+              );})}
               {roomBadge && (
                 <span title={"Ambience: " + roomBadge + (fxOn ? "" : " (bypassed)")} className="mono"
                   style={{ fontSize: 8.5, fontWeight: 700, lineHeight: 1, padding: "3px 5px", borderRadius: 4,

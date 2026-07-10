@@ -655,6 +655,7 @@
           reverb: 0, echo: 0,
           bpmSource: false,
           inputGain: 1.0, arm: false, monitor: false, limiter: true,
+          inputChannel: 0, inputStereo: false,
           autoOn: false,
           autoCurve: false,
           automation: defaultAutomation(type),

@@ -1106,6 +1106,21 @@ function TimeStretchBusyBadge({ active, x, y }) {
 }
 
 /* ---------- studio (arrange) ---------- */
+function defaultAudioInputSettings() {
+  return { type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0 };
+}
+
+function audioInputSettingsForTrack(track) {
+  const saved = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || defaultAudioInputSettings();
+  const p = (track && track.params) || {};
+  return {
+    ...defaultAudioInputSettings(),
+    ...saved,
+    channel: Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : Number(saved.channel) || 0),
+    stereo: p.inputStereo != null ? !!p.inputStereo : !!saved.stereo,
+  };
+}
+
 function Studio({ projectName, projectNameRef, projectPath, startupReady, registerHandlers, onRenameProject, onProjectPathChange, onUndoStateChange, theme, mixerTexture }) {
   useTick();
   const [pxPerSec, setPx] = useState(96);
@@ -1943,11 +1958,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               if (track.id !== msg.id && track.kind === "audioIn" && track.params && track.params.arm)
                 DAW.setTrackParam(track.id, "arm", false);
             });
-            const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
-              type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
-            };
-            if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] mixer arm prepare failed:", e));
             const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            const input = audioInputSettingsForTrack(targetTrack);
+            if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] mixer arm prepare failed:", e));
             if (DAW.setInputGain) DAW.setInputGain(
               Math.max(0.1, Math.min(4, targetTrack && targetTrack.params && targetTrack.params.inputGain != null
                 ? targetTrack.params.inputGain : 1))
@@ -1962,6 +1975,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               DAW.setInputGain(msg.v);
           }
           DAW.setTrackParam(msg.id, msg.k, msg.v);
+          if ((msg.k === "inputChannel" || msg.k === "inputStereo")) {
+            const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
+            if (targetTrack && targetTrack.kind === "audioIn"
+                && targetTrack.params && (targetTrack.params.arm || targetTrack.recording)
+                && DAW.setAudioInput)
+              DAW.setAudioInput(audioInputSettingsForTrack(targetTrack)).catch((e) => console.warn("[AudioInput] mixer port switch failed:", e));
+          }
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
           break;
@@ -2531,10 +2551,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   const addAudioInTrack = useCallback(() => {
     const count = DAW.tracks.filter((t) => t.kind === "audioIn").length + 1;
-    DAW.addAudioInTrack(`Audio In ${count}`);
-    const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
-      type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
-    };
+    const track = DAW.addAudioInTrack(`Audio In ${count}`);
+    const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || defaultAudioInputSettings();
+    if (track && track.params) {
+      track.params.inputChannel = Number(input.channel) || 0;
+      track.params.inputStereo = !!input.stereo;
+    }
     if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] prepare failed:", e));
     force((n) => n + 1);
   }, []);
@@ -2569,7 +2591,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const sourcePath = DAW.tracks.find((t) => t.filePath)?.filePath || null;
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
     const target = await window.electronAPI.prepareRecordingPath(projectPath, `${track.name} ${stamp}.wav`, sourcePath);
-    const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {};
+    const input = audioInputSettingsForTrack(track);
     try {
       if (DAW.setAudioInput) await DAW.setAudioInput(input);
     } catch (e) {
@@ -2688,9 +2710,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         if (track.id !== id && track.kind === "audioIn" && track.params && track.params.arm)
           DAW.setTrackParam(track.id, "arm", false);
       });
-      const input = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
-        type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
-      };
+      const input = audioInputSettingsForTrack(targetTrack);
       if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] arm prepare failed:", e));
       if (DAW.setInputGain) DAW.setInputGain(
         Math.max(0.1, Math.min(4, targetTrack && targetTrack.params && targetTrack.params.inputGain != null
@@ -2703,6 +2723,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         && DAW.setInputGain)
       DAW.setInputGain(v);
     DAW.setTrackParam(id, k, v);
+    if ((k === "inputChannel" || k === "inputStereo")) {
+      const updatedTrack = DAW.tracks.find((track) => track.id === id);
+      if (updatedTrack && updatedTrack.kind === "audioIn"
+          && updatedTrack.params && (updatedTrack.params.arm || updatedTrack.recording)
+          && DAW.setAudioInput)
+        DAW.setAudioInput(audioInputSettingsForTrack(updatedTrack)).catch((e) => console.warn("[AudioInput] port switch failed:", e));
+    }
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };

@@ -39,7 +39,14 @@ const AUDIO_INPUT_TEXTURES = {
 };
 const MIXER_CHANNEL_W = 92;
 const MIXER_AUDIO_IN_CHANNEL_W = 138;
-function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--amber)", activeBorder = "var(--amber-deep)" }) {
+const ARM_BUTTON_BG = "linear-gradient(180deg,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 78%,#fff 22%) 0%,var(--input-gain-arm-button, #e33a48) 52%,color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 76%,#000 24%) 100%)";
+const ARM_BUTTON_SHADOW = "inset 0 1px 0 rgba(255,255,255,.36), inset 0 -2px 0 rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.22), 0 0 8px color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 38%,transparent)";
+const AUDIO_INPUT_PORT_OPTIONS = [
+  { label: "Input 1", channel: 0, stereo: false },
+  { label: "Input 2", channel: 1, stereo: false },
+  { label: "Input 1-2", channel: 0, stereo: true }
+];
+function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--audio-input-button-active-fg, var(--amber))", activeBorder = "var(--amber-deep)", activeShadow = "none" }) {
   return /* @__PURE__ */ React.createElement(
     "button",
     {
@@ -55,8 +62,10 @@ function AudioInputButton({ active, children, title, onClick, activeBg = "var(--
         fontWeight: 800,
         letterSpacing: ".04em",
         background: active ? activeBg : "rgba(0,0,0,.14)",
-        color: active ? activeColor : "var(--muted)",
-        border: "1px solid " + (active ? activeBorder : "var(--line-strong)")
+        color: active ? activeColor : "var(--audio-input-button-fg, var(--muted))",
+        border: "1px solid " + (active ? activeBorder : "var(--line-strong)"),
+        boxShadow: active ? activeShadow : "inset 0 1px 0 rgba(255,255,255,.05)",
+        transform: active ? "translateY(1px)" : "none"
       }
     },
     children
@@ -117,11 +126,11 @@ function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
         y1,
         x2,
         y2,
-        stroke: on ? "var(--dim)" : "var(--line-strong)",
+        stroke: on ? "var(--input-gain-led, var(--dim))" : "var(--line-strong)",
         strokeOpacity: on ? 1 : 0.9,
         strokeWidth: on ? 1.4 : 1.2,
         strokeLinecap: "round",
-        style: on ? { filter: "drop-shadow(0 0 2.5px rgba(255,255,255,.6)) drop-shadow(0 0 1px var(--dim))" } : void 0
+        style: on ? { filter: "drop-shadow(0 0 2.5px var(--input-gain-led-glow, rgba(255,255,255,.6))) drop-shadow(0 0 1px var(--input-gain-led, var(--dim)))" } : void 0
       }
     ));
   }
@@ -136,7 +145,7 @@ function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
       title: "Input gain \xB7 drag to set \xB7 dbl-click = unity",
       style: { width: size, height: size, cursor: "ns-resize", position: "relative", userSelect: "none" }
     },
-    /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 100 100" }, /* @__PURE__ */ React.createElement("defs", null, /* @__PURE__ */ React.createElement("radialGradient", { id: "igkMetal", cx: "50%", cy: "50%", r: "52%", fx: "34%", fy: "30%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "color-mix(in srgb, var(--surface2) 66%, #000 34%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "40%", stopColor: "color-mix(in srgb, var(--bg2) 70%, #000 30%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "color-mix(in srgb, var(--bg) 52%, #000 48%)" })), /* @__PURE__ */ React.createElement("radialGradient", { id: "igkCap", cx: "50%", cy: "33%", r: "74%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "color-mix(in srgb, var(--surface2) 64%, #000 36%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "30%", stopColor: "color-mix(in srgb, var(--bg2) 64%, #000 36%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "62%", stopColor: "color-mix(in srgb, var(--bg) 55%, #000 45%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#050505" })), /* @__PURE__ */ React.createElement("linearGradient", { id: "igkSheen", x1: "0%", y1: "0%", x2: "100%", y2: "100%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "#ffffff", stopOpacity: "0.16" }), /* @__PURE__ */ React.createElement("stop", { offset: "48%", stopColor: "#ffffff", stopOpacity: "0" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#000000", stopOpacity: "0.40" })), /* @__PURE__ */ React.createElement("radialGradient", { id: "igkSpec", cx: "50%", cy: "50%", r: "50%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "#ffffff", stopOpacity: "0.5" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#ffffff", stopOpacity: "0" })), /* @__PURE__ */ React.createElement("filter", { id: "igkGlow", x: "-60%", y: "-60%", width: "220%", height: "220%" }, /* @__PURE__ */ React.createElement("feGaussianBlur", { stdDeviation: "2.2" }))), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "47", fill: "color-mix(in srgb, var(--bg) 46%, #000 54%)", stroke: "var(--line-strong)", strokeWidth: "0.6" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "43.5", fill: "none", stroke: "rgba(0,0,0,.5)", strokeWidth: "2.5" }), ticks, /* @__PURE__ */ React.createElement("ellipse", { cx: "50", cy: "52.5", rx: "34", ry: "34", fill: "#000", opacity: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "34", fill: "url(#igkMetal)", stroke: "var(--line-strong)", strokeWidth: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "34", fill: "url(#igkSheen)" }), active && /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "none", stroke: "#ffffff", strokeWidth: "2.4", opacity: "0.55", filter: "url(#igkGlow)" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "url(#igkCap)", stroke: "var(--line-strong)", strokeWidth: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "url(#igkSheen)", opacity: "0.6" }), /* @__PURE__ */ React.createElement("ellipse", { cx: "50", cy: "40", rx: "12", ry: "5.5", fill: "url(#igkSpec)", opacity: "0.55" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "22.5", fill: "none", stroke: "#ffffff", strokeOpacity: "0.05", strokeWidth: "0.6" }), /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 100 100" }, /* @__PURE__ */ React.createElement("defs", null, /* @__PURE__ */ React.createElement("radialGradient", { id: "igkMetal", cx: "50%", cy: "50%", r: "52%", fx: "34%", fy: "30%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "color-mix(in srgb, var(--surface2) 66%, #000 34%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "40%", stopColor: "color-mix(in srgb, var(--bg2) 70%, #000 30%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "color-mix(in srgb, var(--bg) 52%, #000 48%)" })), /* @__PURE__ */ React.createElement("radialGradient", { id: "igkCap", cx: "50%", cy: "33%", r: "74%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "color-mix(in srgb, var(--surface2) 64%, #000 36%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "30%", stopColor: "color-mix(in srgb, var(--bg2) 64%, #000 36%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "62%", stopColor: "color-mix(in srgb, var(--bg) 55%, #000 45%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#050505" })), /* @__PURE__ */ React.createElement("linearGradient", { id: "igkSheen", x1: "0%", y1: "0%", x2: "100%", y2: "100%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "#ffffff", stopOpacity: "0.16" }), /* @__PURE__ */ React.createElement("stop", { offset: "48%", stopColor: "#ffffff", stopOpacity: "0" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#000000", stopOpacity: "0.40" })), /* @__PURE__ */ React.createElement("radialGradient", { id: "igkSpec", cx: "50%", cy: "50%", r: "50%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "#ffffff", stopOpacity: "0.5" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#ffffff", stopOpacity: "0" })), /* @__PURE__ */ React.createElement("filter", { id: "igkGlowOuter", x: "-34%", y: "-34%", width: "168%", height: "168%" }, /* @__PURE__ */ React.createElement("feGaussianBlur", { stdDeviation: "1.65" })), /* @__PURE__ */ React.createElement("filter", { id: "igkGlowCore", x: "-24%", y: "-24%", width: "148%", height: "148%" }, /* @__PURE__ */ React.createElement("feGaussianBlur", { stdDeviation: "1.05" }))), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "47", fill: "color-mix(in srgb, var(--bg) 46%, #000 54%)", stroke: "var(--line-strong)", strokeWidth: "0.6" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "43.5", fill: "none", stroke: "rgba(0,0,0,.5)", strokeWidth: "2.5" }), ticks, /* @__PURE__ */ React.createElement("ellipse", { cx: "50", cy: "52.5", rx: "34", ry: "34", fill: "#000", opacity: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "34", fill: "url(#igkMetal)", stroke: "var(--line-strong)", strokeWidth: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "34", fill: "url(#igkSheen)" }), active && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "29", fill: "none", stroke: "var(--input-gain-arm-glow-outer, #c9001b)", strokeWidth: "1.9", opacity: "0.5", filter: "url(#igkGlowOuter)" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "none", stroke: "var(--input-gain-arm-glow-core, #ff1730)", strokeWidth: "3.8", opacity: "0.98", filter: "url(#igkGlowCore)" })), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "url(#igkCap)", stroke: "var(--line-strong)", strokeWidth: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "url(#igkSheen)", opacity: "0.6" }), /* @__PURE__ */ React.createElement("ellipse", { cx: "50", cy: "40", rx: "12", ry: "5.5", fill: "url(#igkSpec)", opacity: "0.55" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "22.5", fill: "none", stroke: "#ffffff", strokeOpacity: "0.05", strokeWidth: "0.6" }), /* @__PURE__ */ React.createElement(
       "line",
       {
         x1: ibx,
@@ -184,6 +193,17 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
     onBeforeChange && onBeforeChange();
     onParam(k, v);
   };
+  const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
+  const inputStereo = !!p.inputStereo;
+  const inputPortValue = `${inputStereo ? "stereo" : "mono"}:${inputChannel}`;
+  const commitInputPort = (value) => {
+    const [mode, ch] = String(value || "mono:0").split(":");
+    const nextChannel = Math.max(0, Number(ch) || 0);
+    const nextStereo = mode === "stereo";
+    onBeforeChange && onBeforeChange();
+    onParam("inputChannel", nextChannel);
+    onParam("inputStereo", nextStereo);
+  };
   return /* @__PURE__ */ React.createElement("div", { style: {
     width: "100%",
     display: "grid",
@@ -197,9 +217,10 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
     {
       active: armed,
       title: "Arm this input track for recording",
-      activeBg: "var(--red)",
+      activeBg: ARM_BUTTON_BG,
       activeColor: "var(--arm-on-fg, #0d0d0d)",
-      activeBorder: "var(--red)",
+      activeBorder: "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)",
+      activeShadow: ARM_BUTTON_SHADOW,
       onClick: () => commit("arm", !p.arm)
     },
     "ARM"
@@ -219,7 +240,37 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
       onClick: () => commit("limiter", p.limiter === false)
     },
     "LIM"
-  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: "2px 0 1px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(
+    "select",
+    {
+      className: "audio-input-port-select",
+      value: inputPortValue,
+      title: "Input port for this Audio In track",
+      onChange: (e) => commitInputPort(e.target.value),
+      onMouseDown: (e) => e.stopPropagation(),
+      style: {
+        width: "100%",
+        height: 23,
+        borderRadius: 5,
+        padding: "0 6px",
+        background: "var(--audio-input-port-bg, var(--surface2))",
+        color: "var(--audio-input-port-fg, var(--cream-2))",
+        border: "1px solid var(--line-strong)",
+        fontSize: 10.5,
+        fontWeight: 650,
+        outline: "none"
+      }
+    },
+    AUDIO_INPUT_PORT_OPTIONS.map((opt) => /* @__PURE__ */ React.createElement(
+      "option",
+      {
+        key: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,
+        value: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,
+        style: { background: "var(--bg)", color: "var(--cream)" }
+      },
+      opt.label
+    ))
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: "2px 0 1px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(
     InputGainKnob,
     {
       value: inputGain,
@@ -766,12 +817,27 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   const fxOn = !DAW.masterFxBypassed;
   const toggleAllFx = () => DAW.setMasterFxBypass(fxOn);
   const fxBadges = [
-    ["R", "Reverb", m.reverb > 1e-3, "var(--violet)"],
-    ["D", "Delay", m.echo > 1e-3, "var(--blue)"],
-    ["S", "Saturation", m.saturation > 1e-3, "var(--red)"],
-    ["W", "Widener", m.widener > 1e-3, "var(--amber)"],
-    ["E", "Exciter", m.exciter > 1e-3, "var(--green)"]
-  ].filter(([, , on]) => on);
+    ["R", "Reverb", "reverb", m.reverb > 1e-3, "var(--violet)"],
+    ["D", "Delay", "echo", m.echo > 1e-3, "var(--blue)"],
+    ["S", "Saturation", "saturation", m.saturation > 1e-3, "var(--red)"],
+    ["W", "Widener", "widener", m.widener > 1e-3, "var(--amber)"],
+    ["E", "Exciter", "exciter", m.exciter > 1e-3, "var(--green)"]
+  ];
+  const toggleOutputFx = (paramKey) => {
+    const value = m[paramKey] || 0;
+    const storedKey = paramKey + "Stored";
+    const stored = m[storedKey];
+    const on = value > 1e-3;
+    const canEnable = stored === void 0 || stored > 1e-3;
+    if (on) {
+      onBeforeChange && onBeforeChange();
+      DAW.setMaster(storedKey, value);
+      DAW.setMaster(paramKey, 0);
+    } else if (canEnable) {
+      onBeforeChange && onBeforeChange();
+      DAW.setMaster(paramKey, stored === void 0 ? 0.4 : stored);
+    }
+  };
   const ROOM_BADGE = { studio: "Studio", home: "Home", concert: "Concert", far: "Far", tunnel: "Tunnel", custom: "Custom" };
   const roomWet = m.roomParams && m.roomParams.wet || 0;
   const roomBadge = m.room !== "none" && roomWet > 1e-3 ? ROOM_BADGE[m.room] : null;
@@ -884,27 +950,43 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
     overflow: "hidden",
     opacity: fxOn ? 1 : 0.35,
     transition: "opacity .2s"
-  } }, fxBadges.map(([abbr, name, , color]) => /* @__PURE__ */ React.createElement(
-    "span",
-    {
-      key: abbr,
-      title: name + (fxOn ? "" : " (bypassed)"),
-      className: "mono",
-      style: {
-        fontSize: 8.5,
-        fontWeight: 700,
-        lineHeight: 1,
-        padding: "3px 4.5px",
-        borderRadius: 4,
-        color,
-        border: "1px solid " + color,
-        flexShrink: 0,
-        cursor: "default",
-        userSelect: "none"
-      }
-    },
-    abbr
-  )), roomBadge && /* @__PURE__ */ React.createElement(
+  } }, fxBadges.map(([abbr, name, paramKey, on, color]) => {
+    const stored = m[paramKey + "Stored"];
+    const canEnable = stored === void 0 || stored > 1e-3;
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: abbr,
+        title: `${name} ${on ? "ON \u2014 click to bypass" : canEnable ? "OFF \u2014 click to enable" : "OFF \u2014 raise the slider in mixer to enable"}${fxOn ? "" : " (all effects bypassed)"}`,
+        onClick: (e) => {
+          e.currentTarget.blur();
+          toggleOutputFx(paramKey);
+        },
+        onMouseDown: (e) => e.preventDefault(),
+        className: "mono",
+        style: {
+          width: 19,
+          height: 15,
+          display: "grid",
+          placeItems: "center",
+          padding: 0,
+          borderRadius: 4,
+          fontSize: 8.5,
+          fontWeight: 700,
+          lineHeight: 1,
+          flex: "0 0 19px",
+          color: on ? color : "var(--outfx-chip-off-fg, var(--faint))",
+          background: on ? `color-mix(in srgb, ${color} 16%, transparent)` : "rgba(0,0,0,.18)",
+          border: "1px solid " + (on ? color : "rgba(232,212,170,.10)"),
+          boxShadow: on ? `0 0 6px ${color}66` : "none",
+          cursor: on || canEnable ? "pointer" : "default",
+          userSelect: "none",
+          outline: "none"
+        }
+      },
+      abbr
+    );
+  }), roomBadge && /* @__PURE__ */ React.createElement(
     "span",
     {
       title: "Ambience: " + roomBadge + (fxOn ? "" : " (bypassed)"),

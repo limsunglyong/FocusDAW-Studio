@@ -966,8 +966,8 @@ function DeviceSetupSection() {
   return (
     <section id="settings-device-setup" style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22, scrollMarginTop: 20 }}>
       <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>■ Audio Input Device</div>
-      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 12 }}>Choose the input used by new Audio In tracks. This setting is stored for the app, not the project.</div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(190px, 1fr) 120px 105px 110px", gap: 10 }}>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 12 }}>Choose the audio interface used by Audio In tracks. Input ports are selected on each Audio In track.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(190px, 1fr) 105px 110px", gap: 10 }}>
         <label style={{ fontSize: 11, color: "var(--dim)" }}>Audio Input
           <select value={value} disabled={!DAW.isNative || loading} onChange={(e) => {
             const [type, name] = e.target.value ? JSON.parse(e.target.value) : ["", ""];
@@ -977,13 +977,6 @@ function DeviceSetupSection() {
             {types.map((t) => <optgroup key={t.type} label={t.type}>
               {t.inputDevices.map((name) => <option key={t.type + name} value={JSON.stringify([t.type, name])}>{name}</option>)}
             </optgroup>)}
-          </select>
-        </label>
-        <label style={{ fontSize: 11, color: "var(--dim)" }}>Input Channel
-          <select value={(settings.stereo ? "stereo:" : "mono:") + settings.channel} onChange={(e) => {
-            const [mode, channel] = e.target.value.split(":"); apply({ stereo: mode === "stereo", channel: +channel });
-          }} style={{ display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7 }}>
-            <option value="mono:0">Mono Input 1</option><option value="mono:1">Mono Input 2</option><option value="stereo:0">Stereo 1–2</option>
           </select>
         </label>
         <label style={{ fontSize: 11, color: "var(--dim)" }}>Sample Rate
