@@ -773,54 +773,38 @@ const MIXER_TEXTURES = [
   {
     id: "diagonal",
     name: "Diagonal",
-    desc: "edge stripe",
-    preview: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.42) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.42) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
-    previewSize: "11px 100%,11px 100%,auto",
-    previewPosition: "left top,right top,center",
-    previewRepeat: "no-repeat,no-repeat,no-repeat",
-    capPreview: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.42) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
-    capPreviewSize: "100% 11px,100% 11px",
-    capPreviewPosition: "left top,left bottom",
-    capPreviewRepeat: "no-repeat,no-repeat"
+    desc: "diagonal grain",
+    preview: "linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.42) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
+    previewSize: "auto,auto",
+    previewPosition: "center,center",
+    previewRepeat: "no-repeat,no-repeat"
   },
   {
     id: "dots",
     name: "Dots",
-    desc: "edge dot grid",
-    preview: "radial-gradient(circle,rgba(0,0,0,.34) 0 2px,transparent 2.8px),radial-gradient(circle,rgba(0,0,0,.34) 0 2px,transparent 2.8px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
-    previewSize: "8px 8px,8px 8px,auto",
-    previewPosition: "left top,right top,center",
-    previewRepeat: "repeat-y,repeat-y,no-repeat",
-    capPreview: "radial-gradient(circle,rgba(0,0,0,.34) 0 2px,transparent 2.8px)",
-    capPreviewSize: "8px 8px,8px 8px",
-    capPreviewPosition: "left top,left bottom",
-    capPreviewRepeat: "repeat-x,repeat-x"
+    desc: "dot grid",
+    preview: "linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%),radial-gradient(circle,rgba(0,0,0,.34) 0 2px,transparent 2.8px)",
+    previewSize: "auto,8px 8px",
+    previewPosition: "center,center",
+    previewRepeat: "no-repeat,repeat"
   },
   {
     id: "brushed",
     name: "Brushed",
-    desc: "edge grain",
-    preview: "repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.32) 3px 5px,transparent 5px 10px),repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.32) 3px 5px,transparent 5px 10px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
-    previewSize: "11px 100%,11px 100%,auto",
-    previewPosition: "left top,right top,center",
-    previewRepeat: "no-repeat,no-repeat,no-repeat",
-    capPreview: "repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.32) 3px 5px,transparent 5px 10px)",
-    capPreviewSize: "100% 11px,100% 11px",
-    capPreviewPosition: "left top,left bottom",
-    capPreviewRepeat: "no-repeat,no-repeat"
+    desc: "dark metal",
+    preview: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),repeating-linear-gradient(115deg,var(--mixer-metal) 0px,color-mix(in srgb,var(--mixer-metal) 80%,#fff 20%) 2px,color-mix(in srgb,var(--mixer-metal) 82%,#000 18%) 3px,var(--mixer-metal) 5px)",
+    previewSize: "auto,auto",
+    previewPosition: "center,center",
+    previewRepeat: "no-repeat,no-repeat"
   },
   {
     id: "edges",
     name: "Edge Lines",
-    desc: "side grooves",
-    preview: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.42) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.42) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.28) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.26) calc(100% - 5px),rgba(255,255,255,.04) 100%)",
-    previewSize: "11px 100%,11px 100%,auto",
-    previewPosition: "left top,right top,center",
-    previewRepeat: "no-repeat,no-repeat,no-repeat",
-    capPreview: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.42) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
-    capPreviewSize: "100% 11px,100% 11px",
-    capPreviewPosition: "left top,left bottom",
-    capPreviewRepeat: "no-repeat,no-repeat"
+    desc: "ribbed lines",
+    preview: "linear-gradient(90deg,rgba(255,255,255,.05) 0,rgba(0,0,0,.28) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.26) calc(100% - 5px),rgba(255,255,255,.04) 100%),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.42) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
+    previewSize: "auto,auto",
+    previewPosition: "center,center",
+    previewRepeat: "no-repeat,no-repeat"
   }
 ];
 function ThemeSwatch({ theme, active, onClick }) {
@@ -871,7 +855,7 @@ function AudioDeviceSection() {
     if (DAW.setAudioDevice) DAW.setAudioDevice(type, name);
     setTimeout(refresh, 800);
   };
-  return /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 } }, "\u25A0 Audio Output Device"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "8px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "var(--cream)" } }, "Output Device"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 2 } }, 'App-only setting \u2014 the Windows default device is not changed. "Windows Audio (Exclusive Mode)" takes over the device for the lowest latency.'), current && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--dim)", marginTop: 6 } }, "Active: ", current.name || "(system default)", " \xB7 ", current.type, " \xB7 ", Math.round(current.sampleRate || 0), " Hz / ", current.bufferSize || 0, " samples"), !isNative && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 6 } }, "Native audio engine not connected \u2014 the system default output is in use.")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 } }, "\u25A0 Audio Output Device"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "8px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "var(--cream)" } }, "Output Device"), current && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--dim)", marginTop: 6 } }, "Active: ", current.name || "(system default)", " \xB7 ", current.type, " \xB7 ", Math.round(current.sampleRate || 0), " Hz / ", current.bufferSize || 0, " samples"), !isNative && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 6 } }, "Native audio engine not connected \u2014 the system default output is in use.")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(
     "select",
     {
       value: savedValue,

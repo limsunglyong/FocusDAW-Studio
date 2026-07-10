@@ -1,49 +1,40 @@
 const AUDIO_INPUT_TEXTURES = {
+  /* no pattern — just the recessed inner panel frame (concave side sheen) */
   none: {
-    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%)",
     backgroundSize: "auto",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat"
   },
+  /* full-cover diagonal grain; the recessed inner panel frames it to the border */
   diagonal: {
-    backgroundImage: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "11px 100%,11px 100%,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
-    capImage: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
-    capSize: "100% 11px,100% 11px",
-    capPosition: "left top,left bottom",
-    capRepeat: "no-repeat,no-repeat"
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
+    backgroundSize: "auto,auto",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,no-repeat"
   },
+  /* full-cover dot grid; the recessed inner panel frames it to the border */
   dots: {
-    backgroundImage: "radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px),radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "8px 8px,8px 8px,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "repeat-y,repeat-y,no-repeat",
-    capImage: "radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px)",
-    capSize: "8px 8px,8px 8px",
-    capPosition: "left top,left bottom",
-    capRepeat: "repeat-x,repeat-x"
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px)",
+    backgroundSize: "auto,8px 8px",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,repeat"
   },
+  /* Dark brushed metal — full-panel diagonal grain (ref: _refer/DAW Mixer),
+   * theme-tinted and darkened (surface mixed toward black). The opaque 115° metal
+   * fills the strip; a concave side-sheen overlay adds depth. */
   brushed: {
-    backgroundImage: "repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px),repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "11px 100%,11px 100%,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
-    capImage: "repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px)",
-    capSize: "100% 11px,100% 11px",
-    capPosition: "left top,left bottom",
-    capRepeat: "no-repeat,no-repeat"
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),repeating-linear-gradient(115deg,var(--mixer-metal) 0px,color-mix(in srgb,var(--mixer-metal) 80%,#fff 20%) 2px,color-mix(in srgb,var(--mixer-metal) 82%,#000 18%) 3px,var(--mixer-metal) 5px)",
+    backgroundSize: "auto,auto",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,no-repeat"
   },
+  /* full-cover ribbed lines; the recessed inner panel frames it to the border */
   edges: {
-    backgroundImage: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "11px 100%,11px 100%,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
-    capImage: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
-    capSize: "100% 11px,100% 11px",
-    capPosition: "left top,left bottom",
-    capRepeat: "no-repeat,no-repeat"
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
+    backgroundSize: "auto,auto",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,no-repeat"
   }
 };
 const MIXER_CHANNEL_W = 92;
@@ -71,13 +62,124 @@ function AudioInputButton({ active, children, title, onClick, activeBg = "var(--
     children
   );
 }
+const GAIN_MIN = 0.1, GAIN_MAX = 4, GAIN_SWEEP = 270, GAIN_START = -135;
+function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
+  const ref = useRef(null);
+  const gain = Math.max(GAIN_MIN, Math.min(GAIN_MAX, value));
+  const norm = (gain - GAIN_MIN) / (GAIN_MAX - GAIN_MIN);
+  const ang = GAIN_START + norm * GAIN_SWEEP;
+  const drag = useRef(null);
+  const onDown = (e) => {
+    e.preventDefault();
+    if (onBeforeChange) onBeforeChange();
+    drag.current = { y: e.clientY, v: gain };
+    const move = (ev) => {
+      const dy = drag.current.y - ev.clientY;
+      let nv = drag.current.v + dy / 160 * (GAIN_MAX - GAIN_MIN);
+      nv = Math.round(Math.max(GAIN_MIN, Math.min(GAIN_MAX, nv)) * 10) / 10;
+      onChange(nv);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  useWheelStep(ref, (dir) => {
+    let nv = Math.round((gain + dir * 0.1) * 10) / 10;
+    nv = Math.max(GAIN_MIN, Math.min(GAIN_MAX, nv));
+    if (nv === gain) return;
+    if (onBeforeChange) onBeforeChange();
+    onChange(nv);
+  });
+  const onDbl = () => {
+    if (onBeforeChange) onBeforeChange();
+    onChange(1);
+  };
+  const C = 50;
+  const pol = (r, a) => {
+    const t = (a - 90) * Math.PI / 180;
+    return [C + r * Math.cos(t), C + r * Math.sin(t)];
+  };
+  const SEGS = 42;
+  const ticks = [];
+  for (let i = 0; i < SEGS; i++) {
+    const f = i / (SEGS - 1);
+    const on = f <= norm + 1e-6;
+    const a = GAIN_START + f * GAIN_SWEEP;
+    const [x1, y1] = pol(40, a), [x2, y2] = pol(46, a);
+    ticks.push(/* @__PURE__ */ React.createElement(
+      "line",
+      {
+        key: i,
+        x1,
+        y1,
+        x2,
+        y2,
+        stroke: on ? "var(--dim)" : "var(--line-strong)",
+        strokeOpacity: on ? 1 : 0.9,
+        strokeWidth: on ? 1.4 : 1.2,
+        strokeLinecap: "round",
+        style: on ? { filter: "drop-shadow(0 0 2.5px rgba(255,255,255,.6)) drop-shadow(0 0 1px var(--dim))" } : void 0
+      }
+    ));
+  }
+  const [inx, iny] = pol(33, ang);
+  const [ibx, iby] = pol(28, ang);
+  return /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      ref,
+      onMouseDown: onDown,
+      onDoubleClick: onDbl,
+      title: "Input gain \xB7 drag to set \xB7 dbl-click = unity",
+      style: { width: size, height: size, cursor: "ns-resize", position: "relative", userSelect: "none" }
+    },
+    /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 100 100" }, /* @__PURE__ */ React.createElement("defs", null, /* @__PURE__ */ React.createElement("radialGradient", { id: "igkMetal", cx: "50%", cy: "50%", r: "52%", fx: "34%", fy: "30%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "color-mix(in srgb, var(--surface2) 66%, #000 34%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "40%", stopColor: "color-mix(in srgb, var(--bg2) 70%, #000 30%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "color-mix(in srgb, var(--bg) 52%, #000 48%)" })), /* @__PURE__ */ React.createElement("radialGradient", { id: "igkCap", cx: "50%", cy: "33%", r: "74%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "color-mix(in srgb, var(--surface2) 64%, #000 36%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "30%", stopColor: "color-mix(in srgb, var(--bg2) 64%, #000 36%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "62%", stopColor: "color-mix(in srgb, var(--bg) 55%, #000 45%)" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#050505" })), /* @__PURE__ */ React.createElement("linearGradient", { id: "igkSheen", x1: "0%", y1: "0%", x2: "100%", y2: "100%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "#ffffff", stopOpacity: "0.16" }), /* @__PURE__ */ React.createElement("stop", { offset: "48%", stopColor: "#ffffff", stopOpacity: "0" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#000000", stopOpacity: "0.40" })), /* @__PURE__ */ React.createElement("radialGradient", { id: "igkSpec", cx: "50%", cy: "50%", r: "50%" }, /* @__PURE__ */ React.createElement("stop", { offset: "0%", stopColor: "#ffffff", stopOpacity: "0.5" }), /* @__PURE__ */ React.createElement("stop", { offset: "100%", stopColor: "#ffffff", stopOpacity: "0" })), /* @__PURE__ */ React.createElement("filter", { id: "igkGlow", x: "-60%", y: "-60%", width: "220%", height: "220%" }, /* @__PURE__ */ React.createElement("feGaussianBlur", { stdDeviation: "2.2" }))), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "47", fill: "color-mix(in srgb, var(--bg) 46%, #000 54%)", stroke: "var(--line-strong)", strokeWidth: "0.6" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "43.5", fill: "none", stroke: "rgba(0,0,0,.5)", strokeWidth: "2.5" }), ticks, /* @__PURE__ */ React.createElement("ellipse", { cx: "50", cy: "52.5", rx: "34", ry: "34", fill: "#000", opacity: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "34", fill: "url(#igkMetal)", stroke: "var(--line-strong)", strokeWidth: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "34", fill: "url(#igkSheen)" }), active && /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "none", stroke: "#ffffff", strokeWidth: "2.4", opacity: "0.55", filter: "url(#igkGlow)" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "url(#igkCap)", stroke: "var(--line-strong)", strokeWidth: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "27", fill: "url(#igkSheen)", opacity: "0.6" }), /* @__PURE__ */ React.createElement("ellipse", { cx: "50", cy: "40", rx: "12", ry: "5.5", fill: "url(#igkSpec)", opacity: "0.55" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "22.5", fill: "none", stroke: "#ffffff", strokeOpacity: "0.05", strokeWidth: "0.6" }), /* @__PURE__ */ React.createElement(
+      "line",
+      {
+        x1: ibx,
+        y1: iby,
+        x2: inx,
+        y2: iny,
+        stroke: "rgba(255,255,255,.92)",
+        strokeWidth: "2.6",
+        strokeLinecap: "round",
+        style: { filter: "drop-shadow(0 0 2px rgba(255,255,255,.6))" }
+      }
+    ), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "50", r: "3.4", fill: "color-mix(in srgb, var(--bg) 40%, #000 60%)", stroke: "var(--line-strong)", strokeWidth: "0.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "50", cy: "48.7", r: "1.2", fill: "#ffffff", opacity: "0.16" }))
+  );
+}
+function InputLevelMeter({ level, height = 80, width = 7 }) {
+  const gap = 1.5;
+  const segs = Math.max(6, Math.min(22, Math.round((height - gap) / 3.5)));
+  const lit = Math.round((level || 0) * segs);
+  const cells = [];
+  for (let i = 0; i < segs; i++) {
+    const frac = i / segs;
+    const on = i < lit;
+    let col = "#5ec46a";
+    if (frac > 0.82) col = "#e0574a";
+    else if (frac > 0.6) col = "#e8c53c";
+    cells.push(/* @__PURE__ */ React.createElement("div", { key: i, style: {
+      flex: 1,
+      minHeight: 1,
+      background: on ? col : "rgba(0,0,0,.34)",
+      borderRadius: 1,
+      opacity: on ? 1 : 0.85,
+      boxShadow: on ? `0 0 4px ${col}` : "none",
+      transition: "opacity .05s"
+    } }));
+  }
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column-reverse", gap, width, height } }, cells);
+}
 function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
   const p = track.params || {};
   const inputGain = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const armed = !!p.arm;
   const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const hot = liveLevel >= 0.92;
-  const pct = (inputGain - 0.1) / 3.9 * 100;
   const commit = (k, v) => {
     onBeforeChange && onBeforeChange();
     onParam(k, v);
@@ -96,7 +198,7 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
       active: armed,
       title: "Arm this input track for recording",
       activeBg: "var(--red)",
-      activeColor: "#fff",
+      activeColor: "var(--arm-on-fg, #0d0d0d)",
       activeBorder: "var(--red)",
       onClick: () => commit("arm", !p.arm)
     },
@@ -117,37 +219,21 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
       onClick: () => commit("limiter", p.limiter === false)
     },
     "LIM"
-  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
-    width: 18,
-    fontSize: 8.5,
-    fontWeight: 800,
-    color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)"
-  } }, "IN"), /* @__PURE__ */ React.createElement("div", { title: "Live microphone input level", style: {
-    flex: 1,
-    height: 6,
-    borderRadius: 999,
-    overflow: "hidden",
-    background: "rgba(0,0,0,.34)",
-    border: "1px solid var(--line)"
-  } }, /* @__PURE__ */ React.createElement("div", { style: {
-    width: `${liveLevel * 100}%`,
-    height: "100%",
-    background: hot ? "var(--red)" : "var(--green)",
-    boxShadow: liveLevel > 0 ? `0 0 6px ${hot ? "var(--red)" : "var(--green)"}` : "none"
-  } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 3 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".08em" } }, "GAIN"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 8.5, color: "var(--cream-2)", fontWeight: 700 } }, fmtDb(inputGain))), /* @__PURE__ */ React.createElement(
-    "input",
+  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: "2px 0 1px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(
+    InputGainKnob,
     {
-      type: "range",
-      min: "0.1",
-      max: "4",
-      step: "0.1",
       value: inputGain,
-      title: `Input gain ${fmtDb(inputGain)}`,
-      onMouseDown: () => onBeforeChange && onBeforeChange(),
-      onChange: (e) => onParam("inputGain", +e.target.value),
-      style: { width: "100%", accentColor: "var(--amber)", background: `linear-gradient(90deg,var(--amber) 0 ${pct}%,rgba(0,0,0,.36) ${pct}% 100%)` }
+      active: armed || track.recording,
+      size: 80,
+      onChange: (v) => onParam("inputGain", v),
+      onBeforeChange
     }
-  )));
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 3 }, title: `Input gain ${fmtDb(inputGain)} dB` }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".08em" } }, "GAIN"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)" } }, fmtDb(inputGain), " dB"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(InputLevelMeter, { level: liveLevel, height: 80, width: 7 }), /* @__PURE__ */ React.createElement("span", { className: "mono", title: "Live input level", style: {
+    fontSize: 8,
+    fontWeight: 400,
+    letterSpacing: ".06em",
+    color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)"
+  } }, "IN"))));
 }
 function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange }) {
   const p = track.params;
@@ -156,8 +242,8 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
   const faderAreaRef = useRef(null);
   const [faderH, setFaderH] = useState(120);
   const textureStyle = isAudioIn ? AUDIO_INPUT_TEXTURES[texture] || AUDIO_INPUT_TEXTURES.none : null;
-  const audioInputNoneBg = "linear-gradient(180deg,rgba(127,176,196,.13),rgba(127,176,196,.05)),linear-gradient(180deg,var(--surface),var(--bg2))";
-  const audioInputTexturedBg = "linear-gradient(180deg,rgba(127,176,196,.028),rgba(127,176,196,.01)),linear-gradient(180deg,var(--surface),var(--bg2))";
+  const audioInputNoneBg = "linear-gradient(180deg,color-mix(in srgb,var(--blue) 12%,transparent),color-mix(in srgb,var(--blue) 4%,transparent)),linear-gradient(180deg,var(--bg2),var(--bg))";
+  const audioInputTexturedBg = "linear-gradient(180deg,color-mix(in srgb,var(--blue) 4%,transparent),color-mix(in srgb,var(--blue) 1%,transparent)),linear-gradient(180deg,var(--bg2),var(--bg))";
   const audioInputCapBg = "linear-gradient(180deg,rgba(255,255,255,.055) 0,rgba(255,255,255,.025) 4px,rgba(0,0,0,.09) 11px,transparent 24%,transparent 76%,rgba(0,0,0,.11) calc(100% - 11px),rgba(255,255,255,.025) calc(100% - 4px),rgba(255,255,255,.05) 100%)";
   const audioInputBaseBg = texture === "none" ? audioInputNoneBg : audioInputTexturedBg;
   const textureCapBg = textureStyle && textureStyle.capImage ? `${textureStyle.capImage},${textureStyle.capImage},` : "";
@@ -168,6 +254,8 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
   const audioInputBgSize = textureStyle ? `${textureStyle.backgroundSize}, ${textureCapSize} auto, auto` : void 0;
   const audioInputBgPosition = textureStyle ? `${textureStyle.backgroundPosition}, ${textureCapPosition} center, center` : void 0;
   const audioInputBgRepeat = textureStyle ? `${textureStyle.backgroundRepeat}, ${textureCapRepeat} no-repeat, no-repeat` : void 0;
+  const framePanel = isAudioIn;
+  const framePanelBg = "linear-gradient(180deg,color-mix(in srgb,var(--blue) 4%,transparent),color-mix(in srgb,var(--blue) 1%,transparent)),linear-gradient(180deg,color-mix(in srgb,var(--bg2) 84%,transparent),color-mix(in srgb,var(--bg) 84%,transparent))";
   useEffect(() => {
     const el = faderAreaRef.current;
     if (!el) return;
@@ -188,12 +276,21 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
     gap: 8,
     position: "relative",
     overflow: "hidden",
-    background: isAudioIn ? "var(--bg2)" : p.solo ? "rgba(232,176,75,.05)" : "transparent",
+    isolation: isAudioIn ? "isolate" : void 0,
+    background: isAudioIn ? "var(--bg)" : p.solo ? "rgba(232,176,75,.05)" : "transparent",
     backgroundImage: isAudioIn ? audioInputBg : void 0,
     backgroundSize: isAudioIn ? audioInputBgSize : void 0,
     backgroundPosition: isAudioIn ? audioInputBgPosition : void 0,
     backgroundRepeat: isAudioIn ? audioInputBgRepeat : void 0
-  } }, /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "reverb", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) })), /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "echo", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, disabled: noAudio, size: 22, onClick: () => {
+  } }, framePanel && /* @__PURE__ */ React.createElement("div", { "aria-hidden": "true", style: {
+    position: "absolute",
+    inset: 9,
+    borderRadius: 10,
+    zIndex: -1,
+    pointerEvents: "none",
+    background: framePanelBg,
+    boxShadow: "inset 0 2px 8px rgba(0,0,0,.55), inset 0 -2px 6px rgba(0,0,0,.32), inset 0 0 0 1px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.05)"
+  } }), /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "reverb", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) })), /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "echo", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, disabled: noAudio, size: 22, onClick: () => {
     onBeforeChange && onBeforeChange();
     onParam("solo", !p.solo);
   } }), /* @__PURE__ */ React.createElement(MuteBtn, { on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, size: 22, onClick: () => {
@@ -660,7 +757,7 @@ function MixerWindow({ onClose, onBeforeChange }) {
       }
     },
     "\xD7"
-  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", overflowX: "auto", maxWidth: "100%", background: "var(--bg)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flex: "0 0 auto" } }, DAW.tracks.map((t) => /* @__PURE__ */ React.createElement(ChannelStrip, { key: t.id, track: t, level: DAW.getTrackLevel(t.id), onParam: param(t.id), onBeforeChange }))), /* @__PURE__ */ React.createElement(MasterPanel, { level: DAW.getMasterLevel(), master: DAW.master, onMaster: (k, v) => DAW.setMaster(k, v), onBeforeChange })));
+  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", overflowX: "auto", maxWidth: "100%", background: "var(--bg)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flex: "0 0 auto" } }, [...DAW.tracks].sort((a, b) => (a.kind === "audioIn" ? 1 : 0) - (b.kind === "audioIn" ? 1 : 0)).map((t) => /* @__PURE__ */ React.createElement(ChannelStrip, { key: t.id, track: t, level: DAW.getTrackLevel(t.id), onParam: param(t.id), onBeforeChange }))), /* @__PURE__ */ React.createElement(MasterPanel, { level: DAW.getMasterLevel(), master: DAW.master, onMaster: (k, v) => DAW.setMaster(k, v), onBeforeChange })));
 }
 function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo }) {
   useTick();
@@ -971,5 +1068,5 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
     ))
   ));
 }
-Object.assign(window, { ChannelStrip, MasterPanel, MasterEQ, MasterEQOverlay, MasterViewTab, MasterLevelMeter, FxCard, MiniEQGraph, FxChip, MixerWindow, OutputTrack });
+Object.assign(window, { ChannelStrip, MasterPanel, MasterEQ, MasterEQOverlay, MasterViewTab, MasterLevelMeter, FxCard, MiniEQGraph, FxChip, MixerWindow, OutputTrack, InputGainKnob });
 

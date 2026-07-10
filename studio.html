@@ -31,6 +31,9 @@
   --outfx-bg:linear-gradient(rgba(0,0,0,.26),rgba(0,0,0,.26)), linear-gradient(180deg,var(--surface),var(--bg2)); --outfx-fg:var(--amber);
   --audio-in-track-bg:linear-gradient(180deg,color-mix(in srgb,var(--surface) 80%,var(--blue) 20%),color-mix(in srgb,var(--bg2) 88%,var(--blue) 12%));
   --outfx-chip-off-fg:var(--faint);
+  /* dark themes: black ARM-on text + dark brushed metal (mixer input strip) */
+  --arm-on-fg:#0d0d0d;
+  --mixer-metal:color-mix(in srgb,var(--surface) 54%,#000 46%);
   --bpm-bg:linear-gradient(180deg,#17120d,#0e0c09); --bpm-fg:var(--cream); --bpm-label-fg:var(--cream-2);
 }
 /* ── Classical Ivory theme ── */
@@ -46,6 +49,9 @@
   --outfx-chip-off-fg:var(--cream-2);
   --bpm-bg:linear-gradient(180deg,#332b20,#211b13); --bpm-fg:#efe6d4; --bpm-label-fg:#d8cdb6;
   --pan-arc:#c9a227;
+  /* light theme: keep white ARM-on text + lighter brushed metal */
+  --arm-on-fg:#fff;
+  --mixer-metal:color-mix(in srgb,var(--surface2) 85%,#000 15%);
 }
 :root[data-theme="ivory"] html,
 :root[data-theme="ivory"] body{ background:#cfc6ae; }
@@ -130,6 +136,9 @@
   --outfx-bg:linear-gradient(#154c3c,#0f3d30); --outfx-fg:#eef8f2; --eq-graph-bg:#000;
   --bpm-bg:linear-gradient(180deg,#12372c,#092019); --bpm-fg:#eef8f2; --bpm-label-fg:#cfe0d8;
   --knob-body:#5a7a2c; --knob-arc:#a8d84a; --fader-knob:linear-gradient(#6e8f3a,#4e6b29);
+  /* light theme: keep white ARM-on text + lighter brushed metal */
+  --arm-on-fg:#fff;
+  --mixer-metal:color-mix(in srgb,var(--surface2) 85%,#000 15%);
 }
 :root[data-theme="sage"] html,
 :root[data-theme="sage"] body{ background:#e4ece7; }

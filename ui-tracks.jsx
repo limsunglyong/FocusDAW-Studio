@@ -453,7 +453,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
       </div>
       {!compact && track.kind === "audioIn" && <div style={{ display: "flex", alignItems: "flex-start", gap: 3, minHeight: 31 }}>
         <button onClick={() => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 750,
-          background: p.arm ? "var(--red)" : "transparent", color: p.arm ? "#fff" : "var(--muted)", border: "1px solid " + (p.arm ? "var(--red)" : "var(--line-strong)") }}>ARM</button>
+          background: p.arm ? "var(--red)" : "transparent", color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)", border: "1px solid " + (p.arm ? "var(--red)" : "var(--line-strong)") }}>ARM</button>
         <button onClick={() => onParam("monitor", !p.monitor)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 700,
           background: p.monitor ? "var(--amber-soft)" : "transparent", color: p.monitor ? "var(--amber)" : "var(--muted)", border: "1px solid " + (p.monitor ? "var(--amber-deep)" : "var(--line-strong)") }}>MON</button>
         <button onClick={() => onParam("limiter", p.limiter === false)} title="Input limiter · ceiling -1.0 dBFS"

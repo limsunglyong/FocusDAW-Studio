@@ -1,51 +1,42 @@
 /* ================= FocusDAW — mixer window + output effect track ================= */
 
 const AUDIO_INPUT_TEXTURES = {
+  /* no pattern — just the recessed inner panel frame (concave side sheen) */
   none: {
-    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%)",
     backgroundSize: "auto",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
   },
+  /* full-cover diagonal grain; the recessed inner panel frames it to the border */
   diagonal: {
-    backgroundImage: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "11px 100%,11px 100%,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
-    capImage: "repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
-    capSize: "100% 11px,100% 11px",
-    capPosition: "left top,left bottom",
-    capRepeat: "no-repeat,no-repeat",
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.28) 6px 7px,color-mix(in srgb,var(--bg2) 72%,var(--bg) 28%) 7px 8.5px,transparent 8.5px 15px)",
+    backgroundSize: "auto,auto",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,no-repeat",
   },
+  /* full-cover dot grid; the recessed inner panel frames it to the border */
   dots: {
-    backgroundImage: "radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px),radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "8px 8px,8px 8px,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "repeat-y,repeat-y,no-repeat",
-    capImage: "radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px)",
-    capSize: "8px 8px,8px 8px",
-    capPosition: "left top,left bottom",
-    capRepeat: "repeat-x,repeat-x",
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),radial-gradient(circle,rgba(0,0,0,.24) 0 2px,transparent 2.8px)",
+    backgroundSize: "auto,8px 8px",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,repeat",
   },
+  /* Dark brushed metal — full-panel diagonal grain (ref: _refer/DAW Mixer),
+   * theme-tinted and darkened (surface mixed toward black). The opaque 115° metal
+   * fills the strip; a concave side-sheen overlay adds depth. */
   brushed: {
-    backgroundImage: "repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px),repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.20) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.18) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "11px 100%,11px 100%,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
-    capImage: "repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 1px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 1px 3px,rgba(0,0,0,.18) 3px 5px,transparent 5px 10px)",
-    capSize: "100% 11px,100% 11px",
-    capPosition: "left top,left bottom",
-    capRepeat: "no-repeat,no-repeat",
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),repeating-linear-gradient(115deg,var(--mixer-metal) 0px,color-mix(in srgb,var(--mixer-metal) 80%,#fff 20%) 2px,color-mix(in srgb,var(--mixer-metal) 82%,#000 18%) 3px,var(--mixer-metal) 5px)",
+    backgroundSize: "auto,auto",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,no-repeat",
   },
+  /* full-cover ribbed lines; the recessed inner panel frames it to the border */
   edges: {
-    backgroundImage: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px),linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(0,0,0,.24) 5px,transparent 22%,transparent 78%,rgba(0,0,0,.22) calc(100% - 5px),rgba(255,255,255,.03) 100%)",
-    backgroundSize: "11px 100%,11px 100%,auto",
-    backgroundPosition: "left top,right top,center",
-    backgroundRepeat: "no-repeat,no-repeat,no-repeat",
-    capImage: "repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
-    capSize: "100% 11px,100% 11px",
-    capPosition: "left top,left bottom",
-    capRepeat: "no-repeat,no-repeat",
+    backgroundImage: "linear-gradient(90deg,rgba(255,255,255,.08) 0,rgba(0,0,0,.34) 6px,transparent 24%,transparent 76%,rgba(0,0,0,.34) calc(100% - 6px),rgba(255,255,255,.06) 100%),repeating-linear-gradient(180deg,transparent 0 3px,rgba(0,0,0,.30) 3px 4px,color-mix(in srgb,var(--bg2) 78%,var(--bg) 22%) 4px 5px,transparent 5px 7px)",
+    backgroundSize: "auto,auto",
+    backgroundPosition: "center,center",
+    backgroundRepeat: "no-repeat,no-repeat",
   },
 };
 
@@ -66,13 +57,144 @@ function AudioInputButton({ active, children, title, onClick, activeBg = "var(--
   );
 }
 
+/* ---------- combined LED-ring input meter + gain knob ----------
+ * Outer dashed LED ring = live input level (green→amber→red); the dark-metal
+ * knob body rotates to set input gain (drag vertically, dbl-click = unity,
+ * wheel = ±0.1). Design ref: assets/knob design/led knob-4.html */
+const GAIN_MIN = 0.1, GAIN_MAX = 4, GAIN_SWEEP = 270, GAIN_START = -135;
+function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
+  const ref = useRef(null);
+  const gain = Math.max(GAIN_MIN, Math.min(GAIN_MAX, value));
+  const norm = (gain - GAIN_MIN) / (GAIN_MAX - GAIN_MIN);
+  const ang = GAIN_START + norm * GAIN_SWEEP;           // indicator + rim-arc angle
+
+  const drag = useRef(null);
+  const onDown = (e) => {
+    e.preventDefault();
+    if (onBeforeChange) onBeforeChange();
+    drag.current = { y: e.clientY, v: gain };
+    const move = (ev) => {
+      const dy = drag.current.y - ev.clientY;
+      let nv = drag.current.v + (dy / 160) * (GAIN_MAX - GAIN_MIN);
+      nv = Math.round(Math.max(GAIN_MIN, Math.min(GAIN_MAX, nv)) * 10) / 10;
+      onChange(nv);
+    };
+    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+  };
+  useWheelStep(ref, (dir) => {
+    let nv = Math.round((gain + dir * 0.1) * 10) / 10;
+    nv = Math.max(GAIN_MIN, Math.min(GAIN_MAX, nv));
+    if (nv === gain) return;
+    if (onBeforeChange) onBeforeChange();
+    onChange(nv);
+  });
+  const onDbl = () => { if (onBeforeChange) onBeforeChange(); onChange(1); };
+
+  // viewBox is 100×100; convert (radius, angle°) → point. 0°=up, clockwise.
+  const C = 50;
+  const pol = (r, a) => { const t = (a - 90) * Math.PI / 180; return [C + r * Math.cos(t), C + r * Math.sin(t)]; };
+  const SEGS = 42;
+  const ticks = [];
+  for (let i = 0; i < SEGS; i++) {
+    const f = i / (SEGS - 1);
+    const on = f <= norm + 1e-6;         // rim now fills to the gain value (single soft color)
+    const a = GAIN_START + f * GAIN_SWEEP;
+    const [x1, y1] = pol(40, a), [x2, y2] = pol(46, a);
+    // thin lit ticks with a soft glow — pale white on dark themes / grey on light (var(--dim) adapts)
+    ticks.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+      stroke={on ? "var(--dim)" : "var(--line-strong)"} strokeOpacity={on ? 1 : 0.9}
+      strokeWidth={on ? 1.4 : 1.2} strokeLinecap="round"
+      style={on ? { filter: "drop-shadow(0 0 2.5px rgba(255,255,255,.6)) drop-shadow(0 0 1px var(--dim))" } : undefined} />);
+  }
+  const [inx, iny] = pol(33, ang);     // indicator notch — outer, on the knob skirt
+  const [ibx, iby] = pol(28, ang);     // indicator notch — inner
+
+  return (
+    <div ref={ref} onMouseDown={onDown} onDoubleClick={onDbl}
+      title="Input gain · drag to set · dbl-click = unity"
+      style={{ width: size, height: size, cursor: "ns-resize", position: "relative", userSelect: "none" }}>
+      <svg width={size} height={size} viewBox="0 0 100 100">
+        <defs>
+          {/* main body metal — theme-tinted but darkened (mixed toward black) */}
+          <radialGradient id="igkMetal" cx="50%" cy="50%" r="52%" fx="34%" fy="30%">
+            <stop offset="0%" stopColor="color-mix(in srgb, var(--surface2) 66%, #000 34%)" />
+            <stop offset="40%" stopColor="color-mix(in srgb, var(--bg2) 70%, #000 30%)" />
+            <stop offset="100%" stopColor="color-mix(in srgb, var(--bg) 52%, #000 48%)" />
+          </radialGradient>
+          {/* center cap — darkened theme-tinted metal dome */}
+          <radialGradient id="igkCap" cx="50%" cy="33%" r="74%">
+            <stop offset="0%" stopColor="color-mix(in srgb, var(--surface2) 64%, #000 36%)" />
+            <stop offset="30%" stopColor="color-mix(in srgb, var(--bg2) 64%, #000 36%)" />
+            <stop offset="62%" stopColor="color-mix(in srgb, var(--bg) 55%, #000 45%)" />
+            <stop offset="100%" stopColor="#050505" />
+          </radialGradient>
+          <linearGradient id="igkSheen" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.16" />
+            <stop offset="48%" stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000000" stopOpacity="0.40" />
+          </linearGradient>
+          {/* glossy specular reflection near the top of the cap */}
+          <radialGradient id="igkSpec" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </radialGradient>
+          {/* soft glow for the armed state */}
+          <filter id="igkGlow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="2.2" />
+          </filter>
+        </defs>
+        {/* bezel / recessed housing — darkened theme tint */}
+        <circle cx="50" cy="50" r="47" fill="color-mix(in srgb, var(--bg) 46%, #000 54%)" stroke="var(--line-strong)" strokeWidth="0.6" />
+        <circle cx="50" cy="50" r="43.5" fill="none" stroke="rgba(0,0,0,.5)" strokeWidth="2.5" />
+        {/* rim ring — soft single-color arc showing the gain amount */}
+        {ticks}
+        {/* knob shadow + body */}
+        <ellipse cx="50" cy="52.5" rx="34" ry="34" fill="#000" opacity="0.5" />
+        <circle cx="50" cy="50" r="34" fill="url(#igkMetal)" stroke="var(--line-strong)" strokeWidth="0.5" />
+        <circle cx="50" cy="50" r="34" fill="url(#igkSheen)" />
+        {/* armed: white halo glowing outward from the center cap */}
+        {active && <circle cx="50" cy="50" r="27" fill="none" stroke="#ffffff" strokeWidth="2.4" opacity="0.55" filter="url(#igkGlow)" />}
+        {/* center cap — brushed metal dome */}
+        <circle cx="50" cy="50" r="27" fill="url(#igkCap)" stroke="var(--line-strong)" strokeWidth="0.5" />
+        <circle cx="50" cy="50" r="27" fill="url(#igkSheen)" opacity="0.6" />
+        <ellipse cx="50" cy="40" rx="12" ry="5.5" fill="url(#igkSpec)" opacity="0.55" />
+        <circle cx="50" cy="50" r="22.5" fill="none" stroke="#ffffff" strokeOpacity="0.05" strokeWidth="0.6" />
+        {/* gain indicator — white notch on the knob skirt */}
+        <line x1={ibx} y1={iby} x2={inx} y2={iny} stroke="rgba(255,255,255,.92)" strokeWidth="2.6" strokeLinecap="round"
+          style={{ filter: "drop-shadow(0 0 2px rgba(255,255,255,.6))" }} />
+        {/* center pivot hub */}
+        <circle cx="50" cy="50" r="3.4" fill="color-mix(in srgb, var(--bg) 40%, #000 60%)" stroke="var(--line-strong)" strokeWidth="0.5" />
+        <circle cx="50" cy="48.7" r="1.2" fill="#ffffff" opacity="0.16" />
+      </svg>
+    </div>
+  );
+}
+
+/* input-level LED meter — explicit green → yellow → red steps (theme-independent) */
+function InputLevelMeter({ level, height = 80, width = 7 }) {
+  const gap = 1.5;
+  const segs = Math.max(6, Math.min(22, Math.round((height - gap) / 3.5)));
+  const lit = Math.round((level || 0) * segs);
+  const cells = [];
+  for (let i = 0; i < segs; i++) {
+    const frac = i / segs;
+    const on = i < lit;
+    let col = "#5ec46a";                     // green
+    if (frac > 0.82) col = "#e0574a";        // red
+    else if (frac > 0.60) col = "#e8c53c";   // yellow
+    cells.push(<div key={i} style={{ flex: 1, minHeight: 1, background: on ? col : "rgba(0,0,0,.34)",
+      borderRadius: 1, opacity: on ? 1 : 0.85, boxShadow: on ? `0 0 4px ${col}` : "none", transition: "opacity .05s" }} />);
+  }
+  return <div style={{ display: "flex", flexDirection: "column-reverse", gap, width, height }}>{cells}</div>;
+}
+
 function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
   const p = track.params || {};
   const inputGain = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const armed = !!p.arm;
   const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const hot = liveLevel >= .92;
-  const pct = ((inputGain - 0.1) / 3.9) * 100;
   const commit = (k, v) => { onBeforeChange && onBeforeChange(); onParam(k, v); };
 
   return (
@@ -80,33 +202,29 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
       borderRadius: 7, background: "rgba(0,0,0,.16)", border: "1px solid var(--line)" }}>
       <div style={{ display: "flex", gap: 4 }}>
         <AudioInputButton active={armed} title="Arm this input track for recording"
-          activeBg="var(--red)" activeColor="#fff" activeBorder="var(--red)"
+          activeBg="var(--red)" activeColor="var(--arm-on-fg, #0d0d0d)" activeBorder="var(--red)"
           onClick={() => commit("arm", !p.arm)}>ARM</AudioInputButton>
         <AudioInputButton active={!!p.monitor} title="Monitor this input while recording"
           onClick={() => commit("monitor", !p.monitor)}>MON</AudioInputButton>
         <AudioInputButton active={p.limiter !== false} title="Input limiter · ceiling -1.0 dBFS"
           onClick={() => commit("limiter", p.limiter === false)}>LIM</AudioInputButton>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span className="mono" style={{ width: 18, fontSize: 8.5, fontWeight: 800,
-          color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)" }}>IN</span>
-        <div title="Live microphone input level" style={{ flex: 1, height: 6, borderRadius: 999,
-          overflow: "hidden", background: "rgba(0,0,0,.34)", border: "1px solid var(--line)" }}>
-          <div style={{ width: `${liveLevel * 100}%`, height: "100%",
-            background: hot ? "var(--red)" : "var(--green)",
-            boxShadow: liveLevel > 0 ? `0 0 6px ${hot ? "var(--red)" : "var(--green)"}` : "none" }} />
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: "2px 0 1px" }}>
+        {/* input-gain knob + dB readout below */}
+        <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
+          <InputGainKnob value={inputGain} active={armed || track.recording} size={80}
+            onChange={(v) => onParam("inputGain", v)} onBeforeChange={onBeforeChange} />
+          <div style={{ display: "flex", alignItems: "baseline", gap: 3 }} title={`Input gain ${fmtDb(inputGain)} dB`}>
+            <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".08em" }}>GAIN</span>
+            <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)" }}>{fmtDb(inputGain)} dB</span>
+          </div>
         </div>
-      </div>
-      <div style={{ display: "grid", gap: 3 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".08em" }}>GAIN</span>
-          <span className="mono" style={{ fontSize: 8.5, color: "var(--cream-2)", fontWeight: 700 }}>{fmtDb(inputGain)}</span>
+        {/* live input-level LED meter (green→yellow→red) */}
+        <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
+          <InputLevelMeter level={liveLevel} height={80} width={7} />
+          <span className="mono" title="Live input level" style={{ fontSize: 8, fontWeight: 400, letterSpacing: ".06em",
+            color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)" }}>IN</span>
         </div>
-        <input type="range" min="0.1" max="4" step="0.1" value={inputGain}
-          title={`Input gain ${fmtDb(inputGain)}`}
-          onMouseDown={() => onBeforeChange && onBeforeChange()}
-          onChange={(e) => onParam("inputGain", +e.target.value)}
-          style={{ width: "100%", accentColor: "var(--amber)", background: `linear-gradient(90deg,var(--amber) 0 ${pct}%,rgba(0,0,0,.36) ${pct}% 100%)` }} />
       </div>
     </div>
   );
@@ -119,8 +237,10 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
   const faderAreaRef = useRef(null);
   const [faderH, setFaderH] = useState(120);
   const textureStyle = isAudioIn ? (AUDIO_INPUT_TEXTURES[texture] || AUDIO_INPUT_TEXTURES.none) : null;
-  const audioInputNoneBg = "linear-gradient(180deg,rgba(127,176,196,.13),rgba(127,176,196,.05)),linear-gradient(180deg,var(--surface),var(--bg2))";
-  const audioInputTexturedBg = "linear-gradient(180deg,rgba(127,176,196,.028),rgba(127,176,196,.01)),linear-gradient(180deg,var(--surface),var(--bg2))";
+  // audio-in channel tint follows the theme accent (var(--blue)) and sits on a
+  // darkened base (bg2 → bg) so the strip reads dark & theme-matched
+  const audioInputNoneBg = "linear-gradient(180deg,color-mix(in srgb,var(--blue) 12%,transparent),color-mix(in srgb,var(--blue) 4%,transparent)),linear-gradient(180deg,var(--bg2),var(--bg))";
+  const audioInputTexturedBg = "linear-gradient(180deg,color-mix(in srgb,var(--blue) 4%,transparent),color-mix(in srgb,var(--blue) 1%,transparent)),linear-gradient(180deg,var(--bg2),var(--bg))";
   const audioInputCapBg = "linear-gradient(180deg,rgba(255,255,255,.055) 0,rgba(255,255,255,.025) 4px,rgba(0,0,0,.09) 11px,transparent 24%,transparent 76%,rgba(0,0,0,.11) calc(100% - 11px),rgba(255,255,255,.025) calc(100% - 4px),rgba(255,255,255,.05) 100%)";
   const audioInputBaseBg = texture === "none" ? audioInputNoneBg : audioInputTexturedBg;
   const textureCapBg = textureStyle && textureStyle.capImage ? `${textureStyle.capImage},${textureStyle.capImage},` : "";
@@ -131,6 +251,14 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
   const audioInputBgSize = textureStyle ? `${textureStyle.backgroundSize}, ${textureCapSize} auto, auto` : undefined;
   const audioInputBgPosition = textureStyle ? `${textureStyle.backgroundPosition}, ${textureCapPosition} center, center` : undefined;
   const audioInputBgRepeat = textureStyle ? `${textureStyle.backgroundRepeat}, ${textureCapRepeat} no-repeat, no-repeat` : undefined;
+  // Every audio-in texture now fills the whole strip. To keep the texture on the
+  // border only, we lay a recessed inner panel over the middle (texture shows
+  // through as a frame), engraved with an inset shadow. It sits above the texture
+  // background but below the controls (z-index:-1 in the channel's own stacking
+  // context). The panel fill is kept slightly translucent (~84%) so the texture
+  // beneath still faintly reads through the centre.
+  const framePanel = isAudioIn;
+  const framePanelBg = "linear-gradient(180deg,color-mix(in srgb,var(--blue) 4%,transparent),color-mix(in srgb,var(--blue) 1%,transparent)),linear-gradient(180deg,color-mix(in srgb,var(--bg2) 84%,transparent),color-mix(in srgb,var(--bg) 84%,transparent))";
   useEffect(() => {
     const el = faderAreaRef.current; if (!el) return;
     const obs = new ResizeObserver(([e]) => setFaderH(Math.max(40, Math.floor(e.contentRect.height))));
@@ -140,12 +268,15 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
   return (
     <div style={{ width: isAudioIn ? MIXER_AUDIO_IN_CHANNEL_W : MIXER_CHANNEL_W, flex: `0 0 ${isAudioIn ? MIXER_AUDIO_IN_CHANNEL_W : MIXER_CHANNEL_W}px`, height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center",
       padding: "10px 6px", borderRight: "1px solid var(--line)", gap: 8,
-      position: "relative", overflow: "hidden",
-      background: isAudioIn ? "var(--bg2)" : p.solo ? "rgba(232,176,75,.05)" : "transparent",
+      position: "relative", overflow: "hidden", isolation: isAudioIn ? "isolate" : undefined,
+      background: isAudioIn ? "var(--bg)" : p.solo ? "rgba(232,176,75,.05)" : "transparent",
       backgroundImage: isAudioIn ? audioInputBg : undefined,
       backgroundSize: isAudioIn ? audioInputBgSize : undefined,
       backgroundPosition: isAudioIn ? audioInputBgPosition : undefined,
       backgroundRepeat: isAudioIn ? audioInputBgRepeat : undefined }}>
+      {framePanel && <div aria-hidden="true" style={{ position: "absolute", inset: 9, borderRadius: 10, zIndex: -1, pointerEvents: "none",
+        background: framePanelBg,
+        boxShadow: "inset 0 2px 8px rgba(0,0,0,.55), inset 0 -2px 6px rgba(0,0,0,.32), inset 0 0 0 1px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.05)" }} />}
       <div style={{ height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` }} />
       <div style={{ fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 }}>{track.name}</div>
       {/* FX knobs — data-fx tags let a track-header VRB/ECHO click (FOCUS_KNOB msg) locate & pulse them */}
@@ -579,7 +710,8 @@ function MixerWindow({ onClose, onBeforeChange }) {
       </div>
       <div style={{ display: "flex", overflowX: "auto", maxWidth: "100%", background: "var(--bg)" }}>
         <div style={{ display: "flex", flex: "0 0 auto" }}>
-          {DAW.tracks.map((t) => <ChannelStrip key={t.id} track={t} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onBeforeChange={onBeforeChange} />)}
+          {/* file tracks first (creation order), audio-in tracks grouped last — stable sort */}
+          {[...DAW.tracks].sort((a, b) => (a.kind === "audioIn" ? 1 : 0) - (b.kind === "audioIn" ? 1 : 0)).map((t) => <ChannelStrip key={t.id} track={t} level={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onBeforeChange={onBeforeChange} />)}
         </div>
         <MasterPanel level={DAW.getMasterLevel()} master={DAW.master} onMaster={(k, v) => DAW.setMaster(k, v)} onBeforeChange={onBeforeChange} />
       </div>
@@ -884,4 +1016,4 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   );
 }
 
-Object.assign(window, { ChannelStrip, MasterPanel, MasterEQ, MasterEQOverlay, MasterViewTab, MasterLevelMeter, FxCard, MiniEQGraph, FxChip, MixerWindow, OutputTrack });
+Object.assign(window, { ChannelStrip, MasterPanel, MasterEQ, MasterEQOverlay, MasterViewTab, MasterLevelMeter, FxCard, MiniEQGraph, FxChip, MixerWindow, OutputTrack, InputGainKnob });

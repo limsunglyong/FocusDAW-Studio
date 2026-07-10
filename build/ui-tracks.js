@@ -508,7 +508,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
       fontSize: 9,
       fontWeight: 750,
       background: p.arm ? "var(--red)" : "transparent",
-      color: p.arm ? "#fff" : "var(--muted)",
+      color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)",
       border: "1px solid " + (p.arm ? "var(--red)" : "var(--line-strong)")
     } }, "ARM"), /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("monitor", !p.monitor), style: {
       height: 22,

@@ -674,7 +674,17 @@
         _meterBuf: new Float32Array(meter.fftSize),
       };
       this._normalizeTrackLayout(track);
-      this.tracks.push(track);
+      // Keep file/demo tracks grouped ahead of Audio In tracks: a new file track
+      // is inserted before the first Audio In track (not appended after it), so the
+      // array stays [file tracks…, audio-in tracks…]. Audio In tracks append at the
+      // end. Track references are by id, so reordering the array is display-only.
+      if (track.kind === "audioIn") {
+        this.tracks.push(track);
+      } else {
+        const firstInputIdx = this.tracks.findIndex((t) => t.kind === "audioIn");
+        if (firstInputIdx === -1) this.tracks.push(track);
+        else this.tracks.splice(firstInputIdx, 0, track);
+      }
       this._applyMix();
       return track;
     },
