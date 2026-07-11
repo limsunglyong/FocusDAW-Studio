@@ -503,6 +503,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
   const effectiveSizeLaneH = sizeLaneH;
   const compact = effectiveSizeLaneH <= 76;
   const medium = effectiveSizeLaneH <= 104 && !compact;
+  const audioInInlineControls = track.kind === "audioIn" && !compact;
   const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 11px";
   const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
@@ -524,6 +525,23 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
     boxShadow: p.bpmSource ? "0 0 10px rgba(232,176,75,.5)" : "none",
     opacity: noAudio ? 0.38 : 1,
     cursor: noAudio ? "not-allowed" : "pointer"
+  };
+  const compactArmButtonStyle = {
+    height: buttonSize,
+    minWidth: 34,
+    padding: "0 5px",
+    borderRadius: 5,
+    display: "grid",
+    placeItems: "center",
+    fontSize: 8.5,
+    fontWeight: 800,
+    lineHeight: 1,
+    cursor: "pointer",
+    background: p.arm ? TRACK_ARM_BUTTON_BG : "var(--surface2)",
+    color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--cream-2)",
+    border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
+    boxShadow: p.arm ? TRACK_ARM_BUTTON_SHADOW : "none",
+    transform: p.arm ? "translateY(1px)" : "none"
   };
   return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
     "div",
@@ -550,7 +568,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         boxShadow: selected ? "inset 4px 0 0 var(--amber)" : "none"
       }
     },
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact, onRename: onRename ? (newName) => onRename(track.id, newName) : void 0 }), track.kind !== "audioIn" && /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: (e) => {
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact, onRename: onRename ? (newName) => onRename(track.id, newName) : void 0 }), track.kind !== "audioIn" && /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), (compact || audioInInlineControls) && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("button", { title: p.arm ? "Disarm Audio In track" : "Arm Audio In track", onClick: () => onParam("arm", !p.arm), style: compactArmButtonStyle }, "ARM"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: (e) => {
       if (e && e.shiftKey && track.kind === "file" && onMuteAllFiles) onMuteAllFiles(!p.mute);
       else onParam("mute", !p.mute);
     } })),
@@ -577,7 +595,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         onChange: (v) => onParam("pan", v)
       }
     ), /* @__PURE__ */ React.createElement(Meter, { level: playbackLevel, height: meterH, width: 6 })),
-    !compact && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6, minHeight: 48 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "grid", gap: 4, width: 86, flex: "0 0 86px" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", gap: 3 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("arm", !p.arm), style: {
+    !compact && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6, minHeight: audioInInlineControls ? 25 : 48 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "grid", gap: 4, width: 86, flex: "0 0 86px" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", gap: 3 } }, !audioInInlineControls && /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("arm", !p.arm), style: {
       height: 22,
       padding: "0 5px",
       borderRadius: 5,
@@ -588,7 +606,37 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
       border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
       boxShadow: p.arm ? TRACK_ARM_BUTTON_SHADOW : "inset 0 1px 0 rgba(255,255,255,.05)",
       transform: p.arm ? "translateY(1px)" : "none"
-    } }, "ARM"), /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("monitor", !p.monitor), style: {
+    } }, "ARM"), audioInInlineControls && /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        className: "audio-input-port-select",
+        value: inputPortValue,
+        title: "Input port for this Audio In track",
+        onChange: (e) => commitInputPort(e.target.value),
+        onMouseDown: (e) => e.stopPropagation(),
+        style: {
+          width: 68,
+          height: 22,
+          borderRadius: 5,
+          padding: "0 4px",
+          background: "var(--audio-input-port-bg, var(--surface2))",
+          color: "var(--audio-input-port-fg, var(--cream-2))",
+          border: "1px solid var(--line-strong)",
+          fontSize: 9,
+          fontWeight: 650,
+          outline: "none"
+        }
+      },
+      TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => /* @__PURE__ */ React.createElement(
+        "option",
+        {
+          key: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,
+          value: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,
+          style: { background: "var(--bg)", color: "var(--cream)" }
+        },
+        opt.label
+      ))
+    ), /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("monitor", !p.monitor), style: {
       height: 22,
       padding: "0 5px",
       borderRadius: 5,
@@ -614,7 +662,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         }
       },
       "LIM"
-    )), /* @__PURE__ */ React.createElement(
+    )), !audioInInlineControls && /* @__PURE__ */ React.createElement(
       "select",
       {
         className: "audio-input-port-select",
@@ -712,7 +760,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
       alignItems: "center",
       gap: 6,
       minHeight: medium ? 20 : 22,
-      marginTop: track.kind === "audioIn" && medium ? "auto" : 0
+      marginTop: 0
     } }, /* @__PURE__ */ React.createElement(
       "button",
       {

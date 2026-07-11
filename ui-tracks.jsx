@@ -460,6 +460,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
   const effectiveSizeLaneH = sizeLaneH;
   const compact = effectiveSizeLaneH <= 76;
   const medium = effectiveSizeLaneH <= 104 && !compact;
+  const audioInInlineControls = track.kind === "audioIn" && !compact;
   const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 11px";
   const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
@@ -482,6 +483,23 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
     opacity: noAudio ? .38 : 1,
     cursor: noAudio ? "not-allowed" : "pointer",
   };
+  const compactArmButtonStyle = {
+    height: buttonSize,
+    minWidth: 34,
+    padding: "0 5px",
+    borderRadius: 5,
+    display: "grid",
+    placeItems: "center",
+    fontSize: 8.5,
+    fontWeight: 800,
+    lineHeight: 1,
+    cursor: "pointer",
+    background: p.arm ? TRACK_ARM_BUTTON_BG : "var(--surface2)",
+    color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--cream-2)",
+    border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
+    boxShadow: p.arm ? TRACK_ARM_BUTTON_SHADOW : "none",
+    transform: p.arm ? "translateY(1px)" : "none",
+  };
   return (
     <React.Fragment>
     <div onMouseDown={onSelect}
@@ -501,6 +519,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
         <ScrollingTrackTitle name={track.name} compact={compact} onRename={onRename ? (newName) => onRename(track.id, newName) : undefined} />
         {track.kind !== "audioIn" && <button title={noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection"} disabled={noAudio} onClick={noAudio ? undefined : () => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>}
+        {(compact || audioInInlineControls) && track.kind === "audioIn" && <button title={p.arm ? "Disarm Audio In track" : "Arm Audio In track"} onClick={() => onParam("arm", !p.arm)} style={compactArmButtonStyle}>ARM</button>}
         <SoloBtn size={buttonSize} on={p.solo} disabled={noAudio} onClick={() => onParam("solo", !p.solo)} />
         <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} onClick={(e) => {
           if (e && e.shiftKey && track.kind === "file" && onMuteAllFiles) onMuteAllFiles(!p.mute);
@@ -523,14 +542,28 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
           onChange={(v) => onParam("pan", v)} />
         <Meter level={playbackLevel} height={meterH} width={6} />
       </div>
-      {!compact && track.kind === "audioIn" && <div style={{ display: "flex", alignItems: "flex-start", gap: 6, minHeight: 48 }}>
+      {!compact && track.kind === "audioIn" && <div style={{ display: "flex", alignItems: "flex-start", gap: 6, minHeight: audioInInlineControls ? 25 : 48 }}>
         <span style={{ display: "grid", gap: 4, width: 86, flex: "0 0 86px" }}>
           <span style={{ display: "flex", gap: 3 }}>
-            <button onClick={() => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 750,
+            {!audioInInlineControls && <button onClick={() => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 750,
               background: p.arm ? TRACK_ARM_BUTTON_BG : "transparent", color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)",
               border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
               boxShadow: p.arm ? TRACK_ARM_BUTTON_SHADOW : "inset 0 1px 0 rgba(255,255,255,.05)",
-              transform: p.arm ? "translateY(1px)" : "none" }}>ARM</button>
+              transform: p.arm ? "translateY(1px)" : "none" }}>ARM</button>}
+            {audioInInlineControls && <select className="audio-input-port-select" value={inputPortValue} title="Input port for this Audio In track"
+              onChange={(e) => commitInputPort(e.target.value)}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{ width: 68, height: 22, borderRadius: 5, padding: "0 4px",
+                background: "var(--audio-input-port-bg, var(--surface2))",
+                color: "var(--audio-input-port-fg, var(--cream-2))", border: "1px solid var(--line-strong)",
+                fontSize: 9, fontWeight: 650, outline: "none" }}>
+              {TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => (
+                <option key={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`} value={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`}
+                  style={{ background: "var(--bg)", color: "var(--cream)" }}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>}
             <button onClick={() => onParam("monitor", !p.monitor)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 700,
               background: p.monitor ? "var(--amber-soft)" : "transparent", color: p.monitor ? "var(--amber)" : "var(--muted)", border: "1px solid " + (p.monitor ? "var(--amber-deep)" : "var(--line-strong)") }}>MON</button>
             <button onClick={() => onParam("limiter", p.limiter === false)} title="Input limiter · ceiling -1.0 dBFS"
@@ -538,7 +571,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
                 background: p.limiter !== false ? "var(--amber-soft)" : "transparent", color: p.limiter !== false ? "var(--amber)" : "var(--muted)",
                 border: "1px solid " + (p.limiter !== false ? "var(--amber-deep)" : "var(--line-strong)") }}>LIM</button>
           </span>
-          <select className="audio-input-port-select" value={inputPortValue} title="Input port for this Audio In track"
+          {!audioInInlineControls && <select className="audio-input-port-select" value={inputPortValue} title="Input port for this Audio In track"
             onChange={(e) => commitInputPort(e.target.value)}
             onMouseDown={(e) => e.stopPropagation()}
             style={{ width: "100%", height: 20, borderRadius: 5, padding: "0 5px",
@@ -551,7 +584,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
                 {opt.label}
               </option>
             ))}
-          </select>
+          </select>}
         </span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "flex-start", gap: 3 }}>
           <span className="mono" title={`Current input gain ${fmtDb(inputGainValue)} dB`}
@@ -588,7 +621,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         </span>
       </div>}
       {!compact && <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22,
-        marginTop: track.kind === "audioIn" && medium ? "auto" : 0 }}>
+        marginTop: 0 }}>
         {/* VOL AUTO — rounded toggle (replaces the old icon button) */}
         <button title="Volume automation on/off" onClick={() => onParam("autoOn", !p.autoOn)}
           style={{ display: "flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 6,

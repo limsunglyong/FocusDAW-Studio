@@ -1487,7 +1487,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const rulerH = 30;
   const trackStackTop = rulerH;
   const fileGroupH = fileTracks.length ? 38 : 0;
-  const audioInLaneHeight = laneH <= 68 ? laneH : Math.max(164, laneH);
+  const audioInLaneHeight = laneH <= 68 ? laneH : laneH <= 104 ? 134 : Math.max(163, laneH);
   const visibleTrackHeight = (fileTracksCollapsed ? 0 : fileTracks.length * laneH)
     + nonFileTracks.reduce((sum, track) => sum + (track.kind === "audioIn" ? audioInLaneHeight : laneH), 0);
   const trackStackBottom = rulerH + fileGroupH + Math.max(laneH, visibleTrackHeight);
