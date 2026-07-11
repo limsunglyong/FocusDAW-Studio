@@ -917,7 +917,9 @@ function DeviceSetupSection() {
   const onInput = (name) => commit(activeMode, name, exclusive ? (outByKey[deviceInterfaceKey(name)] || "") : output, sampleRate, bufferSize);
   const onOutput = (name) => commit(activeMode, exclusive ? (inByKey[deviceInterfaceKey(name)] || "") : input, name, sampleRate, bufferSize);
 
-  const selStyle = { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" };
+  // Right padding keeps long device names clear of the native dropdown arrow
+  // (Chromium draws the arrow inside the select's right edge).
+  const selStyle = { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 24px 0 8px", textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" };
   const inputMissing = input && !inputList.includes(input);
   const outputMissing = output && !outputList.includes(output);
 

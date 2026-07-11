@@ -723,9 +723,12 @@
       // audio-bridge gate), even though the buffer now plays fine.
       track.needsAudio = false;
       const start = Math.max(0, options.start || 0);
-      track.clips = [this._normalizeClip({ start, end: start + decoded.buffer.duration, offset: 0 }, sourceId, decoded.buffer.duration)];
+      const limitEnd = Number(options.end) > start ? Number(options.end) : 0;
+      const clipEnd = limitEnd ? Math.min(start + decoded.buffer.duration, limitEnd) : start + decoded.buffer.duration;
+      const clipDuration = Math.max(0, clipEnd - start);
+      track.clips = [this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration }, sourceId, decoded.buffer.duration)];
       track.audioRev = (track.audioRev || 0) + 1;
-      this.duration = Math.max(this.duration, start + decoded.buffer.duration);
+      this.duration = limitEnd ? Math.max(limitEnd, this._projectClipDuration()) : Math.max(this.duration, start + decoded.buffer.duration);
       this._applyMix();
       this._startHotAddedTrack(track);
       return track;

@@ -902,7 +902,7 @@ function DeviceSetupSection() {
   };
   const onInput = (name) => commit(activeMode, name, exclusive ? outByKey[deviceInterfaceKey(name)] || "" : output, sampleRate, bufferSize);
   const onOutput = (name) => commit(activeMode, exclusive ? inByKey[deviceInterfaceKey(name)] || "" : input, name, sampleRate, bufferSize);
-  const selStyle = { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" };
+  const selStyle = { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 24px 0 8px", textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" };
   const inputMissing = input && !inputList.includes(input);
   const outputMissing = output && !outputList.includes(output);
   return /* @__PURE__ */ React.createElement("section", { id: "settings-device-setup", style: { borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22, scrollMarginTop: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 } }, "\u25A0 Audio Devices"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginBottom: 12 } }, "Pick a driver mode, then the input and output device. In Exclusive Mode the input and output stay on the same interface. Input ports are chosen on each Audio In track."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 4 } }, types.map((t) => {

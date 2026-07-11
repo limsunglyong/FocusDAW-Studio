@@ -627,7 +627,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
           outline: "none"
         }
       },
-      TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => /* @__PURE__ */ React.createElement(
+      inputPortOptions.map((opt) => /* @__PURE__ */ React.createElement(
         "option",
         {
           key: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,

@@ -557,7 +557,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
                 background: "var(--audio-input-port-bg, var(--surface2))",
                 color: "var(--audio-input-port-fg, var(--cream-2))", border: "1px solid var(--line-strong)",
                 fontSize: 9, fontWeight: 650, outline: "none" }}>
-              {TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => (
+              {inputPortOptions.map((opt) => (
                 <option key={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`} value={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`}
                   style={{ background: "var(--bg)", color: "var(--cream)" }}>
                   {opt.label}

@@ -21,8 +21,12 @@ window.DAW = {
   _fftData: [],
   _isPlaying: false,
   _playhead: 0,
+  _inputChannelNames: [],
   _anySolo() {
     return this.tracks.some((t) => t.params.solo);
+  },
+  getInputChannelNames() {
+    return this._inputChannelNames || [];
   },
   getTrackLevel(id) {
     return this._levels[id] || 0;
@@ -117,6 +121,7 @@ function MixerApp() {
         window.DAW.master = msg.master;
         setTheme(msg.theme);
         setMixerTexture(msg.mixerTexture || "none");
+        window.DAW._inputChannelNames = Array.isArray(msg.inputChannelNames) ? msg.inputChannelNames : [];
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
         force((n) => n + 1);
@@ -125,6 +130,7 @@ function MixerApp() {
         window.DAW.master = msg.master;
         if (msg.theme) setTheme(msg.theme);
         if (msg.mixerTexture) setMixerTexture(msg.mixerTexture);
+        if (Array.isArray(msg.inputChannelNames)) window.DAW._inputChannelNames = msg.inputChannelNames;
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
         force((n) => n + 1);

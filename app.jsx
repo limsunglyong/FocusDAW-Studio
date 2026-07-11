@@ -1237,6 +1237,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         },
         theme,
         mixerTexture,
+        inputChannelNames: DAW.getInputChannelNames ? DAW.getInputChannelNames() : [],
         isPlaying: DAW.isPlaying,
         playhead: DAW.getPlayhead(),
       });
@@ -1904,6 +1905,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             },
             theme: localStorage.getItem("focusdaw-theme") || "default",
             mixerTexture: localStorage.getItem("focusdaw-mixer-texture") || "none",
+            inputChannelNames: DAW.getInputChannelNames ? DAW.getInputChannelNames() : [],
             isPlaying: DAW.isPlaying,
             playhead: DAW.getPlayhead(),
           });
@@ -2588,11 +2590,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         await active.promise;
         const saved = await window.electronAPI.finalizeRecording(active.partPath, active.finalPath);
         const bytes = await window.electronAPI.readAudioFile(saved.path);
-        await DAW.attachRecording(track.id, saved.fileName, bytes, { filePath: saved.path, start: active.start });
+        const attachOptions = { filePath: saved.path, start: active.start };
+        if (active.durationLimit > 0) attachOptions.end = active.durationLimit;
+        await DAW.attachRecording(track.id, saved.fileName, bytes, attachOptions);
       } catch (e) {
         alert(`Recording could not be finalized: ${e.message || e}`);
       }
       track.recording = false;
+      delete track._recordingDurationLimit;
       recordingRef.current = null;
       fitTimelineToProject();
       force((n) => n + 1);
@@ -2617,15 +2622,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     track._recordingStart = start;
     track._recordingPeaks = [];
     track._recordingSampleRate = 44100;
+    const durationLimit = Number(track._recordingDurationLimit) || 0;
     const promise = DAW.startRecording({
       filePath: target.partPath, channel: input.channel || 0, stereo: !!input.stereo,
       gain: Math.max(0.1, Math.min(4, track.params.inputGain == null ? 1 : track.params.inputGain)),
       monitor: !!track.params.monitor, limiter: track.params.limiter !== false,
     });
-    recordingRef.current = { trackId: track.id, ...target, start, promise };
+    recordingRef.current = { trackId: track.id, ...target, start, durationLimit, promise };
     promise.catch((e) => {
       if (recordingRef.current && recordingRef.current.trackId === track.id) {
         track.recording = false;
+        delete track._recordingDurationLimit;
         recordingRef.current = null;
         alert(e.message || String(e));
         force((n) => n + 1);
@@ -2658,6 +2665,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (t.id !== target.id && Array.isArray(t.clips)) t.clips.forEach((c) => { end = Math.max(end, c.end || 0); });
     });
     songEndRef.current = end;
+    if (end > 0) target._recordingDurationLimit = end;
+    else delete target._recordingDurationLimit;
     const wasPlaying = DAW.isPlaying;
     await toggleRecording(target);          // starts the recorder at the current playhead
     if (!isRecordingActive()) {             // start failed (device error etc.) → undo repeat change
@@ -2710,6 +2719,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const transportPlayPause = () => { if (isCountingIn()) return cancelCountIn(); if (isRecordingActive()) return; DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
   const transportToStart = () => { if (isCountingIn() || isRecordingActive()) return; DAW.seek(0); force((n) => n + 1); };
   transportRef.current = { transportRecordToggle, transportStop, transportPlayPause, transportToStart, isRecordingActive, isCountingIn };
+  // Mouse seeks (ruler / track lanes / output track) are ignored while recording
+  // or counting in, matching the keyboard seek keys — the playhead must not jump
+  // mid-take.
+  const guardedUserSeek = (t) => {
+    if (isRecordingActive() || isCountingIn()) return;
+    DAW.userSeek(t);
+    force((n) => n + 1);
+  };
 
   useEffect(() => {
     const onRecordToggle = () => transportRef.current.transportRecordToggle && transportRef.current.transportRecordToggle();
@@ -2978,8 +2995,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       {recordCount != null && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, display: "grid", placeItems: "center",
           background: "rgba(0,0,0,.45)", pointerEvents: "none" }}>
-          <div key={recordCount} style={{ fontSize: "22vmin", fontWeight: 800, lineHeight: 1, color: "var(--cream)",
-            fontFamily: "var(--mono, monospace)", textShadow: "0 0 40px rgba(0,0,0,.85), 0 8px 30px rgba(0,0,0,.6)",
+          <div key={recordCount} style={{ fontSize: "11vmin", fontWeight: 400, lineHeight: 1, color: "var(--cream)",
+            fontFamily: '"Orbitron", var(--mono, monospace)', textShadow: "0 0 40px rgba(0,0,0,.85), 0 8px 30px rgba(0,0,0,.6)",
             animation: "recordCountPulse .9s ease-out" }}>
             {recordCount}
           </div>
@@ -3079,7 +3096,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         ) : (
           <React.Fragment>
             <div style={{ position: "relative", minWidth: "min-content" }}>
-              <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={(t) => { DAW.userSeek(t); force((n) => n + 1); }} onAddTrack={pickAudioFiles} onAddAudioIn={addAudioInTrack} />
+              <Ruler pxPerSec={pxPerSec} playhead={playhead} onSeek={guardedUserSeek} onAddTrack={pickAudioFiles} onAddAudioIn={addAudioInTrack} />
               {fileTracks.length > 0 && (
                 <FileTrackGroupHeader tracks={fileTracks} count={fileTracks.length} collapsed={fileTracksCollapsed}
                   onToggle={toggleFileTracks} pxPerSec={pxPerSec} playhead={playhead}
@@ -3091,7 +3108,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                 return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                   headerIndent={15}
                   playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
-                  onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
+                  onSeek={guardedUserSeek}
                   onFocusFx={focusMixerFx}
                   selected={selectedFileTrackSet.has(t.id)}
                   onSelect={(e) => selectFileTrack(t.id, e)}
@@ -3106,13 +3123,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)}
                   inputLevel={t.kind === "audioIn" ? DAW.getInputLevel() : 0}
                   onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
-                  onSeek={(time) => { DAW.userSeek(time); force((n) => n + 1); }}
+                  onSeek={guardedUserSeek}
                   onFocusFx={focusMixerFx}
                   onRename={renameTrack}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
-                onSeek={(t) => { DAW.userSeek(t); force((n) => n + 1); }}
+                onSeek={guardedUserSeek}
                 onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
                 onClearMuteSolo={clearMuteSolo} />
               {DAW.loopRange && (

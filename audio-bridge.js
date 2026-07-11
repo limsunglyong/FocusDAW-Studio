@@ -1168,7 +1168,7 @@
         track._recordingSampleRate = Number(msg.sampleRate) || track._recordingSampleRate || 44100;
         const lastSample = msg.points.length >= 3 ? Number(msg.points[msg.points.length - 3]) : 0;
         const recordedEnd = (track._recordingStart || 0) + lastSample / track._recordingSampleRate;
-        if (recordedEnd >= LocalDAW.duration - 1) LocalDAW.duration = recordedEnd + 60;
+        if (!track._recordingDurationLimit && recordedEnd >= LocalDAW.duration - 1) LocalDAW.duration = recordedEnd + 60;
         track.audioRev = (track.audioRev || 0) + 1;
         LocalDAW._emit();
       }

@@ -51,6 +51,28 @@ const AUDIO_INPUT_PORT_OPTIONS = [
   { label: "Input 2", channel: 1, stereo: false },
   { label: "Input 1-2", channel: 0, stereo: true },
 ];
+// Build the input-port list from the interface's real input channels, relayed
+// from the main window via INIT_STATE/SYNC_STATE (the mixer window has no native
+// bridge of its own). Mirrors buildInputPortOptions in ui-tracks.jsx so both
+// selects show identical labels; falls back to the static list when no device
+// channel names are known yet.
+function buildInputPortOptions() {
+  const names = window.DAW && window.DAW.getInputChannelNames ? window.DAW.getInputChannelNames() : [];
+  const n = Array.isArray(names) ? names.length : 0;
+  if (n < 1) return AUDIO_INPUT_PORT_OPTIONS;
+  const label = (i) => {
+    const raw = names[i] && String(names[i]).trim();
+    return raw && !/^input channel \d+$/i.test(raw) ? raw : `Input ${i + 1}`;
+  };
+  const isGeneric = (i) => /^Input \d+$/.test(label(i));
+  const opts = [];
+  for (let i = 0; i < n; i++) opts.push({ label: label(i), channel: i, stereo: false });
+  for (let i = 0; i + 1 < n; i += 2) {
+    const pair = isGeneric(i) && isGeneric(i + 1) ? `Input ${i + 1}-${i + 2}` : `${label(i)} + ${label(i + 1)}`;
+    opts.push({ label: pair, channel: i, stereo: true });
+  }
+  return opts;
+}
 
 function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--audio-input-button-active-fg, var(--amber))", activeBorder = "var(--amber-deep)", activeShadow = "none" }) {
   return (
@@ -243,7 +265,7 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
           background: "var(--audio-input-port-bg, var(--surface2))",
           color: "var(--audio-input-port-fg, var(--cream-2))", border: "1px solid var(--line-strong)",
           fontSize: 10.5, fontWeight: 650, outline: "none" }}>
-        {AUDIO_INPUT_PORT_OPTIONS.map((opt) => (
+        {buildInputPortOptions().map((opt) => (
           <option key={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`} value={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`}
             style={{ background: "var(--bg)", color: "var(--cream)" }}>
             {opt.label}
