@@ -834,165 +834,177 @@ function ThemeSwatch({ theme, active, onClick }) {
   );
 }
 
-/* ---------- audio output device section (Settings) ---------- */
-// App-only output device selection. The list comes from the native (JUCE) engine —
-// including "Windows Audio (Exclusive Mode)" for low latency — and the choice is
-// pushed to both engines via DAW.setAudioDevice (bridge persists it in localStorage
-// and re-applies it on every reconnect/restart).
-function AudioDeviceSection() {
-  const [devices, setDevices] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(() => (DAW.getSavedAudioDevice ? DAW.getSavedAudioDevice() : null));
+/* Output device selection now lives in the unified DeviceSetupSection above
+   (one mode drives input + output together). The old standalone
+   AudioDeviceSection was removed to prevent input/output landing on conflicting
+   device types (the Exclusive-mode howling bug). */
 
-  const isNative = !!DAW.isNative;
-
-  const refresh = async () => {
-    if (!DAW.requestAudioDevices) { setLoading(false); return; }
-    setLoading(true);
-    const list = await DAW.requestAudioDevices();
-    setDevices(list);
-    setLoading(false);
-  };
-  useEffect(() => { refresh(); }, []);
-
-  // DirectSound is a legacy API that Windows emulates on top of the shared WASAPI
-  // mixer anyway (an extra hop = more latency, no benefit), so hide it.
-  const types = ((devices && devices.types) || []).filter((t) => !/directsound/i.test(t.type));
-  const current = devices && devices.current;
-  const savedValue = saved && (saved.type || saved.name) ? JSON.stringify([saved.type || "", saved.name || ""]) : "";
-  const savedInList = !savedValue ||
-    types.some((t) => t.type === (saved.type || "") && (t.devices || []).includes(saved.name || ""));
-
-  const onChange = (e) => {
-    const v = e.target.value;
-    const [type, name] = v ? JSON.parse(v) : ["", ""];
-    setSaved(v ? { type, name } : null);
-    if (DAW.setAudioDevice) DAW.setAudioDevice(type, name);
-    setTimeout(refresh, 800); // engine broadcasts the refreshed state after the switch
-  };
-
-  return (
-      <div style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>■ Audio Output Device</div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "8px 0" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cream)" }}>Output Device</div>
-          {current && (
-            <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 6 }}>
-              Active: {current.name || "(system default)"} · {current.type} · {Math.round(current.sampleRate || 0)} Hz / {current.bufferSize || 0} samples
-            </div>
-          )}
-          {!isNative && (
-            <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
-              Native audio engine not connected — the system default output is in use.
-            </div>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-          <select value={savedValue} onChange={onChange} disabled={!isNative || loading}
-            style={{ maxWidth: 300, height: 32, fontSize: 12.5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" }}>
-            <option value="">System Default</option>
-            {!savedInList && savedValue && (
-              <option value={savedValue}>{(saved.name || "?") + " (saved — not found)"}</option>
-            )}
-            {types.map((t) => (
-              <optgroup key={t.type} label={t.type}>
-                {(t.devices || []).map((name) => (
-                  <option key={t.type + "|" + name} value={JSON.stringify([t.type, name])}>{name}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <button className="btn" onClick={refresh} disabled={!isNative || loading}
-            style={{ height: 32, fontSize: 12.5, padding: "0 12px", border: "1px solid var(--line-strong)" }}>
-            {loading ? "…" : "Rescan"}
-          </button>
-        </div>
-      </div>
-
-      {/* driver-mode comparison guide */}
-      <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
-          <thead>
-            <tr style={{ background: "var(--bg)", color: "var(--dim)", textAlign: "left" }}>
-              {["Mode", "Path", "Latency", "Other apps", "Notes"].map((h) => (
-                <th key={h} style={{ padding: "7px 10px", fontWeight: 600, borderBottom: "1px solid var(--line)" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody style={{ color: "var(--muted)" }}>
-            {[
-              ["Windows Audio (Exclusive Mode)", "App → device directly", "Lowest (a few ms)", "Muted", "Takes over the device; the app sets the sample rate"],
-              ["Windows Audio (Low Latency Mode)", "App → Windows mixer (small buffer) → device", "Low (~3–10 ms)", "Audible", "Windows 10+; actual latency depends on the audio driver"],
-              ["Windows Audio", "App → Windows mixer → device", "Normal (10–30 ms)", "Audible", "Most stable — recommended for everyday use"],
-            ].map((row, i) => (
-              <tr key={i} style={{ borderBottom: i < 2 ? "1px solid var(--line)" : "none" }}>
-                {row.map((cell, j) => (
-                  <td key={j} style={{ padding: "7px 10px", verticalAlign: "top", color: j === 0 ? "var(--cream)" : undefined, fontWeight: j === 0 ? 600 : 400 }}>{cell}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ padding: "7px 10px", fontSize: 11, color: "var(--dim)", borderTop: "1px solid var(--line)", background: "var(--bg)" }}>
-          Lower latency trades away stability — if you hear dropouts or crackles, switch back to Windows Audio (shared).
-        </div>
-      </div>
-    </div>
-  );
+// "Microphone (Scarlett Solo USB)" and "Speakers (Scarlett Solo USB)" expose the
+// same physical interface through the trailing parenthesised name. Match on that
+// so an input endpoint can be paired with its output partner — required for
+// Exclusive Mode, where input and output must stay on one device.
+function deviceInterfaceKey(name) {
+  const m = /\(([^()]*)\)\s*$/.exec(name || "");
+  return (m ? m[1] : (name || "")).trim().toLowerCase();
+}
+function deviceModeLabel(type) {
+  if (!type) return "Shared (default)";
+  if (/exclusive/i.test(type)) return "Exclusive";
+  if (/low latency/i.test(type)) return "Low Latency";
+  if (/^windows audio$/i.test(type)) return "Shared (default)";
+  return type;
 }
 
+// Unified audio device setup. One "mode" (JUCE device type) drives BOTH the input
+// and output endpoints so they can never end up on conflicting device types — the
+// root cause of the Exclusive-mode howling bug (an exclusive input hijacked the
+// shared output onto the wrong default device). In Exclusive Mode only interfaces
+// exposing BOTH an input and output endpoint are offered, and choosing one endpoint
+// auto-selects its partner on the same interface. DirectSound is hidden. Choices
+// are applied atomically via DAW.applyDeviceSetup (bridge persists + re-applies).
 function DeviceSetupSection() {
   const [devices, setDevices] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState(() => (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {
-    type: "", name: "", channel: 0, stereo: false, sampleRate: 0, bufferSize: 0,
-  });
+  const savedIn = (DAW.getSavedAudioInput && DAW.getSavedAudioInput()) || {};
+  const savedOut = (DAW.getSavedAudioDevice && DAW.getSavedAudioDevice()) || {};
+  const [mode, setMode] = useState(savedIn.type || (savedOut && savedOut.type) || "");
+  const [input, setInput] = useState(savedIn.name || "");
+  const [output, setOutput] = useState((savedOut && savedOut.name) || "");
+  const [sampleRate, setSampleRate] = useState(savedIn.sampleRate || 0);
+  const [bufferSize, setBufferSize] = useState(savedIn.bufferSize || 0);
+  const [error, setError] = useState("");
+
+  const isNative = !!DAW.isNative;
   const refresh = async () => {
+    if (!DAW.requestAudioDevices) { setLoading(false); return; }
     setLoading(true);
-    setDevices(DAW.requestAudioDevices ? await DAW.requestAudioDevices() : null);
+    setDevices(await DAW.requestAudioDevices());
     setLoading(false);
   };
   useEffect(() => { refresh(); }, []);
-  const types = ((devices && devices.types) || []).filter((t) =>
-    !/directsound/i.test(t.type) && (t.inputDevices || []).length
-  );
-  const value = settings.name ? JSON.stringify([settings.type || "", settings.name]) : "";
-  const apply = (patch) => {
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    if (DAW.setAudioInput) DAW.setAudioInput(next).catch((e) => console.warn("[AudioInput] settings apply failed:", e));
+
+  const types = ((devices && devices.types) || []).filter((t) => !/directsound/i.test(t.type));
+  const current = devices && devices.current;
+  const activeMode = mode || (types[0] ? types[0].type : "");
+  const exclusive = /exclusive/i.test(activeMode);
+  const entry = types.find((t) => t.type === activeMode) || { devices: [], inputDevices: [] };
+
+  const outByKey = {}; (entry.devices || []).forEach((n) => { outByKey[deviceInterfaceKey(n)] = n; });
+  const inByKey = {}; (entry.inputDevices || []).forEach((n) => { inByKey[deviceInterfaceKey(n)] = n; });
+  const inputList = exclusive ? (entry.inputDevices || []).filter((n) => outByKey[deviceInterfaceKey(n)]) : (entry.inputDevices || []);
+  const outputList = exclusive ? (entry.devices || []).filter((n) => inByKey[deviceInterfaceKey(n)]) : (entry.devices || []);
+
+  const commit = (m, inName, outName, sr, buf) => {
+    setMode(m); setInput(inName); setOutput(outName); setSampleRate(sr); setBufferSize(buf);
+    setError("");
+    if (DAW.applyDeviceSetup)
+      DAW.applyDeviceSetup({ type: m, inputName: inName, outputName: outName, sampleRate: sr, bufferSize: buf })
+        .catch((e) => setError((e && e.message) || String(e) || "Audio device could not be opened."));
+    setTimeout(refresh, 800);
   };
+  const onMode = (t) => {
+    const e2 = types.find((x) => x.type === t) || { devices: [], inputDevices: [] };
+    let nIn = "", nOut = "";
+    if (/exclusive/i.test(t)) {
+      // Exclusive requires a full-duplex interface — default to the first one that
+      // has both an input and output endpoint, and pair them.
+      const oByKey = {}; (e2.devices || []).forEach((n) => { oByKey[deviceInterfaceKey(n)] = n; });
+      nIn = (e2.inputDevices || []).find((n) => oByKey[deviceInterfaceKey(n)]) || "";
+      nOut = nIn ? oByKey[deviceInterfaceKey(nIn)] : "";
+    }
+    commit(t, nIn, nOut, sampleRate, bufferSize);
+  };
+  const onInput = (name) => commit(activeMode, name, exclusive ? (outByKey[deviceInterfaceKey(name)] || "") : output, sampleRate, bufferSize);
+  const onOutput = (name) => commit(activeMode, exclusive ? (inByKey[deviceInterfaceKey(name)] || "") : input, name, sampleRate, bufferSize);
+
+  const selStyle = { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" };
+  const inputMissing = input && !inputList.includes(input);
+  const outputMissing = output && !outputList.includes(output);
+
   return (
     <section id="settings-device-setup" style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22, scrollMarginTop: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>■ Audio Input Device</div>
-      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 12 }}>Choose the audio interface used by Audio In tracks. Input ports are selected on each Audio In track.</div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(190px, 1fr) 105px 110px", gap: 10 }}>
-        <label style={{ fontSize: 11, color: "var(--dim)" }}>Audio Input
-          <select value={value} disabled={!DAW.isNative || loading} onChange={(e) => {
-            const [type, name] = e.target.value ? JSON.parse(e.target.value) : ["", ""];
-            apply({ type, name });
-          }} style={{ display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" }}>
-            <option value="">System Default Input</option>
-            {types.map((t) => <optgroup key={t.type} label={t.type}>
-              {t.inputDevices.map((name) => <option key={t.type + name} value={JSON.stringify([t.type, name])}>{name}</option>)}
-            </optgroup>)}
+      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 }}>■ Audio Devices</div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 12 }}>Pick a driver mode, then the input and output device. In Exclusive Mode the input and output stay on the same interface. Input ports are chosen on each Audio In track.</div>
+
+      {/* driver mode */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+        {types.map((t) => {
+          const active = t.type === activeMode;
+          return (
+            <button key={t.type} type="button" disabled={!isNative || loading} onClick={() => onMode(t.type)} title={t.type}
+              style={{ height: 30, padding: "0 12px", borderRadius: 7, fontSize: 12, fontWeight: active ? 700 : 500,
+                background: active ? "var(--surface3)" : "var(--surface)", color: active ? "var(--cream)" : "var(--muted)",
+                border: "1px solid " + (active ? "var(--amber)" : "var(--line-strong)"), cursor: isNative ? "pointer" : "default" }}>
+              {deviceModeLabel(t.type)}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(170px,1fr) minmax(170px,1fr) 96px 92px", gap: 10, marginTop: 10 }}>
+        <label style={{ fontSize: 11, color: "var(--dim)" }}>Input Device
+          <select value={input} disabled={!isNative || loading} onChange={(e) => onInput(e.target.value)} style={selStyle}>
+            {!exclusive && <option value="">System Default Input</option>}
+            {exclusive && !inputList.length && <option value="">No full-duplex device</option>}
+            {inputMissing && <option value={input}>{input + " (not found)"}</option>}
+            {inputList.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 11, color: "var(--dim)" }}>Output Device
+          <select value={output} disabled={!isNative || loading || exclusive} onChange={(e) => onOutput(e.target.value)} style={{ ...selStyle, opacity: exclusive ? 0.7 : 1 }}>
+            {!exclusive && <option value="">System Default</option>}
+            {outputMissing && <option value={output}>{output + " (not found)"}</option>}
+            {outputList.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
         <label style={{ fontSize: 11, color: "var(--dim)" }}>Sample Rate
-          <select value={settings.sampleRate || 0} onChange={(e) => apply({ sampleRate: +e.target.value })}
-            style={{ display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7 }}>
+          <select value={sampleRate || 0} disabled={!isNative || loading} onChange={(e) => commit(activeMode, input, output, +e.target.value, bufferSize)} style={selStyle}>
             <option value="0">Default</option><option value="44100">44.1 kHz</option><option value="48000">48 kHz</option><option value="96000">96 kHz</option>
           </select>
         </label>
         <label style={{ fontSize: 11, color: "var(--dim)" }}>Buffer
-          <select value={settings.bufferSize || 0} onChange={(e) => apply({ bufferSize: +e.target.value })}
-            style={{ display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7 }}>
-            <option value="0">Device Default</option><option value="64">64 samples</option><option value="128">128 samples</option><option value="256">256 samples</option><option value="512">512 samples</option>
+          <select value={bufferSize || 0} disabled={!isNative || loading} onChange={(e) => commit(activeMode, input, output, sampleRate, +e.target.value)} style={selStyle}>
+            <option value="0">Default</option><option value="64">64</option><option value="128">128</option><option value="256">256</option><option value="512">512</option>
           </select>
         </label>
       </div>
-      {!DAW.isNative && <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--red)" }}>Native audio engine not connected — recording is unavailable.</div>}
+
+      {exclusive && <div style={{ marginTop: 8, fontSize: 11, color: "var(--dim)" }}>Exclusive Mode uses one interface for input and output; the output follows the input automatically. Only devices exposing both are listed.</div>}
+
+      {error && <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 7, background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)", fontSize: 11.5 }}>
+        {error} — your previous device was kept. Try a different mode, sample rate, or device.
+      </div>}
+
+      {current && <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 10 }}>
+        Active: in {current.inputName || "(none)"} · out {current.name || "(system default)"} · {current.type} · {Math.round(current.sampleRate || 0)} Hz / {current.bufferSize || 0} samples
+      </div>}
+      <div style={{ marginTop: 8 }}>
+        <button className="btn" onClick={refresh} disabled={!isNative || loading} style={{ height: 30, fontSize: 12, padding: "0 12px", border: "1px solid var(--line-strong)", display: "inline-flex", alignItems: "center", gap: 7 }}>
+          {loading && <span aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--line-strong)", borderTopColor: "var(--cream)", animation: "spin 0.7s linear infinite" }} />}
+          {loading ? "Scanning" : "Rescan"}
+        </button>
+      </div>
+
+      {/* driver-mode guide */}
+      <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+          <thead><tr style={{ background: "var(--bg)", color: "var(--dim)", textAlign: "left" }}>
+            {["Mode", "Latency", "Other apps", "Notes"].map((h) => <th key={h} style={{ padding: "7px 10px", fontWeight: 600, borderBottom: "1px solid var(--line)" }}>{h}</th>)}
+          </tr></thead>
+          <tbody style={{ color: "var(--muted)" }}>
+            {[
+              ["Exclusive", "Lowest (a few ms)", "Muted", "Takes over one device for in+out; app sets the sample rate"],
+              ["Low Latency", "Low (~3–10 ms)", "Audible", "Windows 10+; actual latency depends on the driver"],
+              ["Shared (default)", "Normal (10–30 ms)", "Audible", "Most stable — recommended for everyday use"],
+            ].map((row, i) => <tr key={i} style={{ borderBottom: i < 2 ? "1px solid var(--line)" : "none" }}>
+              {row.map((cell, j) => <td key={j} style={{ padding: "7px 10px", verticalAlign: "top", color: j === 0 ? "var(--cream)" : undefined, fontWeight: j === 0 ? 600 : 400 }}>{cell}</td>)}
+            </tr>)}
+          </tbody>
+        </table>
+        <div style={{ padding: "7px 10px", fontSize: 11, color: "var(--dim)", borderTop: "1px solid var(--line)", background: "var(--bg)" }}>Lower latency trades away stability — if you hear dropouts or crackles, switch back to Shared.</div>
+      </div>
+
+      {!isNative && <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--red)" }}>Native audio engine not connected — recording is unavailable.</div>}
     </section>
   );
 }
@@ -1001,8 +1013,7 @@ function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", on
   const sections = [
     { id: "settings-color-theme", label: "Color Theme" },
     { id: "settings-mixer-console", label: "Mixer Console Window" },
-    { id: "settings-device-setup", label: "Audio Input Device" },
-    { id: "settings-audio-output", label: "Audio Output Device" },
+    { id: "settings-device-setup", label: "Audio Devices" },
   ];
   const [activeSection, setActiveSection] = useState(sections[0].id);
   const contentRef = useRef(null);
@@ -1119,10 +1130,6 @@ function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", on
             </section>
 
             <DeviceSetupSection />
-
-            <div id="settings-audio-output" style={{ scrollMarginTop: 20 }}>
-              <AudioDeviceSection />
-            </div>
           </div>
         </div>
 

@@ -331,7 +331,11 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
       </div>
       <div style={{ display: "flex", gap: 5 }}>
         <SoloBtn on={p.solo} disabled={noAudio} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("solo", !p.solo); }} />
-        <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("mute", !p.mute); }} />
+        <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} size={22} onClick={(e) => {
+          onBeforeChange && onBeforeChange();
+          if (e && e.shiftKey && track.kind === "file" && DAW.muteAllFileTracks) DAW.muteAllFileTracks(!p.mute);
+          else onParam("mute", !p.mute);
+        }} />
       </div>
       <Knob value={p.pan} min={-1} max={1} size={26} color="var(--pan-arc, var(--cream-2))" label="PAN"
         onBeforeChange={onBeforeChange}

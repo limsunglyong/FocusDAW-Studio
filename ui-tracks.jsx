@@ -274,10 +274,23 @@ function AutomationOverlay({ track, pxPerSec, height, onBeforeChange }) {
 }
 
 /* ---------- track header ---------- */
-function ScrollingTrackTitle({ name, compact }) {
+function ScrollingTrackTitle({ name, compact, onRename }) {
   const wrapRef = useRef(null);
   const textRef = useRef(null);
+  const inputRef = useRef(null);
   const [marquee, setMarquee] = useState({ distance: 0, duration: 6 });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+
+  const startEdit = () => { if (!onRename) return; setDraft(name); setEditing(true); };
+  const commitEdit = () => {
+    setEditing(false);
+    const v = (draft || "").trim();
+    if (v && v !== name && onRename) onRename(v);
+  };
+  useEffect(() => {
+    if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); }
+  }, [editing]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -316,17 +329,39 @@ function ScrollingTrackTitle({ name, compact }) {
       if (ro) ro.disconnect();
       else window.removeEventListener("resize", measure);
     };
-  }, [name, compact]);
+  }, [name, compact, editing]);
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commitEdit}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+          else if (e.key === "Escape") { e.preventDefault(); setEditing(false); }
+        }}
+        style={{
+          width: "100%", minWidth: 0, fontWeight: 600, fontSize: compact ? 12.5 : 13.5,
+          color: "var(--cream)", background: "var(--bg)", border: "1px solid var(--amber)",
+          borderRadius: 4, padding: "1px 5px", outline: "none",
+        }} />
+    );
+  }
 
   return (
     <span
       ref={wrapRef}
       className={"track-title-marquee" + (marquee.distance > 0 ? " is-overflowing" : "")}
-      title={name}
+      title={onRename ? "Double-click to rename" : name}
+      onDoubleClick={onRename ? (e) => { e.stopPropagation(); startEdit(); } : undefined}
       tabIndex={marquee.distance > 0 ? 0 : undefined}
       style={{
         fontWeight: 600,
         fontSize: compact ? 12.5 : 13.5,
+        cursor: onRename ? "text" : undefined,
         "--marquee-distance": marquee.distance + "px",
         "--marquee-duration": marquee.duration + "s",
       }}>
@@ -362,6 +397,30 @@ const TRACK_AUDIO_INPUT_PORT_OPTIONS = [
   { label: "Input 2", channel: 1, stereo: false },
   { label: "Input 1-2", channel: 0, stereo: true },
 ];
+// Build the per-track input-port list from the interface's real input channels
+// (reported by the native engine). Each channel gets a mono port; consecutive
+// channels also get a stereo pair. Falls back to the static list when the device
+// hasn't been opened yet (no channel names known).
+function buildInputPortOptions(channelNames) {
+  const names = Array.isArray(channelNames) ? channelNames : [];
+  const n = names.length;
+  if (n < 1) return TRACK_AUDIO_INPUT_PORT_OPTIONS;
+  // WASAPI reports generic per-channel names like "Input channel 1"; show a clean
+  // "Input N" instead. A real device-provided name (e.g. ASIO "Analogue 1") is
+  // kept as-is so multichannel/ASIO interfaces read meaningfully.
+  const label = (i) => {
+    const raw = names[i] && String(names[i]).trim();
+    return raw && !/^input channel \d+$/i.test(raw) ? raw : `Input ${i + 1}`;
+  };
+  const isGeneric = (i) => /^Input \d+$/.test(label(i));
+  const opts = [];
+  for (let i = 0; i < n; i++) opts.push({ label: label(i), channel: i, stereo: false });
+  for (let i = 0; i + 1 < n; i += 2) {
+    const pair = isGeneric(i) && isGeneric(i + 1) ? `Input ${i + 1}-${i + 2}` : `${label(i)} + ${label(i + 1)}`;
+    opts.push({ label: pair, channel: i, stereo: true });
+  }
+  return opts;
+}
 const INPUT_GAIN_SLIDER_WIDTH = 69;
 const INPUT_GAIN_THUMB_SIZE = 13;
 const INPUT_GAIN_MIN = 0.1;
@@ -373,12 +432,13 @@ function inputGainTickLeft(value) {
   return pad + norm * (INPUT_GAIN_SLIDER_WIDTH - INPUT_GAIN_THUMB_SIZE);
 }
 
-function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0 }) {
+function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
   const p = track.params;
   const inputGainValue = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
   const inputStereo = !!p.inputStereo;
   const inputPortValue = `${inputStereo ? "stereo" : "mono"}:${inputChannel}`;
+  const inputPortOptions = buildInputPortOptions(DAW.getInputChannelNames ? DAW.getInputChannelNames() : []);
   const commitInputPort = (value) => {
     const [mode, ch] = String(value || "mono:0").split(":");
     onParam("inputChannel", Math.max(0, Number(ch) || 0));
@@ -439,10 +499,13 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
       <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 }}>
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
-        <ScrollingTrackTitle name={track.name} compact={compact} />
+        <ScrollingTrackTitle name={track.name} compact={compact} onRename={onRename ? (newName) => onRename(track.id, newName) : undefined} />
         {track.kind !== "audioIn" && <button title={noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection"} disabled={noAudio} onClick={noAudio ? undefined : () => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>}
         <SoloBtn size={buttonSize} on={p.solo} disabled={noAudio} onClick={() => onParam("solo", !p.solo)} />
-        <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} onClick={() => onParam("mute", !p.mute)} />
+        <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} onClick={(e) => {
+          if (e && e.shiftKey && track.kind === "file" && onMuteAllFiles) onMuteAllFiles(!p.mute);
+          else onParam("mute", !p.mute);
+        }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 }}>
         {/* horizontal volume fader */}
@@ -482,7 +545,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
               background: "var(--audio-input-port-bg, var(--surface2))",
               color: "var(--audio-input-port-fg, var(--cream-2))", border: "1px solid var(--line-strong)",
               fontSize: 9.5, fontWeight: 650, outline: "none" }}>
-            {TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => (
+            {inputPortOptions.map((opt) => (
               <option key={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`} value={`${opt.stereo ? "stereo" : "mono"}:${opt.channel}`}
                 style={{ background: "var(--bg)", color: "var(--cream)" }}>
                 {opt.label}
@@ -627,7 +690,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -667,7 +730,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
 
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
-      <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} />
+      <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} onMuteAllFiles={onMuteAllFiles} onRename={onRename} />
       <div onMouseDown={(e) => { if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
           background: track.kind === "audioIn"

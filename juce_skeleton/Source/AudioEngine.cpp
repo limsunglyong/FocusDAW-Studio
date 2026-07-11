@@ -30,6 +30,7 @@ bool InputRecorder::start(const juce::File& file, double sr, int inputChannel, b
         currentInputGain = clampedGain;
         monitoring = monitor;
         limiterOn = limiter;
+        recordingSampleRate.store(sr > 0 ? sr : 44100.0);
         samplesWritten = 0;
         level = 0.0f;
         peakRead = 0;
@@ -110,6 +111,7 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
     // gain drives it. The previous `tanh(x*1.18)/tanh(1.18)*c` form added a
     // ~+2.1 dB low-level boost and overshot the ceiling to +0.65 dBFS.
     const float ceiling = 0.89125f; // 10^(-1/20) = -1.0 dBFS
+    const bool monoInput = selectedChannelCount == 1;
     for (int ch = 0; ch < selectedChannelCount; ++ch)
     {
         block.copyFrom(ch, 0, sourceForOutput(ch), numSamples);
@@ -123,8 +125,21 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
             peak = juce::jmax(peak, std::abs(data[i]));
             blockMin = juce::jmin(blockMin, data[i]);
             blockMax = juce::jmax(blockMax, data[i]);
-            if (monitoring && output != nullptr && ch < numOutputs && output[ch] != nullptr)
-                output[ch][i] += data[i];
+            if (monitoring && output != nullptr)
+            {
+                if (monoInput)
+                {
+                    // Mono take → feed EVERY output channel so the monitor is
+                    // centered, not stuck on the left (matches the dual-mono
+                    // playback of finished mono takes).
+                    for (int oc = 0; oc < numOutputs; ++oc)
+                        if (output[oc] != nullptr) output[oc][i] += data[i];
+                }
+                else if (ch < numOutputs && output[ch] != nullptr)
+                {
+                    output[ch][i] += data[i];
+                }
+            }
         }
     }
     currentInputGain = targetInputGain;
@@ -1760,24 +1775,47 @@ std::string AudioEngine::getAudioDevicesJson()
         juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager.getAudioDeviceSetup();
         double sr = 0.0;
         int buf = 0;
+        juce::StringArray inChNames;
         if (auto* dev = deviceManager.getCurrentAudioDevice())
         {
             sr = dev->getCurrentSampleRate();
             buf = dev->getCurrentBufferSizeSamples();
+            // Real input channel names of the open device (e.g. "Analogue 1",
+            // "Analogue 2" on a Focusrite) so the per-track port dropdown can be
+            // built from the actual interface instead of a fixed Input 1/2/1-2 list.
+            inChNames = dev->getInputChannelNames();
         }
         json << "{\"event\":\"audioDevices\",\"current\":{"
              << "\"type\":\"" << jsonEscapeString(deviceManager.getCurrentAudioDeviceType().toStdString()) << "\","
              << "\"name\":\"" << jsonEscapeString(setup.outputDeviceName.toStdString()) << "\","
              << "\"inputName\":\"" << jsonEscapeString(setup.inputDeviceName.toStdString()) << "\","
+             << "\"inputChannelNames\":[";
+        for (int c = 0; c < inChNames.size(); ++c)
+        {
+            json << "\"" << jsonEscapeString(inChNames[c].toStdString()) << "\"";
+            if (c + 1 < inChNames.size()) json << ",";
+        }
+        json << "],"
              << "\"sampleRate\":" << sr << ",\"bufferSize\":" << buf << "},\"types\":[";
 
         const auto& types = deviceManager.getAvailableDeviceTypes();
         for (int i = 0; i < types.size(); ++i)
         {
             auto* type = types.getUnchecked(i);
-            type->scanForDevices();
-            juce::StringArray names = type->getDeviceNames(false); // output devices
-            juce::StringArray inputNames = type->getDeviceNames(true);
+            juce::StringArray names, inputNames;
+            try
+            {
+                type->scanForDevices();
+                names = type->getDeviceNames(false);   // output devices
+                inputNames = type->getDeviceNames(true);
+            }
+            catch (...)
+            {
+                // A wedged device type (e.g. an Exclusive endpoint left half-open
+                // by a failed open) must not abort enumeration of every other type.
+                // Emit it with empty lists and keep going so the user still sees
+                // and can pick a working mode/device.
+            }
             json << "{\"type\":\"" << jsonEscapeString(type->getTypeName().toStdString()) << "\",\"devices\":[";
             for (int d = 0; d < names.size(); ++d)
             {
@@ -1853,10 +1891,11 @@ std::string AudioEngine::setAudioDevice(const std::string& typeName, const std::
 }
 
 std::string AudioEngine::setAudioInput(const std::string& typeName, const std::string& deviceName,
+                                       const std::string& outputName,
                                        int channel, bool stereo, double requestedSampleRate, int requestedBufferSize)
 {
 #if USE_JUCE
-    return runOnMessageThread([this, typeName, deviceName, channel, stereo, requestedSampleRate, requestedBufferSize]() -> std::string
+    return runOnMessageThread([this, typeName, deviceName, outputName, channel, stereo, requestedSampleRate, requestedBufferSize]() -> std::string
     {
         const auto& types = deviceManager.getAvailableDeviceTypes();
         if (types.isEmpty()) return "no audio device types available";
@@ -1872,6 +1911,25 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
             ? (names.isEmpty() ? juce::String() : names[juce::jlimit(0, names.size() - 1, typeObj->getDefaultDeviceIndex(true))])
             : juce::String::fromUTF8(deviceName.c_str());
         if (wantedName.isNotEmpty() && !names.contains(wantedName)) return "unknown input device: " + deviceName;
+
+        // Resolve the output endpoint for the SAME setup so a device-type switch
+        // (e.g. into Exclusive Mode) cannot leave the output on a stale default
+        // (the old bug: picking an Exclusive input reopened output on the wrong
+        // device and howled). Empty outputName preserves the existing output.
+        juce::String wantedOutput;
+        if (!outputName.empty())
+        {
+            wantedOutput = juce::String::fromUTF8(outputName.c_str());
+            auto outNames = typeObj->getDeviceNames(false);
+            if (!outNames.contains(wantedOutput)) return "unknown output device: " + outputName;
+        }
+
+        // Snapshot the working device so a failed open (Exclusive Mode is picky
+        // about sample rate / buffer / channels) can be rolled back instead of
+        // leaving the app with no audio at all.
+        const juce::String prevType = deviceManager.getCurrentAudioDeviceType();
+        const auto prevSetup = deviceManager.getAudioDeviceSetup();
+
         if (deviceManager.getCurrentAudioDeviceType() != wantedType)
             deviceManager.setCurrentAudioDeviceType(wantedType, true);
         auto setup = deviceManager.getAudioDeviceSetup();
@@ -1880,6 +1938,11 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
         setup.inputChannels.clear();
         setup.inputChannels.setBit(juce::jmax(0, channel));
         if (stereo) setup.inputChannels.setBit(juce::jmax(0, channel) + 1);
+        if (wantedOutput.isNotEmpty())
+        {
+            setup.outputDeviceName = wantedOutput;
+            setup.useDefaultOutputChannels = true;
+        }
         if (requestedSampleRate > 0) setup.sampleRate = requestedSampleRate;
         if (requestedBufferSize > 0) setup.bufferSize = requestedBufferSize;
 
@@ -1892,29 +1955,70 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
             const auto activeSetup = deviceManager.getAudioDeviceSetup();
             const bool sameType = deviceManager.getCurrentAudioDeviceType() == wantedType;
             const bool sameDevice = activeSetup.inputDeviceName == wantedName;
+            const bool sameOutput = wantedOutput.isEmpty() || activeSetup.outputDeviceName == wantedOutput;
             const bool sameChannels = activeSetup.inputChannels == setup.inputChannels;
             const bool sameRate = requestedSampleRate <= 0
                 || std::abs(active->getCurrentSampleRate() - requestedSampleRate) < 0.5;
             const bool sameBuffer = requestedBufferSize <= 0
                 || active->getCurrentBufferSizeSamples() == requestedBufferSize;
-            if (sameType && sameDevice && sameChannels && sameRate && sameBuffer
+            if (sameType && sameDevice && sameOutput && sameChannels && sameRate && sameBuffer
                 && active->getActiveInputChannels().countNumberOfSetBits() > 0)
             {
+                // Keep the cached engine rate in sync with the live device so
+                // status/peak consumers never read a stale (init-output) rate.
+                {
+                    std::lock_guard<std::mutex> lock(engineMutex);
+                    sampleRate = active->getCurrentSampleRate();
+                }
                 inputRecorder.configureInput(channel, stereo);
                 return {};
             }
         }
 
-        auto err = deviceManager.setAudioDeviceSetup(setup, true);
-        if (err.isNotEmpty()) return err.toStdString();
+        // Exclusive Mode rejects a setup whose sample rate / buffer size the device
+        // does not natively support (a rate carried over from the shared driver, or
+        // a user-picked one), and can reject a specific input-channel mask. Try the
+        // requested setup, then progressively relax rate/buffer, then channels.
+        juce::String err = deviceManager.setAudioDeviceSetup(setup, true);
+        if (err.isNotEmpty())
+        {
+            auto relaxed = setup;
+            relaxed.sampleRate = 0; // 0 = let the device pick a supported rate
+            relaxed.bufferSize = 0;
+            err = deviceManager.setAudioDeviceSetup(relaxed, true);
+            if (err.isNotEmpty())
+            {
+                relaxed.useDefaultInputChannels = true;
+                relaxed.inputChannels.clear();
+                err = deviceManager.setAudioDeviceSetup(relaxed, true);
+            }
+        }
         auto* active = deviceManager.getCurrentAudioDevice();
-        if (!active || active->getActiveInputChannels().countNumberOfSetBits() == 0)
-            return "The selected input device opened without an active channel.";
+        const bool haveInput = active != nullptr
+            && active->getActiveInputChannels().countNumberOfSetBits() > 0;
+        if (err.isNotEmpty() || !haveInput)
+        {
+            // Roll back to the previously working device so playback/recording is
+            // not left dead, and surface the real reason for the UI.
+            if (deviceManager.getCurrentAudioDeviceType() != prevType)
+                deviceManager.setCurrentAudioDeviceType(prevType, true);
+            deviceManager.setAudioDeviceSetup(prevSetup, true);
+            const std::string reason = err.isNotEmpty()
+                ? err.toStdString()
+                : std::string("the device opened without an active input channel");
+            LOG_DBG << "[AudioEngine] setAudioInput failed (" << wantedType.toStdString()
+                    << "): " << reason << " — restored previous device" << std::endl;
+            return "Could not open " + wantedType.toStdString() + " device: " + reason;
+        }
+        {
+            std::lock_guard<std::mutex> lock(engineMutex);
+            sampleRate = active->getCurrentSampleRate();
+        }
         inputRecorder.configureInput(channel, stereo);
         return {};
     }, "input device switch timed out");
 #else
-    (void)typeName; (void)deviceName; (void)channel; (void)stereo; (void)requestedSampleRate; (void)requestedBufferSize;
+    (void)typeName; (void)deviceName; (void)outputName; (void)channel; (void)stereo; (void)requestedSampleRate; (void)requestedBufferSize;
     return "native engine not available";
 #endif
 }
@@ -1931,7 +2035,7 @@ std::string AudioEngine::startRecording(const std::string& filePath, int channel
         // available even when Windows has no default recording endpoint. If the
         // user leaves Device Setup on "System Default Input", lazily open that
         // input on the first Record press.
-        const auto inputErr = setAudioInput("", "", channel, stereo, 0.0, 0);
+        const auto inputErr = setAudioInput("", "", "", channel, stereo, 0.0, 0);
         if (!inputErr.empty()) return inputErr;
         dev = deviceManager.getCurrentAudioDevice();
     }
@@ -2006,6 +2110,18 @@ std::vector<InputRecorder::PeakPoint> AudioEngine::drainRecordingPeaks()
     return inputRecorder.drainPeaks();
 #else
     return {};
+#endif
+}
+
+double AudioEngine::getRecordingSampleRate() const
+{
+#if USE_JUCE
+    // The recorder captures the rate the WAV is actually written at when a take
+    // starts. Fall back to the cached engine rate when idle.
+    const double recSr = inputRecorder.getRecordingSampleRate();
+    return recSr > 0 ? recSr : sampleRate;
+#else
+    return sampleRate;
 #endif
 }
 

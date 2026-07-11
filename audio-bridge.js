@@ -44,6 +44,15 @@
   function loadSavedAudioDevice() {
     try { return JSON.parse(localStorage.getItem(AUDIO_DEVICE_KEY) || "null"); } catch (e) { return null; }
   }
+  // Called when the saved audio device fails to open on launch (e.g. an Exclusive
+  // device that can't do Exclusive). Clearing it prevents the broken selection
+  // from being re-applied on the next launch, where it could block the whole
+  // device-list enumeration (symptom: no devices in any mode).
+  function resetSavedAudioDeviceOnLaunchFailure(err) {
+    try { localStorage.removeItem(AUDIO_DEVICE_KEY); } catch (e) {}
+    try { localStorage.removeItem(AUDIO_INPUT_KEY); } catch (e) {}
+    console.warn("[AudioBridge] Saved audio device could not open on launch — reset to system default.", err || "");
+  }
 
   // Web → native output handover. On connect the native engine still has to
   // decode every synced track (async loadTrack), so the web engine keeps playing
@@ -242,6 +251,13 @@
       try { return JSON.parse(localStorage.getItem(AUDIO_INPUT_KEY) || "null"); } catch (e) { return null; }
     },
 
+    // Input channel names of the currently open device (from the last audioDevices
+    // event), so the per-track input port dropdown reflects the real interface.
+    getInputChannelNames() {
+      const cur = nativeState.audioDevices && nativeState.audioDevices.current;
+      return cur && Array.isArray(cur.inputChannelNames) ? cur.inputChannelNames : [];
+    },
+
     setAudioInput(settings) {
       const next = {
         type: settings && settings.type || "",
@@ -253,17 +269,70 @@
       };
       try { localStorage.setItem(AUDIO_INPUT_KEY, JSON.stringify(next)); } catch (e) {}
       if (!this.isNative) return Promise.resolve();
-      const key = JSON.stringify(next);
+      // Only an EXPLICIT outputName (from the Settings dialog via applyDeviceSetup)
+      // may change the output endpoint in the same setup call — that is what keeps
+      // an Exclusive-mode device switch atomic. Per-track arm/record must NOT pass
+      // an output, so the native side preserves the current output device. Auto-
+      // pairing the saved output here rerouted playback + monitoring off the device
+      // the user was listening on when arming, which made MON go silent.
+      const outputName = (settings && settings.outputName) || "";
+      const payload = { ...next, outputName };
+      const key = JSON.stringify(payload);
       if (nativeState.audioInputKey === key) return Promise.resolve();
       return new Promise((resolve, reject) => {
         let requestId = nativeState.audioInputPending[key];
         if (!requestId) {
           requestId = `input-${++nativeState.audioInputRequestSeq}`;
           nativeState.audioInputPending[key] = requestId;
-          sendToNative({ command: "setAudioInput", requestId, ...next });
+          sendToNative({ command: "setAudioInput", requestId, ...payload });
         }
         nativeState.audioInputResolvers.push({ requestId, key, resolve, reject, sentAt: performance.now() });
       });
+    },
+
+    // Unified device setup for the Settings dialog: one mode/type drives BOTH the
+    // input and output endpoint so they can never end up on conflicting device
+    // types (the root of the Exclusive-mode howling bug). Persists both choices
+    // and applies them atomically via setAudioInput's outputName pairing.
+    applyDeviceSetup(cfg) {
+      const type = (cfg && cfg.type) || "";
+      const inputName = (cfg && cfg.inputName) || "";
+      const outputName = (cfg && cfg.outputName) || "";
+      // Back up the current persisted selection so a failed open (e.g. a device
+      // that can't do Exclusive) does not leave a broken choice saved — that
+      // broken choice would be re-applied on the next launch and block device
+      // enumeration (no device list at all).
+      const prevDev = localStorage.getItem(AUDIO_DEVICE_KEY);
+      const prevInput = localStorage.getItem(AUDIO_INPUT_KEY);
+      const restorePrev = () => {
+        try {
+          if (prevDev == null) localStorage.removeItem(AUDIO_DEVICE_KEY); else localStorage.setItem(AUDIO_DEVICE_KEY, prevDev);
+          if (prevInput == null) localStorage.removeItem(AUDIO_INPUT_KEY); else localStorage.setItem(AUDIO_INPUT_KEY, prevInput);
+        } catch (e) {}
+      };
+      try {
+        if (!type && !outputName) localStorage.removeItem(AUDIO_DEVICE_KEY);
+        else localStorage.setItem(AUDIO_DEVICE_KEY, JSON.stringify({ type, name: outputName }));
+      } catch (e) {}
+      LocalDAW.setOutputDevice(outputName || "");
+      if (inputName) {
+        // Pass outputName explicitly so the input+output are applied atomically
+        // (keeps the Exclusive-mode switch from stranding the output on a stale
+        // default). Per-track arm/record does NOT pass outputName, so it leaves
+        // the output — and thus monitoring routing — untouched.
+        return this.setAudioInput({
+          type, name: inputName, outputName,
+          channel: Number(cfg && cfg.channel) || 0,
+          stereo: !!(cfg && cfg.stereo),
+          sampleRate: Number(cfg && cfg.sampleRate) || 0,
+          bufferSize: Number(cfg && cfg.bufferSize) || 0,
+        }).catch((e) => { restorePrev(); throw e; });
+      }
+      // No input chosen: set output only and drop any stale saved input so a
+      // reconnect does not grab an input device (esp. exclusively).
+      try { localStorage.removeItem(AUDIO_INPUT_KEY); } catch (e) {}
+      this.setAudioDevice(type, outputName);
+      return Promise.resolve();
     },
 
     getInputLevel() { return nativeState.inputLevel || 0; },
@@ -831,13 +900,24 @@
       // always boots on the system default; like tempo/key/master state it must be
       // re-pushed on every (re)connect.
       const savedDev = loadSavedAudioDevice();
-      if (savedDev && (savedDev.type || savedDev.name)) {
+      let savedInput = null;
+      try { savedInput = JSON.parse(localStorage.getItem(AUDIO_INPUT_KEY) || "null"); } catch (e) {}
+      if (savedInput && savedInput.name) {
+        // Apply input+output in ONE command so the type switch never leaves the
+        // output on a stale default (Exclusive-mode howling / wrong device). Pair
+        // the saved output only when it shares the input's mode/type.
+        const sameType = savedDev && (savedDev.type || "") === (savedInput.type || "");
+        const outputName = sameType ? (savedDev.name || "") : "";
+        // Self-heal: if this saved device can't be opened on launch (e.g. an
+        // Exclusive device that can't do Exclusive), reset it to the system
+        // default so it isn't re-applied — and left blocking enumeration — next
+        // launch. The result comes back on audioInputChanged.
+        nativeState.startupDeviceReapply = true;
+        sendToNative({ command: "setAudioInput", requestId: "startup-device", ...savedInput, outputName });
+      } else if (savedDev && (savedDev.type || savedDev.name)) {
+        nativeState.startupDeviceReapply = true;
         sendToNative({ command: "setAudioDevice", type: savedDev.type || "", name: savedDev.name || "" });
       }
-      try {
-        const savedInput = JSON.parse(localStorage.getItem(AUDIO_INPUT_KEY) || "null");
-        if (savedInput && savedInput.name) sendToNative({ command: "setAudioInput", ...savedInput });
-      } catch (e) {}
 
       // Sync current tempo & key settings (incl. keyShift — see syncTempoKeyToNative).
       syncTempoKeyToNative();
@@ -1044,9 +1124,17 @@
       nativeState.audioDeviceResolvers.splice(0).forEach((resolve) => resolve(msg));
       LocalDAW._emit();
     } else if (msg.event === "audioDeviceChanged") {
+      if (nativeState.startupDeviceReapply) {
+        nativeState.startupDeviceReapply = false;
+        if (!msg.ok) resetSavedAudioDeviceOnLaunchFailure(msg.error);
+      }
       if (!msg.ok) console.warn("[AudioBridge] Audio device change failed:", msg.error);
       LocalDAW._emit();
     } else if (msg.event === "audioInputChanged") {
+      if (msg.requestId === "startup-device" || nativeState.startupDeviceReapply) {
+        nativeState.startupDeviceReapply = false;
+        if (!msg.ok) resetSavedAudioDeviceOnLaunchFailure(msg.error);
+      }
       const requestId = msg.requestId || (nativeState.audioInputResolvers[0] && nativeState.audioInputResolvers[0].requestId);
       const matching = nativeState.audioInputResolvers.filter((entry) => entry.requestId === requestId);
       nativeState.audioInputResolvers = nativeState.audioInputResolvers.filter((entry) => entry.requestId !== requestId);

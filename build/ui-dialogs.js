@@ -826,10 +826,28 @@ function ThemeSwatch({ theme, active, onClick }) {
     background: t.bg
   } }, /* @__PURE__ */ React.createElement("div", { style: { height: 11, background: t.bg2, display: "flex", alignItems: "center", gap: 3, padding: "0 4px", borderBottom: `1px solid ${t.text}18` } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, height: 4, borderRadius: "50%", border: `1px solid ${t.accent}` } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 5, fontWeight: 700, color: t.accent, letterSpacing: ".06em" } }, "PROJECT"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 5, color: t.text2 } }, "Edit \xB7 View")), [["Drums", t.accent, "62%"], ["Bass", t.blue, "44%"], ["Lead", t.green, "55%"]].map(([name, col, fill]) => /* @__PURE__ */ React.createElement("div", { key: name, style: { display: "flex", alignItems: "center", gap: 3, padding: "3px 4px", borderBottom: `1px solid ${t.text}10` } }, /* @__PURE__ */ React.createElement("div", { style: { width: 2, height: 9, borderRadius: 2, background: col } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 6, fontWeight: 600, color: t.text, width: 17 } }, name), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 2, background: t.surface, borderRadius: 2, position: "relative" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 0, top: 0, height: "100%", width: fill, background: t.accent, borderRadius: 2 } })))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", height: 4 } }, [t.bg, t.surface, t.text, t.accent, t.green, t.red, t.blue].map((c, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { flex: 1, background: c } }))), /* @__PURE__ */ React.createElement("div", { style: { padding: "4px 5px", background: t.bg2 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 6, color: t.text2, lineHeight: 1.3 } }, t.desc))));
 }
-function AudioDeviceSection() {
+function deviceInterfaceKey(name) {
+  const m = /\(([^()]*)\)\s*$/.exec(name || "");
+  return (m ? m[1] : name || "").trim().toLowerCase();
+}
+function deviceModeLabel(type) {
+  if (!type) return "Shared (default)";
+  if (/exclusive/i.test(type)) return "Exclusive";
+  if (/low latency/i.test(type)) return "Low Latency";
+  if (/^windows audio$/i.test(type)) return "Shared (default)";
+  return type;
+}
+function DeviceSetupSection() {
   const [devices, setDevices] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(() => DAW.getSavedAudioDevice ? DAW.getSavedAudioDevice() : null);
+  const savedIn = DAW.getSavedAudioInput && DAW.getSavedAudioInput() || {};
+  const savedOut = DAW.getSavedAudioDevice && DAW.getSavedAudioDevice() || {};
+  const [mode, setMode] = useState(savedIn.type || savedOut && savedOut.type || "");
+  const [input, setInput] = useState(savedIn.name || "");
+  const [output, setOutput] = useState(savedOut && savedOut.name || "");
+  const [sampleRate, setSampleRate] = useState(savedIn.sampleRate || 0);
+  const [bufferSize, setBufferSize] = useState(savedIn.bufferSize || 0);
+  const [error, setError] = useState("");
   const isNative = !!DAW.isNative;
   const refresh = async () => {
     if (!DAW.requestAudioDevices) {
@@ -837,8 +855,7 @@ function AudioDeviceSection() {
       return;
     }
     setLoading(true);
-    const list = await DAW.requestAudioDevices();
-    setDevices(list);
+    setDevices(await DAW.requestAudioDevices());
     setLoading(false);
   };
   useEffect(() => {
@@ -846,103 +863,83 @@ function AudioDeviceSection() {
   }, []);
   const types = (devices && devices.types || []).filter((t) => !/directsound/i.test(t.type));
   const current = devices && devices.current;
-  const savedValue = saved && (saved.type || saved.name) ? JSON.stringify([saved.type || "", saved.name || ""]) : "";
-  const savedInList = !savedValue || types.some((t) => t.type === (saved.type || "") && (t.devices || []).includes(saved.name || ""));
-  const onChange = (e) => {
-    const v = e.target.value;
-    const [type, name] = v ? JSON.parse(v) : ["", ""];
-    setSaved(v ? { type, name } : null);
-    if (DAW.setAudioDevice) DAW.setAudioDevice(type, name);
+  const activeMode = mode || (types[0] ? types[0].type : "");
+  const exclusive = /exclusive/i.test(activeMode);
+  const entry = types.find((t) => t.type === activeMode) || { devices: [], inputDevices: [] };
+  const outByKey = {};
+  (entry.devices || []).forEach((n) => {
+    outByKey[deviceInterfaceKey(n)] = n;
+  });
+  const inByKey = {};
+  (entry.inputDevices || []).forEach((n) => {
+    inByKey[deviceInterfaceKey(n)] = n;
+  });
+  const inputList = exclusive ? (entry.inputDevices || []).filter((n) => outByKey[deviceInterfaceKey(n)]) : entry.inputDevices || [];
+  const outputList = exclusive ? (entry.devices || []).filter((n) => inByKey[deviceInterfaceKey(n)]) : entry.devices || [];
+  const commit = (m, inName, outName, sr, buf) => {
+    setMode(m);
+    setInput(inName);
+    setOutput(outName);
+    setSampleRate(sr);
+    setBufferSize(buf);
+    setError("");
+    if (DAW.applyDeviceSetup)
+      DAW.applyDeviceSetup({ type: m, inputName: inName, outputName: outName, sampleRate: sr, bufferSize: buf }).catch((e) => setError(e && e.message || String(e) || "Audio device could not be opened."));
     setTimeout(refresh, 800);
   };
-  return /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 } }, "\u25A0 Audio Output Device"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "8px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "var(--cream)" } }, "Output Device"), current && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--dim)", marginTop: 6 } }, "Active: ", current.name || "(system default)", " \xB7 ", current.type, " \xB7 ", Math.round(current.sampleRate || 0), " Hz / ", current.bufferSize || 0, " samples"), !isNative && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 6 } }, "Native audio engine not connected \u2014 the system default output is in use.")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(
-    "select",
-    {
-      value: savedValue,
-      onChange,
-      disabled: !isNative || loading,
-      style: { maxWidth: 300, height: 32, fontSize: 12.5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" }
-    },
-    /* @__PURE__ */ React.createElement("option", { value: "" }, "System Default"),
-    !savedInList && savedValue && /* @__PURE__ */ React.createElement("option", { value: savedValue }, (saved.name || "?") + " (saved \u2014 not found)"),
-    types.map((t) => /* @__PURE__ */ React.createElement("optgroup", { key: t.type, label: t.type }, (t.devices || []).map((name) => /* @__PURE__ */ React.createElement("option", { key: t.type + "|" + name, value: JSON.stringify([t.type, name]) }, name))))
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      className: "btn",
-      onClick: refresh,
-      disabled: !isNative || loading,
-      style: { height: 32, fontSize: 12.5, padding: "0 12px", border: "1px solid var(--line-strong)" }
-    },
-    loading ? "\u2026" : "Rescan"
-  ))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 11.5 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "var(--bg)", color: "var(--dim)", textAlign: "left" } }, ["Mode", "Path", "Latency", "Other apps", "Notes"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "7px 10px", fontWeight: 600, borderBottom: "1px solid var(--line)" } }, h)))), /* @__PURE__ */ React.createElement("tbody", { style: { color: "var(--muted)" } }, [
-    ["Windows Audio (Exclusive Mode)", "App \u2192 device directly", "Lowest (a few ms)", "Muted", "Takes over the device; the app sets the sample rate"],
-    ["Windows Audio (Low Latency Mode)", "App \u2192 Windows mixer (small buffer) \u2192 device", "Low (~3\u201310 ms)", "Audible", "Windows 10+; actual latency depends on the audio driver"],
-    ["Windows Audio", "App \u2192 Windows mixer \u2192 device", "Normal (10\u201330 ms)", "Audible", "Most stable \u2014 recommended for everyday use"]
-  ].map((row, i) => /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: i < 2 ? "1px solid var(--line)" : "none" } }, row.map((cell, j) => /* @__PURE__ */ React.createElement("td", { key: j, style: { padding: "7px 10px", verticalAlign: "top", color: j === 0 ? "var(--cream)" : void 0, fontWeight: j === 0 ? 600 : 400 } }, cell)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "7px 10px", fontSize: 11, color: "var(--dim)", borderTop: "1px solid var(--line)", background: "var(--bg)" } }, "Lower latency trades away stability \u2014 if you hear dropouts or crackles, switch back to Windows Audio (shared).")));
-}
-function DeviceSetupSection() {
-  const [devices, setDevices] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState(() => DAW.getSavedAudioInput && DAW.getSavedAudioInput() || {
-    type: "",
-    name: "",
-    channel: 0,
-    stereo: false,
-    sampleRate: 0,
-    bufferSize: 0
-  });
-  const refresh = async () => {
-    setLoading(true);
-    setDevices(DAW.requestAudioDevices ? await DAW.requestAudioDevices() : null);
-    setLoading(false);
+  const onMode = (t) => {
+    const e2 = types.find((x) => x.type === t) || { devices: [], inputDevices: [] };
+    let nIn = "", nOut = "";
+    if (/exclusive/i.test(t)) {
+      const oByKey = {};
+      (e2.devices || []).forEach((n) => {
+        oByKey[deviceInterfaceKey(n)] = n;
+      });
+      nIn = (e2.inputDevices || []).find((n) => oByKey[deviceInterfaceKey(n)]) || "";
+      nOut = nIn ? oByKey[deviceInterfaceKey(nIn)] : "";
+    }
+    commit(t, nIn, nOut, sampleRate, bufferSize);
   };
-  useEffect(() => {
-    refresh();
-  }, []);
-  const types = (devices && devices.types || []).filter(
-    (t) => !/directsound/i.test(t.type) && (t.inputDevices || []).length
-  );
-  const value = settings.name ? JSON.stringify([settings.type || "", settings.name]) : "";
-  const apply = (patch) => {
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    if (DAW.setAudioInput) DAW.setAudioInput(next).catch((e) => console.warn("[AudioInput] settings apply failed:", e));
-  };
-  return /* @__PURE__ */ React.createElement("section", { id: "settings-device-setup", style: { borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22, scrollMarginTop: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 } }, "\u25A0 Audio Input Device"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginBottom: 12 } }, "Choose the audio interface used by Audio In tracks. Input ports are selected on each Audio In track."), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "minmax(190px, 1fr) 105px 110px", gap: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Audio Input", /* @__PURE__ */ React.createElement("select", { value, disabled: !DAW.isNative || loading, onChange: (e) => {
-    const [type, name] = e.target.value ? JSON.parse(e.target.value) : ["", ""];
-    apply({ type, name });
-  }, style: { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" } }, /* @__PURE__ */ React.createElement("option", { value: "" }, "System Default Input"), types.map((t) => /* @__PURE__ */ React.createElement("optgroup", { key: t.type, label: t.type }, t.inputDevices.map((name) => /* @__PURE__ */ React.createElement("option", { key: t.type + name, value: JSON.stringify([t.type, name]) }, name)))))), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Sample Rate", /* @__PURE__ */ React.createElement(
-    "select",
-    {
-      value: settings.sampleRate || 0,
-      onChange: (e) => apply({ sampleRate: +e.target.value }),
-      style: { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7 }
-    },
-    /* @__PURE__ */ React.createElement("option", { value: "0" }, "Default"),
-    /* @__PURE__ */ React.createElement("option", { value: "44100" }, "44.1 kHz"),
-    /* @__PURE__ */ React.createElement("option", { value: "48000" }, "48 kHz"),
-    /* @__PURE__ */ React.createElement("option", { value: "96000" }, "96 kHz")
-  )), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Buffer", /* @__PURE__ */ React.createElement(
-    "select",
-    {
-      value: settings.bufferSize || 0,
-      onChange: (e) => apply({ bufferSize: +e.target.value }),
-      style: { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7 }
-    },
-    /* @__PURE__ */ React.createElement("option", { value: "0" }, "Device Default"),
-    /* @__PURE__ */ React.createElement("option", { value: "64" }, "64 samples"),
-    /* @__PURE__ */ React.createElement("option", { value: "128" }, "128 samples"),
-    /* @__PURE__ */ React.createElement("option", { value: "256" }, "256 samples"),
-    /* @__PURE__ */ React.createElement("option", { value: "512" }, "512 samples")
-  ))), !DAW.isNative && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontSize: 11.5, color: "var(--red)" } }, "Native audio engine not connected \u2014 recording is unavailable."));
+  const onInput = (name) => commit(activeMode, name, exclusive ? outByKey[deviceInterfaceKey(name)] || "" : output, sampleRate, bufferSize);
+  const onOutput = (name) => commit(activeMode, exclusive ? inByKey[deviceInterfaceKey(name)] || "" : input, name, sampleRate, bufferSize);
+  const selStyle = { display: "block", width: "100%", height: 32, marginTop: 5, background: "var(--bg)", color: "var(--cream)", border: "1px solid var(--line-strong)", borderRadius: 7, padding: "0 8px" };
+  const inputMissing = input && !inputList.includes(input);
+  const outputMissing = output && !outputList.includes(output);
+  return /* @__PURE__ */ React.createElement("section", { id: "settings-device-setup", style: { borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 22, scrollMarginTop: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".06em", color: "var(--dim)", textTransform: "uppercase", marginBottom: 10 } }, "\u25A0 Audio Devices"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--muted)", marginBottom: 12 } }, "Pick a driver mode, then the input and output device. In Exclusive Mode the input and output stay on the same interface. Input ports are chosen on each Audio In track."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 4 } }, types.map((t) => {
+    const active = t.type === activeMode;
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: t.type,
+        type: "button",
+        disabled: !isNative || loading,
+        onClick: () => onMode(t.type),
+        title: t.type,
+        style: {
+          height: 30,
+          padding: "0 12px",
+          borderRadius: 7,
+          fontSize: 12,
+          fontWeight: active ? 700 : 500,
+          background: active ? "var(--surface3)" : "var(--surface)",
+          color: active ? "var(--cream)" : "var(--muted)",
+          border: "1px solid " + (active ? "var(--amber)" : "var(--line-strong)"),
+          cursor: isNative ? "pointer" : "default"
+        }
+      },
+      deviceModeLabel(t.type)
+    );
+  })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "minmax(170px,1fr) minmax(170px,1fr) 96px 92px", gap: 10, marginTop: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Input Device", /* @__PURE__ */ React.createElement("select", { value: input, disabled: !isNative || loading, onChange: (e) => onInput(e.target.value), style: selStyle }, !exclusive && /* @__PURE__ */ React.createElement("option", { value: "" }, "System Default Input"), exclusive && !inputList.length && /* @__PURE__ */ React.createElement("option", { value: "" }, "No full-duplex device"), inputMissing && /* @__PURE__ */ React.createElement("option", { value: input }, input + " (not found)"), inputList.map((name) => /* @__PURE__ */ React.createElement("option", { key: name, value: name }, name)))), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Output Device", /* @__PURE__ */ React.createElement("select", { value: output, disabled: !isNative || loading || exclusive, onChange: (e) => onOutput(e.target.value), style: { ...selStyle, opacity: exclusive ? 0.7 : 1 } }, !exclusive && /* @__PURE__ */ React.createElement("option", { value: "" }, "System Default"), outputMissing && /* @__PURE__ */ React.createElement("option", { value: output }, output + " (not found)"), outputList.map((name) => /* @__PURE__ */ React.createElement("option", { key: name, value: name }, name)))), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Sample Rate", /* @__PURE__ */ React.createElement("select", { value: sampleRate || 0, disabled: !isNative || loading, onChange: (e) => commit(activeMode, input, output, +e.target.value, bufferSize), style: selStyle }, /* @__PURE__ */ React.createElement("option", { value: "0" }, "Default"), /* @__PURE__ */ React.createElement("option", { value: "44100" }, "44.1 kHz"), /* @__PURE__ */ React.createElement("option", { value: "48000" }, "48 kHz"), /* @__PURE__ */ React.createElement("option", { value: "96000" }, "96 kHz"))), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: "var(--dim)" } }, "Buffer", /* @__PURE__ */ React.createElement("select", { value: bufferSize || 0, disabled: !isNative || loading, onChange: (e) => commit(activeMode, input, output, sampleRate, +e.target.value), style: selStyle }, /* @__PURE__ */ React.createElement("option", { value: "0" }, "Default"), /* @__PURE__ */ React.createElement("option", { value: "64" }, "64"), /* @__PURE__ */ React.createElement("option", { value: "128" }, "128"), /* @__PURE__ */ React.createElement("option", { value: "256" }, "256"), /* @__PURE__ */ React.createElement("option", { value: "512" }, "512")))), exclusive && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, fontSize: 11, color: "var(--dim)" } }, "Exclusive Mode uses one interface for input and output; the output follows the input automatically. Only devices exposing both are listed."), error && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, padding: "8px 10px", borderRadius: 7, background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 45%, transparent)", color: "var(--red)", fontSize: 11.5 } }, error, " \u2014 your previous device was kept. Try a different mode, sample rate, or device."), current && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--dim)", marginTop: 10 } }, "Active: in ", current.inputName || "(none)", " \xB7 out ", current.name || "(system default)", " \xB7 ", current.type, " \xB7 ", Math.round(current.sampleRate || 0), " Hz / ", current.bufferSize || 0, " samples"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: refresh, disabled: !isNative || loading, style: { height: 30, fontSize: 12, padding: "0 12px", border: "1px solid var(--line-strong)", display: "inline-flex", alignItems: "center", gap: 7 } }, loading && /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true", style: { display: "inline-block", width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--line-strong)", borderTopColor: "var(--cream)", animation: "spin 0.7s linear infinite" } }), loading ? "Scanning" : "Rescan")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 11.5 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "var(--bg)", color: "var(--dim)", textAlign: "left" } }, ["Mode", "Latency", "Other apps", "Notes"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "7px 10px", fontWeight: 600, borderBottom: "1px solid var(--line)" } }, h)))), /* @__PURE__ */ React.createElement("tbody", { style: { color: "var(--muted)" } }, [
+    ["Exclusive", "Lowest (a few ms)", "Muted", "Takes over one device for in+out; app sets the sample rate"],
+    ["Low Latency", "Low (~3\u201310 ms)", "Audible", "Windows 10+; actual latency depends on the driver"],
+    ["Shared (default)", "Normal (10\u201330 ms)", "Audible", "Most stable \u2014 recommended for everyday use"]
+  ].map((row, i) => /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: i < 2 ? "1px solid var(--line)" : "none" } }, row.map((cell, j) => /* @__PURE__ */ React.createElement("td", { key: j, style: { padding: "7px 10px", verticalAlign: "top", color: j === 0 ? "var(--cream)" : void 0, fontWeight: j === 0 ? 600 : 400 } }, cell)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "7px 10px", fontSize: 11, color: "var(--dim)", borderTop: "1px solid var(--line)", background: "var(--bg)" } }, "Lower latency trades away stability \u2014 if you hear dropouts or crackles, switch back to Shared.")), !isNative && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontSize: 11.5, color: "var(--red)" } }, "Native audio engine not connected \u2014 recording is unavailable."));
 }
 function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", onMixerTextureChange, onClose }) {
   const sections = [
     { id: "settings-color-theme", label: "Color Theme" },
     { id: "settings-mixer-console", label: "Mixer Console Window" },
-    { id: "settings-device-setup", label: "Audio Input Device" },
-    { id: "settings-audio-output", label: "Audio Output Device" }
+    { id: "settings-device-setup", label: "Audio Devices" }
   ];
   const [activeSection, setActiveSection] = useState(sections[0].id);
   const contentRef = useRef(null);
@@ -1056,8 +1053,7 @@ function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", on
         }
         alert("Mixer window position and size have been reset.");
       }, style: { height: 32, fontSize: 12.5, padding: "0 14px", border: "1px solid var(--line-strong)" } }, "Reset Position"))),
-      /* @__PURE__ */ React.createElement(DeviceSetupSection, null),
-      /* @__PURE__ */ React.createElement("div", { id: "settings-audio-output", style: { scrollMarginTop: 20 } }, /* @__PURE__ */ React.createElement(AudioDeviceSection, null))
+      /* @__PURE__ */ React.createElement(DeviceSetupSection, null)
     )), /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 22px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { className: "btn primary", onClick: onClose }, "Done")))
   );
 }

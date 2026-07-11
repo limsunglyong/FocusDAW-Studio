@@ -48,6 +48,11 @@ public:
     bool isRecording() const { return recording.load(); }
     float getLevel() const { return level.load(); }
     juce::int64 getSamplesWritten() const { return samplesWritten.load(); }
+    // Sample rate the current take is actually being written at (== WAV header
+    // rate). The live recording peaks must be timed with THIS, not the cached
+    // engine sample rate, or the on-screen record bar drifts when the input
+    // device runs at a different rate than the output device.
+    double getRecordingSampleRate() const { return recordingSampleRate.load(); }
     std::vector<PeakPoint> drainPeaks();
 
     void audioDeviceIOCallbackWithContext(const float* const* input, int numInputs,
@@ -64,6 +69,7 @@ private:
     std::atomic<bool> recording { false };
     std::atomic<float> level { 0.0f };
     std::atomic<juce::int64> samplesWritten { 0 };
+    std::atomic<double> recordingSampleRate { 44100.0 };
     std::atomic<int> channel { 0 };
     std::atomic<int> channelCount { 1 };
     std::atomic<float> inputGain { 1.0f };
@@ -1554,7 +1560,11 @@ public:
     // string ("" = success). Empty type/name select the system defaults.
     std::string getAudioDevicesJson();
     std::string setAudioDevice(const std::string& typeName, const std::string& deviceName);
+    // outputName sets the output endpoint in the SAME setup call so a device-type
+    // switch (e.g. into Exclusive Mode) can never leave the output on a stale/wrong
+    // default. Empty outputName preserves the current output.
     std::string setAudioInput(const std::string& typeName, const std::string& deviceName,
+                              const std::string& outputName,
                               int channel, bool stereo, double requestedSampleRate, int requestedBufferSize);
     void setInputGain(float gain) { inputRecorder.setInputGain(gain); }
     std::string startRecording(const std::string& filePath, int channel, bool stereo,
@@ -1566,6 +1576,10 @@ public:
     long long getRecordedSamples() const;
     std::vector<InputRecorder::PeakPoint> drainRecordingPeaks();
     double getCurrentSampleRate() const { return sampleRate; }
+    // Sample rate the active take is written at. Used to time the live recording
+    // peaks so the on-screen record bar matches the finalized clip length even
+    // when the input device runs at a different rate than the output device.
+    double getRecordingSampleRate() const;
 
     // Getters for status updates
     bool isPlaying() const { return playing; }

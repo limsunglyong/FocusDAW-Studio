@@ -376,22 +376,16 @@ function fmtTransportTime(s) {
 }
 function MenuTransport() {
   useTick();
-  const [, force] = useState(0);
-  const [loop, setLoop] = useState(DAW.loopEnabled);
+  const loop = DAW.loopEnabled;
   const playing = DAW.isPlaying;
   const playhead = DAW.getPlayhead();
   const duration = DAW.duration || 0;
   const armedInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
   const recordingInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
   const canRecord = !!(armedInput || recordingInput);
-  const playPause = () => {
-    DAW.isPlaying ? DAW.pause() : DAW.play();
-    force((n) => n + 1);
-  };
+  const tp = (action) => window.dispatchEvent(new CustomEvent("focusdaw-transport", { detail: { action } }));
   const toggleLoop = () => {
-    const next = !loop;
-    setLoop(next);
-    DAW.setLoop(next);
+    DAW.setLoop(!loop);
   };
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7, height: 36 } }, /* @__PURE__ */ React.createElement("div", { style: {
     display: "flex",
@@ -403,20 +397,12 @@ function MenuTransport() {
     background: "linear-gradient(180deg,var(--bg2),var(--bg))",
     border: "1px solid var(--line-strong)",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,.04), 0 8px 18px -14px rgba(0,0,0,.8)"
-  } }, /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Return to start", onClick: () => {
-    DAW.seek(0);
-    force((n) => n + 1);
-  } }, /* @__PURE__ */ React.createElement(Icon, { name: "toStart", size: 13 })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Stop", onClick: () => {
-    DAW.stop();
-    force((n) => n + 1);
-  } }, /* @__PURE__ */ React.createElement(Icon, { name: "stop", size: 11, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Play / Pause", active: playing, wide: true, onClick: playPause }, /* @__PURE__ */ React.createElement(Icon, { name: playing ? "pause" : "play", size: 14, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Loop", active: loop, onClick: toggleLoop }, /* @__PURE__ */ React.createElement(Icon, { name: "repeat", size: 13 })), /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Return to start", onClick: () => tp("tostart") }, /* @__PURE__ */ React.createElement(Icon, { name: "toStart", size: 13 })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Stop", onClick: () => tp("stop") }, /* @__PURE__ */ React.createElement(Icon, { name: "stop", size: 11, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Play / Pause", active: playing, wide: true, onClick: () => tp("playpause") }, /* @__PURE__ */ React.createElement(Icon, { name: playing ? "pause" : "play", size: 14, fill: true })), /* @__PURE__ */ React.createElement(MenuTransportButton, { title: "Loop", active: loop, onClick: toggleLoop }, /* @__PURE__ */ React.createElement(Icon, { name: "repeat", size: 13 })), /* @__PURE__ */ React.createElement(
     MenuTransportButton,
     {
       title: recordingInput ? "Stop recording" : canRecord ? "Record armed Audio In track" : "Arm an Audio In track first",
       active: !!recordingInput,
-      onClick: () => {
-        if (canRecord) window.dispatchEvent(new CustomEvent("focusdaw-record-toggle"));
-      }
+      onClick: () => tp("record")
     },
     /* @__PURE__ */ React.createElement(
       "span",
@@ -1601,6 +1587,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const redoStack = useRef([]);
   const lastUndoKey = useRef(null);
   const recordingRef = useRef(null);
+  const recordCountRef = useRef(null);
+  const autoStopRef = useRef(null);
+  const songEndRef = useRef(0);
+  const prevLoopRef = useRef(null);
+  const transportRef = useRef({});
+  const [recordCount, setRecordCount] = useState(null);
   const MAX_UNDO = 50;
   const stretchPreparing = !!DAW._stretchPreviewPreparing;
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
@@ -2036,12 +2028,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           redo();
           break;
         case "REQUEST_PLAY_PAUSE":
-          DAW.isPlaying ? DAW.pause() : DAW.play();
-          force((n) => n + 1);
+          transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
           break;
         case "REQUEST_STOP":
-          DAW.stop();
-          force((n) => n + 1);
+          transportRef.current.transportStop && transportRef.current.transportStop();
           break;
         case "REQUEST_ADVANCED_PAN":
           openAdvancedPan();
@@ -2077,6 +2067,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             if (targetTrack && targetTrack.kind === "audioIn" && targetTrack.params && (targetTrack.params.arm || targetTrack.recording) && DAW.setAudioInput)
               DAW.setAudioInput(audioInputSettingsForTrack(targetTrack)).catch((e2) => console.warn("[AudioInput] mixer port switch failed:", e2));
           }
+          saveRecentProject(projectName, projectPath);
+          force((n) => n + 1);
+          break;
+        case "MUTE_ALL_FILES":
+          DAW.tracks.forEach((track) => {
+            if (track.kind === "file") DAW.setTrackParam(track.id, "mute", !!msg.v);
+          });
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
           break;
@@ -2149,8 +2146,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           pushUndo();
           break;
         case "REQUEST_PLAY_PAUSE":
-          DAW.isPlaying ? DAW.pause() : DAW.play();
-          force((n) => n + 1);
+          transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
           break;
         case "REQUEST_UNDO":
           undo();
@@ -2482,7 +2478,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const mod = e.metaKey || e.ctrlKey;
       if (e.code === "Space" && (!isTextInput(e.target) || isRangeInput(e.target))) {
         e.preventDefault();
-        playPause();
+        transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
         return;
       }
       if (e.key === "F3") {
@@ -2514,12 +2510,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (isTextInput(e.target)) return;
       if (!mod && (e.code === "Digit0" || e.code === "Numpad0")) {
         e.preventDefault();
-        DAW.seek(0);
-        force((n) => n + 1);
+        transportRef.current.transportToStart && transportRef.current.transportToStart();
         return;
       }
       if (!mod && (e.code === "Comma" || e.code === "ArrowLeft" || e.code === "Period" || e.code === "ArrowRight")) {
         e.preventDefault();
+        const T = transportRef.current;
+        if (T.isRecordingActive && T.isRecordingActive() || T.isCountingIn && T.isCountingIn()) return;
         const delta = e.code === "Comma" || e.code === "ArrowLeft" ? -1 : 1;
         DAW.seek(DAW.getPlayhead() + delta);
         force((n) => n + 1);
@@ -2683,13 +2680,126 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     });
     force((n) => n + 1);
   }, [projectPath, fitTimelineToProject]);
+  const isCountingIn = () => recordCountRef.current != null;
+  const isRecordingActive = () => DAW.tracks.some((t) => t.kind === "audioIn" && t.recording);
+  const stopAutoStopMonitor = () => {
+    if (autoStopRef.current) {
+      clearInterval(autoStopRef.current);
+      autoStopRef.current = null;
+    }
+  };
+  const startAutoStopMonitor = () => {
+    stopAutoStopMonitor();
+    autoStopRef.current = setInterval(() => {
+      if (!isRecordingActive()) {
+        stopAutoStopMonitor();
+        return;
+      }
+      const end = songEndRef.current;
+      if (end > 0 && (DAW.getPlayhead() >= end - 0.03 || !DAW.isPlaying)) doStopRecording();
+    }, 120);
+  };
+  const beginRecorderAt = async (target) => {
+    let end = 0;
+    DAW.tracks.forEach((t) => {
+      if (t.id !== target.id && Array.isArray(t.clips)) t.clips.forEach((c) => {
+        end = Math.max(end, c.end || 0);
+      });
+    });
+    songEndRef.current = end;
+    const wasPlaying = DAW.isPlaying;
+    await toggleRecording(target);
+    if (!isRecordingActive()) {
+      if (prevLoopRef.current) DAW.setLoop(true);
+      prevLoopRef.current = null;
+      return;
+    }
+    if (!wasPlaying) DAW.play();
+    startAutoStopMonitor();
+    force((n) => n + 1);
+  };
+  const beginRecordFlow = () => {
+    const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+    if (!target) return;
+    prevLoopRef.current = DAW.loopEnabled;
+    if (DAW.loopEnabled) DAW.setLoop(false);
+    if (DAW.isPlaying) {
+      beginRecorderAt(target);
+      return;
+    }
+    let n = 3;
+    setRecordCount(n);
+    window.__recordCountdownActive = true;
+    recordCountRef.current = setInterval(() => {
+      n -= 1;
+      if (n <= 0) {
+        clearInterval(recordCountRef.current);
+        recordCountRef.current = null;
+        window.__recordCountdownActive = false;
+        setRecordCount(null);
+        beginRecorderAt(target);
+      } else setRecordCount(n);
+    }, 1e3);
+  };
+  const cancelCountIn = () => {
+    if (recordCountRef.current) {
+      clearInterval(recordCountRef.current);
+      recordCountRef.current = null;
+    }
+    window.__recordCountdownActive = false;
+    setRecordCount(null);
+    if (prevLoopRef.current) DAW.setLoop(true);
+    prevLoopRef.current = null;
+    force((n) => n + 1);
+  };
+  const doStopRecording = () => {
+    stopAutoStopMonitor();
+    const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
+    if (target) toggleRecording(target);
+    DAW.stop();
+    if (prevLoopRef.current) DAW.setLoop(true);
+    prevLoopRef.current = null;
+    force((n) => n + 1);
+  };
+  const transportRecordToggle = () => {
+    if (isCountingIn()) return cancelCountIn();
+    if (isRecordingActive()) return doStopRecording();
+    beginRecordFlow();
+  };
+  const transportStop = () => {
+    if (isCountingIn()) return cancelCountIn();
+    if (isRecordingActive()) return doStopRecording();
+    DAW.stop();
+    force((n) => n + 1);
+  };
+  const transportPlayPause = () => {
+    if (isCountingIn()) return cancelCountIn();
+    if (isRecordingActive()) return;
+    DAW.isPlaying ? DAW.pause() : DAW.play();
+    force((n) => n + 1);
+  };
+  const transportToStart = () => {
+    if (isCountingIn() || isRecordingActive()) return;
+    DAW.seek(0);
+    force((n) => n + 1);
+  };
+  transportRef.current = { transportRecordToggle, transportStop, transportPlayPause, transportToStart, isRecordingActive, isCountingIn };
   useEffect(() => {
-    const onRecordToggle = () => {
-      const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording) || DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
-      if (target) toggleRecording(target);
+    const onRecordToggle = () => transportRef.current.transportRecordToggle && transportRef.current.transportRecordToggle();
+    const onTransport = (e) => {
+      const a = e.detail && e.detail.action;
+      const T = transportRef.current;
+      if (a === "record") T.transportRecordToggle && T.transportRecordToggle();
+      else if (a === "stop") T.transportStop && T.transportStop();
+      else if (a === "playpause") T.transportPlayPause && T.transportPlayPause();
+      else if (a === "tostart") T.transportToStart && T.transportToStart();
     };
     window.addEventListener("focusdaw-record-toggle", onRecordToggle);
-    return () => window.removeEventListener("focusdaw-record-toggle", onRecordToggle);
+    window.addEventListener("focusdaw-transport", onTransport);
+    return () => {
+      window.removeEventListener("focusdaw-record-toggle", onRecordToggle);
+      window.removeEventListener("focusdaw-transport", onTransport);
+    };
   }, [toggleRecording]);
   const newProject = () => {
     const nextName = DEFAULT_PROJECT_NAME;
@@ -2779,6 +2889,42 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const updatedTrack = DAW.tracks.find((track) => track.id === id);
       if (updatedTrack && updatedTrack.kind === "audioIn" && updatedTrack.params && (updatedTrack.params.arm || updatedTrack.recording) && DAW.setAudioInput)
         DAW.setAudioInput(audioInputSettingsForTrack(updatedTrack)).catch((e) => console.warn("[AudioInput] port switch failed:", e));
+    }
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
+  };
+  const muteAllFileTracks = (next) => {
+    pushUndo();
+    lastUndoKey.current = null;
+    DAW.tracks.forEach((track) => {
+      if (track.kind === "file") DAW.setTrackParam(track.id, "mute", next);
+    });
+    saveRecentProject(projectName, projectPath);
+    force((n) => n + 1);
+  };
+  const renameTrack = async (id, newName) => {
+    const track = DAW.tracks.find((t) => t.id === id);
+    if (!track) return;
+    const name = String(newName || "").trim();
+    if (!name || name === track.name) return;
+    pushUndo();
+    lastUndoKey.current = null;
+    track.name = name;
+    force((n) => n + 1);
+    if (track.kind === "audioIn" && track.filePath && window.electronAPI && window.electronAPI.renameRecording) {
+      try {
+        const res = await window.electronAPI.renameRecording(track.filePath, name);
+        if (res && res.path) {
+          track.filePath = res.path;
+          track.fileName = res.fileName;
+          if (Array.isArray(track.sources) && track.sources[0]) {
+            track.sources[0].filePath = res.path;
+            track.sources[0].fileName = res.fileName;
+          }
+        }
+      } catch (e) {
+        alert(`Track renamed, but its recording file could not be renamed: ${e.message || e}`);
+      }
     }
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
@@ -2879,7 +3025,23 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (e.currentTarget === e.target) setDragOver(false);
   };
   const empty = DAW.tracks.length === 0;
-  return /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" } }, recordCount != null && /* @__PURE__ */ React.createElement("div", { style: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 2e3,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(0,0,0,.45)",
+    pointerEvents: "none"
+  } }, /* @__PURE__ */ React.createElement("div", { key: recordCount, style: {
+    fontSize: "22vmin",
+    fontWeight: 800,
+    lineHeight: 1,
+    color: "var(--cream)",
+    fontFamily: "var(--mono, monospace)",
+    textShadow: "0 0 40px rgba(0,0,0,.85), 0 8px 30px rgba(0,0,0,.6)",
+    animation: "recordCountPulse .9s ease-out"
+  } }, recordCount)), /* @__PURE__ */ React.createElement(
     "input",
     {
       ref: fileRef,
@@ -3050,6 +3212,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           onFocusFx: focusMixerFx,
           selected: selectedFileTrackSet.has(t.id),
           onSelect: (e) => selectFileTrack(t.id, e),
+          onMuteAllFiles: muteAllFileTracks,
+          onRename: renameTrack,
           tool,
           onSplit: handleSplit,
           onJoin: handleJoin,
@@ -3079,6 +3243,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             force((n) => n + 1);
           },
           onFocusFx: focusMixerFx,
+          onRename: renameTrack,
           tool,
           onSplit: handleSplit,
           onJoin: handleJoin,

@@ -344,9 +344,10 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
   } }), /* @__PURE__ */ React.createElement("div", { style: { height: 3, width: "70%", borderRadius: 2, background: track.color, boxShadow: `0 0 8px ${track.color}` } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, fontWeight: 600, textAlign: "center", height: 28, overflow: "hidden", lineHeight: 1.1 } }, track.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "reverb", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.reverb, size: 28, color: "var(--violet)", label: "VRB", onBeforeChange, onChange: (v) => onParam("reverb", v) })), /* @__PURE__ */ React.createElement("div", { "data-track-id": track.id, "data-fx": "echo", style: { borderRadius: 10 } }, /* @__PURE__ */ React.createElement(Knob, { value: p.echo, size: 28, color: "var(--blue)", label: "ECHO", onBeforeChange, onChange: (v) => onParam("echo", v) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, /* @__PURE__ */ React.createElement(SoloBtn, { on: p.solo, disabled: noAudio, size: 22, onClick: () => {
     onBeforeChange && onBeforeChange();
     onParam("solo", !p.solo);
-  } }), /* @__PURE__ */ React.createElement(MuteBtn, { on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, size: 22, onClick: () => {
+  } }), /* @__PURE__ */ React.createElement(MuteBtn, { on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, size: 22, onClick: (e) => {
     onBeforeChange && onBeforeChange();
-    onParam("mute", !p.mute);
+    if (e && e.shiftKey && track.kind === "file" && DAW.muteAllFileTracks) DAW.muteAllFileTracks(!p.mute);
+    else onParam("mute", !p.mute);
   } })), /* @__PURE__ */ React.createElement(
     Knob,
     {

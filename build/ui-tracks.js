@@ -302,10 +302,29 @@ function AutomationOverlay({ track, pxPerSec, height, onBeforeChange }) {
     })
   );
 }
-function ScrollingTrackTitle({ name, compact }) {
+function ScrollingTrackTitle({ name, compact, onRename }) {
   const wrapRef = useRef(null);
   const textRef = useRef(null);
+  const inputRef = useRef(null);
   const [marquee, setMarquee] = useState({ distance: 0, duration: 6 });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const startEdit = () => {
+    if (!onRename) return;
+    setDraft(name);
+    setEditing(true);
+  };
+  const commitEdit = () => {
+    setEditing(false);
+    const v = (draft || "").trim();
+    if (v && v !== name && onRename) onRename(v);
+  };
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
   useEffect(() => {
     const wrap = wrapRef.current;
     const text = textRef.current;
@@ -337,17 +356,55 @@ function ScrollingTrackTitle({ name, compact }) {
       if (ro) ro.disconnect();
       else window.removeEventListener("resize", measure);
     };
-  }, [name, compact]);
+  }, [name, compact, editing]);
+  if (editing) {
+    return /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        ref: inputRef,
+        value: draft,
+        onChange: (e) => setDraft(e.target.value),
+        onBlur: commitEdit,
+        onMouseDown: (e) => e.stopPropagation(),
+        onKeyDown: (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitEdit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setEditing(false);
+          }
+        },
+        style: {
+          width: "100%",
+          minWidth: 0,
+          fontWeight: 600,
+          fontSize: compact ? 12.5 : 13.5,
+          color: "var(--cream)",
+          background: "var(--bg)",
+          border: "1px solid var(--amber)",
+          borderRadius: 4,
+          padding: "1px 5px",
+          outline: "none"
+        }
+      }
+    );
+  }
   return /* @__PURE__ */ React.createElement(
     "span",
     {
       ref: wrapRef,
       className: "track-title-marquee" + (marquee.distance > 0 ? " is-overflowing" : ""),
-      title: name,
+      title: onRename ? "Double-click to rename" : name,
+      onDoubleClick: onRename ? (e) => {
+        e.stopPropagation();
+        startEdit();
+      } : void 0,
       tabIndex: marquee.distance > 0 ? 0 : void 0,
       style: {
         fontWeight: 600,
         fontSize: compact ? 12.5 : 13.5,
+        cursor: onRename ? "text" : void 0,
         "--marquee-distance": marquee.distance + "px",
         "--marquee-duration": marquee.duration + "s"
       }
@@ -393,6 +450,23 @@ const TRACK_AUDIO_INPUT_PORT_OPTIONS = [
   { label: "Input 2", channel: 1, stereo: false },
   { label: "Input 1-2", channel: 0, stereo: true }
 ];
+function buildInputPortOptions(channelNames) {
+  const names = Array.isArray(channelNames) ? channelNames : [];
+  const n = names.length;
+  if (n < 1) return TRACK_AUDIO_INPUT_PORT_OPTIONS;
+  const label = (i) => {
+    const raw = names[i] && String(names[i]).trim();
+    return raw && !/^input channel \d+$/i.test(raw) ? raw : `Input ${i + 1}`;
+  };
+  const isGeneric = (i) => /^Input \d+$/.test(label(i));
+  const opts = [];
+  for (let i = 0; i < n; i++) opts.push({ label: label(i), channel: i, stereo: false });
+  for (let i = 0; i + 1 < n; i += 2) {
+    const pair = isGeneric(i) && isGeneric(i + 1) ? `Input ${i + 1}-${i + 2}` : `${label(i)} + ${label(i + 1)}`;
+    opts.push({ label: pair, channel: i, stereo: true });
+  }
+  return opts;
+}
 const INPUT_GAIN_SLIDER_WIDTH = 69;
 const INPUT_GAIN_THUMB_SIZE = 13;
 const INPUT_GAIN_MIN = 0.1;
@@ -402,12 +476,13 @@ function inputGainTickLeft(value) {
   const pad = INPUT_GAIN_THUMB_SIZE / 2;
   return pad + norm * (INPUT_GAIN_SLIDER_WIDTH - INPUT_GAIN_THUMB_SIZE);
 }
-function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0 }) {
+function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
   const p = track.params;
   const inputGainValue = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
   const inputStereo = !!p.inputStereo;
   const inputPortValue = `${inputStereo ? "stereo" : "mono"}:${inputChannel}`;
+  const inputPortOptions = buildInputPortOptions(DAW.getInputChannelNames ? DAW.getInputChannelNames() : []);
   const commitInputPort = (value) => {
     const [mode, ch] = String(value || "mono:0").split(":");
     onParam("inputChannel", Math.max(0, Number(ch) || 0));
@@ -475,7 +550,10 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
         boxShadow: selected ? "inset 4px 0 0 var(--amber)" : "none"
       }
     },
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact }), track.kind !== "audioIn" && /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: () => onParam("mute", !p.mute) })),
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact, onRename: onRename ? (newName) => onRename(track.id, newName) : void 0 }), track.kind !== "audioIn" && /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: (e) => {
+      if (e && e.shiftKey && track.kind === "file" && onMuteAllFiles) onMuteAllFiles(!p.mute);
+      else onParam("mute", !p.mute);
+    } })),
     /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 } }, /* @__PURE__ */ React.createElement(Icon, { name: "wave", size: compact ? 12 : 13, style: { color: "var(--muted)", flex: "0 0 auto" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 0 } }, /* @__PURE__ */ React.createElement(
       "input",
       {
@@ -557,7 +635,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
           outline: "none"
         }
       },
-      TRACK_AUDIO_INPUT_PORT_OPTIONS.map((opt) => /* @__PURE__ */ React.createElement(
+      inputPortOptions.map((opt) => /* @__PURE__ */ React.createElement(
         "option",
         {
           key: `${opt.stereo ? "stereo" : "mono"}:${opt.channel}`,
@@ -811,7 +889,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
     ))))
   ));
 }
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = playhead / DAW.duration * laneW;
   const p = track.params;
@@ -847,7 +925,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     onSeek(sec);
   };
   const toolCursor = tool === "scissors" ? "crosshair" : tool === "join" ? "cell" : "text";
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH, onFocusFx, selected, onSelect, indent: headerIndent }), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH, onFocusFx, selected, onSelect, indent: headerIndent, onMuteAllFiles, onRename }), /* @__PURE__ */ React.createElement(
     "div",
     {
       onMouseDown: (e) => {

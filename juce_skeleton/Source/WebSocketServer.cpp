@@ -639,11 +639,12 @@ void WebSocketServer::clientLoop(void* socketHandle)
             const auto requestId = getJsonStringVal(frameText, "requestId");
             auto type = getJsonStringVal(frameText, "type");
             auto name = getJsonStringVal(frameText, "name");
+            auto outputName = getJsonStringVal(frameText, "outputName");
             int channel = (int)getJsonDoubleVal(frameText, "channel");
             bool stereo = getJsonBoolVal(frameText, "stereo");
             double sr = getJsonDoubleVal(frameText, "sampleRate");
             int bufferSize = (int)getJsonDoubleVal(frameText, "bufferSize");
-            auto err = audioEngine.setAudioInput(type, name, channel, stereo, sr, bufferSize);
+            auto err = audioEngine.setAudioInput(type, name, outputName, channel, stereo, sr, bufferSize);
             const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - requestStarted).count();
             broadcast(std::string("{\"event\":\"audioInputChanged\",\"ok\":") +
@@ -779,8 +780,12 @@ void WebSocketServer::timerLoop()
             if (!peaks.empty())
             {
                 std::ostringstream peakJson;
+                // Time the peaks with the rate the take is actually written at,
+                // not the cached engine (output) rate. When the input device runs
+                // at a different rate, the cached rate makes the live record bar
+                // drift and the clip "snap" longer on stop.
                 peakJson << "{\"event\":\"recordingPeaks\",\"sampleRate\":"
-                         << audioEngine.getCurrentSampleRate() << ",\"points\":[";
+                         << audioEngine.getRecordingSampleRate() << ",\"points\":[";
                 for (size_t i = 0; i < peaks.size(); ++i)
                 {
                     peakJson << peaks[i].endSample << "," << peaks[i].min << "," << peaks[i].max;
@@ -790,6 +795,7 @@ void WebSocketServer::timerLoop()
                 broadcast(peakJson.str());
             }
         }
+
 
         // Always broadcast level meters. When stopped/paused the magnitude getters
         // return 0, so the meters fall to silence instead of freezing at the last
