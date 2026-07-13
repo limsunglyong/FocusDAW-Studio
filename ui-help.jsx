@@ -42,30 +42,32 @@ function HelpDialog({ onClose, standalone = false }) {
     { id: "overview", label: "1. 앱 개요" },
     { id: "start", label: "2. 시작과 프로젝트" },
     { id: "import", label: "3. 오디오 가져오기" },
-    { id: "arrange", label: "4. 타임라인과 트랙" },
-    { id: "bpm", label: "5. BPM 표시 및 설정" },
-    { id: "key", label: "6. Key 표시 및 설정" },
-    { id: "automation", label: "7. 볼륨 오토메이션" },
-    { id: "mixer", label: "8. 믹서와 마스터" },
-    { id: "advfx", label: "9. 고급 이펙트" },
-    { id: "export", label: "10. 믹스다운 내보내기" },
-    { id: "settings", label: "11. 설정과 테마" },
-    { id: "shortcuts", label: "12. 단축키" },
-    { id: "tips", label: "13. 문제 해결" },
+    { id: "record", label: "4. 오디오 녹음(Audio In)" },
+    { id: "arrange", label: "5. 타임라인과 트랙" },
+    { id: "bpm", label: "6. BPM 표시 및 설정" },
+    { id: "key", label: "7. Key 표시 및 설정" },
+    { id: "automation", label: "8. 볼륨 오토메이션" },
+    { id: "mixer", label: "9. 믹서와 마스터" },
+    { id: "advfx", label: "10. 고급 이펙트" },
+    { id: "export", label: "11. 믹스다운 내보내기" },
+    { id: "settings", label: "12. 설정 · 오디오 장치 · 테마" },
+    { id: "shortcuts", label: "13. 단축키" },
+    { id: "tips", label: "14. 문제 해결" },
   ] : [
     { id: "overview", label: "1. App Overview" },
     { id: "start", label: "2. Start & Projects" },
     { id: "import", label: "3. Importing Audio" },
-    { id: "arrange", label: "4. Timeline & Tracks" },
-    { id: "bpm", label: "5. BPM Display & Settings" },
-    { id: "key", label: "6. Key Display & Settings" },
-    { id: "automation", label: "7. Volume Automation" },
-    { id: "mixer", label: "8. Mixer & Master" },
-    { id: "advfx", label: "9. Advanced Effects" },
-    { id: "export", label: "10. Exporting Mixdown" },
-    { id: "settings", label: "11. Settings & Themes" },
-    { id: "shortcuts", label: "12. Shortcuts" },
-    { id: "tips", label: "13. Troubleshooting" },
+    { id: "record", label: "4. Recording (Audio In)" },
+    { id: "arrange", label: "5. Timeline & Tracks" },
+    { id: "bpm", label: "6. BPM Display & Settings" },
+    { id: "key", label: "7. Key Display & Settings" },
+    { id: "automation", label: "8. Volume Automation" },
+    { id: "mixer", label: "9. Mixer & Master" },
+    { id: "advfx", label: "10. Advanced Effects" },
+    { id: "export", label: "11. Exporting Mixdown" },
+    { id: "settings", label: "12. Settings, Audio Devices & Themes" },
+    { id: "shortcuts", label: "13. Shortcuts" },
+    { id: "tips", label: "14. Troubleshooting" },
   ];
 
   const scrollTo = (id) => {
@@ -436,6 +438,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <ul className="manual-ul">
                         <li className="manual-li">프로젝트 새로 만들기, 열기, 저장</li>
                         <li className="manual-li">오디오 파일 또는 스템 폴더 가져오기</li>
+                        <li className="manual-li">마이크·인터페이스 입력을 Audio In 트랙에 실시간 녹음(오버더빙)</li>
                         <li className="manual-li">트랙별 볼륨, 팬, 솔로, 뮤트 조정</li>
                         <li className="manual-li">트랙별 리버브, 에코, 볼륨 오토메이션 적용</li>
                         <li className="manual-li">마스터 EQ, 페이드, 출력 효과 적용</li>
@@ -469,6 +472,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <ul className="manual-ul">
                         <li className="manual-li">Create, open, and save projects (.focus)</li>
                         <li className="manual-li">Import individual audio files or stem folders</li>
+                        <li className="manual-li">Record mic/interface input live onto Audio In tracks (overdubbing)</li>
                         <li className="manual-li">Control track volume, panning, solo, and mute</li>
                         <li className="manual-li">Apply track reverb/echo sends and volume automation</li>
                         <li className="manual-li">Master EQ shaping, master fades, and output effects</li>
@@ -645,11 +649,140 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 4. 타임라인과 트랙 / Timeline & Tracks */}
+            {/* 4. 오디오 녹음 / Recording (Audio In) */}
+            <section id="record" className="manual-section">
+              {lang === "ko" ? (
+                <>
+                  <h2 className="manual-h2">4. 오디오 녹음(Audio In)</h2>
+                  <p className="manual-p">FocusDAW Studio는 마이크·오디오 인터페이스로 들어오는 입력 신호를 <strong>Audio In 트랙</strong>에 실시간으로 녹음할 수 있습니다. 녹음된 결과는 트랙 폴더에 <code className="manual-code">.wav</code> 파일(테이크)로 저장되고, 다른 스템 트랙과 똑같이 볼륨·팬·솔로·뮤트·오토메이션·마스터 이펙트를 적용할 수 있습니다. 기존 스템 위에 보컬이나 애드리브를 덧입히는 오버더빙에 적합합니다.</p>
+
+                  <div className="manual-note">녹음을 시작하기 전에 먼저 <strong>Settings &gt; Audio Devices</strong>에서 입력 장치(모드·입력/출력 장치·샘플레이트·버퍼)를 지정해야 합니다. 장치 설정 방법은 <strong>12. 설정 · 오디오 장치 · 테마</strong>를 참고하세요.</div>
+
+                  <h3 className="manual-h3">① Audio In 트랙 만들기</h3>
+                  <p className="manual-p">타임라인 왼쪽 위 <strong>Track</strong> 헤더 영역에 두 개의 추가 버튼이 있습니다. <strong>+</strong>(플러스)는 오디오 파일을 불러오는 일반 파일 트랙이고, <strong>+ Audio In</strong> 버튼은 <strong>입력 녹음용 트랙</strong>을 새로 만듭니다. Audio In 트랙은 파일 트랙과 구분되도록 헤더에 파란 틴트가 적용됩니다.</p>
+
+                  <h3 className="manual-h3">② Audio In 트랙 헤더 컨트롤</h3>
+                  <p className="manual-p">Audio In 트랙 헤더에는 일반 트랙의 볼륨·팬·솔로·뮤트에 더해, 녹음을 위한 전용 컨트롤이 있습니다. (트랙 크기가 <strong>S</strong>일 때는 공간이 좁아 ARM만 제목 행에 인라인으로 표시되고, <strong>M/L</strong>에서 모든 컨트롤이 펼쳐집니다.)</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">ARM</th><td className="manual-td">이 트랙을 <strong>녹음 대기(무장)</strong> 상태로 만듭니다. 녹음은 ARM된 트랙에만 기록되며, 한 번에 <strong>하나의 Audio In 트랙만</strong> ARM됩니다(다른 트랙을 ARM하면 이전 트랙은 자동 해제). ARM된 트랙이 있어야 상단의 Record 버튼이 활성화됩니다.</td></tr>
+                      <tr><th className="manual-th">입력 포트 선택</th><td className="manual-td">이 트랙이 받을 입력 채널을 고릅니다. 현재 열린 인터페이스의 실제 채널 수에 맞춰 <strong>모노 포트(Input 1, Input 2 …)</strong>와 <strong>연속 스테레오 쌍(Input 1-2 …)</strong>이 동적으로 나열됩니다. (ASIO는 인터페이스가 제공하는 실제 채널 이름을 그대로 표시합니다.)</td></tr>
+                      <tr><th className="manual-th">MON</th><td className="manual-td"><strong>입력 모니터링</strong>. 켜면 입력 신호를 출력으로 흘려보내 지금 들어오는 소리를 실시간으로 들을 수 있습니다. 모노 입력은 양쪽 채널로 센터링되어 재생됩니다.</td></tr>
+                      <tr><th className="manual-th">LIM</th><td className="manual-td"><strong>입력 리미터</strong>(천장 −1.0 dBFS). 켜져 있으면 과입력으로 인한 클리핑을 방지합니다. 기본값은 켜짐입니다.</td></tr>
+                      <tr><th className="manual-th">입력 게인</th><td className="manual-td">녹음될 입력 신호의 게인을 조절합니다. 헤더에 현재 게인이 dB로 표시됩니다. 너무 크면 왜곡, 너무 작으면 잡음이 커지므로 미터가 상단에 닿지 않는 선에서 맞춥니다.</td></tr>
+                      <tr><th className="manual-th">볼륨 · 팬</th><td className="manual-td">파일 트랙과 동일하게 재생 레벨과 스테레오 위치를 조절합니다(볼륨은 −∞ ~ +6 dB).</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/47-audio-in-track.png" alt="Audio In 트랙 헤더 컨트롤" className="manual-img" />
+                    <div className="manual-figcaption">트랙 크기 <strong>L</strong>에서 펼쳐진 Audio In 트랙 헤더입니다. 제목 행의 <strong>ARM</strong>·S·M, 볼륨/팬, 그리고 아래 줄의 <strong>입력 포트(Input 1)</strong>·<strong>MON</strong>·<strong>LIM</strong>·<strong>입력 게인(IN)</strong>이 함께 보입니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">③ 녹음하기 — 트랜스포트 규칙</h3>
+                  <p className="manual-p">ARM한 뒤 상단 트랜스포트의 <strong>Record(빨간 점)</strong> 버튼을 누르면 녹음이 시작됩니다. 녹음 트랜스포트는 실수를 막기 위해 다음 규칙을 따릅니다.</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/48-audio-in-armed.png" alt="ARM(무장)된 Audio In 트랙" className="manual-img" />
+                    <div className="manual-figcaption">ARM 버튼이 <strong>빨간색</strong>으로 켜진 무장 상태입니다. 이 상태에서만 상단 트랜스포트의 Record 버튼이 활성화됩니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">정지 상태에서 Record</th><td className="manual-td">화면 중앙에 <strong>3 → 2 → 1 카운트인</strong> 오버레이가 나타난 뒤, 현재 재생 위치에서 <strong>재생과 녹음이 동시에</strong> 시작됩니다.</td></tr>
+                      <tr><th className="manual-th">재생 중 Record</th><td className="manual-td">카운트인 없이 <strong>즉시</strong> 녹음이 시작됩니다.</td></tr>
+                      <tr><th className="manual-th">Repeat 자동 해제</th><td className="manual-td">Record를 누르면 반복(Loop)이 <strong>자동으로 꺼집니다</strong>. 녹음이 끝나면 이전 반복 상태로 <strong>복원</strong>됩니다.</td></tr>
+                      <tr><th className="manual-th">자동 종료</th><td className="manual-td">재생이 <strong>기존 트랙 중 가장 긴 트랙의 끝</strong>에 도달하면 녹음과 재생이 자동으로 멈춥니다. 기존 트랙이 없으면 직접 Stop을 누를 때까지 계속 녹음합니다.</td></tr>
+                      <tr><th className="manual-th">녹음 중 Record / Stop</th><td className="manual-td">녹음과 재생을 모두 정지합니다. 트랜스포트는 0초로 복귀합니다.</td></tr>
+                      <tr><th className="manual-th">녹음 중 Play/Pause · 처음으로 이동</th><td className="manual-td">녹음 중에는 <strong>무시</strong>됩니다. 녹음을 멈추려면 Record 또는 Stop을 사용하세요.</td></tr>
+                      <tr><th className="manual-th">카운트인 도중 조작</th><td className="manual-td">카운트인이 진행되는 동안 Record / Stop / Play를 누르면 카운트인과 녹음이 <strong>취소</strong>됩니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/49-record-countin.png" alt="3-2-1 카운트인 오버레이" className="manual-img" />
+                    <div className="manual-figcaption">정지 상태에서 Record를 누르면 화면 중앙에 <strong>3 → 2 → 1 카운트인</strong> 오버레이가 뜬 뒤 재생과 녹음이 함께 시작됩니다. 상단 Record 버튼이 빨갛게 켜지고, 무장된 Audio In 트랙이 녹음 대상이 됩니다.</div>
+                  </div>
+
+                  <div className="manual-warning">녹음·카운트인 중에는 <strong>키보드 이동키(←/→/,/./0)와 타임라인·눈금자 마우스 클릭 이동(seek)이 모두 차단</strong>됩니다. 녹음 중 실수로 플레이헤드가 튀는 것을 막기 위한 것으로, 위치를 바꾸려면 먼저 녹음을 멈추세요.</div>
+
+                  <h3 className="manual-h3">④ 테이크 관리 · 이름 변경</h3>
+                  <ul className="manual-ul">
+                    <li className="manual-li">녹음이 끝나면 입력 신호가 트랙 위에 파형으로 붙고, 실제 오디오는 <code className="manual-code">.wav</code> 파일로 저장됩니다. 녹음을 시작한 위치가 곡의 중간이면 그 시점에 클립이 놓입니다.</li>
+                    <li className="manual-li">같은 트랙에서 <strong>다시 Record</strong>하면 새 테이크로 재녹음됩니다. 재녹음하면 이전에 표시되던 <strong>NO AUDIO</strong> 상태와 Solo/Mute 제한도 해제됩니다.</li>
+                    <li className="manual-li">트랙 제목을 <strong>더블클릭</strong>하면 이름을 바로 편집할 수 있습니다(Enter 확정, Esc 취소). Audio In 트랙이 녹음 WAV를 소유한 경우, 이름을 바꾸면 디스크의 WAV 파일도 같은 이름으로 바뀝니다. (임포트한 스템 파일 이름은 바뀌지 않습니다.)</li>
+                  </ul>
+                  <div className="manual-note">녹음 파일은 다른 오디오와 마찬가지로 마스터 EQ·리버브·에코 등 출력 이펙트와 트랙 볼륨 오토메이션의 영향을 받습니다. 완성된 테이크는 <strong>11. 믹스다운 내보내기</strong>에서 전체 믹스에 함께 렌더링됩니다.</div>
+                </>
+              ) : (
+                <>
+                  <h2 className="manual-h2">4. Recording (Audio In)</h2>
+                  <p className="manual-p">FocusDAW Studio can record a live input signal from a microphone or audio interface straight onto an <strong>Audio In track</strong>. Each recording is saved to the track folder as a <code className="manual-code">.wav</code> take, and behaves exactly like any other stem — you can set its volume, pan, solo, mute, automation, and route it through the master effects. This is ideal for overdubbing vocals or ad-libs on top of existing stems.</p>
+
+                  <div className="manual-note">Before recording, set up your input under <strong>Settings &gt; Audio Devices</strong> (mode, input/output device, sample rate, buffer). See <strong>12. Settings, Audio Devices &amp; Themes</strong> for the full device setup.</div>
+
+                  <h3 className="manual-h3">1. Create an Audio In track</h3>
+                  <p className="manual-p">The <strong>Track</strong> header area at the top left of the timeline has two add buttons. The <strong>+</strong> (plus) creates a normal file track for importing audio, while the <strong>+ Audio In</strong> button creates a new <strong>input-recording track</strong>. Audio In tracks are tinted blue in the header to distinguish them from file tracks.</p>
+
+                  <h3 className="manual-h3">2. Audio In track header controls</h3>
+                  <p className="manual-p">In addition to the usual volume, pan, solo, and mute, an Audio In track header adds dedicated recording controls. (At track size <strong>S</strong> only ARM is shown inline on the title row for space; <strong>M/L</strong> reveal every control.)</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">ARM</th><td className="manual-td">Arms this track for recording. Audio is only captured to the armed track, and <strong>only one Audio In track can be armed at a time</strong> (arming another disarms the previous one). The transport Record button is only active while a track is armed.</td></tr>
+                      <tr><th className="manual-th">Input port</th><td className="manual-td">Chooses which input channel this track receives. Ports are built dynamically from the real channel count of the currently open interface: <strong>mono ports (Input 1, Input 2 …)</strong> and <strong>consecutive stereo pairs (Input 1-2 …)</strong>. (ASIO shows the interface's actual channel names.)</td></tr>
+                      <tr><th className="manual-th">MON</th><td className="manual-td"><strong>Input monitoring.</strong> When on, the incoming signal is passed to the output so you can hear it live. A mono input is centered to both output channels.</td></tr>
+                      <tr><th className="manual-th">LIM</th><td className="manual-td"><strong>Input limiter</strong> (ceiling −1.0 dBFS). When on, it prevents clipping from a hot input. On by default.</td></tr>
+                      <tr><th className="manual-th">Input gain</th><td className="manual-td">Sets the gain of the signal being recorded; the header shows the current gain in dB. Aim for a level where the meter does not hit the top — too hot distorts, too low raises the noise floor.</td></tr>
+                      <tr><th className="manual-th">Volume · Pan</th><td className="manual-td">Playback level and stereo position, same as a file track (volume ranges −∞ to +6 dB).</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/47-audio-in-track.png" alt="Audio In track header controls" className="manual-img" />
+                    <div className="manual-figcaption">An Audio In track header expanded at track size <strong>L</strong>: <strong>ARM</strong>·S·M and volume/pan on the title rows, with the <strong>input port (Input 1)</strong>·<strong>MON</strong>·<strong>LIM</strong>·<strong>input gain (IN)</strong> below.</div>
+                  </div>
+
+                  <h3 className="manual-h3">3. Recording — transport rules</h3>
+                  <p className="manual-p">Once armed, press the transport <strong>Record (red dot)</strong> button to start recording. To prevent mistakes, the recording transport follows these rules:</p>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/48-audio-in-armed.png" alt="Armed Audio In track" className="manual-img" />
+                    <div className="manual-figcaption">The <strong>red ARM</strong> button indicates the track is armed. Only while a track is armed is the transport Record button active.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Record from stopped</th><td className="manual-td">A <strong>3 → 2 → 1 count-in</strong> overlay appears in the center of the screen, then <strong>playback and recording start together</strong> from the current position.</td></tr>
+                      <tr><th className="manual-th">Record while playing</th><td className="manual-td">Recording begins <strong>immediately</strong>, with no count-in.</td></tr>
+                      <tr><th className="manual-th">Repeat auto-off</th><td className="manual-td">Pressing Record <strong>turns Loop off automatically</strong>, and <strong>restores</strong> the previous loop state when recording ends.</td></tr>
+                      <tr><th className="manual-th">Auto-stop</th><td className="manual-td">When playback reaches the <strong>end of the longest existing track</strong>, recording and playback stop automatically. With no existing tracks, recording continues until you press Stop.</td></tr>
+                      <tr><th className="manual-th">Record / Stop while recording</th><td className="manual-td">Stops both recording and playback; the transport returns to 0.</td></tr>
+                      <tr><th className="manual-th">Play/Pause · Return-to-start while recording</th><td className="manual-td"><strong>Ignored</strong> during recording. Use Record or Stop to end the take.</td></tr>
+                      <tr><th className="manual-th">During the count-in</th><td className="manual-td">Pressing Record / Stop / Play <strong>cancels</strong> the count-in and the recording.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div className="manual-figure">
+                    <img src="manual/live-screens/49-record-countin.png" alt="3-2-1 count-in overlay" className="manual-img" />
+                    <div className="manual-figcaption">Pressing Record from a stopped state shows a <strong>3 → 2 → 1 count-in</strong> overlay in the center, then starts playback and recording together. The transport Record button lights red and the armed Audio In track becomes the record target.</div>
+                  </div>
+
+                  <div className="manual-warning">During recording and the count-in, the <strong>keyboard seek keys (←/→/,/./0) and mouse-click seeking on the timeline/ruler are all blocked</strong> to keep the playhead from jumping mid-take. Stop recording first if you need to move the position.</div>
+
+                  <h3 className="manual-h3">4. Managing takes &amp; renaming</h3>
+                  <ul className="manual-ul">
+                    <li className="manual-li">When recording ends, the captured signal appears as a waveform on the track and the audio is saved as a <code className="manual-code">.wav</code> file. If you started recording partway through the song, the clip is placed at that position.</li>
+                    <li className="manual-li"><strong>Recording again</strong> on the same track replaces it with a new take. Re-recording also clears any prior <strong>NO AUDIO</strong> state and re-enables Solo/Mute.</li>
+                    <li className="manual-li"><strong>Double-click</strong> a track title to rename it inline (Enter to confirm, Esc to cancel). When an Audio In track owns its recorded WAV, renaming the track also renames the WAV file on disk. (Imported stem file names are left unchanged.)</li>
+                  </ul>
+                  <div className="manual-note">Like any other audio, recordings are shaped by the master EQ, reverb, echo, and other output effects, plus track volume automation. Finished takes are rendered into the full mix in <strong>11. Exporting Mixdown</strong>.</div>
+                </>
+              )}
+            </section>
+
+            {/* 5. 타임라인과 트랙 / Timeline & Tracks */}
             <section id="arrange" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">4. 타임라인과 트랙</h2>
+                  <h2 className="manual-h2">5. 타임라인과 트랙</h2>
                   <h3 className="manual-h3">전송 컨트롤</h3>
                   <p className="manual-p">상단 중앙의 컨트롤로 처음으로 이동, 정지, 재생/일시정지, 루프를 조작합니다. 현재 재생 위치는 분:초 형식으로 표시됩니다.</p>
 
@@ -694,6 +827,12 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <div className="manual-warning">트랙 삭제와 오토메이션 초기화는 확인 후 즉시 적용됩니다. 필요하면 삭제 전에 프로젝트를 저장해 두세요.</div>
 
+                  <h3 className="manual-h3">트랙 이름 바꾸기 · 파일 트랙 일괄 뮤트</h3>
+                  <ul className="manual-ul">
+                    <li className="manual-li"><strong>이름 변경</strong>: 트랙 헤더의 제목을 <strong>더블클릭</strong>하면 인라인 편집이 열립니다(Enter 확정, Esc 취소). 모든 트랙에 적용되며, 녹음 WAV를 소유한 Audio In 트랙은 파일 이름도 함께 바뀝니다(<strong>4. 오디오 녹음</strong> 참고).</li>
+                    <li className="manual-li"><strong>파일 트랙 일괄 뮤트</strong>: 파일 트랙의 <strong>M</strong> 버튼을 <strong>Shift+클릭</strong>하면 모든 파일 트랙의 뮤트가 한 번에 켜지거나 꺼집니다(Audio In 트랙 제외). 믹서 창의 M 버튼에서도 동일하게 동작합니다.</li>
+                  </ul>
+
                   <h3 className="manual-h3">Edit 메뉴 — 모든 트랙 삭제 (Delete all tracks) <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">상단 <strong>Edit</strong> 메뉴의 Undo / Redo 아래에 <strong>Delete all tracks</strong> 항목이 있습니다. 현재 불러온 <strong>오디오 트랙만 모두 비우고</strong>, 마스터(프로젝트 전체)에 걸어 둔 <strong>이펙트 설정은 그대로 유지</strong>합니다. 같은 이펙트 체인(마스터 EQ·리버브·에코·Ambience·페이드 등)을 유지한 채 다른 스템 세트로 교체할 때 유용합니다.</p>
                   <div className="manual-figure">
@@ -711,7 +850,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">4. Timeline & Tracks</h2>
+                  <h2 className="manual-h2">5. Timeline & Tracks</h2>
                   <h3 className="manual-h3">Transport Controls</h3>
                   <p className="manual-p">Located at the top center, these control Go to Start, Stop, Play/Pause, and Loop. The current play position is shown in min:sec format.</p>
 
@@ -756,6 +895,12 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <div className="manual-warning">Track deletion and automation resets take effect immediately after confirmation. Save your project first if you are unsure.</div>
 
+                  <h3 className="manual-h3">Renaming tracks &amp; batch-muting file tracks</h3>
+                  <ul className="manual-ul">
+                    <li className="manual-li"><strong>Rename</strong>: <strong>Double-click</strong> a track title in the header to open inline editing (Enter to confirm, Esc to cancel). This works on every track; for an Audio In track that owns its recorded WAV, the file is renamed too (see <strong>4. Recording (Audio In)</strong>).</li>
+                    <li className="manual-li"><strong>Batch-mute file tracks</strong>: <strong>Shift+click</strong> the <strong>M</strong> button on a file track to toggle mute on all file tracks at once (Audio In tracks excluded). The same works from the M button in the Mixer window.</li>
+                  </ul>
+
                   <h3 className="manual-h3">Edit Menu — Delete all tracks <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">The top <strong>Edit</strong> menu offers <strong>Delete all tracks</strong> below Undo / Redo. It clears <strong>all loaded audio tracks at once while keeping the master (project-wide) effect settings intact</strong> — handy when you want to swap in a different set of stems but keep the same effect chain (master EQ, reverb, echo, Ambience, fades, etc.).</p>
                   <div className="manual-figure">
@@ -778,7 +923,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="bpm" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">5. BPM 표시 및 설정</h2>
+                  <h2 className="manual-h2">6. BPM 표시 및 설정</h2>
                   <p className="manual-p">FocusDAW Studio는 트랙 오디오에서 곡의 BPM(분당 박자 수)을 자동으로 측정하고, 그 값을 기준으로 <strong>전체 음악</strong>의 재생 템포를 조정할 수 있습니다. 새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시되며, 모든 트랙을 지우거나 새 프로젝트를 시작하면 다시 <strong>---</strong>로 초기화됩니다.</p>
 
                   <div className="manual-figure">
@@ -833,7 +978,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">5. BPM Display & Settings</h2>
+                  <h2 className="manual-h2">6. BPM Display & Settings</h2>
                   <p className="manual-p">FocusDAW Studio detects a song's BPM (beats per minute) from a track's audio and lets you adjust the playback tempo of the <strong>whole song</strong> based on it. A new project starts with BPM shown as <strong>---</strong>, and it returns to <strong>---</strong> whenever you clear all tracks or start a new project.</p>
 
                   <div className="manual-figure">
@@ -893,7 +1038,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="key" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">6. Key 표시 및 설정</h2>
+                  <h2 className="manual-h2">7. Key 표시 및 설정</h2>
                   <p className="manual-p">FocusDAW Studio는 프로젝트에 로드된 트랙 오디오의 화성 성분을 종합적으로 분석하여 곡의 원곡 키(Key)를 자동으로 감지하고, 반음(Semitones) 단위로 곡의 조성을 올리거나 내려서 실시간으로 이조 재생할 수 있습니다. 처음 세션을 열었을 때 키 표시창은 <strong>---</strong>로 표시됩니다.</p>
 
                   <div className="manual-figure">
@@ -955,7 +1100,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">6. Key Display & Settings</h2>
+                  <h2 className="manual-h2">7. Key Display & Settings</h2>
                   <p className="manual-p">FocusDAW Studio analyzes the harmonic content of all loaded audio tracks to estimate the song's original key and lets you shift the pitch up or down in semitones (up to ±6 semitones) for real-time key-shifted playback. When a new session is opened, the Key indicator reads <strong>---</strong>.</p>
 
                   <div className="manual-figure">
@@ -1022,7 +1167,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="automation" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">7. 볼륨 오토메이션</h2>
+                  <h2 className="manual-h2">8. 볼륨 오토메이션</h2>
                   <p className="manual-p">트랙 헤더의 <strong>VOL AUTO</strong>를 켜면 트랙 위에 볼륨 오토메이션 곡선이 표시됩니다. 곡선의 점은 시간에 따른 볼륨 변화를 의미합니다.</p>
 
                   <ul className="manual-ul">
@@ -1065,7 +1210,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">7. Volume Automation</h2>
+                  <h2 className="manual-h2">8. Volume Automation</h2>
                   <p className="manual-p">Toggling <strong>VOL AUTO</strong> in the track header displays a yellow automation lane over the track lane. Points on this line represent volume changes over time.</p>
 
                   <ul className="manual-ul">
@@ -1113,7 +1258,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="mixer" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">8. 믹서와 마스터</h2>
+                  <h2 className="manual-h2">9. 믹서와 마스터</h2>
                   <p className="manual-p">상단 오른쪽의 <strong>Mixer</strong> 버튼을 누르면 떠 있는 믹서 창이 열립니다. 믹서 창은 제목 표시줄을 드래그해 위치를 옮길 수 있습니다.</p>
 
                   <div className="manual-figure">
@@ -1190,7 +1335,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">8. Mixer & Master</h2>
+                  <h2 className="manual-h2">9. Mixer & Master</h2>
                   <p className="manual-p">Click the <strong>Mixer</strong> button on the top right to open the floating mixer console. Drag its title bar to position it anywhere on the screen.</p>
 
                   <div className="manual-figure">
@@ -1272,7 +1417,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="advfx" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">9. 고급 이펙트(Advanced Effects)</h2>
+                  <h2 className="manual-h2">10. 고급 이펙트(Advanced Effects)</h2>
                   <p className="manual-p">상단 메뉴의 <strong>Advanced Effects</strong>에는 세 가지 전용 편집 창이 있습니다. 각 창은 마스터(프로젝트 전체) 출력에 적용되는 고급 효과를 넓은 화면에서 정밀하게 다루도록 만들어졌습니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/31-advanced-effects-menu.png" alt="Advanced Effects 메뉴" className="manual-img" />
@@ -1365,7 +1510,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">9. Advanced Effects</h2>
+                  <h2 className="manual-h2">10. Advanced Effects</h2>
                   <p className="manual-p">The top <strong>Advanced Effects</strong> menu opens three dedicated editing windows, each giving you a larger workspace to fine-tune advanced effects applied to the master (project-wide) output.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/31-advanced-effects-menu.png" alt="Advanced Effects menu" className="manual-img" />
@@ -1463,7 +1608,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="export" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">10. 믹스다운 내보내기</h2>
+                  <h2 className="manual-h2">11. 믹스다운 내보내기</h2>
                   <p className="manual-p"><strong>Export</strong> 버튼 또는 <strong>Project &gt; Export...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
 
                   <h3 className="manual-h3">Export 설정</h3>
@@ -1501,7 +1646,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">10. Exporting Mixdown</h2>
+                  <h2 className="manual-h2">11. Exporting Mixdown</h2>
                   <p className="manual-p">Click the <strong>Export</strong> button or go to <strong>Project &gt; Export...</strong> to open the Export dialog. The dialog supports exporting in either MP3 or WAV format.</p>
 
                   <h3 className="manual-h3">Export Settings</h3>
@@ -1544,7 +1689,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="settings" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">11. 설정과 테마</h2>
+                  <h2 className="manual-h2">12. 설정 · 오디오 장치 · 테마</h2>
                   <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 색상 테마를 변경하거나 분리된 믹서 창의 환경 설정을 관리할 수 있습니다.</p>
                   <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
                     <li style={{ marginBottom: 6 }}><strong>Color Theme (색상 테마)</strong>: 다양한 색상 테마 중 하나를 선택하면 앱 전체와 믹서 콘솔의 외관 색상이 즉시 연동되어 바뀝니다.</li>
@@ -1555,10 +1700,23 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/live-screens/06-settings-themes.png" alt="색상 테마 및 설정 화면" className="manual-img" />
                     <div className="manual-figcaption">실제 앱에서 연 Settings 창입니다. 10가지 색상 테마(Warm Analog, Classical Ivory, Modern Blue 등)와 믹서 리셋 항목이 표시됩니다.</div>
                   </div>
+
+                  <h3 className="manual-h3">Audio Devices — 녹음/재생 장치 설정</h3>
+                  <p className="manual-p">Settings 창의 <strong>Audio Devices</strong> 섹션에서 녹음과 재생에 사용할 오디오 장치를 지정합니다(<strong>4. 오디오 녹음</strong>의 사전 준비). 설정 순서는 <strong>모드 → 입력/출력 장치 → Sample Rate / Buffer</strong>입니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">모드(드라이버 타입)</th><td className="manual-td"><strong>Shared</strong>(공유·범용), <strong>Low Latency</strong>(낮은 지연), <strong>Exclusive</strong>(단독 점유·최저 지연) 중에서 고릅니다. 선택한 모드에 해당하는 장치만 아래 목록에 나타납니다.</td></tr>
+                      <tr><th className="manual-th">입력 / 출력 장치</th><td className="manual-td">녹음에 쓸 입력 장치(인터페이스·마이크)와 재생에 쓸 출력 장치를 선택합니다. 인터페이스 구분은 여기서 이뤄지며, 트랙별 <strong>입력 포트</strong> 선택(모노/스테레오 채널)은 이 입력 장치의 채널을 따릅니다.</td></tr>
+                      <tr><th className="manual-th">Exclusive 자동 페어링</th><td className="manual-td">Exclusive 모드에서는 <strong>입력·출력을 모두 가진 인터페이스만</strong> 목록에 보이고, 입력을 고르면 같은 인터페이스의 출력이 자동으로 짝지어집니다(출력 드롭다운은 자동).</td></tr>
+                      <tr><th className="manual-th">Sample Rate / Buffer</th><td className="manual-td">샘플레이트와 버퍼 크기를 정합니다. 버퍼가 작을수록 지연은 줄지만 CPU 부하와 끊김 위험이 커집니다.</td></tr>
+                      <tr><th className="manual-th">Rescan</th><td className="manual-td">연결한 장치가 목록에 없으면 <strong>Rescan</strong>으로 다시 검색합니다(스캔 중에는 회전 스피너와 "Scanning" 표시).</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-warning">Exclusive 모드는 장치가 그 샘플레이트/버퍼 조합을 지원하지 않으면 열리지 않을 수 있습니다. 이 경우 <strong>이전 정상 장치가 유지</strong>되고 Audio Devices 섹션에 적색 배너로 실패 사유가 표시됩니다. 배너의 사유를 참고해 Sample Rate/Buffer를 조정하거나 Shared/Low Latency 모드로 바꿔 보세요.</div>
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">11. Settings &amp; Themes</h2>
+                  <h2 className="manual-h2">12. Settings, Audio Devices &amp; Themes</h2>
                   <p className="manual-p">Click <strong>Settings</strong> in the menu bar to change color themes or manage settings for the detached Mixer window.</p>
                   <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
                     <li style={{ marginBottom: 6 }}><strong>Color Theme</strong>: Choose from multiple color themes. The visual styles of the main window and Mixer console update instantly.</li>
@@ -1569,15 +1727,28 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/live-screens/06-settings-themes.png" alt="Settings Dialog" className="manual-img" />
                     <div className="manual-figcaption">Settings window. Switch between 10 color themes (Warm Analog, Classical Ivory, Modern Blue, and more) and reset the Mixer window bounds.</div>
                   </div>
+
+                  <h3 className="manual-h3">Audio Devices — recording &amp; playback setup</h3>
+                  <p className="manual-p">The <strong>Audio Devices</strong> section of the Settings window is where you choose the devices used for recording and playback (the prerequisite for <strong>4. Recording (Audio In)</strong>). The order is <strong>mode → input/output device → Sample Rate / Buffer</strong>.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Mode (driver type)</th><td className="manual-td">Choose <strong>Shared</strong> (general purpose), <strong>Low Latency</strong>, or <strong>Exclusive</strong> (sole ownership, lowest latency). Only devices for the selected mode appear in the lists below.</td></tr>
+                      <tr><th className="manual-th">Input / Output device</th><td className="manual-td">Pick the input device (interface/mic) for recording and the output device for playback. Interface selection happens here; each track's <strong>input port</strong> (mono/stereo channel) follows the channels of this input device.</td></tr>
+                      <tr><th className="manual-th">Exclusive auto-pairing</th><td className="manual-td">In Exclusive mode, only interfaces that have <strong>both input and output</strong> are listed; choosing an input auto-selects the matching output of the same interface (the output dropdown becomes automatic).</td></tr>
+                      <tr><th className="manual-th">Sample Rate / Buffer</th><td className="manual-td">Set the sample rate and buffer size. A smaller buffer lowers latency but raises CPU load and the risk of dropouts.</td></tr>
+                      <tr><th className="manual-th">Rescan</th><td className="manual-td">If a connected device is missing from the list, use <strong>Rescan</strong> to search again (a spinner and "Scanning" show during the scan).</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-warning">Exclusive mode may fail to open if the device does not support the chosen sample-rate/buffer combination. If that happens, the <strong>previous working device is kept</strong> and a red banner in the Audio Devices section shows the reason. Use it to adjust the Sample Rate/Buffer, or switch to Shared/Low Latency mode.</div>
                 </>
               )}
             </section>
 
-            {/* 12. 단축키 / Shortcuts */}
+            {/* 13. 단축키 / Shortcuts */}
             <section id="shortcuts" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">12. 단축키</h2>
+                  <h2 className="manual-h2">13. 단축키</h2>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지</td></tr>
@@ -1594,10 +1765,11 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">다시 실행</td></tr>
                     </tbody>
                   </table>
+                  <div className="manual-note">녹음 또는 카운트인이 진행되는 동안에는 <strong>이동키(←/→/,/./0)와 마우스 클릭 이동(seek)이 차단</strong>되고, <kbd className="manual-kbd">Space</kbd>(재생/일시정지)도 무시됩니다. 녹음을 멈추려면 트랜스포트의 Record 또는 Stop을 사용하세요(<strong>4. 오디오 녹음</strong> 참고).</div>
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">12. Shortcuts</h2>
+                  <h2 className="manual-h2">13. Shortcuts</h2>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / Pause</td></tr>
@@ -1614,6 +1786,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">Redo</td></tr>
                     </tbody>
                   </table>
+                  <div className="manual-note">While recording or during the count-in, the <strong>seek keys (←/→/,/./0) and mouse-click seeking are blocked</strong>, and <kbd className="manual-kbd">Space</kbd> (play/pause) is ignored. Use the transport Record or Stop to end a take (see <strong>4. Recording (Audio In)</strong>).</div>
                 </>
               )}
             </section>
@@ -1622,7 +1795,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="tips" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">13. 문제 해결</h2>
+                  <h2 className="manual-h2">14. 문제 해결</h2>
                   <h3 className="manual-h3">오디오가 들리지 않을 때</h3>
                   <ul className="manual-ul">
                     <li className="manual-li">트랙의 <strong>M</strong> 버튼이 켜져 있지 않은지 확인합니다.</li>
@@ -1642,7 +1815,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">13. Troubleshooting</h2>
+                  <h2 className="manual-h2">14. Troubleshooting</h2>
                   <h3 className="manual-h3">No Sound During Playback</h3>
                   <ul className="manual-ul">
                     <li className="manual-li">Check if the track **M** (Mute) button is turned on.</li>
