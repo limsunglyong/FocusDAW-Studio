@@ -304,7 +304,7 @@ function AudioInputControls({ track, inputLevel, inputGr = 0, onParam, onBeforeC
               onChange={(v) => onParam("inputGain", v)} onBeforeChange={onBeforeChange} />
             <div style={{ display: "grid", justifyItems: "center", gap: 1, whiteSpace: "nowrap" }} title={`Input gain ${fmtDb(inputGain)} dB`}>
               <span style={{ fontSize: 8, color: "var(--muted)", fontWeight: 700, letterSpacing: ".1em" }}>GAIN</span>
-              <span className="mono" style={{ fontSize: 10, color: "var(--cream-2)" }}>{fmtDb(inputGain)} dB</span>
+              <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)" }}>{fmtDb(inputGain)} dB</span>
             </div>
           </div>
         </div>
