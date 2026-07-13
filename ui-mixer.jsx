@@ -227,12 +227,34 @@ function InputLevelMeter({ level, height = 80, width = 7 }) {
   return <div style={{ display: "flex", flexDirection: "column-reverse", gap, width, height }}>{cells}</div>;
 }
 
-function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
+// Limiter gain-reduction meter: hangs DOWN from the top (0 dB at top), amber for
+// light reduction deepening to red. gr is a positive dB amount, mapped over 0..12 dB.
+function InputGrMeter({ gr, height = 80, width = 7 }) {
+  const gap = 1.5;
+  const segs = Math.max(6, Math.min(22, Math.round((height - gap) / 3.5)));
+  const frac = Math.max(0, Math.min(1, (gr || 0) / 12));
+  const lit = Math.round(frac * segs);
+  const cells = [];
+  for (let i = 0; i < segs; i++) {
+    const on = i < lit;                       // light from the top down
+    const f = i / segs;
+    let col = "#e0a23a";                       // amber (shallow reduction)
+    if (f > 0.66) col = "#e0574a";             // red (heavy reduction)
+    else if (f > 0.33) col = "#e8963c";
+    cells.push(<div key={i} style={{ flex: 1, minHeight: 1, background: on ? col : "rgba(0,0,0,.34)",
+      borderRadius: 1, opacity: on ? 1 : 0.85, boxShadow: on ? `0 0 4px ${col}` : "none", transition: "opacity .05s" }} />);
+  }
+  return <div style={{ display: "flex", flexDirection: "column", gap, width, height }}>{cells}</div>;
+}
+
+function AudioInputControls({ track, inputLevel, inputGr = 0, onParam, onBeforeChange }) {
   const p = track.params || {};
   const inputGain = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const armed = !!p.arm;
   const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const hot = liveLevel >= .92;
+  // Limiter gain reduction (positive dB), only while armed/recording with LIM on.
+  const armedGr = (armed || track.recording) && p.limiter !== false ? Math.max(0, inputGr || 0) : 0;
   const commit = (k, v) => { onBeforeChange && onBeforeChange(); onParam(k, v); };
   const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
   const inputStereo = !!p.inputStereo;
@@ -272,21 +294,34 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
           </option>
         ))}
       </select>
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: "2px 0 1px" }}>
-        {/* input-gain knob + dB readout below */}
-        <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
-          <InputGainKnob value={inputGain} active={armed || track.recording} size={80}
-            onChange={(v) => onParam("inputGain", v)} onBeforeChange={onBeforeChange} />
-          <div style={{ display: "flex", alignItems: "baseline", gap: 3 }} title={`Input gain ${fmtDb(inputGain)} dB`}>
-            <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".08em" }}>GAIN</span>
-            <span className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)" }}>{fmtDb(inputGain)} dB</span>
+      <div style={{ display: "flex", alignItems: "flex-start", padding: "2px 0 1px" }}>
+        {/* Input-gain knob, centered in the space left of the meters, with a 2-row GAIN
+            readout (label on top, value below). The knob column is a fixed 64px so the value's
+            digit count can't shift it, and the meters stay pinned right regardless of the value. */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}>
+          <div style={{ display: "grid", justifyItems: "center", gap: 3, width: 64 }}>
+            <InputGainKnob value={inputGain} active={armed || track.recording} size={64}
+              onChange={(v) => onParam("inputGain", v)} onBeforeChange={onBeforeChange} />
+            <div style={{ display: "grid", justifyItems: "center", gap: 1, whiteSpace: "nowrap" }} title={`Input gain ${fmtDb(inputGain)} dB`}>
+              <span style={{ fontSize: 8, color: "var(--muted)", fontWeight: 700, letterSpacing: ".1em" }}>GAIN</span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--cream-2)" }}>{fmtDb(inputGain)} dB</span>
+            </div>
           </div>
         </div>
-        {/* live input-level LED meter (green→yellow→red) */}
-        <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
-          <InputLevelMeter level={liveLevel} height={80} width={7} />
-          <span className="mono" title="Live input level" style={{ fontSize: 8, fontWeight: 400, letterSpacing: ".06em",
-            color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)" }}>IN</span>
+        {/* IN + GR meters grouped and pinned to the right edge */}
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flex: "0 0 auto" }}>
+          {/* live input-level LED meter (green→yellow→red) */}
+          <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
+            <InputLevelMeter level={liveLevel} height={80} width={7} />
+            <span className="mono" title="Live input level" style={{ fontSize: 8, fontWeight: 400, letterSpacing: ".06em",
+              color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)" }}>IN</span>
+          </div>
+          {/* limiter gain-reduction meter (right of IN) */}
+          <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
+            <InputGrMeter gr={armedGr} height={80} width={7} />
+            <span className="mono" title={`Limiter gain reduction ${armedGr.toFixed(1)} dB`} style={{ fontSize: 8, fontWeight: 400, letterSpacing: ".06em",
+              color: armedGr > 6 ? "var(--red)" : armedGr > 0.3 ? "var(--amber)" : "var(--dim)" }}>GR</span>
+          </div>
         </div>
       </div>
     </div>
@@ -368,7 +403,7 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
         <Meter level={level} height={faderH} width={7} />
       </div>
       <div className="mono" style={{ fontSize: 9.5, color: "var(--cream-2)" }}>{fmtDb(p.volume)} dB</div>
-      {isAudioIn && <AudioInputControls track={track} inputLevel={DAW.getInputLevel ? DAW.getInputLevel() : 0} onParam={onParam} onBeforeChange={onBeforeChange} />}
+      {isAudioIn && <AudioInputControls track={track} inputLevel={DAW.getInputLevel ? DAW.getInputLevel() : 0} inputGr={DAW.getInputGainReduction ? DAW.getInputGainReduction() : 0} onParam={onParam} onBeforeChange={onBeforeChange} />}
     </div>
   );
 }

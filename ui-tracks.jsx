@@ -432,7 +432,7 @@ function inputGainTickLeft(value) {
   return pad + norm * (INPUT_GAIN_SLIDER_WIDTH - INPUT_GAIN_THUMB_SIZE);
 }
 
-function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
+function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
   const p = track.params;
   const inputGainValue = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
@@ -446,6 +446,10 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
   };
   const armedInputLevel = p.arm ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const inputOverload = p.arm && armedInputLevel >= .92;
+  // Limiter gain reduction (positive dB); meter fills 0..12 dB. Only meaningful
+  // while armed with the limiter engaged.
+  const armedInputGr = p.arm && p.limiter !== false ? Math.max(0, inputGr || 0) : 0;
+  const inputGrFrac = Math.min(1, armedInputGr / 12);
   const noAudio = !!track.needsAudio;
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -604,6 +608,12 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
                   background: "linear-gradient(90deg,#55c879 0%,#55c879 64%,#e5c84b 74%,#e5c84b 84%,#df5b52 92%,#df5b52 100%)" }} />
               </span>
             </span>
+            {/* Limiter gain-reduction meter: fills from the right as the limiter clamps (0..12 dB). */}
+            <span title={`Limiter gain reduction ${armedInputGr.toFixed(1)} dB`}
+              style={{ position: "absolute", left: 0, right: 0, top: 11.5, height: 2.5, borderRadius: 2, background: "#2a2620", overflow: "hidden", pointerEvents: "none" }}>
+              <span style={{ position: "absolute", right: 0, top: 0, height: "100%", width: `${inputGrFrac * 100}%`,
+                background: "linear-gradient(270deg,#df5b52 0%,#e5a13b 100%)", borderRadius: 2 }} />
+            </span>
             <input ref={inputGainRef} className="input-level-slider" title={`Input gain ${fmtDb(inputGainValue)} dB · mouse wheel ±0.1`} type="range" min="0.1" max="4" step="0.1"
               value={inputGainValue} onChange={(e) => onParam("inputGain", +e.target.value)}
               style={{ position: "absolute", left: 0, top: 0, width: INPUT_GAIN_SLIDER_WIDTH, height: 16, margin: 0 }} />
@@ -723,7 +733,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, onParam, onRemove,
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -763,7 +773,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
 
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
-      <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} onMuteAllFiles={onMuteAllFiles} onRename={onRename} />
+      <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} inputGr={inputGr} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} onMuteAllFiles={onMuteAllFiles} onRename={onRename} />
       <div onMouseDown={(e) => { if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
           background: track.kind === "audioIn"

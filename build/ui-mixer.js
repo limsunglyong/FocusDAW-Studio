@@ -200,12 +200,37 @@ function InputLevelMeter({ level, height = 80, width = 7 }) {
   }
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column-reverse", gap, width, height } }, cells);
 }
-function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
+function InputGrMeter({ gr, height = 80, width = 7 }) {
+  const gap = 1.5;
+  const segs = Math.max(6, Math.min(22, Math.round((height - gap) / 3.5)));
+  const frac = Math.max(0, Math.min(1, (gr || 0) / 12));
+  const lit = Math.round(frac * segs);
+  const cells = [];
+  for (let i = 0; i < segs; i++) {
+    const on = i < lit;
+    const f = i / segs;
+    let col = "#e0a23a";
+    if (f > 0.66) col = "#e0574a";
+    else if (f > 0.33) col = "#e8963c";
+    cells.push(/* @__PURE__ */ React.createElement("div", { key: i, style: {
+      flex: 1,
+      minHeight: 1,
+      background: on ? col : "rgba(0,0,0,.34)",
+      borderRadius: 1,
+      opacity: on ? 1 : 0.85,
+      boxShadow: on ? `0 0 4px ${col}` : "none",
+      transition: "opacity .05s"
+    } }));
+  }
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap, width, height } }, cells);
+}
+function AudioInputControls({ track, inputLevel, inputGr = 0, onParam, onBeforeChange }) {
   const p = track.params || {};
   const inputGain = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const armed = !!p.arm;
   const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const hot = liveLevel >= 0.92;
+  const armedGr = (armed || track.recording) && p.limiter !== false ? Math.max(0, inputGr || 0) : 0;
   const commit = (k, v) => {
     onBeforeChange && onBeforeChange();
     onParam(k, v);
@@ -287,21 +312,26 @@ function AudioInputControls({ track, inputLevel, onParam, onBeforeChange }) {
       },
       opt.label
     ))
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: "2px 0 1px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", padding: "2px 0 1px" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3, width: 64 } }, /* @__PURE__ */ React.createElement(
     InputGainKnob,
     {
       value: inputGain,
       active: armed || track.recording,
-      size: 80,
+      size: 64,
       onChange: (v) => onParam("inputGain", v),
       onBeforeChange
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 3 }, title: `Input gain ${fmtDb(inputGain)} dB` }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".08em" } }, "GAIN"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)" } }, fmtDb(inputGain), " dB"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(InputLevelMeter, { level: liveLevel, height: 80, width: 7 }), /* @__PURE__ */ React.createElement("span", { className: "mono", title: "Live input level", style: {
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 1, whiteSpace: "nowrap" }, title: `Input gain ${fmtDb(inputGain)} dB` }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 8, color: "var(--muted)", fontWeight: 700, letterSpacing: ".1em" } }, "GAIN"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--cream-2)" } }, fmtDb(inputGain), " dB")))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "flex-start", flex: "0 0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(InputLevelMeter, { level: liveLevel, height: 80, width: 7 }), /* @__PURE__ */ React.createElement("span", { className: "mono", title: "Live input level", style: {
     fontSize: 8,
     fontWeight: 400,
     letterSpacing: ".06em",
     color: hot ? "var(--red)" : liveLevel > 0 ? "var(--green)" : "var(--dim)"
-  } }, "IN"))));
+  } }, "IN")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", justifyItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement(InputGrMeter, { gr: armedGr, height: 80, width: 7 }), /* @__PURE__ */ React.createElement("span", { className: "mono", title: `Limiter gain reduction ${armedGr.toFixed(1)} dB`, style: {
+    fontSize: 8,
+    fontWeight: 400,
+    letterSpacing: ".06em",
+    color: armedGr > 6 ? "var(--red)" : armedGr > 0.3 ? "var(--amber)" : "var(--dim)"
+  } }, "GR")))));
 }
 function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange }) {
   const p = track.params;
@@ -378,7 +408,7 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
       onChange: (v) => onParam("pan", v),
       format: (v) => Math.abs(v) < 0.02 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100)
     }
-  ), /* @__PURE__ */ React.createElement("div", { ref: faderAreaRef, style: { display: "flex", gap: 6, alignItems: "flex-end", flex: 1, minHeight: 0, justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Fader, { value: p.volume, height: faderH, max: 2, scale: "linear", onBeforeChange, onChange: (v) => onParam("volume", v) }), /* @__PURE__ */ React.createElement(Meter, { level, height: faderH, width: 7 })), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)" } }, fmtDb(p.volume), " dB"), isAudioIn && /* @__PURE__ */ React.createElement(AudioInputControls, { track, inputLevel: DAW.getInputLevel ? DAW.getInputLevel() : 0, onParam, onBeforeChange }));
+  ), /* @__PURE__ */ React.createElement("div", { ref: faderAreaRef, style: { display: "flex", gap: 6, alignItems: "flex-end", flex: 1, minHeight: 0, justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Fader, { value: p.volume, height: faderH, max: 2, scale: "linear", onBeforeChange, onChange: (v) => onParam("volume", v) }), /* @__PURE__ */ React.createElement(Meter, { level, height: faderH, width: 7 })), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 9.5, color: "var(--cream-2)" } }, fmtDb(p.volume), " dB"), isAudioIn && /* @__PURE__ */ React.createElement(AudioInputControls, { track, inputLevel: DAW.getInputLevel ? DAW.getInputLevel() : 0, inputGr: DAW.getInputGainReduction ? DAW.getInputGainReduction() : 0, onParam, onBeforeChange }));
 }
 function smoothPath(P) {
   if (P.length < 2) return "";

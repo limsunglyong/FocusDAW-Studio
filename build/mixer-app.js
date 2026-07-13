@@ -18,6 +18,7 @@ window.DAW = {
   _masterStereo: { l: 0, r: 0 },
   _masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
   _inputLevel: 0,
+  _inputGr: 0,
   _fftData: [],
   _isPlaying: false,
   _playhead: 0,
@@ -42,6 +43,9 @@ window.DAW = {
   },
   getInputLevel() {
     return this._inputLevel || 0;
+  },
+  getInputGainReduction() {
+    return this._inputGr || 0;
   },
   computeSpectrum() {
     return this._fftData;
@@ -139,6 +143,7 @@ function MixerApp() {
       } else if (msg.type === "LEVEL_METERS") {
         window.DAW._levels = msg.trackLevels;
         window.DAW._inputLevel = msg.inputLevel || 0;
+        window.DAW._inputGr = msg.inputGr || 0;
         window.DAW._masterLevel = msg.masterLevel;
         window.DAW._masterStereo = msg.masterStereo || { l: msg.masterLevel, r: msg.masterLevel };
         window.DAW._masterBandLevels = msg.masterBandLevels;

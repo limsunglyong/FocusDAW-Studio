@@ -1162,6 +1162,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         type: "LEVEL_METERS",
         trackLevels,
         inputLevel: DAW.getInputLevel ? DAW.getInputLevel() : 0,
+        inputGr: DAW.getInputGainReduction ? DAW.getInputGainReduction() : 0,
         masterLevel: DAW.getMasterLevel(),
         masterStereo: DAW.getMasterStereoLevels ? DAW.getMasterStereoLevels() : null,
         masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
@@ -3122,6 +3123,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                 return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={trackLaneH} sizeLaneH={laneH}
                   playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)}
                   inputLevel={t.kind === "audioIn" ? DAW.getInputLevel() : 0}
+                  inputGr={t.kind === "audioIn" && DAW.getInputGainReduction ? DAW.getInputGainReduction() : 0}
                   onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                   onSeek={guardedUserSeek}
                   onFocusFx={focusMixerFx}

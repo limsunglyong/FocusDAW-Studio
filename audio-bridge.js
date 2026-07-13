@@ -30,6 +30,7 @@
     audioInputPending: {},
     audioInputResolvers: [],
     inputLevel: 0,
+    inputGr: 0,
     recording: false,
     recordingRequestedAt: 0,
     recordingResolve: null,
@@ -336,6 +337,7 @@
     },
 
     getInputLevel() { return nativeState.inputLevel || 0; },
+    getInputGainReduction() { return nativeState.inputGr || 0; },
 
     setInputGain(gain) {
       const value = Math.max(0.1, Math.min(4, Number.isFinite(+gain) ? +gain : 1));
@@ -1117,6 +1119,7 @@
         nativeState.hasNativeBandData = true;
       }
       if (typeof msg.input === "number") nativeState.inputLevel = msg.input;
+      if (typeof msg.inputGr === "number") nativeState.inputGr = msg.inputGr;
       if (typeof msg.recording === "boolean") nativeState.recording = msg.recording;
       // Do not call _emit on every level message to avoid React overload, React uses useTick polling
     } else if (msg.event === "audioDevices") {

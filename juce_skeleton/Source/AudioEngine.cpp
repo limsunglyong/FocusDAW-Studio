@@ -9,6 +9,22 @@
 #include <functional>
 
 #if USE_JUCE
+namespace {
+    // -1.0 dBFS soft-limiter ceiling, shared by the recorder callback and the
+    // gain-reduction meter. 10^(-1/20).
+    constexpr float kInputLimiterCeiling = 0.89125f;
+    // Peak gain reduction (returned as a POSITIVE dB amount) that the tanh soft
+    // limiter applies to a signal whose pre-limiter peak magnitude is prePeak.
+    // 0 below the knee. Mirrors data[i] = ceiling * tanh(data[i] / ceiling).
+    inline float limiterGrDb(float prePeak)
+    {
+        if (prePeak <= 1.0e-6f) return 0.0f;
+        const float post = kInputLimiterCeiling * std::tanh(prePeak / kInputLimiterCeiling);
+        const float ratio = post / prePeak;      // (0,1]
+        return ratio >= 1.0f ? 0.0f : -20.0f * std::log10(ratio);
+    }
+}
+
 bool InputRecorder::start(const juce::File& file, double sr, int inputChannel, bool stereo,
                           float gain, bool monitor, bool limiter)
 {
@@ -98,10 +114,15 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
                 idlePeak = juce::jmax(idlePeak, std::abs(source[i] * meterGain));
         }
         level = juce::jmax(idlePeak, level.load() * 0.82f);
+        // Prospective GR: how much the limiter WOULD reduce the current input at
+        // this gain, so the meter helps set gain before the take starts.
+        const float idleGr = limiterOn ? limiterGrDb(idlePeak) : 0.0f;
+        gainReduction = juce::jmax(idleGr, gainReduction.load() * 0.82f);
         return;
     }
     juce::AudioBuffer<float> block(selectedChannelCount, numSamples);
     float peak = 0.0f;
+    float prePeak = 0.0f;   // peak magnitude BEFORE the limiter (post input-gain)
     float blockMin = 0.0f;
     float blockMax = 0.0f;
     const float targetInputGain = inputGain.load();
@@ -110,7 +131,7 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
     // so the output can never exceed the ceiling no matter how hot the input
     // gain drives it. The previous `tanh(x*1.18)/tanh(1.18)*c` form added a
     // ~+2.1 dB low-level boost and overshot the ceiling to +0.65 dBFS.
-    const float ceiling = 0.89125f; // 10^(-1/20) = -1.0 dBFS
+    const float ceiling = kInputLimiterCeiling; // 10^(-1/20) = -1.0 dBFS
     const bool monoInput = selectedChannelCount == 1;
     for (int ch = 0; ch < selectedChannelCount; ++ch)
     {
@@ -121,7 +142,9 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
         float* data = block.getWritePointer(ch);
         for (int i = 0; i < numSamples; ++i)
         {
+            const float preLimit = std::abs(data[i]);
             if (limiterOn) data[i] = ceiling * std::tanh(data[i] / ceiling);
+            prePeak = juce::jmax(prePeak, preLimit);
             peak = juce::jmax(peak, std::abs(data[i]));
             blockMin = juce::jmin(blockMin, data[i]);
             blockMax = juce::jmax(blockMax, data[i]);
@@ -144,6 +167,8 @@ void InputRecorder::audioDeviceIOCallbackWithContext(const float* const* input, 
     }
     currentInputGain = targetInputGain;
     level = juce::jmax(peak, level.load() * 0.82f);
+    const float gr = limiterOn ? limiterGrDb(prePeak) : 0.0f;
+    gainReduction = juce::jmax(gr, gainReduction.load() * 0.82f);
     std::lock_guard<std::mutex> lock(writerMutex);
     if (threadedWriter && recording.load())
     {
@@ -2090,6 +2115,15 @@ float AudioEngine::getInputMagnitude() const
 {
 #if USE_JUCE
     return inputRecorder.getLevel();
+#else
+    return 0.0f;
+#endif
+}
+
+float AudioEngine::getInputGainReduction() const
+{
+#if USE_JUCE
+    return inputRecorder.getGainReduction();
 #else
     return 0.0f;
 #endif

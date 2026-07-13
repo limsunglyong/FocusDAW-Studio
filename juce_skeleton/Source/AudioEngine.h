@@ -47,6 +47,8 @@ public:
     void cancel();
     bool isRecording() const { return recording.load(); }
     float getLevel() const { return level.load(); }
+    // Limiter gain reduction as a positive dB amount (0 = no reduction).
+    float getGainReduction() const { return gainReduction.load(); }
     juce::int64 getSamplesWritten() const { return samplesWritten.load(); }
     // Sample rate the current take is actually being written at (== WAV header
     // rate). The live recording peaks must be timed with THIS, not the cached
@@ -68,6 +70,7 @@ private:
     std::mutex writerMutex;
     std::atomic<bool> recording { false };
     std::atomic<float> level { 0.0f };
+    std::atomic<float> gainReduction { 0.0f };   // limiter GR meter (positive dB)
     std::atomic<juce::int64> samplesWritten { 0 };
     std::atomic<double> recordingSampleRate { 44100.0 };
     std::atomic<int> channel { 0 };
@@ -1573,6 +1576,7 @@ public:
     void cancelRecording();
     bool isRecording() const;
     float getInputMagnitude() const;
+    float getInputGainReduction() const;
     long long getRecordedSamples() const;
     std::vector<InputRecorder::PeakPoint> drainRecordingPeaks();
     double getCurrentSampleRate() const { return sampleRate; }

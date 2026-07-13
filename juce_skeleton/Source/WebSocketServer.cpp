@@ -805,6 +805,7 @@ void WebSocketServer::timerLoop()
             auto masterMag = audioEngine.getMasterMagnitude();
             lvJson << "{\"event\":\"levels\",\"master\":{\"l\":" << masterMag.first << ",\"r\":" << masterMag.second << "}";
             lvJson << ",\"input\":" << audioEngine.getInputMagnitude()
+                   << ",\"inputGr\":" << audioEngine.getInputGainReduction()
                    << ",\"recording\":" << (audioEngine.isRecording() ? "true" : "false");
 
             // Master band levels for the spectrum meter — without these the web UI
