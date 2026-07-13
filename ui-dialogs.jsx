@@ -980,6 +980,19 @@ function DeviceSetupSection() {
       {current && <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 10 }}>
         Active: in {current.inputName || "(none)"} · out {current.name || "(system default)"} · {current.type} · {Math.round(current.sampleRate || 0)} Hz / {current.bufferSize || 0} samples
       </div>}
+      {current && current.sampleRate > 0 && (current.inputLatency > 0 || current.outputLatency > 0) && (() => {
+        // Driver-reported latency (WASAPI: stream latency + buffer) — an
+        // estimate, not a measured loopback round-trip. A direction with no
+        // open device reports 0 and is omitted rather than shown as 0.0 ms.
+        const ms = (n) => (n / current.sampleRate * 1000).toFixed(1);
+        const parts = [];
+        if (current.inputLatency > 0) parts.push("in ≈ " + ms(current.inputLatency) + " ms");
+        if (current.outputLatency > 0) parts.push("out ≈ " + ms(current.outputLatency) + " ms");
+        if (current.inputLatency > 0 && current.outputLatency > 0) parts.push("round-trip ≈ " + ms(current.inputLatency + current.outputLatency) + " ms");
+        return <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3 }}>
+          Latency: {parts.join(" · ")} <span style={{ color: "var(--muted)" }}>(driver estimate)</span>
+        </div>;
+      })()}
       <div style={{ marginTop: 8 }}>
         <button className="btn" onClick={refresh} disabled={!isNative || loading} style={{ height: 30, fontSize: 12, padding: "0 12px", border: "1px solid var(--line-strong)", display: "inline-flex", alignItems: "center", gap: 7 }}>
           {loading && <span aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--line-strong)", borderTopColor: "var(--cream)", animation: "spin 0.7s linear infinite" }} />}

@@ -72,9 +72,15 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
         c2d.globalAlpha = 0.9;
         c2d.beginPath();
         for (let i = firstPoint; i < lastPoint; i += stride) {
+          const windowEnd = Math.min(lastPoint, i + stride);
+          let min = 0, max = 0;
+          for (let j = i; j < windowEnd; j++) {
+            const pMin = livePeaks[j * 3 + 1] || 0;
+            const pMax = livePeaks[j * 3 + 2] || 0;
+            if (pMin < min) min = pMin;
+            if (pMax > max) max = pMax;
+          }
           const sample = livePeaks[i * 3];
-          const min = livePeaks[i * 3 + 1] || 0;
-          const max = livePeaks[i * 3 + 2] || 0;
           const x = (recordingStart + sample / sr) * pxPerSec - drawStart;
           c2d.moveTo(x, mid2 - max * mid2 * 0.92 * ampZoom);
           c2d.lineTo(x, mid2 - min * mid2 * 0.92 * ampZoom);
@@ -111,26 +117,35 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
         c2d.moveTo(x0, mid);
         c2d.lineTo(x1, mid);
         c2d.stroke();
+        const cols = x1 - x0 + 1;
+        const colMin = new Float32Array(cols);
+        const colMax = new Float32Array(cols);
+        const bucketAt = (timelinePx) => {
+          const clipPx = timelinePx - clipStartX;
+          const bufPos = clip.offset + clipPx / clipW * (clip.end - clip.start);
+          return bufPos / bufDur * nb;
+        };
+        for (let x = x0; x <= x1; x++) {
+          let b0 = Math.floor(bucketAt(drawStart + x));
+          let b1 = Math.ceil(bucketAt(drawStart + x + 1));
+          b0 = Math.min(nb - 1, Math.max(0, b0));
+          b1 = Math.min(nb, Math.max(b0 + 1, b1));
+          let mn = 0, mx = 0;
+          for (let b = b0; b < b1; b++) {
+            const bMin = peaks[b * 2] || 0;
+            const bMax = peaks[b * 2 + 1] || 0;
+            if (bMin < mn) mn = bMin;
+            if (bMax > mx) mx = bMax;
+          }
+          colMin[x - x0] = mn;
+          colMax[x - x0] = mx;
+        }
         c2d.fillStyle = track.color + (track.recording ? "12" : "33");
         c2d.strokeStyle = track.color;
         c2d.lineWidth = 1;
         c2d.beginPath();
-        for (let x = x0; x <= x1; x++) {
-          const timelinePx = drawStart + x;
-          const clipPx = timelinePx - clipStartX;
-          const bufPos = clip.offset + clipPx / clipW * (clip.end - clip.start);
-          const bIdx = Math.floor(bufPos / bufDur * nb);
-          const max = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2 + 1] || 0;
-          c2d.lineTo(x, mid - max * mid * peakScale);
-        }
-        for (let x = x1; x >= x0; x--) {
-          const timelinePx = drawStart + x;
-          const clipPx = timelinePx - clipStartX;
-          const bufPos = clip.offset + clipPx / clipW * (clip.end - clip.start);
-          const bIdx = Math.floor(bufPos / bufDur * nb);
-          const min = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2] || 0;
-          c2d.lineTo(x, mid - min * mid * peakScale);
-        }
+        for (let x = x0; x <= x1; x++) c2d.lineTo(x, mid - colMax[x - x0] * mid * peakScale);
+        for (let x = x1; x >= x0; x--) c2d.lineTo(x, mid - colMin[x - x0] * mid * peakScale);
         c2d.closePath();
         c2d.fill();
         c2d.globalAlpha = track.recording ? 0.22 : 0.85;
@@ -140,12 +155,8 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
           c2d.fillStyle = "rgba(220,70,60,.70)";
           c2d.beginPath();
           for (let x = x0; x <= x1; x++) {
-            const timelinePx = drawStart + x;
-            const clipPx = timelinePx - clipStartX;
-            const bufPos = clip.offset + clipPx / clipW * (clip.end - clip.start);
-            const bIdx = Math.floor(bufPos / bufDur * nb);
-            const maxPk = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2 + 1] || 0;
-            const minPk = peaks[Math.min(nb - 1, Math.max(0, bIdx)) * 2] || 0;
+            const maxPk = colMax[x - x0];
+            const minPk = colMin[x - x0];
             if (maxPk * volume > 1 || Math.abs(minPk) * volume > 1) {
               const yTop = Math.max(0, mid - maxPk * mid * peakScale);
               const yBot = Math.min(height, mid - minPk * mid * peakScale);

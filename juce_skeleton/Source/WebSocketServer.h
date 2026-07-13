@@ -35,7 +35,13 @@ private:
     
     std::mutex clientsMutex;
     std::vector<void*> activeClients;
-    
+
+    // Client threads are joined in stop() (they used to be detached, which let a
+    // live client thread outlive the server object during shutdown — a
+    // use-after-free window when sockets drop exactly as the app quits).
+    std::mutex clientThreadsMutex;
+    std::vector<std::thread> clientThreads;
+
     std::thread timerThread;
     void timerLoop();
 };

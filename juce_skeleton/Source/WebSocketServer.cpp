@@ -148,7 +148,10 @@ double getJsonDoubleVal(const std::string& json, const std::string& key) {
     size_t start = json.find_first_of("0123456789.-", pos);
     if (start == std::string::npos) return 0.0;
     size_t end = json.find_first_not_of("0123456789.eE+-", start);
-    return std::stod(json.substr(start, end - start));
+    // stod throws on junk like a lone "-" — an exception escaping the client
+    // thread would std::terminate the whole engine, so parse failures are 0.
+    try { return std::stod(json.substr(start, end - start)); }
+    catch (...) { return 0.0; }
 }
 
 bool getJsonBoolVal(const std::string& json, const std::string& key) {
@@ -190,7 +193,8 @@ std::vector<float> getJsonFloatArrayVal(const std::string& json, const std::stri
             size_t last = numStr.find_last_not_of(" \t\r\n");
             numStr = numStr.substr(first, last - first + 1);
             if (!numStr.empty()) {
-                result.push_back((float)std::stod(numStr));
+                try { result.push_back((float)std::stod(numStr)); }
+                catch (...) { /* skip unparsable element — see getJsonDoubleVal */ }
             }
         }
         if (nextComma == std::string::npos) break;
@@ -220,13 +224,13 @@ void WebSocketServer::start()
     // Announce every finished background track load so the UI bridge knows when
     // the native engine is actually ready to take over playback (it defers the
     // web→native output handover until all pending loads report in).
-    audioEngine.onTrackLoaded = [this](const std::string& trackId, bool ok, int pending) {
+    audioEngine.setTrackLoadedCallback([this](const std::string& trackId, bool ok, int pending) {
         std::ostringstream json;
         json << "{\"event\":\"trackLoaded\",\"trackId\":\"" << trackId
              << "\",\"ok\":" << (ok ? "true" : "false")
              << ",\"pending\":" << pending << "}";
         broadcast(json.str());
-    };
+    });
 
     serverThread = std::thread(&WebSocketServer::listenLoop, this);
     timerThread = std::thread(&WebSocketServer::timerLoop, this);
@@ -235,19 +239,37 @@ void WebSocketServer::start()
 void WebSocketServer::stop()
 {
     shouldExit = true;
-    
-    // Close the listen socket to break the accept block if needed
-    // (In full production we use non-blocking or select)
-    
+
+    // Detach the loader-thread callback first: it captures `this`, and a track
+    // load finishing after this stop() must not broadcast into a dying server.
+    audioEngine.setTrackLoadedCallback(nullptr);
+
+    // Join the accept loop first so no new client threads appear below.
     if (serverThread.joinable()) serverThread.join();
     if (timerThread.joinable()) timerThread.join();
-    
+
+    // Unblock every client thread stuck in recv(). shutdown() (not closesocket)
+    // keeps the handle valid so each clientLoop still owns its single close —
+    // closing here would race the thread's own closesocket on a reused handle.
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+        for (void* client : activeClients)
+            shutdown((SOCKET)client, SD_BOTH);
+    }
+
+    std::vector<std::thread> threads;
+    {
+        std::lock_guard<std::mutex> lock(clientThreadsMutex);
+        threads.swap(clientThreads);
+    }
+    for (auto& t : threads)
+        if (t.joinable()) t.join();
+
+    // clientLoop removes + closes its own socket on exit; anything still listed
+    // (e.g. a handshake that never completed) is closed here.
     std::lock_guard<std::mutex> lock(clientsMutex);
     for (void* client : activeClients)
-    {
-        SOCKET s = (SOCKET)client;
-        closesocket(s);
-    }
+        closesocket((SOCKET)client);
     activeClients.clear();
 }
 
@@ -292,9 +314,12 @@ void WebSocketServer::listenLoop()
             SOCKET clientSocket = accept(listenSocket, nullptr, nullptr);
             if (clientSocket != INVALID_SOCKET)
             {
-                std::lock_guard<std::mutex> lock(clientsMutex);
-                activeClients.push_back((void*)clientSocket);
-                std::thread(&WebSocketServer::clientLoop, this, (void*)clientSocket).detach();
+                {
+                    std::lock_guard<std::mutex> lock(clientsMutex);
+                    activeClients.push_back((void*)clientSocket);
+                }
+                std::lock_guard<std::mutex> lock(clientThreadsMutex);
+                clientThreads.emplace_back(&WebSocketServer::clientLoop, this, (void*)clientSocket);
             }
         }
     }
@@ -372,12 +397,28 @@ void WebSocketServer::sendFrame(void* socketHandle, const std::string& text)
     send(s, (char*)frame.data(), (int)frame.size(), 0);
 }
 
+// recv() may deliver fewer bytes than requested — especially mid-teardown when
+// the peer (the closing app window) resets the connection. Loop until exactly
+// `len` bytes arrive so frame headers are never parsed from uninitialized
+// stack bytes (garbage lengths / opcodes were a shutdown-crash candidate).
+static bool recvAll(SOCKET s, void* buf, int len)
+{
+    char* p = (char*)buf;
+    int got = 0;
+    while (got < len)
+    {
+        int r = recv(s, p + got, len - got, 0);
+        if (r <= 0) return false;
+        got += r;
+    }
+    return true;
+}
+
 std::string WebSocketServer::readFrame(void* socketHandle, bool& error)
 {
     SOCKET s = (SOCKET)socketHandle;
     uint8_t header[2];
-    int r = recv(s, (char*)header, 2, 0);
-    if (r <= 0) { error = true; return ""; }
+    if (!recvAll(s, header, 2)) { error = true; return ""; }
 
     uint8_t opcode = header[0] & 0x0F;
     bool masked = (header[1] & 0x80) != 0;
@@ -391,15 +432,13 @@ std::string WebSocketServer::readFrame(void* socketHandle, bool& error)
     if (payloadLen == 126)
     {
         uint8_t extendedLen[2];
-        r = recv(s, (char*)extendedLen, 2, 0);
-        if (r <= 0) { error = true; return ""; }
+        if (!recvAll(s, extendedLen, 2)) { error = true; return ""; }
         payloadLen = ((uint64_t)extendedLen[0] << 8) | extendedLen[1];
     }
     else if (payloadLen == 127)
     {
         uint8_t extendedLen[8];
-        r = recv(s, (char*)extendedLen, 8, 0);
-        if (r <= 0) { error = true; return ""; }
+        if (!recvAll(s, extendedLen, 8)) { error = true; return ""; }
         payloadLen = 0;
         for (int i = 0; i < 8; ++i)
         {
@@ -407,23 +446,21 @@ std::string WebSocketServer::readFrame(void* socketHandle, bool& error)
         }
     }
 
+    // Commands are small JSON (largest: automation point arrays, well under a
+    // megabyte). A larger length only occurs on a corrupt/desynced stream —
+    // treat it as a dead connection instead of attempting a giant allocation.
+    if (payloadLen > (1ull << 24)) { error = true; return ""; }
+
     uint8_t maskKey[4] = {0};
     if (masked)
     {
-        r = recv(s, (char*)maskKey, 4, 0);
-        if (r <= 0) { error = true; return ""; }
+        if (!recvAll(s, maskKey, 4)) { error = true; return ""; }
     }
 
     std::vector<char> payload(payloadLen);
     if (payloadLen > 0)
     {
-        uint64_t totalReceived = 0;
-        while (totalReceived < payloadLen)
-        {
-            int chunk = recv(s, payload.data() + totalReceived, (int)(payloadLen - totalReceived), 0);
-            if (chunk <= 0) { error = true; return ""; }
-            totalReceived += chunk;
-        }
+        if (!recvAll(s, payload.data(), (int)payloadLen)) { error = true; return ""; }
 
         if (masked)
         {
@@ -452,9 +489,14 @@ void WebSocketServer::clientLoop(void* socketHandle)
     
     if (!handleHandshake(socketHandle))
     {
+        // Remove from the broadcast list BEFORE closing: the 100ms timer thread
+        // iterates activeClients, and sending to a closed (possibly reused)
+        // handle is a race. Same order in the normal exit path below.
+        {
+            std::lock_guard<std::mutex> lock(clientsMutex);
+            activeClients.erase(std::remove(activeClients.begin(), activeClients.end(), socketHandle), activeClients.end());
+        }
         closesocket(s);
-        std::lock_guard<std::mutex> lock(clientsMutex);
-        activeClients.erase(std::remove(activeClients.begin(), activeClients.end(), socketHandle), activeClients.end());
         return;
     }
 
@@ -753,11 +795,12 @@ void WebSocketServer::clientLoop(void* socketHandle)
         }
     }
 
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+        activeClients.erase(std::remove(activeClients.begin(), activeClients.end(), socketHandle), activeClients.end());
+    }
     closesocket(s);
     LOG_DBG << "[WebSocketServer] Client disconnected." << std::endl;
-    
-    std::lock_guard<std::mutex> lock(clientsMutex);
-    activeClients.erase(std::remove(activeClients.begin(), activeClients.end(), socketHandle), activeClients.end());
 }
 
 void WebSocketServer::timerLoop()

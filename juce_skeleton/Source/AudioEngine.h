@@ -1550,7 +1550,9 @@ public:
     // each async loadTrack finishes: (trackId, success, loads still pending).
     // The WebSocket server uses it to broadcast a "trackLoaded" event so the UI
     // bridge knows when the native engine is actually ready to play.
-    std::function<void(const std::string&, bool, int)> onTrackLoaded;
+    // Assigned/read under loadMutex: the server clears it (nullptr) in stop() so
+    // a load finishing during shutdown cannot call into a destroyed server.
+    void setTrackLoadedCallback(std::function<void(const std::string&, bool, int)> cb);
 
     // Block until the background load queue is drained (offline export must not
     // render while tracks are still decoding, or it would miss them).
@@ -1659,6 +1661,7 @@ private:
 
     std::deque<LoadJob> loadQueue;      // guarded by loadMutex
     std::mutex loadMutex;
+    std::function<void(const std::string&, bool, int)> onTrackLoaded; // guarded by loadMutex
     std::condition_variable loadCv;     // wakes the worker (new job / exit)
     std::condition_variable loadIdleCv; // wakes waitForLoadsIdle when drained
     bool loaderExit = false;            // guarded by loadMutex

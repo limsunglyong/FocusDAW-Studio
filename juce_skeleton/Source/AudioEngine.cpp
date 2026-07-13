@@ -444,8 +444,19 @@ void AudioEngine::loadTrack(const std::string& trackId, const std::string& fileP
     LOG_DBG << "[AudioEngine] Track " << trackId << " queued for background load." << std::endl;
 #else
     LOG_DBG << "[AudioEngine] Mock Track " << trackId << " loaded with " << filePath << std::endl;
-    if (onTrackLoaded) onTrackLoaded(trackId, true, 0);
+    std::function<void(const std::string&, bool, int)> cb;
+    {
+        std::lock_guard<std::mutex> ql(loadMutex);
+        cb = onTrackLoaded;
+    }
+    if (cb) cb(trackId, true, 0);
 #endif
+}
+
+void AudioEngine::setTrackLoadedCallback(std::function<void(const std::string&, bool, int)> cb)
+{
+    std::lock_guard<std::mutex> ql(loadMutex);
+    onTrackLoaded = std::move(cb);
 }
 
 void AudioEngine::loaderLoop()
@@ -468,13 +479,15 @@ void AudioEngine::loaderLoop()
         catch (...) { std::cerr << "[AudioEngine] Track load failed (unknown error)" << std::endl; }
 
         int pending = 0;
+        std::function<void(const std::string&, bool, int)> cb;
         {
             std::lock_guard<std::mutex> ql(loadMutex);
             loaderBusy = false;
             pending = (int)loadQueue.size();
             if (pending == 0) loadIdleCv.notify_all();
+            cb = onTrackLoaded;
         }
-        if (onTrackLoaded) onTrackLoaded(job.trackId, ok, pending);
+        if (cb) cb(job.trackId, ok, pending);
     }
 }
 
@@ -1799,7 +1812,7 @@ std::string AudioEngine::getAudioDevicesJson()
         std::ostringstream json;
         juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager.getAudioDeviceSetup();
         double sr = 0.0;
-        int buf = 0;
+        int buf = 0, latIn = 0, latOut = 0;
         juce::StringArray inChNames;
         if (auto* dev = deviceManager.getCurrentAudioDevice())
         {
@@ -1809,6 +1822,11 @@ std::string AudioEngine::getAudioDevicesJson()
             // "Analogue 2" on a Focusrite) so the per-track port dropdown can be
             // built from the actual interface instead of a fixed Input 1/2/1-2 list.
             inChNames = dev->getInputChannelNames();
+            // Driver-reported latency in samples. On WASAPI these already include
+            // the buffer size (stream latency + buffer), so round-trip is simply
+            // (in + out) / sampleRate — an estimate, not a measured loopback value.
+            latIn = dev->getInputLatencyInSamples();
+            latOut = dev->getOutputLatencyInSamples();
         }
         json << "{\"event\":\"audioDevices\",\"current\":{"
              << "\"type\":\"" << jsonEscapeString(deviceManager.getCurrentAudioDeviceType().toStdString()) << "\","
@@ -1821,7 +1839,8 @@ std::string AudioEngine::getAudioDevicesJson()
             if (c + 1 < inChNames.size()) json << ",";
         }
         json << "],"
-             << "\"sampleRate\":" << sr << ",\"bufferSize\":" << buf << "},\"types\":[";
+             << "\"sampleRate\":" << sr << ",\"bufferSize\":" << buf
+             << ",\"inputLatency\":" << latIn << ",\"outputLatency\":" << latOut << "},\"types\":[";
 
         const auto& types = deviceManager.getAvailableDeviceTypes();
         for (int i = 0; i < types.size(); ++i)
