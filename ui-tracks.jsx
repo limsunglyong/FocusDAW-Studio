@@ -125,7 +125,14 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
         if (clipW <= 0 || clipEndX < drawStart || clipStartX > drawStart + drawW) return;
 
         const x0 = Math.max(0, Math.floor(clipStartX - drawStart));
-        const x1 = Math.min(drawW, Math.ceil(clipEndX - drawStart));
+        // x1 MUST be an integer pixel column. drawW can be fractional (laneW =
+        // duration×pxPerSec, or a fractional host width), and when it is the
+        // smaller term here x1 becomes fractional. The bottom-envelope fill loop
+        // below starts AT x1 and steps down by 1, so every colMin[x - x0] index
+        // would be fractional → undefined → NaN → lineTo(x, NaN) is dropped and
+        // the entire LOWER half of the waveform vanished at fit-to-view zooms
+        // (~px/s 13). The top loop starts at the integer x0 so it was unaffected.
+        const x1 = Math.min(Math.floor(drawW), Math.ceil(clipEndX - drawStart));
 
         // baseline
         c2d.strokeStyle = "rgba(255,255,255,.05)"; c2d.lineWidth = 1;
@@ -450,7 +457,7 @@ function inputGainTickLeft(value) {
   return pad + norm * (INPUT_GAIN_SLIDER_WIDTH - INPUT_GAIN_THUMB_SIZE);
 }
 
-function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
+function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recordingActive = false, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
   const p = track.params;
   const inputGainValue = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
@@ -505,6 +512,11 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
     opacity: noAudio ? .38 : 1,
     cursor: noAudio ? "not-allowed" : "pointer",
   };
+  // ARM is locked while a take is recording or counting in — toggling it then
+  // would disarm the running take or reroute the input mid-record. The main
+  // window's param() handler enforces this authoritatively; here we just reflect
+  // it (disabled + dimmed) so the button visibly can't be used.
+  const armLocked = track.kind === "audioIn" && recordingActive;
   const compactArmButtonStyle = {
     height: buttonSize,
     minWidth: 34,
@@ -515,7 +527,8 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
     fontSize: 8.5,
     fontWeight: 800,
     lineHeight: 1,
-    cursor: "pointer",
+    cursor: armLocked ? "not-allowed" : "pointer",
+    opacity: armLocked ? 0.45 : 1,
     background: p.arm ? TRACK_ARM_BUTTON_BG : "var(--surface2)",
     color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--cream-2)",
     border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
@@ -541,7 +554,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
         <ScrollingTrackTitle name={track.name} compact={compact} onRename={onRename ? (newName) => onRename(track.id, newName) : undefined} />
         {track.kind !== "audioIn" && <button title={noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection"} disabled={noAudio} onClick={noAudio ? undefined : () => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>}
-        {(compact || audioInInlineControls) && track.kind === "audioIn" && <button title={p.arm ? "Disarm Audio In track" : "Arm Audio In track"} onClick={() => onParam("arm", !p.arm)} style={compactArmButtonStyle}>ARM</button>}
+        {(compact || audioInInlineControls) && track.kind === "audioIn" && <button title={armLocked ? "Recording — ARM locked" : p.arm ? "Disarm Audio In track" : "Arm Audio In track"} disabled={armLocked} onClick={armLocked ? undefined : () => onParam("arm", !p.arm)} style={compactArmButtonStyle}>ARM</button>}
         <SoloBtn size={buttonSize} on={p.solo} disabled={noAudio} onClick={() => onParam("solo", !p.solo)} />
         <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} onClick={(e) => {
           if (e && e.shiftKey && track.kind === "file" && onMuteAllFiles) onMuteAllFiles(!p.mute);
@@ -567,7 +580,8 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
       {!compact && track.kind === "audioIn" && <div style={{ display: "flex", alignItems: "flex-start", gap: 6, minHeight: audioInInlineControls ? 25 : 48 }}>
         <span style={{ display: "grid", gap: 4, width: 86, flex: "0 0 86px" }}>
           <span style={{ display: "flex", gap: 3 }}>
-            {!audioInInlineControls && <button onClick={() => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 750,
+            {!audioInInlineControls && <button title={armLocked ? "Recording — ARM locked" : p.arm ? "Disarm Audio In track" : "Arm Audio In track"} disabled={armLocked} onClick={armLocked ? undefined : () => onParam("arm", !p.arm)} style={{ height: 22, padding: "0 5px", borderRadius: 5, fontSize: 9, fontWeight: 750,
+              cursor: armLocked ? "not-allowed" : "pointer", opacity: armLocked ? 0.45 : 1,
               background: p.arm ? TRACK_ARM_BUTTON_BG : "transparent", color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)",
               border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
               boxShadow: p.arm ? TRACK_ARM_BUTTON_SHADOW : "inset 0 1px 0 rgba(255,255,255,.05)",
@@ -751,7 +765,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -791,7 +805,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
 
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
-      <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} inputGr={inputGr} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} onMuteAllFiles={onMuteAllFiles} onRename={onRename} />
+      <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} inputGr={inputGr} recordingActive={recordingActive} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} onMuteAllFiles={onMuteAllFiles} onRename={onRename} />
       <div onMouseDown={(e) => { if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
           background: track.kind === "audioIn"

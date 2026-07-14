@@ -211,6 +211,23 @@ function createWindow() {
     }
   });
 
+  // DevTools shortcut (F12 / Ctrl+Shift+I / Cmd+Opt+I). The application menu is
+  // removed (Menu.setApplicationMenu(null)), which also strips the default
+  // View-role accelerators, so in dev there was otherwise no way to open the
+  // console. Gate on !app.isPackaged so packaged release builds stay fully
+  // locked down (devTools is also disabled there via buildWebPreferences()).
+  if (!app.isPackaged) {
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = (input.key || '').toLowerCase();
+      const toggle = key === 'f12' || ((input.control || input.meta) && input.shift && key === 'i');
+      if (toggle) {
+        event.preventDefault();
+        win.webContents.toggleDevTools();
+      }
+    });
+  }
+
   win.loadFile(path.join(__dirname, '..', 'studio.html'));
 
 

@@ -1330,7 +1330,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         masterBandLevels: DAW.getMasterBandLevels ? DAW.getMasterBandLevels() : DAW.EQ_FREQS.map(() => DAW.getMasterLevel()),
         fftData: DAW.computeSpectrum(),
         isPlaying: DAW.isPlaying,
-        playhead: DAW.getPlayhead()
+        playhead: DAW.getPlayhead(),
+        // ARM lock state (recording or count-in) — pushed every tick so the mixer
+        // window can disable its ARM buttons in lock-step with the main header.
+        recLock: DAW.tracks.some((t) => t.kind === "audioIn" && t.recording) || !!window.__recordCountdownActive
       });
     }
     if (showAdvancedPan && advancedChannelRef.current) {
@@ -2046,6 +2049,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               break;
             }
           }
+          if (msg.k === "arm" && (DAW.tracks.some((t) => t.kind === "audioIn" && t.recording) || window.__recordCountdownActive))
+            break;
           if (msg.k === "arm" && msg.v) {
             DAW.tracks.forEach((track) => {
               if (track.id !== msg.id && track.kind === "audioIn" && track.params && track.params.arm)
@@ -2619,7 +2624,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       track.params.inputChannel = Number(input.channel) || 0;
       track.params.inputStereo = !!input.stereo;
     }
-    if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] prepare failed:", e));
+    if (DAW.setAudioInput && !DAW.isPlaying) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] prepare failed:", e));
     force((n) => n + 1);
   }, []);
   const toggleRecording = useCallback(async (track) => {
@@ -2880,6 +2885,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks]);
   const param = (id) => (k, v) => {
     const targetTrack = DAW.tracks.find((track) => track.id === id);
+    if (k === "arm" && (isRecordingActive() || isCountingIn())) return;
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) {
       pushUndo();
@@ -3246,6 +3252,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           playbackLevel: DAW.getTrackLevel(t.id),
           inputLevel: t.kind === "audioIn" ? DAW.getInputLevel() : 0,
           inputGr: t.kind === "audioIn" && DAW.getInputGainReduction ? DAW.getInputGainReduction() : 0,
+          recordingActive: DAW.tracks.some((tr) => tr.kind === "audioIn" && tr.recording) || recordCount != null,
           onParam: param(t.id),
           onRemove: () => removeTrack(t.id),
           onSeek: guardedUserSeek,

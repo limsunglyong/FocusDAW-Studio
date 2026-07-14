@@ -63,12 +63,13 @@ function buildInputPortOptions() {
   }
   return opts;
 }
-function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--audio-input-button-active-fg, var(--amber))", activeBorder = "var(--amber-deep)", activeShadow = "none" }) {
+function AudioInputButton({ active, children, title, onClick, disabled = false, activeBg = "var(--amber-soft)", activeColor = "var(--audio-input-button-active-fg, var(--amber))", activeBorder = "var(--amber-deep)", activeShadow = "none" }) {
   return /* @__PURE__ */ React.createElement(
     "button",
     {
       title,
-      onClick,
+      disabled,
+      onClick: disabled ? void 0 : onClick,
       style: {
         flex: 1,
         minWidth: 0,
@@ -78,6 +79,8 @@ function AudioInputButton({ active, children, title, onClick, activeBg = "var(--
         fontSize: 8.5,
         fontWeight: 800,
         letterSpacing: ".04em",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.45 : 1,
         background: active ? activeBg : "rgba(0,0,0,.14)",
         color: active ? activeColor : "var(--audio-input-button-fg, var(--muted))",
         border: "1px solid " + (active ? activeBorder : "var(--line-strong)"),
@@ -228,6 +231,7 @@ function AudioInputControls({ track, inputLevel, inputGr = 0, onParam, onBeforeC
   const p = track.params || {};
   const inputGain = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const armed = !!p.arm;
+  const recLock = !!(typeof window !== "undefined" && window.DAW && window.DAW._recLock);
   const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const hot = liveLevel >= 0.92;
   const armedGr = (armed || track.recording) && p.limiter !== false ? Math.max(0, inputGr || 0) : 0;
@@ -258,7 +262,8 @@ function AudioInputControls({ track, inputLevel, inputGr = 0, onParam, onBeforeC
     AudioInputButton,
     {
       active: armed,
-      title: "Arm this input track for recording",
+      disabled: recLock,
+      title: recLock ? "Recording \u2014 ARM locked" : "Arm this input track for recording",
       activeBg: ARM_BUTTON_BG,
       activeColor: "var(--arm-on-fg, #0d0d0d)",
       activeBorder: "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)",

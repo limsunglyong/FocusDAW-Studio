@@ -110,7 +110,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
         const clipW = clipEndX - clipStartX;
         if (clipW <= 0 || clipEndX < drawStart || clipStartX > drawStart + drawW) return;
         const x0 = Math.max(0, Math.floor(clipStartX - drawStart));
-        const x1 = Math.min(drawW, Math.ceil(clipEndX - drawStart));
+        const x1 = Math.min(Math.floor(drawW), Math.ceil(clipEndX - drawStart));
         c2d.strokeStyle = "rgba(255,255,255,.05)";
         c2d.lineWidth = 1;
         c2d.beginPath();
@@ -487,7 +487,7 @@ function inputGainTickLeft(value) {
   const pad = INPUT_GAIN_THUMB_SIZE / 2;
   return pad + norm * (INPUT_GAIN_SLIDER_WIDTH - INPUT_GAIN_THUMB_SIZE);
 }
-function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
+function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recordingActive = false, onParam, onRemove, laneH, sizeLaneH = laneH, onFocusFx, selected = false, onSelect, indent = 0, onMuteAllFiles, onRename }) {
   const p = track.params;
   const inputGainValue = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const inputChannel = Math.max(0, Number.isFinite(+p.inputChannel) ? +p.inputChannel : 0);
@@ -539,6 +539,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
     opacity: noAudio ? 0.38 : 1,
     cursor: noAudio ? "not-allowed" : "pointer"
   };
+  const armLocked = track.kind === "audioIn" && recordingActive;
   const compactArmButtonStyle = {
     height: buttonSize,
     minWidth: 34,
@@ -549,7 +550,8 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
     fontSize: 8.5,
     fontWeight: 800,
     lineHeight: 1,
-    cursor: "pointer",
+    cursor: armLocked ? "not-allowed" : "pointer",
+    opacity: armLocked ? 0.45 : 1,
     background: p.arm ? TRACK_ARM_BUTTON_BG : "var(--surface2)",
     color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--cream-2)",
     border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
@@ -581,7 +583,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
         boxShadow: selected ? "inset 4px 0 0 var(--amber)" : "none"
       }
     },
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact, onRename: onRename ? (newName) => onRename(track.id, newName) : void 0 }), track.kind !== "audioIn" && /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), (compact || audioInInlineControls) && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("button", { title: p.arm ? "Disarm Audio In track" : "Arm Audio In track", onClick: () => onParam("arm", !p.arm), style: compactArmButtonStyle }, "ARM"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: (e) => {
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` } }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--faint)" } }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement(ScrollingTrackTitle, { name: track.name, compact, onRename: onRename ? (newName) => onRename(track.id, newName) : void 0 }), track.kind !== "audioIn" && /* @__PURE__ */ React.createElement("button", { title: noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection", disabled: noAudio, onClick: noAudio ? void 0 : () => onParam("bpmSource", !p.bpmSource), style: bpmButtonStyle }, "B"), (compact || audioInInlineControls) && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("button", { title: armLocked ? "Recording \u2014 ARM locked" : p.arm ? "Disarm Audio In track" : "Arm Audio In track", disabled: armLocked, onClick: armLocked ? void 0 : () => onParam("arm", !p.arm), style: compactArmButtonStyle }, "ARM"), /* @__PURE__ */ React.createElement(SoloBtn, { size: buttonSize, on: p.solo, disabled: noAudio, onClick: () => onParam("solo", !p.solo) }), /* @__PURE__ */ React.createElement(MuteBtn, { size: buttonSize, on: p.mute, auto: DAW._anySolo() && !p.solo, disabled: noAudio, onClick: (e) => {
       if (e && e.shiftKey && track.kind === "file" && onMuteAllFiles) onMuteAllFiles(!p.mute);
       else onParam("mute", !p.mute);
     } })),
@@ -608,12 +610,14 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
         onChange: (v) => onParam("pan", v)
       }
     ), /* @__PURE__ */ React.createElement(Meter, { level: playbackLevel, height: meterH, width: 6 })),
-    !compact && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6, minHeight: audioInInlineControls ? 25 : 48 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "grid", gap: 4, width: 86, flex: "0 0 86px" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", gap: 3 } }, !audioInInlineControls && /* @__PURE__ */ React.createElement("button", { onClick: () => onParam("arm", !p.arm), style: {
+    !compact && track.kind === "audioIn" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6, minHeight: audioInInlineControls ? 25 : 48 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "grid", gap: 4, width: 86, flex: "0 0 86px" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", gap: 3 } }, !audioInInlineControls && /* @__PURE__ */ React.createElement("button", { title: armLocked ? "Recording \u2014 ARM locked" : p.arm ? "Disarm Audio In track" : "Arm Audio In track", disabled: armLocked, onClick: armLocked ? void 0 : () => onParam("arm", !p.arm), style: {
       height: 22,
       padding: "0 5px",
       borderRadius: 5,
       fontSize: 9,
       fontWeight: 750,
+      cursor: armLocked ? "not-allowed" : "pointer",
+      opacity: armLocked ? 0.45 : 1,
       background: p.arm ? TRACK_ARM_BUTTON_BG : "transparent",
       color: p.arm ? "var(--arm-on-fg, #0d0d0d)" : "var(--muted)",
       border: "1px solid " + (p.arm ? "color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" : "var(--line-strong)"),
@@ -965,7 +969,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, onPar
     ))))
   ));
 }
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = playhead / DAW.duration * laneW;
   const p = track.params;
@@ -1001,7 +1005,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     onSeek(sec);
   };
   const toolCursor = tool === "scissors" ? "crosshair" : tool === "join" ? "cell" : "text";
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, playbackLevel, inputLevel, inputGr, onParam, onRemove, laneH, sizeLaneH, onFocusFx, selected, onSelect, indent: headerIndent, onMuteAllFiles, onRename }), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", minWidth: "min-content" } }, /* @__PURE__ */ React.createElement(TrackHeader, { track, idx, playbackLevel, inputLevel, inputGr, recordingActive, onParam, onRemove, laneH, sizeLaneH, onFocusFx, selected, onSelect, indent: headerIndent, onMuteAllFiles, onRename }), /* @__PURE__ */ React.createElement(
     "div",
     {
       onMouseDown: (e) => {

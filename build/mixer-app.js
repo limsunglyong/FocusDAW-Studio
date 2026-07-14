@@ -150,6 +150,7 @@ function MixerApp() {
         window.DAW._fftData = msg.fftData;
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
+        window.DAW._recLock = !!msg.recLock;
       }
     };
     channel.addEventListener("message", handleMessage);

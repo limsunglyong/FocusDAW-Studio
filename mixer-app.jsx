@@ -161,6 +161,9 @@ function MixerApp() {
         window.DAW._fftData = msg.fftData;
         window.DAW._isPlaying = !!msg.isPlaying;
         window.DAW._playhead = msg.playhead || 0;
+        // ARM lock (recording / count-in) so the mixer ARM buttons disable in
+        // lock-step with the main header. Pushed on the rapid LEVEL_METERS tick.
+        window.DAW._recLock = !!msg.recLock;
         // Levels are updated rapidly, relying on useTick() for visual refresh without React component lag
       }
     };

@@ -1169,6 +1169,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         fftData: DAW.computeSpectrum(),
         isPlaying: DAW.isPlaying,
         playhead: DAW.getPlayhead(),
+        // ARM lock state (recording or count-in) — pushed every tick so the mixer
+        // window can disable its ARM buttons in lock-step with the main header.
+        recLock: DAW.tracks.some((t) => t.kind === "audioIn" && t.recording) || !!window.__recordCountdownActive,
       });
     }
 
@@ -1959,6 +1962,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               break;
             }
           }
+          // Lock ARM while recording / count-in — mirror of the header param()
+          // guard so the mixer window can't disarm the running take either.
+          if (msg.k === "arm" &&
+              (DAW.tracks.some((t) => t.kind === "audioIn" && t.recording) || window.__recordCountdownActive))
+            break;
           if (msg.k === "arm" && msg.v) {
             DAW.tracks.forEach((track) => {
               if (track.id !== msg.id && track.kind === "audioIn" && track.params && track.params.arm)
@@ -2574,7 +2582,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       track.params.inputChannel = Number(input.channel) || 0;
       track.params.inputStereo = !!input.stereo;
     }
-    if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] prepare failed:", e));
+    // Pre-warming the input here is only a first-record latency optimization.
+    // Doing it WHILE PLAYING forces a cold WASAPI device reopen (to add the input
+    // channel on a boot-time output-only device), which froze the transport and
+    // bounced the playhead back to 0 (v1.20.10). Skip it during playback — the
+    // input opens when the user actually arms/records (toggleRecording awaits
+    // setAudioInput), and the startup warm-up already covers the common case so
+    // subsequent adds hit the native "keep warm" fast path with no reopen.
+    if (DAW.setAudioInput && !DAW.isPlaying) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] prepare failed:", e));
     force((n) => n + 1);
   }, []);
 
@@ -2820,6 +2835,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   const param = (id) => (k, v) => {
     const targetTrack = DAW.tracks.find((track) => track.id === id);
+    // While recording (or during the 3s record count-in) the armed input is
+    // fixed — toggling ARM would disarm the running take or reroute the input
+    // mid-record. Ignore ARM changes then (no undo snapshot either). Same guard
+    // mirrored in the mixer-window path (SET_TRACK_PARAM).
+    if (k === "arm" && (isRecordingActive() || isCountingIn())) return;
     const undoKey = `${id}-${k}`;
     if (lastUndoKey.current !== undoKey) { pushUndo(); lastUndoKey.current = undoKey; }
     if (k === "arm" && v) {
@@ -3124,6 +3144,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)}
                   inputLevel={t.kind === "audioIn" ? DAW.getInputLevel() : 0}
                   inputGr={t.kind === "audioIn" && DAW.getInputGainReduction ? DAW.getInputGainReduction() : 0}
+                  recordingActive={DAW.tracks.some((tr) => tr.kind === "audioIn" && tr.recording) || recordCount != null}
                   onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
                   onSeek={guardedUserSeek}
                   onFocusFx={focusMixerFx}

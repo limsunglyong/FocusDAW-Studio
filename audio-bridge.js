@@ -916,6 +916,23 @@
         // launch. The result comes back on audioInputChanged.
         nativeState.startupDeviceReapply = true;
         sendToNative({ command: "setAudioInput", requestId: "startup-device", ...savedInput, outputName });
+      } else if (savedInput) {
+        // A saved input with an EMPTY name means the user has used the DEFAULT
+        // input before (via + Audio In, which persists AUDIO_INPUT_KEY). Boot
+        // opens the device OUTPUT-ONLY, so the FIRST setAudioInput has to cold-
+        // reopen WASAPI to add the input channel — and doing that mid-playback
+        // froze the transport and bounced the playhead to 0 (v1.20.10). Warm the
+        // default input HERE, while idle, so that reopen is invisible and later
+        // (mid-playback) adds hit the native "keep warm" fast path instead.
+        // Restore the saved OUTPUT first (with self-heal), then warm the input
+        // preserving it (empty outputName). Use a distinct requestId so a warm
+        // failure (e.g. no input device on this machine) does NOT reset the saved
+        // output the way "startup-device" does — there is no input name to heal.
+        if (savedDev && (savedDev.type || savedDev.name)) {
+          nativeState.startupDeviceReapply = true;
+          sendToNative({ command: "setAudioDevice", type: savedDev.type || "", name: savedDev.name || "" });
+        }
+        sendToNative({ command: "setAudioInput", requestId: "startup-warm", ...savedInput, outputName: "" });
       } else if (savedDev && (savedDev.type || savedDev.name)) {
         nativeState.startupDeviceReapply = true;
         sendToNative({ command: "setAudioDevice", type: savedDev.type || "", name: savedDev.name || "" });

@@ -74,11 +74,12 @@ function buildInputPortOptions() {
   return opts;
 }
 
-function AudioInputButton({ active, children, title, onClick, activeBg = "var(--amber-soft)", activeColor = "var(--audio-input-button-active-fg, var(--amber))", activeBorder = "var(--amber-deep)", activeShadow = "none" }) {
+function AudioInputButton({ active, children, title, onClick, disabled = false, activeBg = "var(--amber-soft)", activeColor = "var(--audio-input-button-active-fg, var(--amber))", activeBorder = "var(--amber-deep)", activeShadow = "none" }) {
   return (
-    <button title={title} onClick={onClick}
+    <button title={title} disabled={disabled} onClick={disabled ? undefined : onClick}
       style={{ flex: 1, minWidth: 0, height: 21, borderRadius: 5, padding: "0 4px",
         fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em",
+        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1,
         background: active ? activeBg : "rgba(0,0,0,.14)",
         color: active ? activeColor : "var(--audio-input-button-fg, var(--muted))",
         border: "1px solid " + (active ? activeBorder : "var(--line-strong)"),
@@ -251,6 +252,10 @@ function AudioInputControls({ track, inputLevel, inputGr = 0, onParam, onBeforeC
   const p = track.params || {};
   const inputGain = Math.max(0.1, Math.min(4, p.inputGain == null ? 1 : p.inputGain));
   const armed = !!p.arm;
+  // ARM is locked while any take is recording or counting in (pushed from the
+  // main window on the LEVEL_METERS tick). The main window enforces the lock
+  // authoritatively; disabling here just reflects it. MON stays operable.
+  const recLock = !!(typeof window !== "undefined" && window.DAW && window.DAW._recLock);
   const liveLevel = armed || track.recording ? Math.max(0, Math.min(1, inputLevel || 0)) : 0;
   const hot = liveLevel >= .92;
   // Limiter gain reduction (positive dB), only while armed/recording with LIM on.
@@ -272,7 +277,7 @@ function AudioInputControls({ track, inputLevel, inputGr = 0, onParam, onBeforeC
     <div style={{ width: "100%", display: "grid", gap: 5, padding: "6px 7px",
       borderRadius: 7, background: "rgba(0,0,0,.16)", border: "1px solid var(--line)" }}>
       <div style={{ display: "flex", gap: 4 }}>
-        <AudioInputButton active={armed} title="Arm this input track for recording"
+        <AudioInputButton active={armed} disabled={recLock} title={recLock ? "Recording — ARM locked" : "Arm this input track for recording"}
           activeBg={ARM_BUTTON_BG} activeColor="var(--arm-on-fg, #0d0d0d)" activeBorder="color-mix(in srgb,var(--input-gain-arm-button, #e33a48) 68%,#000 32%)" activeShadow={ARM_BUTTON_SHADOW}
           onClick={() => commit("arm", !p.arm)}>ARM</AudioInputButton>
         <AudioInputButton active={!!p.monitor} title="Monitor this input while recording"
