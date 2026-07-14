@@ -1914,6 +1914,272 @@
       if (this.isPlaying) this._scheduleAutomation();
     },
 
+    // ============================================================
+    //  Phase 5 — clip editing (전략 B: layout bake)
+    //  clips[] is the non-destructive source of truth. On edit we re-bake a
+    //  flattened t.buffer (each clip's source slice placed at its timeline start,
+    //  + micro fade + clip.gain) so the existing single-source playback / Export /
+    //  native loadTrack path keeps working (buffer-time == timeline-time).
+    // ============================================================
+    _MICRO_FADE: 0.004,   // 4ms click/pop guard at clip boundaries
+    _MIN_CLIP: 0.02,      // 20ms minimum clip length
+
+    // Pristine per-source audio, captured lazily before the first bake (at which
+    // point t.buffer is still the original decoded primary source). Re-bakes always
+    // read from here, never from an already-baked buffer.
+    _captureRawBuffers(track) {
+      if (track._rawBuffers) return;
+      track._rawBuffers = {};
+      const primary = track.sources && track.sources[0];
+      if (primary && track.buffer) track._rawBuffers[primary.id] = track.buffer;
+    },
+    _rawBufferForSource(track, sourceId) {
+      if (sourceId && track._rawBuffers && track._rawBuffers[sourceId]) return track._rawBuffers[sourceId];
+      const primary = track.sources && track.sources[0];
+      if (primary && track._rawBuffers && track._rawBuffers[primary.id]) return track._rawBuffers[primary.id];
+      return null;
+    },
+    _sourceDuration(track, sourceId) {
+      const raw = this._rawBufferForSource(track, sourceId);
+      if (raw) return raw.duration;
+      const src = (track.sources || []).find(s => s.id === sourceId) || (track.sources && track.sources[0]);
+      return (src && src.duration) || 0;
+    },
+
+    // A layout is "trivial" (needs no bake) when the raw buffer already satisfies
+    // buffer-time == timeline-time: one clip at 0, no source offset, unity gain,
+    // full source length, no per-clip params/automation. Matches the untouched
+    // import/record case so existing projects stay byte-identical (no bake).
+    _isTrivialLayout(track) {
+      const clips = track.clips || [];
+      if (clips.length !== 1) return false;
+      const c = clips[0];
+      const src = track.sources && track.sources[0];
+      const dur = (src && src.duration) || (track.buffer && track.buffer.duration) || 0;
+      const off = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
+      return Math.abs(c.start || 0) < 1e-3
+        && Math.abs(off) < 1e-3
+        && Math.abs((c.gain == null ? 1 : c.gain) - 1) < 1e-4
+        && !c.muted
+        && Math.abs((c.duration || 0) - dur) < 2e-2
+        && !c.params && !(c.automation && c.automation.length);
+    },
+
+    // Render clips[] into a fresh flattened AudioBuffer. Geometry + static clip.gain
+    // + boundary micro-fade only; clip.params.volume / automation stay dynamic in
+    // _buildCompositeCurve so they are not double-applied.
+    _bakeTrackLayout(track) {
+      if (!ctx) return null;
+      this._captureRawBuffers(track);
+      const clips = (track.clips || []).filter(c => !c.muted && (c.duration || 0) > 0);
+      const layoutEnd = clips.reduce((m, c) => Math.max(m, (c.start || 0) + (c.duration || 0)), 0);
+      let sr = ctx.sampleRate, chCount = 2;
+      const anyRaw = this._rawBufferForSource(track, clips[0] && clips[0].sourceId);
+      if (anyRaw) { sr = anyRaw.sampleRate; chCount = anyRaw.numberOfChannels; }
+      const length = Math.max(1, Math.ceil(layoutEnd * sr));
+      const out = ctx.createBuffer(chCount, length, sr);
+      for (const c of clips) {
+        const raw = this._rawBufferForSource(track, c.sourceId);
+        if (!raw) continue;
+        const gain = (c.gain == null ? 1 : c.gain);
+        const srcStart = Math.max(0, Math.round((c.sourceOffset != null ? c.sourceOffset : (c.offset || 0)) * sr));
+        const dstStart = Math.max(0, Math.round((c.start || 0) * sr));
+        const n = Math.min(Math.round((c.duration || 0) * sr), raw.length - srcStart, length - dstStart);
+        if (n <= 0) continue;
+        const fadeN = Math.min(Math.floor(this._MICRO_FADE * sr), Math.floor(n / 2));
+        for (let ch = 0; ch < chCount; ch++) {
+          const src = raw.getChannelData(Math.min(ch, raw.numberOfChannels - 1));
+          const dst = out.getChannelData(ch);
+          for (let i = 0; i < n; i++) {
+            let g = gain;
+            if (fadeN > 0) {
+              if (i < fadeN) g *= i / fadeN;
+              else if (i >= n - fadeN) g *= (n - i) / fadeN;
+            }
+            dst[dstStart + i] += src[srcStart + i] * g;
+          }
+        }
+      }
+      return out;
+    },
+
+    // Sync t.buffer to clips[]: bake when non-trivial, else restore raw. Refreshes
+    // peaks/audioRev and, if playing, restarts the track's live source.
+    _ensureBaked(track) {
+      if (!track) return;
+      this._captureRawBuffers(track);
+      if (this._isTrivialLayout(track)) {
+        const primary = track.sources && track.sources[0];
+        const raw = primary && track._rawBuffers ? track._rawBuffers[primary.id] : null;
+        if (raw && track.buffer !== raw) track.buffer = raw;
+      } else {
+        const baked = this._bakeTrackLayout(track);
+        if (baked) track.buffer = baked;
+      }
+      if (track.buffer) {
+        const pk = computePeakLevels(track.buffer);
+        track.peaks = pk.fine; track.peaksMedium = pk.medium; track.peaksCoarse = pk.coarse;
+        track.peakAmp = maxAbsPeak(pk.coarse);
+      }
+      track.audioRev = (track.audioRev || 0) + 1;
+      this.duration = Math.max(this.duration, this._projectClipDuration());
+      if (this.isPlaying) { this._startHotAddedTrack(track); this._scheduleAutomation(); }
+    },
+
+    // Positional clip edits are allowed only on Audio In / Bounce tracks. File
+    // tracks stay locked to 0 (작업원칙 2).
+    _clipEditable(track) {
+      return !!track && !track.lockedToZero && (track.kind === "audioIn" || track.kind === "bounce");
+    },
+    _reindexClips(track) {
+      track.clips.sort((a, b) => (a.start || 0) - (b.start || 0));
+      track.clips = track.clips.map(c => this._normalizeClip(c, c.sourceId, this._sourceDuration(track, c.sourceId)));
+    },
+    // Greedy overlap clamp: nudge a proposed start so [s, s+dur) clears siblings.
+    // Good enough for engine-level edits; UI (Stage 3) will add snapping.
+    _clampStartNoOverlap(track, clipId, start, dur) {
+      let s = Math.max(0, start);
+      const others = track.clips.filter(c => c.id !== clipId).sort((a, b) => a.start - b.start);
+      for (const o of others) {
+        const oS = o.start, oE = o.start + o.duration;
+        if (s < oE && s + dur > oS) {
+          const left = oS - dur, right = oE;
+          s = (left >= 0 && Math.abs(s - left) <= Math.abs(s - right)) ? left : right;
+        }
+      }
+      return Math.max(0, s);
+    },
+
+    moveClip(trackId, clipId, newStart) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      const c = t.clips.find(x => x.id === clipId); if (!c) return false;
+      const s = this._clampStartNoOverlap(t, clipId, newStart, c.duration);
+      c.start = s; c.end = s + c.duration;
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return true;
+    },
+
+    // Move a clip's left edge, keeping its audio anchored (adjusts sourceOffset).
+    trimClipStart(trackId, clipId, newStart) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      const c = t.clips.find(x => x.id === clipId); if (!c) return false;
+      const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
+      const minStart = c.start - curOff;                 // can't reveal audio before source 0
+      const maxStart = c.end - this._MIN_CLIP;
+      const s = Math.min(Math.max(newStart, minStart, 0), maxStart);
+      const delta = s - c.start;
+      c.sourceOffset = curOff + delta; c.offset = c.sourceOffset;
+      c.start = s; c.duration = c.end - s;
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return true;
+    },
+
+    // Move a clip's right edge (bounded by available source audio).
+    trimClipEnd(trackId, clipId, newEnd) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      const c = t.clips.find(x => x.id === clipId); if (!c) return false;
+      const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
+      const srcDur = this._sourceDuration(t, c.sourceId);
+      const maxEnd = c.start + Math.max(this._MIN_CLIP, srcDur - curOff);
+      const e = Math.min(Math.max(newEnd, c.start + this._MIN_CLIP), maxEnd);
+      c.end = e; c.duration = e - c.start;
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return true;
+    },
+
+    deleteClip(trackId, clipId) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      if (!t.clips.some(c => c.id === clipId)) return false;
+      t.clips = t.clips.filter(c => c.id !== clipId);
+      if (!t.clips.length) { // keep at least an empty placeholder clip
+        const sid = (t.sources && t.sources[0] && t.sources[0].id) || null;
+        t.clips = [this._normalizeClip({ start: 0, end: 0, offset: 0, duration: 0 }, sid, 0)];
+      }
+      this._ensureBaked(t);
+      return true;
+    },
+
+    // Empty [from, to) on a track: fully-covered clips removed, edges trimmed, a
+    // spanning clip split in two. Reused by Phase 6 Punch Recording (place a new
+    // clip in the emptied range).
+    deleteRange(trackId, from, to) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      if (!(to > from)) return false;
+      const next = [];
+      for (const c of t.clips) {
+        const cS = c.start, cE = c.start + c.duration;
+        if (cE <= from || cS >= to) { next.push(c); continue; }        // untouched
+        if (cS >= from && cE <= to) continue;                          // fully removed
+        const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
+        if (cS < from && cE > to) {                                    // spanning → split
+          next.push(this._normalizeClip({ ...c, id: this._cid(), start: cS, end: from, duration: from - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
+          const rOff = curOff + (to - cS);
+          next.push(this._normalizeClip({ ...c, id: this._cid(), start: to, end: cE, duration: cE - to, sourceOffset: rOff, offset: rOff, params: null, automation: null }, c.sourceId, 0));
+        } else if (cS < from) {                                        // trim right edge
+          next.push(this._normalizeClip({ ...c, start: cS, end: from, duration: from - cS }, c.sourceId, 0));
+        } else {                                                       // trim left edge
+          const nOff = curOff + (to - cS);
+          next.push(this._normalizeClip({ ...c, start: to, end: cE, duration: cE - to, sourceOffset: nOff, offset: nOff }, c.sourceId, 0));
+        }
+      }
+      t.clips = next.length ? next : [this._normalizeClip({ start: 0, end: 0, offset: 0, duration: 0 }, (t.sources && t.sources[0] && t.sources[0].id) || null, 0)];
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return true;
+    },
+
+    // Non-destructive: a duplicate references the same source at a new timeline slot.
+    duplicateClip(trackId, clipId, atStart = null) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      const c = t.clips.find(x => x.id === clipId); if (!c) return false;
+      const start = this._clampStartNoOverlap(t, null, atStart == null ? c.end : atStart, c.duration);
+      const copy = this._normalizeClip({ ...c, id: this._cid(), start, end: start + c.duration,
+        params: c.params ? { ...c.params } : null, automation: c.automation ? c.automation.map(p => ({ ...p })) : null },
+        c.sourceId, 0);
+      t.clips = [...t.clips, copy];
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return copy.id;
+    },
+
+    // Clipboard stores a clip descriptor plus its raw source buffer, so paste works
+    // across tracks (referenced source travels with it).
+    copyClip(trackId, clipId) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
+      const c = t.clips.find(x => x.id === clipId); if (!c) return false;
+      this._captureRawBuffers(t);
+      this._clipboard = {
+        clip: { ...c, id: null, params: c.params ? { ...c.params } : null, automation: c.automation ? c.automation.map(p => ({ ...p })) : null },
+        sourceId: c.sourceId,
+        rawBuffer: this._rawBufferForSource(t, c.sourceId),
+        sourceMeta: (t.sources || []).find(s => s.id === c.sourceId) || null,
+      };
+      return true;
+    },
+    pasteClip(trackId, atStart = 0) {
+      const cb = this._clipboard; if (!cb) return false;
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      // ensure the target track can resolve the clip's source buffer
+      let sid = cb.sourceId;
+      if (cb.rawBuffer) {
+        const hasSource = (t.sources || []).some(s => s.id === sid);
+        if (!hasSource && cb.sourceMeta) t.sources = [...(t.sources || []), { ...cb.sourceMeta }];
+        this._captureRawBuffers(t);
+        t._rawBuffers = t._rawBuffers || {};
+        if (!t._rawBuffers[sid]) t._rawBuffers[sid] = cb.rawBuffer;
+      }
+      const dur = cb.clip.duration || 0;
+      const start = this._clampStartNoOverlap(t, null, atStart, dur);
+      const clip = this._normalizeClip({ ...cb.clip, id: this._cid(), start, end: start + dur }, sid, 0);
+      t.clips = [...t.clips, clip];
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return clip.id;
+    },
+
     _buildCompositeCurve(track, n) {
       const dur = this.duration;
       const curve = new Float32Array(n);
@@ -3267,5 +3533,14 @@
   Engine.splitClip = Engine.splitClip.bind(Engine);
   Engine.joinClips = Engine.joinClips.bind(Engine);
   Engine.setClipParam = Engine.setClipParam.bind(Engine);
+  // Phase 5 clip editing (전략 B)
+  Engine.moveClip = Engine.moveClip.bind(Engine);
+  Engine.trimClipStart = Engine.trimClipStart.bind(Engine);
+  Engine.trimClipEnd = Engine.trimClipEnd.bind(Engine);
+  Engine.deleteClip = Engine.deleteClip.bind(Engine);
+  Engine.deleteRange = Engine.deleteRange.bind(Engine);
+  Engine.duplicateClip = Engine.duplicateClip.bind(Engine);
+  Engine.copyClip = Engine.copyClip.bind(Engine);
+  Engine.pasteClip = Engine.pasteClip.bind(Engine);
   window.DAW = Engine;
 })();
