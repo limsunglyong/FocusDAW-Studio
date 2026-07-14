@@ -1,0 +1,283 @@
+﻿diff --git a/app.jsx b/app.jsx
+index 7f1d127..aebd3bf 100644
+--- a/app.jsx
++++ b/app.jsx
+@@ -364,37 +364,36 @@ function fmtTransportTime(s) {
+ 
+ function MenuTransport() {
+   useTick();
+-  const [, force] = useState(0);
+-  const [loop, setLoop] = useState(DAW.loopEnabled);
++  const loop = DAW.loopEnabled; // source of truth (useTick re-renders each frame)
+   const playing = DAW.isPlaying;
+   const playhead = DAW.getPlayhead();
+   const duration = DAW.duration || 0;
+   const armedInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+   const recordingInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
+   const canRecord = !!(armedInput || recordingInput);
+-  const playPause = () => { DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
+-  const toggleLoop = () => { const next = !loop; setLoop(next); DAW.setLoop(next); };
++  // All transport actions go through Studio's rule-honoring handlers (count-in,
++  // Repeat off/restore, ignore pause/return-to-start while recording, etc.).
++  const tp = (action) => window.dispatchEvent(new CustomEvent("focusdaw-transport", { detail: { action } }));
++  const toggleLoop = () => { DAW.setLoop(!loop); };
+   return (
+     <div style={{ display: "flex", alignItems: "center", gap: 7, height: 36 }}>
+       <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32, padding: "2px 4px",
+         borderRadius: 999, background: "linear-gradient(180deg,var(--bg2),var(--bg))",
+         border: "1px solid var(--line-strong)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.04), 0 8px 18px -14px rgba(0,0,0,.8)" }}>
+-        <MenuTransportButton title="Return to start" onClick={() => { DAW.seek(0); force((n) => n + 1); }}>
++        <MenuTransportButton title="Return to start" onClick={() => tp("tostart")}>
+           <Icon name="toStart" size={13} />
+         </MenuTransportButton>
+-        <MenuTransportButton title="Stop" onClick={() => { DAW.stop(); force((n) => n + 1); }}>
++        <MenuTransportButton title="Stop" onClick={() => tp("stop")}>
+           <Icon name="stop" size={11} fill />
+         </MenuTransportButton>
+-        <MenuTransportButton title="Play / Pause" active={playing} wide onClick={playPause}>
++        <MenuTransportButton title="Play / Pause" active={playing} wide onClick={() => tp("playpause")}>
+           <Icon name={playing ? "pause" : "play"} size={14} fill />
+         </MenuTransportButton>
+         <MenuTransportButton title="Loop" active={loop} onClick={toggleLoop}>
+           <Icon name="repeat" size={13} />
+         </MenuTransportButton>
+         <MenuTransportButton title={recordingInput ? "Stop recording" : canRecord ? "Record armed Audio In track" : "Arm an Audio In track first"}
+-          active={!!recordingInput} onClick={() => {
+-            if (canRecord) window.dispatchEvent(new CustomEvent("focusdaw-record-toggle"));
+-          }}>
++          active={!!recordingInput} onClick={() => tp("record")}>
+           <span className={recordingInput ? "record-blink" : undefined}
+             style={{ display: "block", width: recordingInput ? 11 : 9, height: recordingInput ? 11 : 9,
+               borderRadius: recordingInput ? 4 : "50%", background: canRecord ? "var(--red)" : "var(--dim)",
+@@ -1447,6 +1446,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+   const redoStack = useRef([]);
+   const lastUndoKey = useRef(null);
+   const recordingRef = useRef(null);
++  const recordCountRef = useRef(null);   // count-in interval id (null = not counting)
++  const autoStopRef = useRef(null);      // auto-stop-at-song-end monitor interval id
++  const songEndRef = useRef(0);          // end (sec) of longest existing track, captured at record start
++  const prevLoopRef = useRef(null);      // Repeat flag saved when a recording began (restored on stop)
++  const transportRef = useRef({});       // latest rule-honoring transport action fns (toolbar/keyboard/mixer)
++  const [recordCount, setRecordCount] = useState(null); // 3???? count-in overlay number (null = hidden)
+   const MAX_UNDO = 50;
+   const stretchPreparing = !!DAW._stretchPreviewPreparing;
+   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
+@@ -1482,7 +1487,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+   const rulerH = 30;
+   const trackStackTop = rulerH;
+   const fileGroupH = fileTracks.length ? 38 : 0;
+-  const audioInLaneHeight = laneH <= 68 ? laneH : Math.max(164, laneH);
++  const audioInLaneHeight = laneH <= 68 ? laneH : laneH <= 104 ? 134 : Math.max(163, laneH);
+   const visibleTrackHeight = (fileTracksCollapsed ? 0 : fileTracks.length * laneH)
+     + nonFileTracks.reduce((sum, track) => sum + (track.kind === "audioIn" ? audioInLaneHeight : laneH), 0);
+   const trackStackBottom = rulerH + fileGroupH + Math.max(laneH, visibleTrackHeight);
+@@ -1933,13 +1938,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+           break;
+ 
+         case "REQUEST_PLAY_PAUSE":
+-          DAW.isPlaying ? DAW.pause() : DAW.play();
+-          force((n) => n + 1);
++          transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
+           break;
+ 
+         case "REQUEST_STOP":
+-          DAW.stop();
+-          force((n) => n + 1);
++          transportRef.current.transportStop && transportRef.current.transportStop();
+           break;
+ 
+         case "REQUEST_ADVANCED_PAN":
+@@ -2066,8 +2069,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+           pushUndo();
+           break;
+         case "REQUEST_PLAY_PAUSE":
+-          DAW.isPlaying ? DAW.pause() : DAW.play();
+-          force((n) => n + 1);
++          transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
+           break;
+         case "REQUEST_UNDO":
+           undo();
+@@ -2431,7 +2433,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+       const mod = e.metaKey || e.ctrlKey;
+       if (e.code === "Space" && (!isTextInput(e.target) || isRangeInput(e.target))) {
+         e.preventDefault();
+-        playPause();
++        transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
+         return;
+       }
+       if (e.key === "F3") { e.preventDefault(); toggleMixer(); return; }
+@@ -2447,12 +2449,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+       if (isTextInput(e.target)) return;
+       if (!mod && (e.code === "Digit0" || e.code === "Numpad0")) {
+         e.preventDefault();
+-        DAW.seek(0);
+-        force((n) => n + 1);
++        transportRef.current.transportToStart && transportRef.current.transportToStart();
+         return;
+       }
+       if (!mod && (e.code === "Comma" || e.code === "ArrowLeft" || e.code === "Period" || e.code === "ArrowRight")) {
+         e.preventDefault();
++        const T = transportRef.current;
++        if ((T.isRecordingActive && T.isRecordingActive()) || (T.isCountingIn && T.isCountingIn())) return; // no seeking mid-record
+         const delta = (e.code === "Comma" || e.code === "ArrowLeft") ? -1 : 1;
+         DAW.seek(DAW.getPlayhead() + delta);
+         force((n) => n + 1);
+@@ -2574,11 +2577,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+         await active.promise;
+         const saved = await window.electronAPI.finalizeRecording(active.partPath, active.finalPath);
+         const bytes = await window.electronAPI.readAudioFile(saved.path);
+-        await DAW.attachRecording(track.id, saved.fileName, bytes, { filePath: saved.path, start: active.start });
++        const attachOptions = { filePath: saved.path, start: active.start };
++        if (active.durationLimit > 0) attachOptions.end = active.durationLimit;
++        await DAW.attachRecording(track.id, saved.fileName, bytes, attachOptions);
+       } catch (e) {
+         alert(`Recording could not be finalized: ${e.message || e}`);
+       }
+       track.recording = false;
++      delete track._recordingDurationLimit;
+       recordingRef.current = null;
+       fitTimelineToProject();
+       force((n) => n + 1);
+@@ -2603,15 +2609,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+     track._recordingStart = start;
+     track._recordingPeaks = [];
+     track._recordingSampleRate = 44100;
++    const durationLimit = Number(track._recordingDurationLimit) || 0;
+     const promise = DAW.startRecording({
+       filePath: target.partPath, channel: input.channel || 0, stereo: !!input.stereo,
+       gain: Math.max(0.1, Math.min(4, track.params.inputGain == null ? 1 : track.params.inputGain)),
+       monitor: !!track.params.monitor, limiter: track.params.limiter !== false,
+     });
+-    recordingRef.current = { trackId: track.id, ...target, start, promise };
++    recordingRef.current = { trackId: track.id, ...target, start, durationLimit, promise };
+     promise.catch((e) => {
+       if (recordingRef.current && recordingRef.current.trackId === track.id) {
+         track.recording = false;
++        delete track._recordingDurationLimit;
+         recordingRef.current = null;
+         alert(e.message || String(e));
+         force((n) => n + 1);
+@@ -2620,14 +2628,101 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+     force((n) => n + 1);
+   }, [projectPath, fitTimelineToProject]);
+ 
++  // ---- Recording transport flow (record start/stop rules) ------------------
++  // Record from a stopped transport shows a 3s count-in then starts play+record;
++  // from a playing transport it records immediately. Repeat is turned off while
++  // recording (restored on stop). Both play+record stop when playback reaches the
++  // end of the longest existing track (no backing tracks ??record until manual
++  // stop). Pause and return-to-start are ignored while recording; any transport
++  // press during the count-in cancels it.
++  const isCountingIn = () => recordCountRef.current != null;
++  const isRecordingActive = () => DAW.tracks.some((t) => t.kind === "audioIn" && t.recording);
++  const stopAutoStopMonitor = () => { if (autoStopRef.current) { clearInterval(autoStopRef.current); autoStopRef.current = null; } };
++  const startAutoStopMonitor = () => {
++    stopAutoStopMonitor();
++    autoStopRef.current = setInterval(() => {
++      if (!isRecordingActive()) { stopAutoStopMonitor(); return; }
++      const end = songEndRef.current;
++      if (end > 0 && (DAW.getPlayhead() >= end - 0.03 || !DAW.isPlaying)) doStopRecording();
++    }, 120);
++  };
++  const beginRecorderAt = async (target) => {
++    let end = 0;
++    DAW.tracks.forEach((t) => {
++      if (t.id !== target.id && Array.isArray(t.clips)) t.clips.forEach((c) => { end = Math.max(end, c.end || 0); });
++    });
++    songEndRef.current = end;
++    if (end > 0) target._recordingDurationLimit = end;
++    else delete target._recordingDurationLimit;
++    const wasPlaying = DAW.isPlaying;
++    await toggleRecording(target);          // starts the recorder at the current playhead
++    if (!isRecordingActive()) {             // start failed (device error etc.) ??undo repeat change
++      if (prevLoopRef.current) DAW.setLoop(true);
++      prevLoopRef.current = null;
++      return;
++    }
++    if (!wasPlaying) DAW.play();             // count-in case: begin playback from the same position
++    startAutoStopMonitor();
++    force((n) => n + 1);
++  };
++  const beginRecordFlow = () => {
++    const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
++    if (!target) return;
++    prevLoopRef.current = DAW.loopEnabled;
++    if (DAW.loopEnabled) DAW.setLoop(false);
++    if (DAW.isPlaying) { beginRecorderAt(target); return; }
++    let n = 3;                               // 3-second count-in overlay before play+record
++    setRecordCount(n);
++    window.__recordCountdownActive = true;
++    recordCountRef.current = setInterval(() => {
++      n -= 1;
++      if (n <= 0) {
++        clearInterval(recordCountRef.current); recordCountRef.current = null;
++        window.__recordCountdownActive = false;
++        setRecordCount(null);
++        beginRecorderAt(target);
++      } else setRecordCount(n);
++    }, 1000);
++  };
++  const cancelCountIn = () => {
++    if (recordCountRef.current) { clearInterval(recordCountRef.current); recordCountRef.current = null; }
++    window.__recordCountdownActive = false;
++    setRecordCount(null);
++    if (prevLoopRef.current) DAW.setLoop(true); // nothing recorded ??restore Repeat
++    prevLoopRef.current = null;
++    force((n) => n + 1);
++  };
++  const doStopRecording = () => {
++    stopAutoStopMonitor();
++    const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
++    if (target) toggleRecording(target);      // stop + finalize the recorder
++    DAW.stop();                               // stop playback (playhead ??0)
++    if (prevLoopRef.current) DAW.setLoop(true); // restore Repeat
++    prevLoopRef.current = null;
++    force((n) => n + 1);
++  };
++  const transportRecordToggle = () => { if (isCountingIn()) return cancelCountIn(); if (isRecordingActive()) return doStopRecording(); beginRecordFlow(); };
++  const transportStop = () => { if (isCountingIn()) return cancelCountIn(); if (isRecordingActive()) return doStopRecording(); DAW.stop(); force((n) => n + 1); };
++  const transportPlayPause = () => { if (isCountingIn()) return cancelCountIn(); if (isRecordingActive()) return; DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
++  const transportToStart = () => { if (isCountingIn() || isRecordingActive()) return; DAW.seek(0); force((n) => n + 1); };
++  transportRef.current = { transportRecordToggle, transportStop, transportPlayPause, transportToStart, isRecordingActive, isCountingIn };
++
+   useEffect(() => {
+-    const onRecordToggle = () => {
+-      const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording)
+-        || DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+-      if (target) toggleRecording(target);
++    const onRecordToggle = () => transportRef.current.transportRecordToggle && transportRef.current.transportRecordToggle();
++    const onTransport = (e) => {
++      const a = e.detail && e.detail.action;
++      const T = transportRef.current;
++      if (a === "record") T.transportRecordToggle && T.transportRecordToggle();
++      else if (a === "stop") T.transportStop && T.transportStop();
++      else if (a === "playpause") T.transportPlayPause && T.transportPlayPause();
++      else if (a === "tostart") T.transportToStart && T.transportToStart();
+     };
+     window.addEventListener("focusdaw-record-toggle", onRecordToggle);
+-    return () => window.removeEventListener("focusdaw-record-toggle", onRecordToggle);
++    window.addEventListener("focusdaw-transport", onTransport);
++    return () => {
++      window.removeEventListener("focusdaw-record-toggle", onRecordToggle);
++      window.removeEventListener("focusdaw-transport", onTransport);
++    };
+   }, [toggleRecording]);
+ 
+   const newProject = () => {
+@@ -2837,6 +2932,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
+ 
+   return (
+     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
++      {recordCount != null && (
++        <div style={{ position: "fixed", inset: 0, zIndex: 2000, display: "grid", placeItems: "center",
++          background: "rgba(0,0,0,.45)", pointerEvents: "none" }}>
++          <div key={recordCount} style={{ fontSize: "22vmin", fontWeight: 400, lineHeight: 1, color: "var(--cream)",
++            fontFamily: "\"Cinzel Decorative\", serif", textShadow: "0 0 40px rgba(0,0,0,.85), 0 8px 30px rgba(0,0,0,.6)",
++            animation: "recordCountPulse .9s ease-out" }}>
++            {recordCount}
++          </div>
++        </div>
++      )}
+       <input ref={fileRef} type="file" multiple accept=".mp3,.wav,.aiff,.m4a,.ogg,.flac" style={{ display: "none" }}
+         onChange={(e) => { addFiles([...e.target.files]); e.target.value = ""; }} />
+       <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple style={{ display: "none" }}

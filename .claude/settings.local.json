@@ -147,7 +147,13 @@
       "Bash(node cdp-zoom-shot.js wave-zoomed.png 6)",
       "Bash(node cdp-wheelzoom-shot.js wave-zoom1.png 4)",
       "Bash(node cdp-wheelzoom-shot.js wave-zoom2.png 5)",
-      "PowerShell(\"closed\")"
+      "PowerShell(\"closed\")",
+      "Bash(grep -iE '\\\\.\\(exe|dll|node|lib|a|dylib|so\\)$')",
+      "Bash(git rm *)",
+      "Bash(echo \"rm exit: $?\")",
+      "Bash(echo \"commit exit: $?\")",
+      "Bash(timeout 25 node_modules/electron/dist/electron.exe . --enable-logging)",
+      "Bash(timeout 18 node_modules/electron/dist/electron.exe .)"
     ]
   }
 }
