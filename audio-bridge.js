@@ -698,6 +698,45 @@
       return track;
     },
 
+    // Phase 5 clip editing (전략 B): run on the web engine, then re-sync the
+    // affected track's baked layout to native. copyClip is pure clipboard state,
+    // so it falls through the proxy to LocalDAW unchanged (no native sync needed).
+    moveClip(trackId, clipId, newStart) {
+      const ok = LocalDAW.moveClip(trackId, clipId, newStart);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    trimClipStart(trackId, clipId, newStart) {
+      const ok = LocalDAW.trimClipStart(trackId, clipId, newStart);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    trimClipEnd(trackId, clipId, newEnd) {
+      const ok = LocalDAW.trimClipEnd(trackId, clipId, newEnd);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    deleteClip(trackId, clipId) {
+      const ok = LocalDAW.deleteClip(trackId, clipId);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    deleteRange(trackId, from, to) {
+      const ok = LocalDAW.deleteRange(trackId, from, to);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    duplicateClip(trackId, clipId, atStart) {
+      const id = LocalDAW.duplicateClip(trackId, clipId, atStart);
+      if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return id;
+    },
+    pasteClip(trackId, atStart) {
+      const id = LocalDAW.pasteClip(trackId, atStart);
+      if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return id;
+    },
+
     addDemoTracks() {
       LocalDAW.addDemoTracks();
       if (this.isNative) {
@@ -1241,11 +1280,22 @@
     };
   }
 
+  // Phase 5: a clip-edited track's t.buffer is a baked layout (전략 B) whose audio
+  // no longer matches its original filePath, and whose clip positions are already
+  // baked in (leading silence included). Such a track must be pushed to native as
+  // its baked PCM with startSeconds=0, NOT via the original filePath. A trivial
+  // (un-edited) layout still uses the fast filePath path.
+  function trackIsBakedLayout(track) {
+    return !!(track && LocalDAW && typeof LocalDAW._isTrivialLayout === "function"
+      && track.buffer && !LocalDAW._isTrivialLayout(track));
+  }
+
   // Helper to synchronize a newly added track to JUCE C++ engine
   function syncTrackToNative(track) {
     if (!track) return;
     const place = trackTimelinePlacement(track);
-    if (track.filePath) {
+    const baked = trackIsBakedLayout(track);
+    if (track.filePath && !baked) {
       sendLoadTrack({
         command: "loadTrack",
         trackId: track.id,
@@ -1255,10 +1305,12 @@
         startSeconds: place.startSeconds,
         songLength: place.songLength
       });
-    } else {
-      // If it's a demo or synthesized track, we need its PCM data.
-      // We convert it to WAV locally and save as temporary file.
+    } else if (track.buffer) {
+      // Demo/synthesized track (no filePath), OR a baked clip-edited layout: push
+      // the in-memory PCM as a temp WAV. Baked layouts carry their clip positions
+      // inside the buffer, so startSeconds is 0.
       const wavBytes = bufferToWav(track.buffer);
+      const startSeconds = baked ? 0 : place.startSeconds;
       if (window.electronAPI && window.electronAPI.writeTempAudio) {
         // Reserve the pending slot NOW so the handover can't slip through the
         // gap while the temp WAV is being written.
@@ -1271,7 +1323,7 @@
             filePath: tmpPath,
             type: track.type,
             color: track.color,
-            startSeconds: place.startSeconds,
+            startSeconds: startSeconds,
             songLength: place.songLength
           });
         }).catch((err) => {
@@ -1281,7 +1333,7 @@
         });
       }
     }
-    
+
     // Sync current params (incl. per-track reverb/echo sends — the native engine
     // stores them in TrackInfo and applies them when the async decode installs).
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "volume", value: track.params.volume });
