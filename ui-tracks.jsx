@@ -149,7 +149,11 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
         const colMax = new Float32Array(cols);
         const bucketAt = (timelinePx) => {
           const clipPx = timelinePx - clipStartX;
-          const bufPos = clip.offset + (clipPx / clipW) * (clip.end - clip.start);
+          // Baked tracks (전략 B) store audio TIMELINE-indexed, so sample peaks by
+          // timeline position; raw tracks are source-indexed, sample by clip.offset.
+          const bufPos = track._layoutBaked
+            ? (clip.start + (clipPx / clipW) * (clip.end - clip.start))
+            : (clip.offset + (clipPx / clipW) * (clip.end - clip.start));
           return (bufPos / bufDur) * nb;
         };
         for (let x = x0; x <= x1; x++) {
@@ -765,11 +769,46 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
 }
 
 /* ---------- one track row (header + lane) ---------- */
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, onSelectClip, onMoveClip, onTrimStart, onTrimEnd }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
   const [hoveredClipId, setHoveredClipId] = useState(null);
+
+  // Phase 5 (전략 B): clip move/trim on Audio In / Bounce tracks. During a drag we
+  // only move a visual "ghost" and commit the engine edit (which re-bakes t.buffer)
+  // once on mouse-up, so the buffer isn't re-baked on every mousemove.
+  const clipEditable = !track.lockedToZero && (track.kind === "audioIn" || track.kind === "bounce");
+  const clipDrag = useRef(null);
+  const [, bumpDrag] = useState(0);
+  const startClipDrag = (e, clip, mode) => {
+    if (!clipEditable) return;
+    e.stopPropagation(); e.preventDefault();
+    const startX = e.clientX;
+    const d = { clipId: clip.id, mode, startX, moved: false,
+      origStart: clip.start, origEnd: clip.end,
+      ghostStart: clip.start, ghostEnd: clip.end };
+    clipDrag.current = d; bumpDrag((n) => n + 1);
+    if (onSelectClip) onSelectClip(track.id, clip.id);
+    const move = (ev) => {
+      const dsec = ((ev.clientX - startX) / laneW) * DAW.duration;
+      if (Math.abs(ev.clientX - startX) > 2) d.moved = true;
+      const len = d.origEnd - d.origStart;
+      if (mode === "move") { const ns = Math.max(0, d.origStart + dsec); d.ghostStart = ns; d.ghostEnd = ns + len; }
+      else if (mode === "trimStart") { d.ghostStart = Math.min(Math.max(0, d.origStart + dsec), d.origEnd - 0.02); }
+      else if (mode === "trimEnd") { d.ghostEnd = Math.max(d.origStart + 0.02, d.origEnd + dsec); }
+      bumpDrag((n) => n + 1);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
+      const dd = clipDrag.current; clipDrag.current = null; bumpDrag((n) => n + 1);
+      if (!dd || !dd.moved) return; // pure click = select only (already done above)
+      if (mode === "move" && Math.abs(dd.ghostStart - dd.origStart) > 1e-3 && onMoveClip) onMoveClip(track.id, clip.id, dd.ghostStart);
+      else if (mode === "trimStart" && Math.abs(dd.ghostStart - dd.origStart) > 1e-3 && onTrimStart) onTrimStart(track.id, clip.id, dd.ghostStart);
+      else if (mode === "trimEnd" && Math.abs(dd.ghostEnd - dd.origEnd) > 1e-3 && onTrimEnd) onTrimEnd(track.id, clip.id, dd.ghostEnd);
+    };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+  };
 
   const laneMouseMove = (e) => {
     if (tool !== 'scissors' && tool !== 'join') { setHoveredClipId(null); return; }
@@ -843,6 +882,35 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             background: "rgba(159,191,122,.07)", border: "1px solid rgba(159,191,122,.3)",
             pointerEvents: "none" }} />;
         })()}
+        {/* Phase 5 clip-editing overlay: draggable clip bodies + trim handles.
+            Only on editable (Audio In / Bounce) tracks, in select mode, when not
+            editing automation. Clip rects cover only clip ranges, so lane gaps
+            remain click-to-seek. */}
+        {clipEditable && tool === "select" && !p.autoOn && (track.clips || []).map((clip) => {
+          const dr = clipDrag.current && clipDrag.current.clipId === clip.id ? clipDrag.current : null;
+          const s = dr ? dr.ghostStart : clip.start;
+          const en = dr ? dr.ghostEnd : clip.end;
+          const left = s * pxPerSec;
+          const width = Math.max(2, (en - s) * pxPerSec);
+          const sel = selectedClipId === clip.id;
+          if ((clip.end - clip.start) <= 0) return null; // skip empty placeholder clip
+          return (
+            <div key={clip.id} title="Drag to move · drag edges to trim"
+              onMouseDown={(e) => startClipDrag(e, clip, "move")}
+              style={{ position: "absolute", top: 2, bottom: 2, left, width,
+                boxSizing: "border-box", borderRadius: 4, cursor: "grab", zIndex: 6,
+                border: sel ? "1.5px solid var(--amber)" : "1px solid rgba(255,255,255,.16)",
+                background: dr ? "rgba(232,176,75,.14)" : sel ? "rgba(232,176,75,.06)" : "transparent",
+                boxShadow: sel ? "0 0 0 1px rgba(232,176,75,.25) inset" : "none" }}>
+              <div onMouseDown={(e) => startClipDrag(e, clip, "trimStart")}
+                style={{ position: "absolute", left: -1, top: 0, bottom: 0, width: 8, cursor: "ew-resize",
+                  borderLeft: sel ? "2px solid var(--amber)" : "2px solid transparent" }} />
+              <div onMouseDown={(e) => startClipDrag(e, clip, "trimEnd")}
+                style={{ position: "absolute", right: -1, top: 0, bottom: 0, width: 8, cursor: "ew-resize",
+                  borderRight: sel ? "2px solid var(--amber)" : "2px solid transparent" }} />
+            </div>
+          );
+        })}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 }} />
       </div>
     </div>

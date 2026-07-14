@@ -1422,6 +1422,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(null);
   const [tool, setTool] = useState("select");
+  const [selectedClip, setSelectedClip] = useState(null); // Phase 5: { trackId, clipId }
   const [timelineView, setTimelineView] = useState({ scrollLeft: 0, clientWidth: 1 });
   const [vScroll, setVScroll] = useState({ up: false, down: false });
   const [bpmOpen, setBpmOpen] = useState(false);
@@ -2380,6 +2381,31 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     pushUndo(); DAW.joinClips(trackId, clipIdA, clipIdB); force((n) => n + 1);
   }, [pushUndo]);
 
+  // Phase 5 — Audio In / Bounce clip editing (전략 B). Each mutating op takes one
+  // undo snapshot; drag-move/trim call these once on mouse-up (single undo per drag).
+  const handleSelectClip = useCallback((trackId, clipId) => { setSelectedClip({ trackId, clipId }); }, []);
+  const handleMoveClip = useCallback((trackId, clipId, newStart) => {
+    pushUndo(); DAW.moveClip(trackId, clipId, newStart); force((n) => n + 1);
+  }, [pushUndo]);
+  const handleTrimStart = useCallback((trackId, clipId, newStart) => {
+    pushUndo(); DAW.trimClipStart(trackId, clipId, newStart); force((n) => n + 1);
+  }, [pushUndo]);
+  const handleTrimEnd = useCallback((trackId, clipId, newEnd) => {
+    pushUndo(); DAW.trimClipEnd(trackId, clipId, newEnd); force((n) => n + 1);
+  }, [pushUndo]);
+  const handleDeleteClip = useCallback((trackId, clipId) => {
+    pushUndo(); DAW.deleteClip(trackId, clipId); setSelectedClip(null); force((n) => n + 1);
+  }, [pushUndo]);
+  const handleDuplicateClip = useCallback((trackId, clipId) => {
+    pushUndo(); const id = DAW.duplicateClip(trackId, clipId);
+    if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
+  }, [pushUndo]);
+  const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
+  const handlePasteClip = useCallback((trackId, atStart) => {
+    pushUndo(); const id = DAW.pasteClip(trackId, atStart);
+    if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
+  }, [pushUndo]);
+
   const reconnectProjectAudio = useCallback(async () => {
     if (!window.electronAPI) return;
     const missing = DAW.tracks.filter((t) => t.needsAudio && t.filePath);
@@ -2489,6 +2515,30 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     };
     window.addEventListener("keydown", k, true); return () => window.removeEventListener("keydown", k, true);
   }, [playPause, saveProject, openProjectFile, undo, redo, toggleMixer]);
+
+  // Phase 5 — clip-editing keyboard shortcuts (operate on the selected clip).
+  const selectedClipRef = useRef(null);
+  selectedClipRef.current = selectedClip;
+  useEffect(() => {
+    const onKey = (e) => {
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      const mod = e.metaKey || e.ctrlKey;
+      const sel = selectedClipRef.current;
+      if (!mod && (e.key === "Delete" || e.key === "Backspace")) {
+        if (sel) { e.preventDefault(); handleDeleteClip(sel.trackId, sel.clipId); }
+        return;
+      }
+      if (mod && (e.key === "c" || e.key === "C")) { if (sel) { e.preventDefault(); handleCopyClip(sel.trackId, sel.clipId); } return; }
+      if (mod && (e.key === "d" || e.key === "D")) { if (sel) { e.preventDefault(); handleDuplicateClip(sel.trackId, sel.clipId); } return; }
+      if (mod && (e.key === "v" || e.key === "V")) {
+        if (sel && DAW._clipboard) { e.preventDefault(); handlePasteClip(sel.trackId, DAW.getPlayhead()); }
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [handleDeleteClip, handleCopyClip, handleDuplicateClip, handlePasteClip]);
 
   useEffect(() => {
     if (!startupReady) return;
@@ -3149,6 +3199,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onSeek={guardedUserSeek}
                   onFocusFx={focusMixerFx}
                   onRename={renameTrack}
+                  selectedClipId={selectedClip && selectedClip.trackId === t.id ? selectedClip.clipId : null}
+                  onSelectClip={handleSelectClip} onMoveClip={handleMoveClip}
+                  onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}

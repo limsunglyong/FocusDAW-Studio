@@ -828,6 +828,12 @@
       track.audioRev = (track.audioRev || 0) + 1;
       track._stretchPreview = null;
       track._keyShiftPreview = null;
+      // A reopened project may restore a moved/trimmed Audio In / Bounce layout. The
+      // decoded audio above is the raw source; re-bake so t.buffer matches the clip
+      // layout (timeline-indexed) exactly as it was during live editing (전략 B).
+      // Trivial layouts (file tracks, un-edited recordings) keep the raw buffer.
+      if (!this._isTrivialLayout(track)) this._ensureBaked(track);
+      else track._layoutBaked = false;
     },
 
     async addFileBuffer(name, arrayBuffer, options = {}) {
@@ -2012,9 +2018,13 @@
         const primary = track.sources && track.sources[0];
         const raw = primary && track._rawBuffers ? track._rawBuffers[primary.id] : null;
         if (raw && track.buffer !== raw) track.buffer = raw;
+        // Raw buffer is source-indexed: the Waveform samples peaks by clip.offset.
+        track._layoutBaked = false;
       } else {
         const baked = this._bakeTrackLayout(track);
-        if (baked) track.buffer = baked;
+        // Baked buffer is TIMELINE-indexed (clip audio placed at clip.start), so the
+        // Waveform must sample its peaks by timeline position, not clip.offset.
+        if (baked) { track.buffer = baked; track._layoutBaked = true; }
       }
       if (track.buffer) {
         const pk = computePeakLevels(track.buffer);
@@ -2022,7 +2032,9 @@
         track.peakAmp = maxAbsPeak(pk.coarse);
       }
       track.audioRev = (track.audioRev || 0) + 1;
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      // Recompute exactly (not Math.max) so moving/trimming a clip earlier lets the
+      // ruler shrink back; _projectClipDuration keeps the DURATION floor + other tracks.
+      this.duration = this._projectClipDuration();
       if (this.isPlaying) { this._startHotAddedTrack(track); this._scheduleAutomation(); }
     },
 
