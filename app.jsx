@@ -2384,27 +2384,31 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // Phase 5 — Audio In / Bounce clip editing (전략 B). Each mutating op takes one
   // undo snapshot; drag-move/trim call these once on mouse-up (single undo per drag).
   const handleSelectClip = useCallback((trackId, clipId) => { setSelectedClip({ trackId, clipId }); }, []);
+  // A clip edit can change the song length. Lock the timeline to the user's current
+  // zoom (leave fit-to-view mode) so growing the song just widens the lane with
+  // horizontal scroll, instead of re-fitting and shrinking every waveform.
+  const lockTimelineZoom = useCallback(() => { fitTimelineRef.current = false; }, []);
   const handleMoveClip = useCallback((trackId, clipId, newStart) => {
-    pushUndo(); DAW.moveClip(trackId, clipId, newStart); force((n) => n + 1);
-  }, [pushUndo]);
+    lockTimelineZoom(); pushUndo(); DAW.moveClip(trackId, clipId, newStart); force((n) => n + 1);
+  }, [pushUndo, lockTimelineZoom]);
   const handleTrimStart = useCallback((trackId, clipId, newStart) => {
-    pushUndo(); DAW.trimClipStart(trackId, clipId, newStart); force((n) => n + 1);
-  }, [pushUndo]);
+    lockTimelineZoom(); pushUndo(); DAW.trimClipStart(trackId, clipId, newStart); force((n) => n + 1);
+  }, [pushUndo, lockTimelineZoom]);
   const handleTrimEnd = useCallback((trackId, clipId, newEnd) => {
-    pushUndo(); DAW.trimClipEnd(trackId, clipId, newEnd); force((n) => n + 1);
-  }, [pushUndo]);
+    lockTimelineZoom(); pushUndo(); DAW.trimClipEnd(trackId, clipId, newEnd); force((n) => n + 1);
+  }, [pushUndo, lockTimelineZoom]);
   const handleDeleteClip = useCallback((trackId, clipId) => {
-    pushUndo(); DAW.deleteClip(trackId, clipId); setSelectedClip(null); force((n) => n + 1);
-  }, [pushUndo]);
+    lockTimelineZoom(); pushUndo(); DAW.deleteClip(trackId, clipId); setSelectedClip(null); force((n) => n + 1);
+  }, [pushUndo, lockTimelineZoom]);
   const handleDuplicateClip = useCallback((trackId, clipId) => {
-    pushUndo(); const id = DAW.duplicateClip(trackId, clipId);
+    lockTimelineZoom(); pushUndo(); const id = DAW.duplicateClip(trackId, clipId);
     if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
-  }, [pushUndo]);
+  }, [pushUndo, lockTimelineZoom]);
   const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
   const handlePasteClip = useCallback((trackId, atStart) => {
-    pushUndo(); const id = DAW.pasteClip(trackId, atStart);
+    lockTimelineZoom(); pushUndo(); const id = DAW.pasteClip(trackId, atStart);
     if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
-  }, [pushUndo]);
+  }, [pushUndo, lockTimelineZoom]);
 
   const reconnectProjectAudio = useCallback(async () => {
     if (!window.electronAPI) return;
