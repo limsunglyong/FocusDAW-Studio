@@ -1,7 +1,0 @@
-E:/programmings/FocusDAW-Studio/build/JUCE/tools/CMakeFiles/INSTALL.dir
-E:/programmings/FocusDAW-Studio/build/JUCE/tools/CMakeFiles/ALL_BUILD.dir
-E:/programmings/FocusDAW-Studio/build/JUCE/tools/CMakeFiles/ZERO_CHECK.dir
-E:/programmings/FocusDAW-Studio/build/JUCE/tools/modules/CMakeFiles/INSTALL.dir
-E:/programmings/FocusDAW-Studio/build/JUCE/tools/extras/Build/CMakeFiles/INSTALL.dir
-E:/programmings/FocusDAW-Studio/build/JUCE/tools/extras/Build/juceaide/CMakeFiles/juceaide.dir
-E:/programmings/FocusDAW-Studio/build/JUCE/tools/extras/Build/juceaide/CMakeFiles/INSTALL.dir
