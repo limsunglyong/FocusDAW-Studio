@@ -153,7 +153,8 @@
       "Bash(echo \"rm exit: $?\")",
       "Bash(echo \"commit exit: $?\")",
       "Bash(timeout 25 node_modules/electron/dist/electron.exe . --enable-logging)",
-      "Bash(timeout 18 node_modules/electron/dist/electron.exe .)"
+      "Bash(timeout 18 node_modules/electron/dist/electron.exe .)",
+      "Bash(node -p \"require\\('./package.json'\\).version\")"
     ]
   }
 }
