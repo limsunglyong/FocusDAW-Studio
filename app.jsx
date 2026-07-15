@@ -2338,12 +2338,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const currentName = (projectNameRef && projectNameRef.current) || projectName || DEFAULT_PROJECT_NAME;
     const json = DAW.exportProject(currentName);
     let savedPath = projectPath || null;
+    let savedName = currentName;
     if (window.electronAPI) {
       const targetPath = !forceDialog ? projectPath : null;
       const result = await window.electronAPI.saveProject(json, currentName, targetPath);
       if (!result || result.saved === false) return;
       if (result.path && onProjectPathChange) onProjectPathChange(result.path);
       if (result.path) savedPath = result.path;
+      // The project name follows the file name: a Save As to "untitled123.focus"
+      // renames the project to "untitled123". Without this the Recent Saved list
+      // and the title kept showing the pre-dialog name. The file itself is
+      // stamped with the same name by the main process before writing.
+      if (result.path) {
+        savedName = projectNameFromPath(result.path);
+        if (savedName !== currentName && onRenameProject) onRenameProject(savedName);
+      }
     } else {
       const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -2353,8 +2362,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
-    saveRecentProject(currentName, savedPath, { updateSavedList: !!savedPath });
-  }, [projectName, projectNameRef, projectPath, onProjectPathChange]);
+    saveRecentProject(savedName, savedPath, { updateSavedList: !!savedPath });
+  }, [projectName, projectNameRef, projectPath, onProjectPathChange, onRenameProject]);
 
   const saveProjectAs = useCallback(() => saveProject(true), [saveProject]);
 
@@ -2432,7 +2441,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const loadProjectJson = useCallback(async (json, openedPath = null) => {
     const nextPath = openedPath || json.projectPath || null;
     DAW.importProject(json);
-    const nextName = json.projectName || projectNameFromPath(nextPath);
+    // File name wins whenever the project has one — opening "untitled123.focus"
+    // must show "untitled123" even if the file was written by an older build
+    // that stored a stale projectName inside. Only a path-less snapshot (the
+    // autosaved exit state) falls back to the name recorded in the json.
+    const nextName = nextPath ? projectNameFromPath(nextPath) : (json.projectName || DEFAULT_PROJECT_NAME);
     if (onRenameProject) onRenameProject(nextName);
     if (onProjectPathChange) onProjectPathChange(nextPath);
     setAmp(1);
@@ -2529,6 +2542,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
       const mod = e.metaKey || e.ctrlKey;
       const sel = selectedClipRef.current;
+      if (e.key === "Escape") {
+        if (sel) { e.preventDefault(); setSelectedClip(null); }
+        return;
+      }
       if (!mod && (e.key === "Delete" || e.key === "Backspace")) {
         if (sel) { e.preventDefault(); handleDeleteClip(sel.trackId, sel.clipId); }
         return;
@@ -2543,6 +2560,20 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [handleDeleteClip, handleCopyClip, handleDuplicateClip, handlePasteClip]);
+
+  // Clicking anywhere that is not a clip rect (or the clip's own context menu)
+  // drops the clip selection. Bubble phase + a closest() marker check, so the
+  // clip's own mousedown (which selects) is never undone by this listener
+  // regardless of handler order.
+  useEffect(() => {
+    const onDown = (e) => {
+      if (!selectedClipRef.current) return;
+      if (e.target.closest && (e.target.closest("[data-clip-hit]") || e.target.closest("[data-clip-menu]"))) return;
+      setSelectedClip(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, []);
 
   useEffect(() => {
     if (!startupReady) return;
@@ -3180,6 +3211,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               )}
               {!fileTracksCollapsed && fileTracks.map((t) => {
                 const i = DAW.tracks.findIndex((track) => track.id === t.id);
+                // Bounce tracks live in this group too (fileTracks includes kind:"bounce") and
+                // they are clip-editable, so they need the same clip-edit props as Audio In.
+                // Without them the overlay rendered but every edit was a silent no-op.
+                // Plain file tracks are lockedToZero, so TrackRow's own clipEditable check
+                // keeps the overlay off them.
                 return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={laneH}
                   headerIndent={15}
                   playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)} onParam={param(t.id)} onRemove={() => removeTrack(t.id)}
@@ -3189,6 +3225,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onSelect={(e) => selectFileTrack(t.id, e)}
                   onMuteAllFiles={muteAllFileTracks}
                   onRename={renameTrack}
+                  selectedClipId={selectedClip && selectedClip.trackId === t.id ? selectedClip.clipId : null}
+                  onSelectClip={handleSelectClip} onMoveClip={handleMoveClip}
+                  onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
+                  onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
+                  onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               {nonFileTracks.map((t) => {
@@ -3206,6 +3247,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   selectedClipId={selectedClip && selectedClip.trackId === t.id ? selectedClip.clipId : null}
                   onSelectClip={handleSelectClip} onMoveClip={handleMoveClip}
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
+                  onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
+                  onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}

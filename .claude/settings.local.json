@@ -154,7 +154,10 @@
       "Bash(echo \"commit exit: $?\")",
       "Bash(timeout 25 node_modules/electron/dist/electron.exe . --enable-logging)",
       "Bash(timeout 18 node_modules/electron/dist/electron.exe .)",
-      "Bash(node -p \"require\\('./package.json'\\).version\")"
+      "Bash(node -p \"require\\('./package.json'\\).version\")",
+      "Bash(echo \"--- commit exit: $? ---\")",
+      "PowerShell(Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -ne \"\" } | Select-Object Id, MainWindowTitle, @{N='StartTime';E={$_.StartTime.ToString\\('HH:mm:ss'\\)}}, @{N='AgeSec';E={[int]\\(\\(Get-Date\\) - $_.StartTime\\).TotalSeconds}})",
+      "PowerShell(Stop-Process -Id 18708 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $left = Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -ne \"\" }; if \\($left\\) { $left | Select-Object Id, MainWindowTitle } else { \"no electron windows left\" })"
     ]
   }
 }

@@ -459,10 +459,22 @@ ipcMain.handle('rename-recording', async (event, oldPath, newBaseName) => {
 });
 
 // Save project via native Save dialog
+// The project name always follows the FILE NAME. The renderer exports the json
+// before the Save dialog runs, so json.projectName still holds the old in-app
+// name at this point — stamp the chosen file's basename in before writing, or
+// the file would claim a name that contradicts what it is saved as (a project
+// saved as "untitled123.focus" kept reporting "untitled" on reopen).
+function stampProjectNameFromPath(json, filePath) {
+  const name = path.basename(filePath).replace(/\.focus$/i, '');
+  if (json && typeof json === 'object' && name) json.projectName = name;
+  return json;
+}
+
 ipcMain.handle('save-project', async (event, json, defaultName, targetPath) => {
   assertTrustedIpc(event);
   if (targetPath) {
     const safeTargetPath = assertFilePath(targetPath, PROJECT_EXT, 'project');
+    stampProjectNameFromPath(json, safeTargetPath);
     fs.writeFileSync(safeTargetPath, JSON.stringify(json, null, 2), 'utf8');
     return { saved: true, path: safeTargetPath, dir: path.dirname(safeTargetPath) };
   }
@@ -472,6 +484,7 @@ ipcMain.handle('save-project', async (event, json, defaultName, targetPath) => {
     title: 'Save Project',
   });
   if (canceled || !filePath) return { saved: false };
+  stampProjectNameFromPath(json, filePath);
   fs.writeFileSync(filePath, JSON.stringify(json, null, 2), 'utf8');
   return { saved: true, path: filePath, dir: path.dirname(filePath) };
 });
