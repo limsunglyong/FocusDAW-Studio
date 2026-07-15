@@ -246,7 +246,6 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
   const recentList = readRecentProjectList();
   const currentRecentName = (currentRecent && currentRecent.projectName) || projectName || DEFAULT_PROJECT_NAME;
   const currentRecentPath = (currentRecent && currentRecent.projectPath) || null;
-  const currentRecentId = recentProjectId(currentRecentName, currentRecentPath);
   const recentSubmenu = [
     { header: true, label: "Recent project" },
     currentRecent
@@ -254,8 +253,13 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
       : { label: "No autosaved project", disabled: true },
     { sep: true },
     { header: true, label: "Recent saved" },
+    // The project you just saved must stay listed here. This used to filter out
+    // the currently-open project, so saving "a123.focus" made it vanish from
+    // Recent saved and appear only under Recent project — the opposite of what
+    // saving should look like. The two sections mean different things ("Recent
+    // project" = autosaved current state, possibly with unsaved edits; "Recent
+    // saved" = the .focus files on disk), so listing it in both is correct.
     ...recentList
-      .filter((item) => item.id !== currentRecentId)
       .slice(0, 10)
       .map((item) => ({
         label: item.name || DEFAULT_PROJECT_NAME,
@@ -2392,7 +2396,23 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   // Phase 5 — Audio In / Bounce clip editing (전략 B). Each mutating op takes one
   // undo snapshot; drag-move/trim call these once on mouse-up (single undo per drag).
-  const handleSelectClip = useCallback((trackId, clipId) => { setSelectedClip({ trackId, clipId }); }, []);
+  // Paste needs a target track, but the clip selection is cleared whenever the
+  // user clicks away (e.g. clicking the lane to move the playhead before
+  // pasting). Remember the last clip-edited track separately so Ctrl+V still
+  // knows where to paste after a deselect.
+  const lastClipTrackRef = useRef(null);
+  const pasteTargetTrackId = useCallback(() => {
+    if (selectedClipRef.current) return selectedClipRef.current.trackId;
+    const remembered = lastClipTrackRef.current;
+    if (remembered && DAW.tracks.some((t) => t.id === remembered && !t.lockedToZero)) return remembered;
+    // Fall back to the only editable track, if there is exactly one.
+    const editable = DAW.tracks.filter((t) => !t.lockedToZero && (t.kind === "audioIn" || t.kind === "bounce"));
+    return editable.length === 1 ? editable[0].id : null;
+  }, []);
+  const handleSelectClip = useCallback((trackId, clipId) => {
+    lastClipTrackRef.current = trackId;
+    setSelectedClip({ trackId, clipId });
+  }, []);
   // A clip edit can change the song length. Lock the timeline to the user's current
   // zoom (leave fit-to-view mode) so growing the song just widens the lane with
   // horizontal scroll, instead of re-fitting and shrinking every waveform.
@@ -2416,6 +2436,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
   const handlePasteClip = useCallback((trackId, atStart) => {
     lockTimelineZoom(); pushUndo(); const id = DAW.pasteClip(trackId, atStart);
+    lastClipTrackRef.current = trackId;
     if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
 
@@ -2553,13 +2574,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (mod && (e.key === "c" || e.key === "C")) { if (sel) { e.preventDefault(); handleCopyClip(sel.trackId, sel.clipId); } return; }
       if (mod && (e.key === "d" || e.key === "D")) { if (sel) { e.preventDefault(); handleDuplicateClip(sel.trackId, sel.clipId); } return; }
       if (mod && (e.key === "v" || e.key === "V")) {
-        if (sel && DAW._clipboard) { e.preventDefault(); handlePasteClip(sel.trackId, DAW.getPlayhead()); }
+        // Paste does NOT require a live selection — the usual flow is copy, click
+        // the lane to move the playhead (which deselects), then paste.
+        const targetId = pasteTargetTrackId();
+        if (targetId && DAW._clipboard) { e.preventDefault(); handlePasteClip(targetId, DAW.getPlayhead()); }
         return;
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [handleDeleteClip, handleCopyClip, handleDuplicateClip, handlePasteClip]);
+  }, [handleDeleteClip, handleCopyClip, handleDuplicateClip, handlePasteClip, pasteTargetTrackId]);
 
   // Clicking anywhere that is not a clip rect (or the clip's own context menu)
   // drops the clip selection. Bubble phase + a closest() marker check, so the

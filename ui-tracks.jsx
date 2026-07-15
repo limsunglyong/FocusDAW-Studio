@@ -771,11 +771,19 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
 /* ---------- one track row (header + lane) ---------- */
 // Right-click menu for a clip: the edit actions with their keyboard shortcuts.
 // Positioned at the cursor and clamped so it never spills out of the window.
-function ClipContextMenu({ x, y, items, onClose }) {
+//
+// PORTALED TO document.body ON PURPOSE. Rendered inside the track lane it was
+// trapped in the lane's stacking context: later siblings (the OUTPUT FX lane)
+// painted OVER it, so the playhead line showed through the menu and — worse —
+// the menu rows overlapping that lane were covered, making Duplicate/Delete
+// unclickable while Copy (higher up, still inside its own lane) worked. The
+// portal also stops menu clicks from bubbling into the lane's onClick, which
+// was firing a seek and moving the playhead out from under "Paste at playhead".
+function ClipContextMenu({ x, y, items, hint, onClose }) {
   const W = 232;
-  const H = items.length * 32 + 44;
-  const left = Math.min(x, window.innerWidth - W - 8);
-  const top = Math.min(y, window.innerHeight - H - 8);
+  const H = items.length * 32 + (hint ? 44 : 12);
+  const left = Math.max(8, Math.min(x, window.innerWidth - W - 8));
+  const top = Math.max(8, Math.min(y, window.innerHeight - H - 8));
   useEffect(() => {
     const close = (e) => { if (!e.target.closest("[data-clip-menu]")) onClose(); };
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -783,10 +791,15 @@ function ClipContextMenu({ x, y, items, onClose }) {
     window.addEventListener("keydown", onKey, true);
     return () => { window.removeEventListener("mousedown", close); window.removeEventListener("keydown", onKey, true); };
   }, [onClose]);
-  return (
+  return ReactDOM.createPortal(
+    // stopPropagation is REQUIRED even though this is portaled: React propagates
+    // events through the REACT tree, not the DOM tree, so a press here would still
+    // reach the lane's onMouseDown — which seeks — and yank the playhead to wherever
+    // the menu row happens to sit, right before "Paste at playhead" reads it.
     <div data-clip-menu="1" onContextMenu={(e) => e.preventDefault()}
+      onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
       style={{ position: "fixed", left, top, width: W, background: "var(--surface)", border: "1px solid var(--line-strong)",
-        borderRadius: 10, boxShadow: "var(--shadow)", padding: 6, zIndex: 400 }}>
+        borderRadius: 10, boxShadow: "var(--shadow)", padding: 6, zIndex: 4000 }}>
       {items.map((it, i) => it.sep ? (
         <div key={i} style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
       ) : (
@@ -800,11 +813,12 @@ function ClipContextMenu({ x, y, items, onClose }) {
           {it.hint && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{it.hint}</span>}
         </div>
       ))}
-      <div style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
-      <div style={{ padding: "2px 10px 4px", fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5 }}>
-        Drag to move · drag edges to trim<br />Esc or click away to deselect
-      </div>
-    </div>
+      {hint && <React.Fragment>
+        <div style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
+        <div style={{ padding: "2px 10px 4px", fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{hint}</div>
+      </React.Fragment>}
+    </div>,
+    document.body
   );
 }
 
@@ -820,24 +834,36 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   const clipEditable = !track.lockedToZero && (track.kind === "audioIn" || track.kind === "bounce");
   const clipDrag = useRef(null);
   const [, bumpDrag] = useState(0);
+  // clipId null = the menu was opened over empty lane space (paste target only).
   const [clipMenu, setClipMenu] = useState(null); // { clipId, x, y }
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
   const openClipMenu = (e, clip) => {
     if (!clipEditable) return;
     e.preventDefault(); e.stopPropagation();
-    if (onSelectClip) onSelectClip(track.id, clip.id);
-    setClipMenu({ clipId: clip.id, x: e.clientX, y: e.clientY });
+    if (clip && onSelectClip) onSelectClip(track.id, clip.id);
+    setClipMenu({ clipId: clip ? clip.id : null, x: e.clientX, y: e.clientY });
   };
-  const clipMenuItems = (clip) => [
+  // Right-click on empty lane space: offer Paste so a copied clip can be dropped
+  // where there is no clip to right-click on.
+  const openLaneMenu = (e) => {
+    if (!clipEditable || tool !== "select" || p.autoOn) return;
+    if (e.target.closest("[data-clip-hit]")) return; // the clip's own handler owns this
+    openClipMenu(e, null);
+  };
+  const clipMenuItems = (clip) => clip ? [
     { label: "Copy", hint: "Ctrl+C", onClick: () => onCopyClip && onCopyClip(track.id, clip.id) },
     { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
       onClick: () => onPasteClip && onPasteClip(track.id, DAW.getPlayhead()) },
     { label: "Duplicate", hint: "Ctrl+D", onClick: () => onDuplicateClip && onDuplicateClip(track.id, clip.id) },
     { sep: true },
     { label: "Delete", hint: "Del", icon: "trash", onClick: () => onDeleteClip && onDeleteClip(track.id, clip.id) },
+  ] : [
+    { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
+      onClick: () => onPasteClip && onPasteClip(track.id, DAW.getPlayhead()) },
   ];
   const startClipDrag = (e, clip, mode) => {
     if (!clipEditable) return;
+    if (e.button !== 0) return; // right/middle press must not start a drag — only the context menu
     e.stopPropagation(); e.preventDefault();
     const startX = e.clientX;
     const d = { clipId: clip.id, mode, startX, moved: false,
@@ -900,7 +926,8 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
       <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} inputGr={inputGr} recordingActive={recordingActive} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} onMuteAllFiles={onMuteAllFiles} onRename={onRename} />
-      <div onMouseDown={(e) => { if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
+      <div onMouseDown={(e) => { if (e.button !== 0) return; if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }}
+        onContextMenu={openLaneMenu} onMouseMove={laneMouseMove} onMouseLeave={() => setHoveredClipId(null)}
         style={{ position: "relative", width: laneW, height: laneH,
           background: track.kind === "audioIn"
             ? "linear-gradient(90deg,color-mix(in srgb,var(--blue) 8%,transparent),transparent 42%)"
@@ -969,9 +996,11 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
           );
         })}
         {clipMenu && (() => {
-          const clip = (track.clips || []).find((c) => c.id === clipMenu.clipId);
-          if (!clip) return null;
-          return <ClipContextMenu x={clipMenu.x} y={clipMenu.y} items={clipMenuItems(clip)} onClose={closeClipMenu} />;
+          const clip = clipMenu.clipId ? (track.clips || []).find((c) => c.id === clipMenu.clipId) : null;
+          if (clipMenu.clipId && !clip) return null; // clip vanished (deleted/undo) — drop the menu
+          return <ClipContextMenu x={clipMenu.x} y={clipMenu.y} items={clipMenuItems(clip)}
+            hint={clip ? "Drag to move · drag edges to trim\nEsc or click away to deselect" : null}
+            onClose={closeClipMenu} />;
         })()}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 }} />
       </div>
