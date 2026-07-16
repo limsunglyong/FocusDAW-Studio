@@ -347,7 +347,22 @@
     _playToken: 0,
     _outputMuted: false, // true while the native engine is the active output (web stays silent)
     _clipCounter: 0,
-    _cid() { return 'c' + (++this._clipCounter); },
+    // Clip ids must be unique: a duplicate makes two clips select together (the UI matches
+    // by id) and DELETE together (deleteClip filters by id), which is how a clip lost its
+    // waveform and left an empty rectangle behind.
+    // The counter alone can't guarantee that — clips restored from a project file or an
+    // undo snapshot keep their original 'cN' names while the counter restarts at 0, so the
+    // next split/paste/duplicate re-issues an id that is still live. Skipping ids already
+    // in use is self-healing: it can't be defeated by a load path that forgets to seed the
+    // counter (_sourceId has no such problem — it is random).
+    _clipIdInUse(id) {
+      return (this.tracks || []).some(t => (t.clips || []).some(c => c && c.id === id));
+    },
+    _cid() {
+      let id;
+      do { id = 'c' + (++this._clipCounter); } while (this._clipIdInUse(id));
+      return id;
+    },
     _sourceId() { return "src_" + Math.random().toString(36).slice(2, 10); },
     _trackKindFor({ kind = null, isDemo = false } = {}) {
       if (kind === "audioIn" || kind === "bounce" || kind === "file") return kind;
@@ -1904,7 +1919,12 @@
         offset: clip.offset + (atSec - clip.start), sourceId, sourceOffset: (clip.sourceOffset ?? clip.offset) + (atSec - clip.start), duration: rightDuration,
         gain: clip.gain ?? 1.0, muted: !!clip.muted, takeId: clip.takeId || null,
         params: null, automation: null };
-      t.clips = [...t.clips.slice(0, ci), left, right, ...t.clips.slice(ci + 1)].map(c => this._normalizeClip(c, sourceId, 0));
+      // Each clip keeps its OWN sourceId — passing the split clip's sourceId for the whole
+      // array re-pointed every other clip at this source while leaving their sourceOffset
+      // alone, so an untouched clip rendered THIS clip's audio (a track holds clips from
+      // several sources once join/consolidate or paste is used).
+      t.clips = [...t.clips.slice(0, ci), left, right, ...t.clips.slice(ci + 1)]
+        .map(c => this._normalizeClip(c, c.sourceId || sourceId, 0));
       this._ensureBaked(t);   // keep buffer/peaks/_layoutBaked consistent with the new clip count
       if (this.isPlaying) this._scheduleAutomation();
     },
@@ -1912,9 +1932,10 @@
     // Concatenate two clips' ACTUAL audio into a fresh source buffer + register it, with
     // a micro-fade at the seam. Used when joining clips that are NOT source-contiguous
     // (e.g. copies, or different source ranges) so neither half is lost: a single
-    // source-read clip cannot represent "sourceA[..] then sourceB[..]". Returns the new
-    // sourceId, or null if a raw buffer is missing.
-    _consolidateClips(track, first, second) {
+    // source-read clip cannot represent "sourceA[..] then sourceB[..]". gapSec (timeline
+    // silence between the two clips) is written between them so the join keeps both clips
+    // where they sit. Returns the new sourceId, or null if a raw buffer is missing.
+    _consolidateClips(track, first, second, gapSec = 0) {
       if (!ctx) return null;
       this._captureRawBuffers(track);
       const rawA = this._rawBufferForSource(track, first.sourceId);
@@ -1928,7 +1949,8 @@
       const durB = Math.round((second.duration || 0) * sr);
       const nA = Math.max(0, Math.min(durA, rawA.length - offA));
       const nB = Math.max(0, Math.min(durB, rawB.length - offB));
-      const total = Math.max(1, durA + durB);
+      const gapN = Math.max(0, Math.round((gapSec || 0) * sr));
+      const total = Math.max(1, durA + gapN + durB);
       const out = ctx.createBuffer(ch, total, sr);
       const gA = first.gain == null ? 1 : first.gain;
       const gB = second.gain == null ? 1 : second.gain;
@@ -1945,7 +1967,7 @@
         for (let i = 0; i < nB; i++) {
           let g = gB;
           if (fadeN > 0 && i < fadeN) g *= i / fadeN;             // fade in at seam
-          dst[durA + i] = sB[offB + i] * g;
+          dst[durA + gapN + i] = sB[offB + i] * g;
         }
       }
       const sid = this._cid();
@@ -1960,16 +1982,28 @@
 
     joinClips(trackId, clipIdA, clipIdB) {
       const t = this.tracks.find(x => x.id === trackId); if (!t) return;
-      const ia = t.clips.findIndex(c => c.id === clipIdA);
-      const ib = t.clips.findIndex(c => c.id === clipIdB);
-      if (ia < 0 || ib < 0 || Math.abs(ia - ib) !== 1) return;
-      const fi = Math.min(ia, ib);
-      const first = t.clips[fi], second = t.clips[fi + 1];
+      const a = t.clips.find(c => c.id === clipIdA);
+      const b = t.clips.find(c => c.id === clipIdB);
+      if (!a || !b || a === b) return;
+      if ((a.duration || 0) <= 0 || (b.duration || 0) <= 0) return; // empty placeholder — nothing to join
+      // Order by TIMELINE position and require timeline adjacency. This used to compare
+      // ARRAY indices (|ia-ib| === 1), which silently refused a perfectly valid join as
+      // soon as anything (e.g. a zero-duration placeholder) sat between them in the array.
+      const first = a.start <= b.start ? a : b;
+      const second = first === a ? b : a;
+      const between = t.clips.some(c => c !== first && c !== second && (c.duration || 0) > 0
+        && c.start > first.start + 1e-6 && c.start < second.start - 1e-6);
+      if (between) return; // not neighbours on the timeline
       const firstOff = first.sourceOffset != null ? first.sourceOffset : (first.offset || 0);
       const secondOff = second.sourceOffset != null ? second.sourceOffset : (second.offset || 0);
-      // Contiguous = a true re-join of split-adjacent pieces (same source, second picks up
-      // exactly where first ends): a single continuous source read is correct & cheap.
+      // Gap on the timeline: joining across it must keep both clips where they are, so the
+      // merged clip spans first.start..second.end with the gap carried as silence.
+      const gap = Math.max(0, second.start - (first.start + (first.duration || 0)));
+      // Contiguous = a true re-join of split-adjacent pieces (same source, no timeline gap,
+      // second picks up exactly where first ends): a single continuous source read is
+      // correct & cheap. With a gap the source read would slide the second half earlier.
       const contiguous = first.sourceId === second.sourceId
+        && gap < 1e-3
         && Math.abs(secondOff - (firstOff + (first.duration || 0))) < 1e-3;
       let merged;
       if (contiguous) {
@@ -1981,15 +2015,18 @@
       } else {
         // Copies / different ranges: consolidate both audios into a new source, else the
         // second clip's audio would be lost on the next re-bake (reads past source end).
-        const sid = this._consolidateClips(t, first, second);
+        const sid = this._consolidateClips(t, first, second, gap);
         if (!sid) return; // missing raw — leave the clips untouched rather than lose audio
-        const dur = (first.duration || 0) + (second.duration || 0);
+        const dur = (first.duration || 0) + gap + (second.duration || 0);
         merged = { id: this._cid(), start: first.start, end: first.start + dur,
           offset: 0, sourceId: sid, sourceOffset: 0, duration: dur,
           gain: 1.0, muted: !!first.muted, takeId: first.takeId || second.takeId || null,
           params: null, automation: null };
       }
-      t.clips = [...t.clips.slice(0, fi), merged, ...t.clips.slice(fi + 2)];
+      // Drop the two source clips by identity (not by index) and re-sort, so the array
+      // stays in timeline order no matter where they sat.
+      t.clips = [...t.clips.filter(c => c !== first && c !== second), merged]
+        .sort((x, y) => (x.start || 0) - (y.start || 0));
       this._normalizeTrackLayout(t);
       this._ensureBaked(t);   // was missing → join left a stale buffer; the next edit re-baked and dropped audio
       if (this.isPlaying) this._scheduleAutomation();
@@ -2224,6 +2261,66 @@
       if (s > hi) s = hi;
       if (s < lo) s = lo;
       return Math.max(0, s);
+    },
+
+    // Rigid group move (v1.22.0): every selected clip shifts by ONE shared delta, so their
+    // spacing is preserved. The delta is clamped to the TIGHTEST constraint among them —
+    // if one clip butts a neighbour, the whole group stops. Clips inside the selection
+    // never block each other (only non-selected clips are obstacles), which is what makes
+    // a run of adjacent selected clips movable at all. Returns the clamped delta.
+    _clampGroupDelta(track, clipIds, delta) {
+      const sel = new Set(clipIds || []);
+      const picked = (track.clips || []).filter(c => sel.has(c.id) && (c.duration || 0) > 0);
+      if (!picked.length) return 0;
+      const others = (track.clips || []).filter(c => !sel.has(c.id) && (c.duration || 0) > 0);
+      let dMin = -Infinity, dMax = Infinity;
+      for (const c of picked) {
+        const cS = c.start, cE = c.start + (c.duration || 0);
+        let lo = 0, hi = Infinity;   // lo = earliest free start (0 = timeline head)
+        for (const o of others) {
+          const oS = o.start, oE = o.start + o.duration;
+          if (oE <= cS + 1e-6) lo = Math.max(lo, oE);              // blocker on the left
+          else if (oS >= cE - 1e-6) hi = Math.min(hi, oS - (c.duration || 0)); // on the right
+        }
+        dMin = Math.max(dMin, lo - cS);
+        dMax = Math.min(dMax, hi - cS);
+      }
+      let d = delta;
+      if (d > dMax) d = dMax;
+      if (d < dMin) d = dMin;
+      return Number.isFinite(d) ? d : 0;
+    },
+
+    // Apply a rigid group move. Used by both the arrow-key nudge and the drag commit when
+    // 2+ clips are selected. Returns the delta actually applied (0 = fully blocked).
+    moveClipsBy(trackId, clipIds, deltaSec) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return 0;
+      const ids = (clipIds || []).filter(id => t.clips.some(c => c.id === id));
+      if (!ids.length) return 0;
+      const d = this._clampGroupDelta(t, ids, deltaSec);
+      if (Math.abs(d) < 1e-6) return 0;
+      const sel = new Set(ids);
+      for (const c of t.clips) {
+        if (!sel.has(c.id)) continue;
+        c.start += d; c.end = c.start + (c.duration || 0);
+      }
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return d;
+    },
+
+    // Delete several clips in one pass (one undo step at the caller).
+    deleteClips(trackId, clipIds) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      const sel = new Set(clipIds || []);
+      if (!t.clips.some(c => sel.has(c.id))) return false;
+      t.clips = t.clips.filter(c => !sel.has(c.id));
+      if (!t.clips.length) { // keep at least an empty placeholder clip
+        const sid = (t.sources && t.sources[0] && t.sources[0].id) || null;
+        t.clips = [this._normalizeClip({ start: 0, end: 0, offset: 0, duration: 0 }, sid, 0)];
+      }
+      this._ensureBaked(t);
+      return true;
     },
 
     moveClip(trackId, clipId, newStart) {
@@ -3727,6 +3824,10 @@
   Engine.moveClip = Engine.moveClip.bind(Engine);
   Engine._resolveMovePosition = Engine._resolveMovePosition.bind(Engine);
   Engine.nudgeClip = Engine.nudgeClip.bind(Engine);
+  // v1.22.0 multi-clip selection (rigid group move)
+  Engine.moveClipsBy = Engine.moveClipsBy.bind(Engine);
+  Engine._clampGroupDelta = Engine._clampGroupDelta.bind(Engine);
+  Engine.deleteClips = Engine.deleteClips.bind(Engine);
   Engine.trimClipStart = Engine.trimClipStart.bind(Engine);
   Engine.trimClipEnd = Engine.trimClipEnd.bind(Engine);
   Engine.deleteClip = Engine.deleteClip.bind(Engine);

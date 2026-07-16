@@ -487,6 +487,21 @@ function ZoomBar({ pxPerSec, setPx, ampZoom, setAmp, timeMin }) {
 
 /* ---------- edit tool selector ---------- */
 const TOOL_ICONS = { select: "cursor", scissors: "scissors", join: "join" };
+// Signature of everything a snapshot actually carries (buffers excluded — they are the
+// same object references). Two snapshots with the same signature restore to an identical
+// project, so undo() can use it to spot an entry that changes nothing. Comparing the
+// snapshots themselves (not live DAW state) keeps it exact: state getSnapshot doesn't
+// track — playhead, loop range, repeat — can't cause a false alarm either way.
+function snapshotSig(snap) {
+  if (!snap) return "";
+  return JSON.stringify({
+    duration: snap.duration,
+    master: snap.master,
+    eqBands: snap.eqBands,
+    tempo: snap.tempo,
+    tracks: (snap.tracks || []).map((t) => ({ id: t.id, params: t.params, clips: t.clips, takes: t.takes })),
+  });
+}
 const TOOL_TIPS  = { select: "Select / Seek (S)", scissors: "Split clip (C)", join: "Join clips (J)" };
 function ToolBar({ tool, setTool }) {
   return (
@@ -1426,7 +1441,18 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(null);
   const [tool, setTool] = useState("select");
-  const [selectedClip, setSelectedClip] = useState(null); // Phase 5: { trackId, clipId }
+  // v1.22.0: the clip selection is a SET within one track — { trackId, clipIds: [...] }.
+  // Multi-select is single-track by design: clip join/merge and the rigid group move are
+  // both within-track operations, and keeping it local lets the drag ghost render inside
+  // the owning TrackRow. Clicking a clip on another track starts a fresh selection there.
+  // `selectedClip` below stays the single-clip anchor (last clicked) so every existing
+  // one-clip op (copy / duplicate / trim / split / join / paste target) is untouched.
+  const [clipSel, setClipSel] = useState(null); // { trackId, clipIds: string[] }
+  const selectedClip = useMemo(
+    () => (clipSel && clipSel.clipIds.length
+      ? { trackId: clipSel.trackId, clipId: clipSel.clipIds[clipSel.clipIds.length - 1] }
+      : null),
+    [clipSel]);
   const [timelineView, setTimelineView] = useState({ scrollLeft: 0, clientWidth: 1 });
   const [vScroll, setVScroll] = useState({ up: false, down: false });
   const [bpmOpen, setBpmOpen] = useState(false);
@@ -1609,11 +1635,24 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     requestAnimationFrame(applyFit);
   }, [updateTimeMin, updateTimelineView]);
 
+  // Returns a token to hand to cancelUndo() if the operation turns out to be a no-op.
   const pushUndo = useCallback(() => {
+    const savedRedo = redoStack.current;
     undoStack.current.push(DAW.getSnapshot());
     if (undoStack.current.length > MAX_UNDO) undoStack.current.shift();
     redoStack.current = [];
     if (onUndoStateChange) onUndoStateChange({ canUndo: true, canRedo: false });
+    return savedRedo;
+  }, [onUndoStateChange]);
+  // Undo an optimistic pushUndo() for an edit that ended up changing nothing (e.g. a clip
+  // nudged while already butted against its neighbour). Popping the snapshot is NOT enough:
+  // pushUndo also CLEARED the redo stack, so without restoring it a blocked move silently
+  // kills Redo — the stack has to come back exactly as it was.
+  const cancelUndo = useCallback((savedRedo) => {
+    undoStack.current.pop();
+    if (savedRedo) redoStack.current = savedRedo;
+    if (onUndoStateChange) onUndoStateChange({
+      canUndo: undoStack.current.length > 0, canRedo: redoStack.current.length > 0 });
   }, [onUndoStateChange]);
 
   const renderMergedTracks = useCallback(async () => {
@@ -1855,8 +1894,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   const undo = useCallback(() => {
     if (!undoStack.current.length) return;
-    redoStack.current.push(DAW.getSnapshot());
-    DAW.applySnapshot(undoStack.current.pop());
+    const current = DAW.getSnapshot();
+    const restore = undoStack.current.pop();
+    redoStack.current.push(current);
+    // An entry that restores what we already have means some handler snapshotted AFTER its
+    // edit, or snapshotted for state getSnapshot doesn't carry (loop range, playhead). Such
+    // an entry silently eats a Ctrl+Z and clears Redo — always a bug. This guard caught the
+    // OUTPUT FX lane pushing a snapshot on a plain playbar click (v1.23.2).
+    if (snapshotSig(current) === snapshotSig(restore)) {
+      console.warn("[undo] no-op entry — a snapshot was pushed for something that changed nothing");
+    }
+    DAW.applySnapshot(restore);
     lastUndoKey.current = null;
     if (onUndoStateChange) onUndoStateChange({ canUndo: undoStack.current.length > 0, canRedo: true });
     saveRecentProject(projectName, projectPath);
@@ -2409,14 +2457,22 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const editable = DAW.tracks.filter((t) => !t.lockedToZero && (t.kind === "audioIn" || t.kind === "bounce"));
     return editable.length === 1 ? editable[0].id : null;
   }, []);
-  const handleSelectClip = useCallback((trackId, clipId) => {
+  // additive (Ctrl/Cmd+click) toggles one clip in/out of the selection. A plain click
+  // replaces it. Selecting on a different track always starts over (single-track rule).
+  const handleSelectClip = useCallback((trackId, clipId, additive = false) => {
     lastClipTrackRef.current = trackId;
-    setSelectedClip({ trackId, clipId });
+    setClipSel((prev) => {
+      if (!additive || !prev || prev.trackId !== trackId) return { trackId, clipIds: [clipId] };
+      const has = prev.clipIds.includes(clipId);
+      // Re-adding an existing clip moves it to the end = it becomes the anchor.
+      const clipIds = has ? prev.clipIds.filter((id) => id !== clipId) : [...prev.clipIds, clipId];
+      return clipIds.length ? { trackId, clipIds } : null;
+    });
   }, []);
   // Deselect = drop the clip selection AND release the scissors/join (C/J) tool.
   // Shared by the Esc key and the clip context menu's "Deselect" row so both behave
   // identically (fixes C/J staying stuck active after use).
-  const handleDeselect = useCallback(() => { setSelectedClip(null); setTool("select"); }, []);
+  const handleDeselect = useCallback(() => { setClipSel(null); setTool("select"); }, []);
   // A clip edit can change the song length. Lock the timeline to the user's current
   // zoom (leave fit-to-view mode) so growing the song just widens the lane with
   // horizontal scroll, instead of re-fitting and shrinking every waveform.
@@ -2424,38 +2480,87 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const handleMoveClip = useCallback((trackId, clipId, newStart) => {
     lockTimelineZoom(); pushUndo(); DAW.moveClip(trackId, clipId, newStart); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
+  // v1.22.0 — commit a rigid group drag (one undo for the whole group).
+  const handleMoveClips = useCallback((trackId, clipIds, deltaSec) => {
+    lockTimelineZoom();
+    const savedRedo = pushUndo();
+    if (DAW.moveClipsBy(trackId, clipIds, deltaSec) === 0) cancelUndo(savedRedo); // fully blocked
+    force((n) => n + 1);
+  }, [pushUndo, cancelUndo, lockTimelineZoom]);
   const handleTrimStart = useCallback((trackId, clipId, newStart) => {
     lockTimelineZoom(); pushUndo(); DAW.trimClipStart(trackId, clipId, newStart); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
   const handleTrimEnd = useCallback((trackId, clipId, newEnd) => {
     lockTimelineZoom(); pushUndo(); DAW.trimClipEnd(trackId, clipId, newEnd); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
+  // Deletes the WHOLE selection when the clicked/selected clip is part of it (one undo),
+  // so Del on a multi-selection doesn't strand the other clips.
   const handleDeleteClip = useCallback((trackId, clipId) => {
-    lockTimelineZoom(); pushUndo(); DAW.deleteClip(trackId, clipId); setSelectedClip(null); force((n) => n + 1);
+    lockTimelineZoom(); pushUndo();
+    const sel = clipSelRef.current;
+    const group = sel && sel.trackId === trackId && sel.clipIds.includes(clipId) && sel.clipIds.length > 1
+      ? sel.clipIds : null;
+    if (group) DAW.deleteClips(trackId, group); else DAW.deleteClip(trackId, clipId);
+    setClipSel(null); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
   const handleDuplicateClip = useCallback((trackId, clipId) => {
     lockTimelineZoom(); pushUndo(); const id = DAW.duplicateClip(trackId, clipId);
-    if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
+    if (id) setClipSel({ trackId, clipIds: [id] }); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
   const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
   const handlePasteClip = useCallback((trackId, atStart) => {
     lockTimelineZoom(); pushUndo(); const id = DAW.pasteClip(trackId, atStart);
     lastClipTrackRef.current = trackId;
-    if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
+    if (id) setClipSel({ trackId, clipIds: [id] }); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
-  // Arrow-key precise nudge of the selected clip (1 / 10 / 100 ms). Consecutive nudges
-  // within a short window coalesce into ONE undo (like a drag). A nudge that changes
-  // nothing (butted against a neighbor) discards the just-pushed snapshot.
-  const nudgeTsRef = useRef(0);
-  const nudgeSelectedClip = useCallback((deltaSec) => {
-    const sel = selectedClipRef.current; if (!sel) return;
+  // Arrow-key precise nudge (1 / 10 / 100 ms). Holding the key fires ~30 repeats/sec and
+  // every engine move re-bakes the whole track buffer + recomputes peaks, so committing
+  // per repeat froze the UI for the whole hold and then jumped at once on release.
+  // Instead a nudge burst only moves a visual GHOST (exactly like a drag does) and
+  // commits ONE engine move + ONE undo on key-up.
+  const [nudgeGhost, setNudgeGhost] = useState(null); // { trackId, clipIds, rawDelta, delta }
+  const nudgeGhostRef = useRef(null);
+  const nudgeTimerRef = useRef(0);
+  const nudgeSelectedClip = useCallback((stepSec) => {
+    const sel = clipSelRef.current; if (!sel || !sel.clipIds.length) return;
+    const track = DAW.tracks.find((t) => t.id === sel.trackId); if (!track) return;
+    const prev = nudgeGhostRef.current;
+    // Accumulate against the clips' UNCHANGED positions, then clamp the total — so the
+    // ghost butts against a neighbour exactly where the commit will land.
+    const rawDelta = ((prev && prev.trackId === sel.trackId) ? prev.rawDelta : 0) + stepSec;
+    const delta = DAW._clampGroupDelta ? DAW._clampGroupDelta(track, sel.clipIds, rawDelta) : rawDelta;
+    const g = { trackId: sel.trackId, clipIds: sel.clipIds, rawDelta, delta };
+    nudgeGhostRef.current = g; setNudgeGhost(g);
+    // Safety net: commit even if the key-up is missed (focus loss, alt-tab mid-hold).
+    clearTimeout(nudgeTimerRef.current);
+    nudgeTimerRef.current = setTimeout(() => commitNudgeRef.current && commitNudgeRef.current(), 700);
+  }, []);
+  // Separate taps still coalesce into ONE undo within 700ms (the v1.21.4 rule) — the
+  // deferred commit only changes WHEN the engine move runs, not the undo granularity.
+  const nudgeCommitTsRef = useRef(0);
+  const commitNudge = useCallback(() => {
+    clearTimeout(nudgeTimerRef.current);
+    const g = nudgeGhostRef.current; if (!g) return;
+    nudgeGhostRef.current = null; setNudgeGhost(null);
+    if (Math.abs(g.delta) < 1e-6) return; // fully blocked → nothing to commit, no undo entry
     const now = Date.now();
-    const fresh = now - nudgeTsRef.current > 700;
-    if (fresh) { lockTimelineZoom(); pushUndo(); }
-    const changed = DAW.nudgeClip(sel.trackId, sel.clipId, deltaSec);
-    if (changed) { nudgeTsRef.current = now; force((n) => n + 1); }
-    else if (fresh) { undoStack.current.pop(); } // no move → drop the empty snapshot
-  }, [pushUndo, lockTimelineZoom]);
+    const fresh = now - nudgeCommitTsRef.current > 700;
+    let savedRedo = null;
+    if (fresh) { lockTimelineZoom(); savedRedo = pushUndo(); }
+    if (DAW.moveClipsBy(g.trackId, g.clipIds, g.delta) === 0) {
+      if (fresh) cancelUndo(savedRedo);  // no move → drop the empty snapshot, keep Redo alive
+      return;
+    }
+    nudgeCommitTsRef.current = now;
+    force((n) => n + 1);
+  }, [pushUndo, cancelUndo, lockTimelineZoom]);
+  const commitNudgeRef = useRef(null);
+  commitNudgeRef.current = commitNudge;
+  useEffect(() => {
+    const onUp = (e) => { if (e.code === "ArrowLeft" || e.code === "ArrowRight") commitNudge(); };
+    window.addEventListener("keyup", onUp, true);
+    return () => window.removeEventListener("keyup", onUp, true);
+  }, [commitNudge]);
 
   const reconnectProjectAudio = useCallback(async () => {
     if (!window.electronAPI) return;
@@ -2583,6 +2688,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // Phase 5 — clip-editing keyboard shortcuts (operate on the selected clip).
   const selectedClipRef = useRef(null);
   selectedClipRef.current = selectedClip;
+  const clipSelRef = useRef(null);      // v1.22.0 — the full selection set
+  clipSelRef.current = clipSel;
   useEffect(() => {
     const onKey = (e) => {
       const el = document.activeElement;
@@ -2618,9 +2725,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // regardless of handler order.
   useEffect(() => {
     const onDown = (e) => {
-      if (!selectedClipRef.current) return;
+      if (!clipSelRef.current) return;
       if (e.target.closest && (e.target.closest("[data-clip-hit]") || e.target.closest("[data-clip-menu]"))) return;
-      setSelectedClip(null);
+      setClipSel(null);
     };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
@@ -3277,7 +3384,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onMuteAllFiles={muteAllFileTracks}
                   onRename={renameTrack}
                   selectedClipId={selectedClip && selectedClip.trackId === t.id ? selectedClip.clipId : null}
-                  onSelectClip={handleSelectClip} onMoveClip={handleMoveClip}
+                  selectedClipIds={clipSel && clipSel.trackId === t.id ? clipSel.clipIds : EMPTY_CLIP_IDS}
+                  nudge={nudgeGhost && nudgeGhost.trackId === t.id ? nudgeGhost : null}
+                  onSelectClip={handleSelectClip} onMoveClip={handleMoveClip} onMoveClips={handleMoveClips}
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
@@ -3297,7 +3406,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onFocusFx={focusMixerFx}
                   onRename={renameTrack}
                   selectedClipId={selectedClip && selectedClip.trackId === t.id ? selectedClip.clipId : null}
-                  onSelectClip={handleSelectClip} onMoveClip={handleMoveClip}
+                  selectedClipIds={clipSel && clipSel.trackId === t.id ? clipSel.clipIds : EMPTY_CLIP_IDS}
+                  nudge={nudgeGhost && nudgeGhost.trackId === t.id ? nudgeGhost : null}
+                  onSelectClip={handleSelectClip} onMoveClip={handleMoveClip} onMoveClips={handleMoveClips}
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}

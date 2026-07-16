@@ -104,12 +104,17 @@ function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
   const drag = useRef(null);
   const onDown = (e) => {
     e.preventDefault();
-    if (onBeforeChange) onBeforeChange();
     drag.current = { y: e.clientY, v: gain };
+    // ONE undo per drag, taken lazily before the first value that actually differs — a
+    // plain click on the knob must not stack a no-op entry (the wheel handler below
+    // already guards this way).
+    let pushed = false;
     const move = (ev) => {
       const dy = drag.current.y - ev.clientY;
       let nv = drag.current.v + (dy / 160) * (GAIN_MAX - GAIN_MIN);
       nv = Math.round(Math.max(GAIN_MIN, Math.min(GAIN_MAX, nv)) * 10) / 10;
+      if (nv === gain) return;
+      if (!pushed) { pushed = true; if (onBeforeChange) onBeforeChange(); }
       onChange(nv);
     };
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
@@ -122,7 +127,7 @@ function InputGainKnob({ value, active, onChange, onBeforeChange, size = 80 }) {
     if (onBeforeChange) onBeforeChange();
     onChange(nv);
   });
-  const onDbl = () => { if (onBeforeChange) onBeforeChange(); onChange(1); };
+  const onDbl = () => { if (gain === 1) return; if (onBeforeChange) onBeforeChange(); onChange(1); };
 
   // viewBox is 100×100; convert (radius, angle°) → point. 0°=up, clockwise.
   const C = 50;
@@ -441,16 +446,28 @@ function MasterEQ({ width = 320, height = 156, onBeforeChange }) {
 
   const onPtDown = (i) => (e) => {
     e.preventDefault(); e.stopPropagation();
-    onBeforeChange && onBeforeChange();
+    // ONE undo per drag, taken lazily before the first band value that actually differs.
+    // Snapshotting on mousedown stacked a no-op entry when the point was merely clicked —
+    // that entry then ate the next Ctrl+Z and cleared Redo (same defect as v1.23.2).
+    let pushed = false;
     const move = (ev) => {
       const r = ref.current.getBoundingClientRect();
-      DAW.setMasterBand(i, Math.round(yToGain(ev.clientY - r.top) * 10) / 10);
+      const v = Math.round(yToGain(ev.clientY - r.top) * 10) / 10;
+      if (Math.abs(v - (DAW.master.bands[i] || 0)) < 1e-6) return;
+      if (!pushed) { pushed = true; onBeforeChange && onBeforeChange(); }
+      DAW.setMasterBand(i, v);
       force((n) => n + 1);
     };
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
-  const resetBand = (i) => (e) => { e.preventDefault(); e.stopPropagation(); onBeforeChange && onBeforeChange(); DAW.setMasterBand(i, 0); force((n) => n + 1); };
+  // Resetting an already-flat band changes nothing — snapshotting anyway would stack a
+  // no-op undo entry (and clear Redo), so bail out first.
+  const resetBand = (i) => (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (Math.abs(DAW.master.bands[i] || 0) < 1e-6) return;
+    onBeforeChange && onBeforeChange(); DAW.setMasterBand(i, 0); force((n) => n + 1);
+  };
 
   // spectrum backdrop area
   let specD = `M0 ${height}`;
@@ -548,16 +565,28 @@ function MasterEQOverlay({ width = 300, height = 156, onBeforeChange }) {
 
   const onPtDown = (i) => (e) => {
     e.preventDefault(); e.stopPropagation();
-    onBeforeChange && onBeforeChange();
+    // ONE undo per drag, taken lazily before the first band value that actually differs.
+    // Snapshotting on mousedown stacked a no-op entry when the point was merely clicked —
+    // that entry then ate the next Ctrl+Z and cleared Redo (same defect as v1.23.2).
+    let pushed = false;
     const move = (ev) => {
       const r = ref.current.getBoundingClientRect();
-      DAW.setMasterBand(i, Math.round(yToGain(ev.clientY - r.top) * 10) / 10);
+      const v = Math.round(yToGain(ev.clientY - r.top) * 10) / 10;
+      if (Math.abs(v - (DAW.master.bands[i] || 0)) < 1e-6) return;
+      if (!pushed) { pushed = true; onBeforeChange && onBeforeChange(); }
+      DAW.setMasterBand(i, v);
       force((n) => n + 1);
     };
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
-  const resetBand = (i) => (e) => { e.preventDefault(); e.stopPropagation(); onBeforeChange && onBeforeChange(); DAW.setMasterBand(i, 0); force((n) => n + 1); };
+  // Resetting an already-flat band changes nothing — snapshotting anyway would stack a
+  // no-op undo entry (and clear Redo), so bail out first.
+  const resetBand = (i) => (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (Math.abs(DAW.master.bands[i] || 0) < 1e-6) return;
+    onBeforeChange && onBeforeChange(); DAW.setMasterBand(i, 0); force((n) => n + 1);
+  };
 
   return (
     <svg ref={ref} width={width} height={height} style={{ position: "absolute", inset: 0, display: "block", cursor: "ns-resize" }}>
@@ -875,7 +904,11 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   const onOutlaneMouseDown = (e) => {
     if (e.target.closest(".fadeh") || e.target.closest(".loop-btn-x") || e.target.closest(".loop-btn-repeat")) return;
 
-    onBeforeChange && onBeforeChange();
+    // NO undo snapshot here. This handler only ever changes the loop range (setLoopRange)
+    // or the playhead (onSeek), and getSnapshot() captures NEITHER — so an onBeforeChange()
+    // call was guaranteed to push an undo entry identical to the current state. Clicking
+    // the OUTPUT FX lane to move the playbar therefore stacked a no-op entry that ate the
+    // next Ctrl+Z, and (since pushUndo clears redoStack) silently killed Redo too.
     const r = e.currentTarget.getBoundingClientRect();
     const startX = e.clientX - r.left;
     const startTime = (startX / laneW) * DAW.duration;
@@ -934,11 +967,21 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
   const dragFade = (which) => (e) => {
     e.stopPropagation(); e.preventDefault();
     const host = e.currentTarget.closest(".outlane");
+    const key = which === "in" ? "fadeIn" : "fadeOut";
+    // ONE undo per drag, taken lazily right before the first value that actually differs:
+    //  - snapshotting on mousedown would stack a no-op entry for a plain click on the
+    //    handle (the v1.23.2 bug this file just had),
+    //  - snapshotting per mousemove would bury the history under dozens of entries.
+    // Taken before the first setMaster, so it holds the pre-drag fade.
+    let pushed = false;
     const move = (ev) => {
       const r = host.getBoundingClientRect();
       const t = Math.max(0, Math.min(DAW.duration, (ev.clientX - r.left) / pxPerSec));
-      if (which === "in") DAW.setMaster("fadeIn", Math.min(t, DAW.duration / 2));
-      else DAW.setMaster("fadeOut", Math.min(DAW.duration - t, DAW.duration / 2));
+      const v = which === "in" ? Math.min(t, DAW.duration / 2)
+                               : Math.min(DAW.duration - t, DAW.duration / 2);
+      if (Math.abs(v - (DAW.master[key] || 0)) < 1e-6) return; // no change → no snapshot
+      if (!pushed) { pushed = true; onBeforeChange && onBeforeChange(); }
+      DAW.setMaster(key, v);
     };
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
@@ -1051,7 +1094,9 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
               <button
                 className="loop-btn-x"
                 onClick={() => {
-                  onBeforeChange && onBeforeChange();
+                  // No undo snapshot: loopRange / repeatPlayEnabled are transport state and
+                  // getSnapshot() carries neither, so this only ever stacked an entry
+                  // identical to the current one (see v1.23.2 / onOutlaneMouseDown).
                   DAW.setLoopRange(null);
                   DAW.setRepeatPlayEnabled(false);
                 }}
@@ -1092,7 +1137,8 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
               <button
                 className="loop-btn-repeat"
                 onClick={() => {
-                  onBeforeChange && onBeforeChange();
+                  // No undo snapshot — repeatPlayEnabled is transport state, not in
+                  // getSnapshot(). Toggling Repeat used to stack a no-op entry every time.
                   DAW.setRepeatPlayEnabled(!repeatOn);
                 }}
                 style={{

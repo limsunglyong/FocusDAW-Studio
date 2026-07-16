@@ -1,5 +1,23 @@
 /* ================= FocusDAW — track lanes, waveforms, automation ================= */
 const HEADER_W = 274;
+// Stable identity for the clip-selection prop — a fresh [] per render would churn TrackRow.
+// Global on purpose: the renderers are transform-only (not bundled) and share one script
+// scope, so app.jsx reads this same binding. Declare it in exactly ONE file — a duplicate
+// top-level `const` in another renderer is a redeclaration SyntaxError that kills the app.
+const EMPTY_CLIP_IDS = [];
+
+// m:ss.mmm — millisecond precision for the clip start/end overlay, because the arrow-key
+// nudge steps by 1 ms (ui-kit's fmtTime only resolves centiseconds, so a 1 ms nudge would
+// look like nothing happened). Built from whole milliseconds so 999.6 ms can't print :60.
+function fmtClipTime(s) {
+  const total = Math.max(0, Math.round(s * 1000));
+  const m = Math.floor(total / 60000);
+  const sec = Math.floor((total % 60000) / 1000);
+  return `${m}:${String(sec).padStart(2, "0")}.${String(total % 1000).padStart(3, "0")}`;
+}
+// Matches the track header's gain readout (className "mono", 9.5px, cream-2).
+const CLIP_TIME_STYLE = { position: "absolute", fontSize: 9.5, color: "var(--cream-2)",
+  pointerEvents: "none", whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,.9)", zIndex: 2 };
 
 // Select the coarsest peak level that still provides ≥1 bucket per pixel.
 // Falls back to fine (highest resolution) when needed.
@@ -822,7 +840,7 @@ function ClipContextMenu({ x, y, items, hint, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, onSelectClip, onMoveClip, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -840,7 +858,9 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   const openClipMenu = (e, clip) => {
     if (!clipEditable) return;
     e.preventDefault(); e.stopPropagation();
-    if (clip && onSelectClip) onSelectClip(track.id, clip.id);
+    // Right-clicking a clip that is part of a multi-selection must KEEP that selection,
+    // otherwise the menu's Delete would silently drop to a single clip.
+    if (clip && onSelectClip && !selectedClipIds.includes(clip.id)) onSelectClip(track.id, clip.id, false);
     setClipMenu({ clipId: clip ? clip.id : null, x: e.clientX, y: e.clientY });
   };
   // Right-click on empty lane space: offer Paste so a copied clip can be dropped
@@ -857,8 +877,12 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     ];
     // Split at the right-click point (Split tool is also on shortcut C); Join merges
     // with the adjacent clip (Join tool on J) — next if there is one, else previous.
+    // With 2+ clips selected the single-clip actions (Copy/Duplicate/Split/Join) still act
+    // on the right-clicked clip only; Delete acts on the whole selection, so it says so.
+    const groupN = selectedClipIds.includes(clip.id) ? selectedClipIds.length : 1;
     return [
-      { label: "Deselect", hint: "Esc", onClick: () => onDeselectClip && onDeselectClip() },
+      { label: groupN > 1 ? `Deselect (${groupN} selected)` : "Deselect", hint: "Esc",
+        onClick: () => onDeselectClip && onDeselectClip() },
       { sep: true },
       { label: "Copy", hint: "Ctrl+C", onClick: () => onCopyClip && onCopyClip(track.id, clip.id) },
       { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
@@ -871,24 +895,40 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
       { label: "Split", hint: "C", onClick: () => onSetTool && onSetTool("scissors") },
       { label: "Join", hint: "J", onClick: () => onSetTool && onSetTool("join") },
       { sep: true },
-      { label: "Delete", hint: "Del", icon: "trash", onClick: () => onDeleteClip && onDeleteClip(track.id, clip.id) },
+      { label: groupN > 1 ? `Delete ${groupN} clips` : "Delete", hint: "Del", icon: "trash",
+        onClick: () => onDeleteClip && onDeleteClip(track.id, clip.id) },
     ];
   };
   const startClipDrag = (e, clip, mode) => {
     if (!clipEditable) return;
     if (e.button !== 0) return; // right/middle press must not start a drag — only the context menu
     e.stopPropagation(); e.preventDefault();
+    const additive = e.ctrlKey || e.metaKey;
+    // Ctrl+click toggles membership and never starts a drag — a toggle that also dragged
+    // would move a group the user was still assembling.
+    if (additive && mode === "move") { if (onSelectClip) onSelectClip(track.id, clip.id, true); return; }
+    // Plain-press on a clip already in a multi-selection keeps the selection and drags the
+    // GROUP (standard DAW behaviour). Pressing an unselected clip replaces the selection.
+    // Trim handles always act on their own clip.
+    const inSel = selectedClipIds.includes(clip.id);
+    const groupIds = (mode === "move" && inSel && selectedClipIds.length > 1) ? selectedClipIds.slice() : null;
+    if (!groupIds && onSelectClip) onSelectClip(track.id, clip.id, false);
     const startX = e.clientX;
-    const d = { clipId: clip.id, mode, startX, moved: false,
+    const d = { clipId: clip.id, mode, startX, moved: false, groupIds, groupDelta: 0,
       origStart: clip.start, origEnd: clip.end,
       ghostStart: clip.start, ghostEnd: clip.end };
     clipDrag.current = d; bumpDrag((n) => n + 1);
-    if (onSelectClip) onSelectClip(track.id, clip.id);
     const move = (ev) => {
       const dsec = ((ev.clientX - startX) / laneW) * DAW.duration;
       if (Math.abs(ev.clientX - startX) > 2) d.moved = true;
       const len = d.origEnd - d.origStart;
-      if (mode === "move") {
+      if (mode === "move" && groupIds) {
+        // Rigid group: one shared delta clamped to the tightest clip. Preview it on every
+        // selected clip so the user sees the group stop as a unit at the blocker.
+        d.groupDelta = DAW._clampGroupDelta ? DAW._clampGroupDelta(track, groupIds, dsec) : dsec;
+        d.ghostStart = d.origStart + d.groupDelta; d.ghostEnd = d.ghostStart + len;
+      }
+      else if (mode === "move") {
         // Preview the RESOLVED drop position live: directional snap (before/after the
         // overlapped clip) or, if blocked both sides, pin back to the origin so the user
         // sees "it won't fit here" before releasing.
@@ -907,19 +947,46 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     const up = () => {
       window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
       const dd = clipDrag.current; clipDrag.current = null; bumpDrag((n) => n + 1);
-      if (!dd || !dd.moved) return; // pure click = select only (already done above)
-      if (mode === "move" && Math.abs(dd.ghostStart - dd.origStart) > 1e-3 && onMoveClip) onMoveClip(track.id, clip.id, dd.ghostStart);
+      if (!dd) return;
+      if (!dd.moved) {
+        // Pure click on a member of a multi-selection = collapse to just that clip.
+        if (dd.groupIds && onSelectClip) onSelectClip(track.id, clip.id, false);
+        return;
+      }
+      if (mode === "move" && dd.groupIds) {
+        if (Math.abs(dd.groupDelta) > 1e-6 && onMoveClips) onMoveClips(track.id, dd.groupIds, dd.groupDelta);
+      }
+      else if (mode === "move" && Math.abs(dd.ghostStart - dd.origStart) > 1e-3 && onMoveClip) onMoveClip(track.id, clip.id, dd.ghostStart);
       else if (mode === "trimStart" && Math.abs(dd.ghostStart - dd.origStart) > 1e-3 && onTrimStart) onTrimStart(track.id, clip.id, dd.ghostStart);
       else if (mode === "trimEnd" && Math.abs(dd.ghostEnd - dd.origEnd) > 1e-3 && onTrimEnd) onTrimEnd(track.id, clip.id, dd.ghostEnd);
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
 
+  // The clips the user can actually SEE, in timeline order. The render skips
+  // zero-duration placeholders, so the scissors/join tools must ignore them too —
+  // otherwise they can be picked as a join partner or shift the neighbour lookup.
+  const visibleClips = () => (track.clips || [])
+    .filter(c => (c.end - c.start) > 0)
+    .sort((a, b) => a.start - b.start);
+  // The pair a join click would merge: this clip + its NEXT visible neighbour (or the
+  // previous one for the last clip). The hover highlight and the click both go through
+  // here, so what is highlighted is always exactly what gets joined.
+  const joinPairForClip = (clipId) => {
+    const vis = visibleClips();
+    const i = vis.findIndex(c => c.id === clipId);
+    if (i < 0) return null;
+    if (i < vis.length - 1) return [vis[i], vis[i + 1]];
+    if (i > 0) return [vis[i - 1], vis[i]];
+    return null; // only one clip on the track — nothing to join with
+  };
+  const clipAtSec = (sec) => visibleClips().find(c => sec >= c.start && sec < c.end) || null;
+
   const laneMouseMove = (e) => {
     if (tool !== 'scissors' && tool !== 'join') { setHoveredClipId(null); return; }
     const r = e.currentTarget.getBoundingClientRect();
     const sec = ((e.clientX - r.left) / laneW) * DAW.duration;
-    const clip = track.clips && track.clips.find(c => sec >= c.start && sec < c.end);
+    const clip = clipAtSec(sec);
     setHoveredClipId(clip ? clip.id : null);
   };
 
@@ -929,17 +996,14 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     const sec = ((e.clientX - r.left) / laneW) * DAW.duration;
 
     if (tool === 'scissors') {
-      const clip = track.clips && track.clips.find(c => sec >= c.start && sec < c.end);
+      const clip = clipAtSec(sec);
       if (clip) onSplit(track.id, clip.id, sec);
       return;
     }
     if (tool === 'join') {
-      if (!track.clips) return;
-      const ci = track.clips.findIndex(c => sec >= c.start && sec < c.end);
-      if (ci >= 0 && ci < track.clips.length - 1)
-        onJoin(track.id, track.clips[ci].id, track.clips[ci + 1].id);
-      else if (ci > 0)
-        onJoin(track.id, track.clips[ci - 1].id, track.clips[ci].id);
+      const clip = clipAtSec(sec);
+      const pair = clip ? joinPairForClip(clip.id) : null;   // same helper as the highlight
+      if (pair && onJoin) onJoin(track.id, pair[0].id, pair[1].id);
       return;
     }
     onSeek(sec);
@@ -977,10 +1041,9 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         })()}
         {/* join hover highlight */}
         {hoveredClipId && tool === 'join' && (() => {
-          const ci = track.clips ? track.clips.findIndex(c => c.id === hoveredClipId) : -1;
-          if (ci < 0 || !track.clips) return null;
-          const clipA = track.clips[ci], clipB = track.clips[ci + 1] || track.clips[ci - 1];
-          if (!clipA || !clipB) return null;
+          const pair = joinPairForClip(hoveredClipId);
+          if (!pair) return null;
+          const [clipA, clipB] = pair;
           const x1 = Math.min(clipA.start, clipB.start) * pxPerSec;
           const x2 = Math.max(clipA.end, clipB.end) * pxPerSec;
           return <div style={{ position: "absolute", top: 0, bottom: 0,
@@ -988,27 +1051,47 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             background: "rgba(159,191,122,.07)", border: "1px solid rgba(159,191,122,.3)",
             pointerEvents: "none" }} />;
         })()}
+        {/* Clip boundaries for the scissors/join tools. The draggable rects below exist
+            only in select mode, so without this the user has NO way to see where a clip
+            actually starts/ends while splitting or joining — and since v1.21.8 a clip
+            joined across a gap carries that silence INSIDE one clip, which looks exactly
+            like two clips. Read-only (pointerEvents:none) so the lane still receives the
+            split/join clicks. */}
+        {clipEditable && (tool === "scissors" || tool === "join") && !p.autoOn && (track.clips || []).map((clip) => {
+          if ((clip.end - clip.start) <= 0) return null;
+          return <div key={`bound-${clip.id}`} style={{ position: "absolute", top: 2, bottom: 2,
+            left: clip.start * pxPerSec, width: Math.max(2, (clip.end - clip.start) * pxPerSec),
+            boxSizing: "border-box", borderRadius: 4, border: "1px dashed rgba(255,255,255,.34)",
+            pointerEvents: "none", zIndex: 5 }} />;
+        })}
         {/* Phase 5 clip-editing overlay: draggable clip bodies + trim handles.
             Only on editable (Audio In / Bounce) tracks, in select mode, when not
             editing automation. Clip rects cover only clip ranges, so lane gaps
             remain click-to-seek. */}
         {clipEditable && tool === "select" && !p.autoOn && (track.clips || []).map((clip) => {
-          const dr = clipDrag.current && clipDrag.current.clipId === clip.id ? clipDrag.current : null;
-          const s = dr ? dr.ghostStart : clip.start;
-          const en = dr ? dr.ghostEnd : clip.end;
+          const cd = clipDrag.current;
+          const dr = cd && cd.clipId === clip.id ? cd : null;
+          // During a rigid group drag every OTHER selected clip ghosts by the same delta.
+          const groupDr = !dr && cd && cd.groupIds && cd.groupIds.includes(clip.id) ? cd : null;
+          // Arrow-key nudge ghost: uncommitted offset held while the key is down.
+          const nd = !dr && !groupDr && nudge && nudge.clipIds.includes(clip.id) ? nudge.delta : 0;
+          const s = dr ? dr.ghostStart : groupDr ? clip.start + groupDr.groupDelta : clip.start + nd;
+          const en = dr ? dr.ghostEnd : groupDr ? clip.end + groupDr.groupDelta : clip.end + nd;
           const left = s * pxPerSec;
           const width = Math.max(2, (en - s) * pxPerSec);
-          const sel = selectedClipId === clip.id;
+          const sel = selectedClipIds.length ? selectedClipIds.includes(clip.id) : selectedClipId === clip.id;
+          const dragging = !!(dr || groupDr);
+          const moving = dragging || nd !== 0;   // uncommitted move in progress
           if ((clip.end - clip.start) <= 0) return null; // skip empty placeholder clip
           return (
-            <div key={clip.id} title="Drag to move · drag edges to trim · right-click for actions"
+            <div key={clip.id} title="Drag to move · Ctrl+click to multi-select · drag edges to trim · right-click for actions"
               data-clip-hit="1"
               onMouseDown={(e) => startClipDrag(e, clip, "move")}
               onContextMenu={(e) => openClipMenu(e, clip)}
               style={{ position: "absolute", top: 2, bottom: 2, left, width,
                 boxSizing: "border-box", borderRadius: 4, cursor: "grab", zIndex: 6,
                 border: sel ? "1.5px solid var(--amber)" : "1px solid rgba(255,255,255,.16)",
-                background: dr ? "rgba(232,176,75,.14)" : sel ? "rgba(232,176,75,.06)" : "transparent",
+                background: moving ? "rgba(232,176,75,.14)" : sel ? "rgba(232,176,75,.06)" : "transparent",
                 boxShadow: sel ? "0 0 0 1px rgba(232,176,75,.25) inset" : "none" }}>
               <div onMouseDown={(e) => startClipDrag(e, clip, "trimStart")}
                 style={{ position: "absolute", left: -1, top: 0, bottom: 0, width: 8, cursor: "ew-resize",
@@ -1016,6 +1099,22 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
               <div onMouseDown={(e) => startClipDrag(e, clip, "trimEnd")}
                 style={{ position: "absolute", right: -1, top: 0, bottom: 0, width: 8, cursor: "ew-resize",
                   borderRight: sel ? "2px solid var(--amber)" : "2px solid transparent" }} />
+              {/* Selected clip: start time top-left, end time bottom-right. Reads the ghost
+                  position, so the numbers track a drag/nudge live. */}
+              {sel && (
+                <span className="mono" style={{ ...CLIP_TIME_STYLE, top: 2, left: 4 }}>{fmtClipTime(s)}</span>
+              )}
+              {sel && (
+                <span className="mono" style={{ ...CLIP_TIME_STYLE, bottom: 2, right: 4 }}>{fmtClipTime(en)}</span>
+              )}
+              {/* Move in progress (drag or held arrow key): the engine re-bake is deferred
+                  to the commit, so this marks "position not written yet". */}
+              {sel && moving && (
+                <span title="Moving…" style={{ position: "absolute", top: 15, left: 4,
+                  width: 9, height: 9, borderRadius: "50%", boxSizing: "border-box",
+                  border: "1.5px solid var(--amber-soft)", borderTopColor: "var(--amber)",
+                  animation: "spin .7s linear infinite", pointerEvents: "none", zIndex: 2 }} />
+              )}
             </div>
           );
         })}
@@ -1023,7 +1122,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
           const clip = clipMenu.clipId ? (track.clips || []).find((c) => c.id === clipMenu.clipId) : null;
           if (clipMenu.clipId && !clip) return null; // clip vanished (deleted/undo) — drop the menu
           return <ClipContextMenu x={clipMenu.x} y={clipMenu.y} items={clipMenuItems(clip)}
-            hint={clip ? "Drag to move · drag edges to trim\nEsc or click away to deselect" : null}
+            hint={clip ? "Drag to move · drag edges to trim\nCtrl+click clips to select several · ←/→ nudges\nEsc or click away to deselect" : null}
             onClose={closeClipMenu} />;
         })()}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 }} />

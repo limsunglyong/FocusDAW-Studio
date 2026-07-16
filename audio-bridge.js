@@ -741,6 +741,16 @@
       if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return ok;
     },
+    moveClipsBy(trackId, clipIds, deltaSec) {
+      const d = LocalDAW.moveClipsBy(trackId, clipIds, deltaSec);
+      if (d && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return d;
+    },
+    deleteClips(trackId, clipIds) {
+      const ok = LocalDAW.deleteClips(trackId, clipIds);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
     splitClip(trackId, clipId, atSec) {
       LocalDAW.splitClip(trackId, clipId, atSec);
       if (this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));

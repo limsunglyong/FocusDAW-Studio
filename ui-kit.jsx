@@ -89,12 +89,19 @@ function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, la
   const drag = useRef(null);
   const onDown = (e) => {
     e.preventDefault();
-    if (onBeforeChange) onBeforeChange();
     drag.current = { y: e.clientY, v: value };
+    // ONE undo per drag, taken lazily before the first value that actually differs. A knob
+    // only changes on drag, so snapshotting on mousedown made every plain click stack an
+    // undo entry that restores what you already have — it eats the next Ctrl+Z and clears
+    // Redo. (Fader/SleekSlider jump to the click position, so their mousedown snapshot is
+    // a real change; the wheel handler below already guards the same way.)
+    let pushed = false;
     const move = (ev) => {
       const dy = drag.current.y - ev.clientY;
       let nv = drag.current.v + (dy / 160) * (max - min);
       nv = Math.max(min, Math.min(max, nv));
+      if (nv === value) return;
+      if (!pushed) { pushed = true; if (onBeforeChange) onBeforeChange(); }
       onChange(nv);
     };
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
@@ -109,7 +116,13 @@ function Knob({ value, min = 0, max = 1, onChange, onBeforeChange, size = 38, la
     if (onBeforeChange) onBeforeChange();
     onChange(nv);
   });
-  const onDbl = () => { if (onBeforeChange) onBeforeChange(); onChange((min + max) / 2); };
+  // Double-click resets to centre — but only snapshot if that actually moves it.
+  const onDbl = () => {
+    const mid = (min + max) / 2;
+    if (value === mid) return;
+    if (onBeforeChange) onBeforeChange();
+    onChange(mid);
+  };
   const r = size / 2;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, userSelect: "none" }}>
