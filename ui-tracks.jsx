@@ -822,7 +822,7 @@ function ClipContextMenu({ x, y, items, hint, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, onSelectClip, onMoveClip, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, onSelectClip, onMoveClip, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -850,17 +850,30 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     if (e.target.closest("[data-clip-hit]")) return; // the clip's own handler owns this
     openClipMenu(e, null);
   };
-  const clipMenuItems = (clip) => clip ? [
-    { label: "Copy", hint: "Ctrl+C", onClick: () => onCopyClip && onCopyClip(track.id, clip.id) },
-    { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
-      onClick: () => onPasteClip && onPasteClip(track.id, DAW.getPlayhead()) },
-    { label: "Duplicate", hint: "Ctrl+D", onClick: () => onDuplicateClip && onDuplicateClip(track.id, clip.id) },
-    { sep: true },
-    { label: "Delete", hint: "Del", icon: "trash", onClick: () => onDeleteClip && onDeleteClip(track.id, clip.id) },
-  ] : [
-    { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
-      onClick: () => onPasteClip && onPasteClip(track.id, DAW.getPlayhead()) },
-  ];
+  const clipMenuItems = (clip) => {
+    if (!clip) return [
+      { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
+        onClick: () => onPasteClip && onPasteClip(track.id, DAW.getPlayhead()) },
+    ];
+    // Split at the right-click point (Split tool is also on shortcut C); Join merges
+    // with the adjacent clip (Join tool on J) — next if there is one, else previous.
+    return [
+      { label: "Deselect", hint: "Esc", onClick: () => onDeselectClip && onDeselectClip() },
+      { sep: true },
+      { label: "Copy", hint: "Ctrl+C", onClick: () => onCopyClip && onCopyClip(track.id, clip.id) },
+      { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
+        onClick: () => onPasteClip && onPasteClip(track.id, DAW.getPlayhead()) },
+      { label: "Duplicate", hint: "Ctrl+D", onClick: () => onDuplicateClip && onDuplicateClip(track.id, clip.id) },
+      { sep: true },
+      // Split/Join do NOT act immediately — they switch to the scissors/join tool
+      // (same as the C/J shortcuts). The menu closes and the cursor changes; the user
+      // then clicks the clip to split (at click point) or join (with adjacent clip).
+      { label: "Split", hint: "C", onClick: () => onSetTool && onSetTool("scissors") },
+      { label: "Join", hint: "J", onClick: () => onSetTool && onSetTool("join") },
+      { sep: true },
+      { label: "Delete", hint: "Del", icon: "trash", onClick: () => onDeleteClip && onDeleteClip(track.id, clip.id) },
+    ];
+  };
   const startClipDrag = (e, clip, mode) => {
     if (!clipEditable) return;
     if (e.button !== 0) return; // right/middle press must not start a drag — only the context menu
@@ -875,7 +888,18 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
       const dsec = ((ev.clientX - startX) / laneW) * DAW.duration;
       if (Math.abs(ev.clientX - startX) > 2) d.moved = true;
       const len = d.origEnd - d.origStart;
-      if (mode === "move") { const ns = Math.max(0, d.origStart + dsec); d.ghostStart = ns; d.ghostEnd = ns + len; }
+      if (mode === "move") {
+        // Preview the RESOLVED drop position live: directional snap (before/after the
+        // overlapped clip) or, if blocked both sides, pin back to the origin so the user
+        // sees "it won't fit here" before releasing.
+        const raw = Math.max(0, d.origStart + dsec);
+        let ns = raw;
+        if (DAW._resolveMovePosition) {
+          const r = DAW._resolveMovePosition(track, clip.id, raw, len);
+          ns = (r == null) ? d.origStart : r;
+        }
+        d.ghostStart = ns; d.ghostEnd = ns + len;
+      }
       else if (mode === "trimStart") { d.ghostStart = Math.min(Math.max(0, d.origStart + dsec), d.origEnd - 0.02); }
       else if (mode === "trimEnd") { d.ghostEnd = Math.max(d.origStart + 0.02, d.origEnd + dsec); }
       bumpDrag((n) => n + 1);

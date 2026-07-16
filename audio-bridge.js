@@ -736,6 +736,19 @@
       if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return id;
     },
+    nudgeClip(trackId, clipId, deltaSec) {
+      const ok = LocalDAW.nudgeClip(trackId, clipId, deltaSec);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    splitClip(trackId, clipId, atSec) {
+      LocalDAW.splitClip(trackId, clipId, atSec);
+      if (this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+    },
+    joinClips(trackId, clipIdA, clipIdB) {
+      LocalDAW.joinClips(trackId, clipIdA, clipIdB);
+      if (this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+    },
 
     addDemoTracks() {
       LocalDAW.addDemoTracks();

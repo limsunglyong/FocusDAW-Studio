@@ -1696,7 +1696,11 @@
           fileName: t.fileName || null,
           filePath: t.filePath || null,
           needsAudio: !!t.needsAudio,
-          buffer: t.buffer || null,
+          // Store the RAW source buffer, never the baked (timeline-indexed, truncated)
+          // one. Otherwise an undo/redo could reinstate a baked buffer as the track's
+          // "raw", and clips whose sourceOffset lies past its (shorter) end would vanish
+          // on the next re-bake. _rawBufferForSource returns the raw when baked, else t.buffer.
+          buffer: (this._rawBufferForSource(t, t.sources && t.sources[0] && t.sources[0].id) || t.buffer) || null,
           sources: this._serializedSources(t),
           params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })) },
           clips: this._serializedClips(t),
@@ -1786,6 +1790,16 @@
         if (Array.isArray(st.takes)) t.takes = st.takes.map(take => ({ ...take }));
         if (Array.isArray(st.clips)) t.clips = st.clips.map(c => ({ ...c }));
         this._normalizeTrackLayout(t);
+        // getSnapshot stored the RAW source buffer, so re-seat it as this track's primary
+        // raw (correcting any baked buffer a prior undo may have cached as "raw") without
+        // discarding other sources' raws, then re-derive the display buffer from the clip
+        // layout — so undo/redo can never make a clip vanish by shrinking the raw.
+        if (t.buffer && t.sources && t.sources[0]) {
+          t._rawBuffers = t._rawBuffers || {};
+          t._rawBuffers[t.sources[0].id] = t.buffer;
+        }
+        if (t.buffer && !this._isTrivialLayout(t)) this._ensureBaked(t);
+        else t._layoutBaked = false;
       }
       if (snapTracks.length) {
         const order = new Map(snapTracks.map((st, i) => [st.id, i]));
@@ -1891,7 +1905,57 @@
         gain: clip.gain ?? 1.0, muted: !!clip.muted, takeId: clip.takeId || null,
         params: null, automation: null };
       t.clips = [...t.clips.slice(0, ci), left, right, ...t.clips.slice(ci + 1)].map(c => this._normalizeClip(c, sourceId, 0));
+      this._ensureBaked(t);   // keep buffer/peaks/_layoutBaked consistent with the new clip count
       if (this.isPlaying) this._scheduleAutomation();
+    },
+
+    // Concatenate two clips' ACTUAL audio into a fresh source buffer + register it, with
+    // a micro-fade at the seam. Used when joining clips that are NOT source-contiguous
+    // (e.g. copies, or different source ranges) so neither half is lost: a single
+    // source-read clip cannot represent "sourceA[..] then sourceB[..]". Returns the new
+    // sourceId, or null if a raw buffer is missing.
+    _consolidateClips(track, first, second) {
+      if (!ctx) return null;
+      this._captureRawBuffers(track);
+      const rawA = this._rawBufferForSource(track, first.sourceId);
+      const rawB = this._rawBufferForSource(track, second.sourceId);
+      if (!rawA || !rawB) return null;
+      const sr = rawA.sampleRate;
+      const ch = Math.max(rawA.numberOfChannels, rawB.numberOfChannels);
+      const offA = Math.max(0, Math.round((first.sourceOffset != null ? first.sourceOffset : (first.offset || 0)) * sr));
+      const offB = Math.max(0, Math.round((second.sourceOffset != null ? second.sourceOffset : (second.offset || 0)) * sr));
+      const durA = Math.round((first.duration || 0) * sr);
+      const durB = Math.round((second.duration || 0) * sr);
+      const nA = Math.max(0, Math.min(durA, rawA.length - offA));
+      const nB = Math.max(0, Math.min(durB, rawB.length - offB));
+      const total = Math.max(1, durA + durB);
+      const out = ctx.createBuffer(ch, total, sr);
+      const gA = first.gain == null ? 1 : first.gain;
+      const gB = second.gain == null ? 1 : second.gain;
+      const fadeN = Math.min(Math.floor(this._MICRO_FADE * sr), Math.floor(Math.min(nA, nB) / 2));
+      for (let c = 0; c < ch; c++) {
+        const dst = out.getChannelData(c);
+        const sA = rawA.getChannelData(Math.min(c, rawA.numberOfChannels - 1));
+        for (let i = 0; i < nA; i++) {
+          let g = gA;
+          if (fadeN > 0 && i >= nA - fadeN) g *= (nA - i) / fadeN; // fade out at seam
+          dst[i] = sA[offA + i] * g;
+        }
+        const sB = rawB.getChannelData(Math.min(c, rawB.numberOfChannels - 1));
+        for (let i = 0; i < nB; i++) {
+          let g = gB;
+          if (fadeN > 0 && i < fadeN) g *= i / fadeN;             // fade in at seam
+          dst[durA + i] = sB[offB + i] * g;
+        }
+      }
+      const sid = this._cid();
+      const meta = { id: sid, duration: total / sr, sampleRate: sr, channels: ch,
+        fileName: (track.sources && track.sources[0] && track.sources[0].fileName) || track.name || null,
+        filePath: null, needsAudio: false };
+      track.sources = [...(track.sources || []), meta];
+      track._rawBuffers = track._rawBuffers || {};
+      track._rawBuffers[sid] = out;
+      return sid;
     },
 
     joinClips(trackId, clipIdA, clipIdB) {
@@ -1901,13 +1965,33 @@
       if (ia < 0 || ib < 0 || Math.abs(ia - ib) !== 1) return;
       const fi = Math.min(ia, ib);
       const first = t.clips[fi], second = t.clips[fi + 1];
-      const sourceId = first.sourceId || second.sourceId || (t.sources && t.sources[0] && t.sources[0].id) || null;
-      const merged = { id: this._cid(), start: first.start, end: second.end,
-        offset: first.offset, sourceId, sourceOffset: first.sourceOffset ?? first.offset,
-        duration: second.end - first.start, gain: first.gain ?? 1.0, muted: !!first.muted,
-        takeId: first.takeId || second.takeId || null, params: first.params, automation: first.automation };
+      const firstOff = first.sourceOffset != null ? first.sourceOffset : (first.offset || 0);
+      const secondOff = second.sourceOffset != null ? second.sourceOffset : (second.offset || 0);
+      // Contiguous = a true re-join of split-adjacent pieces (same source, second picks up
+      // exactly where first ends): a single continuous source read is correct & cheap.
+      const contiguous = first.sourceId === second.sourceId
+        && Math.abs(secondOff - (firstOff + (first.duration || 0))) < 1e-3;
+      let merged;
+      if (contiguous) {
+        const sourceId = first.sourceId || second.sourceId || (t.sources && t.sources[0] && t.sources[0].id) || null;
+        merged = { id: this._cid(), start: first.start, end: second.end,
+          offset: firstOff, sourceId, sourceOffset: firstOff,
+          duration: second.end - first.start, gain: first.gain ?? 1.0, muted: !!first.muted,
+          takeId: first.takeId || second.takeId || null, params: first.params, automation: first.automation };
+      } else {
+        // Copies / different ranges: consolidate both audios into a new source, else the
+        // second clip's audio would be lost on the next re-bake (reads past source end).
+        const sid = this._consolidateClips(t, first, second);
+        if (!sid) return; // missing raw — leave the clips untouched rather than lose audio
+        const dur = (first.duration || 0) + (second.duration || 0);
+        merged = { id: this._cid(), start: first.start, end: first.start + dur,
+          offset: 0, sourceId: sid, sourceOffset: 0, duration: dur,
+          gain: 1.0, muted: !!first.muted, takeId: first.takeId || second.takeId || null,
+          params: null, automation: null };
+      }
       t.clips = [...t.clips.slice(0, fi), merged, ...t.clips.slice(fi + 2)];
       this._normalizeTrackLayout(t);
+      this._ensureBaked(t);   // was missing → join left a stale buffer; the next edit re-baked and dropped audio
       if (this.isPlaying) this._scheduleAutomation();
     },
 
@@ -1986,12 +2070,23 @@
       const out = ctx.createBuffer(chCount, length, sr);
       for (const c of clips) {
         const raw = this._rawBufferForSource(track, c.sourceId);
-        if (!raw) continue;
+        if (!raw) {
+          console.warn("[bake] clip skipped — no raw buffer for source", { track: track.id, clip: c.id, sourceId: c.sourceId });
+          continue;
+        }
         const gain = (c.gain == null ? 1 : c.gain);
         const srcStart = Math.max(0, Math.round((c.sourceOffset != null ? c.sourceOffset : (c.offset || 0)) * sr));
         const dstStart = Math.max(0, Math.round((c.start || 0) * sr));
         const n = Math.min(Math.round((c.duration || 0) * sr), raw.length - srcStart, length - dstStart);
-        if (n <= 0) continue;
+        if (n <= 0) {
+          // A clip baking to zero samples = it will vanish. Should not happen after the
+          // undo/redo raw-buffer fix; if it recurs, these numbers pinpoint the cause.
+          const usedPrimaryFallback = !(c.sourceId && track._rawBuffers && track._rawBuffers[c.sourceId]);
+          console.warn("[bake] clip skipped — empty span (sourceOffset past raw end?)",
+            { track: track.id, clip: c.id, sourceId: c.sourceId, sourceOffset: c.sourceOffset, duration: c.duration,
+              rawDuration: raw.duration, srcStart, layoutLen: length, dstStart, usedPrimaryFallback });
+          continue;
+        }
         const fadeN = Math.min(Math.floor(this._MICRO_FADE * sr), Math.floor(n / 2));
         for (let ch = 0; ch < chCount; ch++) {
           const src = raw.getChannelData(Math.min(ch, raw.numberOfChannels - 1));
@@ -2045,28 +2140,111 @@
     },
     _reindexClips(track) {
       track.clips.sort((a, b) => (a.start || 0) - (b.start || 0));
+      // Enforce the "no overlap within a track" invariant: any clip that starts before
+      // the previous clip ends is pushed right to clear it (forward pass keeps order &
+      // cascades). Self-heals coincident/overlapping clips left by older buggy pastes
+      // so they can't persist as an uneditable empty clip. Zero-duration placeholders
+      // (start==end) are inert here.
+      let prevEnd = 0;
+      for (const c of track.clips) {
+        const dur = c.duration || 0;
+        if (dur > 0 && (c.start || 0) < prevEnd - 1e-6) {
+          c.start = prevEnd; c.end = prevEnd + dur;
+        }
+        prevEnd = Math.max(prevEnd, (c.start || 0) + dur);
+      }
       track.clips = track.clips.map(c => this._normalizeClip(c, c.sourceId, this._sourceDuration(track, c.sourceId)));
     },
-    // Greedy overlap clamp: nudge a proposed start so [s, s+dur) clears siblings.
-    // Good enough for engine-level edits; UI (Stage 3) will add snapping.
+    // Overlap clamp: nudge a proposed start so [s, s+dur) clears every sibling.
+    // On any overlap we push RIGHT to that clip's end and re-scan until a whole pass
+    // is clear. s only grows, so this always converges. (The old single greedy pass
+    // with a left/right tie-break could land s exactly on an already-checked sibling
+    // — e.g. a 2nd paste at the same playhead — creating a fully-overlapping clip.)
     _clampStartNoOverlap(track, clipId, start, dur) {
       let s = Math.max(0, start);
       const others = track.clips.filter(c => c.id !== clipId).sort((a, b) => a.start - b.start);
-      for (const o of others) {
-        const oS = o.start, oE = o.start + o.duration;
-        if (s < oE && s + dur > oS) {
-          const left = oS - dur, right = oE;
-          s = (left >= 0 && Math.abs(s - left) <= Math.abs(s - right)) ? left : right;
+      let moved = true, guard = 0;
+      while (moved && guard++ <= others.length) {
+        moved = false;
+        for (const o of others) {
+          const oS = o.start, oE = o.start + o.duration;
+          if (s < oE && s + dur > oS) { s = oE; moved = true; }
         }
       }
+      return Math.max(0, s);
+    },
+
+    // Drag-drop placement (moveClip): resolve a proposed start against siblings using a
+    // LOCAL directional snap, and reject (return null) when the intended slot won't fit —
+    // the caller then keeps the clip at its origin (snap back), rather than teleporting it
+    // past a neighbour.
+    //  - end intrudes a clip (start free)  → snap BEFORE it   (user clip end butts its start)
+    //  - start intrudes a clip (end free)  → snap AFTER it    (user clip start butts its end)
+    //  - both / fully envelops             → snap to the nearer side
+    //  - that single directional slot isn't free → null → snap back.
+    // (paste/duplicate keep _clampStartNoOverlap's "always push right" behavior.)
+    _resolveMovePosition(track, clipId, start, dur) {
+      const s0 = Math.max(0, start);
+      const clips = (track.clips || []).filter(c => c.id !== clipId && (c.duration || 0) > 0);
+      const free = (pos) => pos >= -1e-6 && !clips.some(o => {
+        const oS = o.start, oE = o.start + o.duration;
+        return pos < oE - 1e-6 && pos + dur > oS + 1e-6;
+      });
+      if (free(s0)) return s0;
+      const uE = s0 + dur;
+      const overlaps = clips.filter(o => s0 < o.start + o.duration && uE > o.start);
+      if (!overlaps.length) return s0;
+      const startInside = overlaps.some(o => o.start <= s0 && s0 < o.start + o.duration);
+      const endInside   = overlaps.some(o => o.start < uE && uE <= o.start + o.duration);
+      let leftStart = Infinity, rightEnd = -Infinity;
+      for (const o of overlaps) { leftStart = Math.min(leftStart, o.start); rightEnd = Math.max(rightEnd, o.start + o.duration); }
+      const candL = leftStart - dur;   // user clip's END butts the leftmost overlap's start
+      const candR = rightEnd;          // user clip's START butts the rightmost overlap's end
+      let cand;
+      if (endInside && !startInside) cand = candL;       // end intruded → before
+      else if (startInside && !endInside) cand = candR;  // start intruded → after
+      else cand = (Math.abs(candL - s0) <= Math.abs(candR - s0)) ? candL : candR; // envelop → nearer
+      if (cand >= -1e-6 && free(Math.max(0, cand))) return Math.max(0, cand);
+      return null; // intended slot blocked → snap back to origin
+    },
+
+    // Incremental move (arrow-key nudge): clamp c.start+delta to the free range between
+    // its immediate neighbors — butts against a neighbor and blocks (no jump-over, unlike
+    // drop placement). Returns the clamped start.
+    _clampNudgeStart(track, c, delta) {
+      const dur = c.duration || 0;
+      let lo = 0, hi = Infinity;
+      for (const o of (track.clips || [])) {
+        if (o.id === c.id || (o.duration || 0) <= 0) continue;
+        const oS = o.start, oE = o.start + o.duration;
+        if (oE <= c.start + 1e-6) lo = Math.max(lo, oE);          // neighbor to the left
+        else if (oS >= c.end - 1e-6) hi = Math.min(hi, oS - dur); // neighbor to the right
+      }
+      let s = c.start + delta;
+      if (s > hi) s = hi;
+      if (s < lo) s = lo;
       return Math.max(0, s);
     },
 
     moveClip(trackId, clipId, newStart) {
       const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
       const c = t.clips.find(x => x.id === clipId); if (!c) return false;
-      const s = this._clampStartNoOverlap(t, clipId, newStart, c.duration);
+      const s = this._resolveMovePosition(t, clipId, newStart, c.duration);
+      if (s == null || Math.abs(s - c.start) < 1e-6) return false; // no valid/effective slot → keep origin
       c.start = s; c.end = s + c.duration;
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return true;
+    },
+
+    // Move the selected clip by a small time delta (arrow-key precise nudge), butting
+    // against neighbors. Returns true only if the clip actually moved.
+    nudgeClip(trackId, clipId, deltaSec) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      const c = t.clips.find(x => x.id === clipId); if (!c) return false;
+      const s = this._clampNudgeStart(t, c, deltaSec);
+      if (Math.abs(s - c.start) < 1e-6) return false;
+      c.start = s; c.end = s + (c.duration || 0);
       this._reindexClips(t);
       this._ensureBaked(t);
       return true;
@@ -3547,6 +3725,8 @@
   Engine.setClipParam = Engine.setClipParam.bind(Engine);
   // Phase 5 clip editing (전략 B)
   Engine.moveClip = Engine.moveClip.bind(Engine);
+  Engine._resolveMovePosition = Engine._resolveMovePosition.bind(Engine);
+  Engine.nudgeClip = Engine.nudgeClip.bind(Engine);
   Engine.trimClipStart = Engine.trimClipStart.bind(Engine);
   Engine.trimClipEnd = Engine.trimClipEnd.bind(Engine);
   Engine.deleteClip = Engine.deleteClip.bind(Engine);

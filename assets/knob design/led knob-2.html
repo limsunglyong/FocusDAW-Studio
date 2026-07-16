@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .knob-container {
+      width: 500px;
+      height: 500px;
+      position: relative;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)); }
+      50% { opacity: 0.7; filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.4)); }
+    }
+
+    .indicator-glow {
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    .brushed-metal {
+      fill: url(#knobGradient);
+    }
+  </style>
+</head>
+<body>
+<div class="knob-container">
+<svg class="w-full h-full" viewbox="0 0 200 200">
+<defs>
+<!-- Brushed Metal Gradient -->
+<radialgradient cx="50%" cy="50%" fx="40%" fy="40%" id="knobGradient" r="50%">
+<stop offset="0%" style="stop-color:#444;stop-opacity:1"></stop>
+<stop offset="40%" style="stop-color:#222;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#111;stop-opacity:1"></stop>
+</radialgradient>
+<!-- Metal Texture Filter -->
+<filter height="100%" id="noise" width="100%" x="0" y="0">
+<feturbulence basefrequency="0.65" numoctaves="3" stitchtiles="stitch" type="fractalNoise"></feturbulence>
+<fecolormatrix type="saturate" values="0"></fecolormatrix>
+<fecomponenttransfer>
+<fefuncr slope="0.1" type="linear"></fefuncr>
+<fefuncg slope="0.1" type="linear"></fefuncg>
+<fefuncb slope="0.1" type="linear"></fefuncb>
+</fecomponenttransfer>
+<fecomposite in2="SourceGraphic" operator="in"></fecomposite>
+</filter>
+<!-- Indicator Glow -->
+<filter id="glow">
+<fegaussianblur result="coloredBlur" stddeviation="1.5"></fegaussianblur>
+<femerge>
+<femergenode in="coloredBlur"></femergenode>
+<femergenode in="SourceGraphic"></femergenode>
+</femerge>
+</filter>
+</defs>
+<!-- Outer LED Scale -->
+<g id="led-scale">
+<!-- Generate 30 ticks from 135deg to 405deg (270 degree span) -->
+<!-- Green Section (Bottom Left to Middle Left) -->
+<script>
+          document.addEventListener('DOMContentLoaded', () => {
+            const group = document.getElementById('led-scale');
+            const totalTicks = 30;
+            const startAngle = 135;
+            const endAngle = 405;
+            
+            for (let i = 0; i <= totalTicks; i++) {
+              const angleDeg = startAngle + (i / totalTicks) * (endAngle - startAngle);
+              const angleRad = (angleDeg - 90) * (Math.PI / 180);
+              
+              // Extended LED Scale: Longer ticks and larger radius
+              const innerR = 82;
+              const outerR = 98;
+              
+              const x1 = 100 + innerR * Math.cos(angleRad);
+              const y1 = 100 + innerR * Math.sin(angleRad);
+              const x2 = 100 + outerR * Math.cos(angleRad);
+              const y2 = 100 + outerR * Math.sin(angleRad);
+              
+              let color = "#10b981"; // Emerald-500 (Green)
+              if (i > totalTicks * 0.6) color = "#fbbf24"; // Amber-400 (Yellow)
+              if (i > totalTicks * 0.85) color = "#ef4444"; // Red-500 (Red)
+              
+              const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+              line.setAttribute("x1", x1);
+              line.setAttribute("y1", y1);
+              line.setAttribute("x2", x2);
+              line.setAttribute("y2", y2);
+              line.setAttribute("stroke", color);
+              // Increased stroke-width from 2.5 to 10 for bolder look
+              line.setAttribute("stroke-width", "10");
+              line.setAttribute("stroke-linecap", "butt"); // Changed to butt for cleaner rectangular segment look
+              line.setAttribute("opacity", "0.9");
+              group.appendChild(line);
+            }
+          });
+        </script>
+</g>
+<!-- Knob Body -->
+<circle class="brushed-metal" cx="100" cy="100" r="75" stroke="#000" stroke-width="1"></circle>
+<circle cx="100" cy="100" filter="url(#noise)" opacity="0.3" pointer-events="none" r="75"></circle>
+<!-- Bezel Shadow -->
+<circle cx="100" cy="100" fill="none" r="76" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"></circle>
+<!-- Rotating Knob Top with Indicator -->
+<g transform="rotate(220 100 100)">
+<animatetransform additive="replace" attributename="transform" calcmode="spline" dur="8s" from="135 100 100" keysplines="0.42 0 0.58 1; 0.42 0 0.58 1" keytimes="0; 0.5; 1" repeatcount="indefinite" to="405 100 100" type="rotate"></animatetransform>
+<!-- The Triangular Indicator -->
+<path class="indicator-glow" d="M100 35 L104 45 L96 45 Z" fill="#fff" filter="url(#glow)"></path>
+</g>
+</svg>
+</div>
+</body></html>

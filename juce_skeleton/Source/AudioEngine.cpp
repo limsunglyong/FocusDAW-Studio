@@ -1115,7 +1115,12 @@ double AudioEngine::getPlayhead() const
     // the lock races the vector's reallocation/clear → use-after-free / heap corruption.
     std::lock_guard<std::mutex> lock(engineMutex);
 #if USE_JUCE
-    if (!juceTracks.empty() && juceTracks[0]->transportSource)
+    // Only trust the live transport WHILE PLAYING. When stopped, playheadSeconds is the
+    // authoritative playhead (kept current by seek() and updatePlayhead()). Reading
+    // juceTracks[0]'s transport while stopped reported 0 right after a clip edit reloaded
+    // that track — its freshly-installed source sits at position 0 until the next play —
+    // which yanked the playbar to 0 on the next status broadcast.
+    if (playing && !juceTracks.empty() && juceTracks[0]->transportSource)
     {
         return juceTracks[0]->transportSource->getCurrentPosition();
     }

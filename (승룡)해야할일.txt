@@ -1,2 +1,1 @@
-- 녹음중 play seek 되는 문제 수정.
-
+clip 다수 선택 및 clip 좌우 이동 방법 필요 (1msec 단위? 10msec 단위?)

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+<!-- STITCH_SVG_START:ANIMATION_14 class="fixed inset-0 w-full h-full" --><div class="fixed inset-0 w-full h-full" id="animated-svg-ANIMATION_14" style="display:block;"><svg height="400" viewbox="0 0 400 400" width="400" xmlns="http://www.w3.org/2000/svg">
+<!-- Background -->
+<rect fill="#131315" height="400" width="400"></rect>
+<!-- Outer Glow Arc (Subtle reflection) -->
+<circle cx="200" cy="200" fill="none" opacity="0.05" r="160" stroke="#2ae500" stroke-width="2"></circle>
+<!-- Scale Ticks with Gradient-like colors -->
+<g stroke-linecap="round" stroke-width="6">
+<!-- Purple to Blue to Cyan scale -->
+<line stroke="#a855f7" transform="rotate(-135 200 200)" x1="200" x2="200" y1="50" y2="75"></line>
+<line stroke="#9333ea" transform="rotate(-120 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#7c3aed" transform="rotate(-105 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#6366f1" transform="rotate(-90 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#4f46e5" transform="rotate(-75 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#3b82f6" transform="rotate(-60 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#2563eb" transform="rotate(-45 200 200)" x1="200" x2="200" y1="50" y2="75"></line>
+<line stroke="#1d4ed8" transform="rotate(-30 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#1e40af" transform="rotate(-15 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#0ea5e9" transform="rotate(0 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#0284c7" transform="rotate(15 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#06b6d4" transform="rotate(30 200 200)" x1="200" x2="200" y1="50" y2="75"></line>
+<line stroke="#0891b2" transform="rotate(45 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#00acc1" transform="rotate(60 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#26c6da" transform="rotate(75 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#4dd0e1" transform="rotate(90 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#80deea" transform="rotate(105 200 200)" x1="200" x2="200" y1="50" y2="75"></line>
+<line stroke="#b2ebf2" transform="rotate(120 200 200)" x1="200" x2="200" y1="50" y2="70"></line>
+<line stroke="#e0f7fa" transform="rotate(135 200 200)" x1="200" x2="200" y1="50" y2="75"></line>
+</g>
+<!-- Knob Shadow -->
+<circle cx="200" cy="205" fill="black" opacity="0.6" r="120"></circle>
+<!-- Knob Body (Brushed Metal) -->
+<defs>
+<radialgradient cx="50%" cy="50%" id="knobBodyGrad" r="50%">
+<stop offset="0%" style="stop-color:#39393b"></stop>
+<stop offset="70%" style="stop-color:#1b1b1d"></stop>
+<stop offset="100%" style="stop-color:#0e0e10"></stop>
+</radialgradient>
+<filter id="glow">
+<fegaussianblur result="blur" stddeviation="3"></fegaussianblur>
+<fecomposite in="SourceGraphic" in2="blur" operator="over"></fecomposite>
+</filter>
+</defs>
+<circle cx="200" cy="200" fill="url(#knobBodyGrad)" r="120" stroke="#39393b" stroke-width="1"></circle>
+<!-- Subtle Brushed Texture Rings -->
+<circle cx="200" cy="200" fill="none" opacity="0.05" r="100" stroke="white" stroke-width="0.5"></circle>
+<circle cx="200" cy="200" fill="none" opacity="0.03" r="80" stroke="white" stroke-width="0.5"></circle>
+<!-- Triangular Indicator -->
+<path d="M 200 100 L 210 120 L 190 120 Z" fill="#b2ebf2" filter="url(#glow)">
+<animatetransform attributename="transform" dur="1s" from="0 200 200" repeatcount="indefinite" to="0 200 200" type="rotate"></animatetransform>
+</path>
+<!-- Outer Rim Reflection -->
+<path d="M 100 130 A 120 120 0 0 1 300 130" fill="none" opacity="0.1" stroke="white" stroke-width="1"></path>
+</svg></div><!-- STITCH_SVG_END:ANIMATION_14 -->
+</body>
+</html>

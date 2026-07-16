@@ -2413,6 +2413,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     lastClipTrackRef.current = trackId;
     setSelectedClip({ trackId, clipId });
   }, []);
+  // Deselect = drop the clip selection AND release the scissors/join (C/J) tool.
+  // Shared by the Esc key and the clip context menu's "Deselect" row so both behave
+  // identically (fixes C/J staying stuck active after use).
+  const handleDeselect = useCallback(() => { setSelectedClip(null); setTool("select"); }, []);
   // A clip edit can change the song length. Lock the timeline to the user's current
   // zoom (leave fit-to-view mode) so growing the song just widens the lane with
   // horizontal scroll, instead of re-fitting and shrinking every waveform.
@@ -2438,6 +2442,19 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     lockTimelineZoom(); pushUndo(); const id = DAW.pasteClip(trackId, atStart);
     lastClipTrackRef.current = trackId;
     if (id) setSelectedClip({ trackId, clipId: id }); force((n) => n + 1);
+  }, [pushUndo, lockTimelineZoom]);
+  // Arrow-key precise nudge of the selected clip (1 / 10 / 100 ms). Consecutive nudges
+  // within a short window coalesce into ONE undo (like a drag). A nudge that changes
+  // nothing (butted against a neighbor) discards the just-pushed snapshot.
+  const nudgeTsRef = useRef(0);
+  const nudgeSelectedClip = useCallback((deltaSec) => {
+    const sel = selectedClipRef.current; if (!sel) return;
+    const now = Date.now();
+    const fresh = now - nudgeTsRef.current > 700;
+    if (fresh) { lockTimelineZoom(); pushUndo(); }
+    const changed = DAW.nudgeClip(sel.trackId, sel.clipId, deltaSec);
+    if (changed) { nudgeTsRef.current = now; force((n) => n + 1); }
+    else if (fresh) { undoStack.current.pop(); } // no move → drop the empty snapshot
   }, [pushUndo, lockTimelineZoom]);
 
   const reconnectProjectAudio = useCallback(async () => {
@@ -2533,6 +2550,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
       if (isTextInput(e.target)) return;
+      // A selected clip captures ←/→ for precise nudge (Shift=100ms, Ctrl=10ms, else 1ms).
+      // With no clip selected these fall through to playhead seek below.
+      if ((e.code === "ArrowLeft" || e.code === "ArrowRight") && selectedClipRef.current) {
+        e.preventDefault();
+        const dir = e.code === "ArrowLeft" ? -1 : 1;
+        const step = e.shiftKey ? 0.1 : ((e.ctrlKey || e.metaKey) ? 0.01 : 0.001);
+        nudgeSelectedClip(dir * step);
+        return;
+      }
       if (!mod && (e.code === "Digit0" || e.code === "Numpad0")) {
         e.preventDefault();
         transportRef.current.transportToStart && transportRef.current.transportToStart();
@@ -2552,7 +2578,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (!mod && (e.key === "j" || e.key === "J")) setTool("join");
     };
     window.addEventListener("keydown", k, true); return () => window.removeEventListener("keydown", k, true);
-  }, [playPause, saveProject, openProjectFile, undo, redo, toggleMixer]);
+  }, [playPause, saveProject, openProjectFile, undo, redo, toggleMixer, nudgeSelectedClip]);
 
   // Phase 5 — clip-editing keyboard shortcuts (operate on the selected clip).
   const selectedClipRef = useRef(null);
@@ -2564,7 +2590,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const mod = e.metaKey || e.ctrlKey;
       const sel = selectedClipRef.current;
       if (e.key === "Escape") {
-        if (sel) { e.preventDefault(); setSelectedClip(null); }
+        if (sel) e.preventDefault();
+        handleDeselect(); // clear clip selection + release scissors/join tool
         return;
       }
       if (!mod && (e.key === "Delete" || e.key === "Backspace")) {
@@ -2583,7 +2610,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [handleDeleteClip, handleCopyClip, handleDuplicateClip, handlePasteClip, pasteTargetTrackId]);
+  }, [handleDeleteClip, handleCopyClip, handleDuplicateClip, handlePasteClip, pasteTargetTrackId, handleDeselect]);
 
   // Clicking anywhere that is not a clip rect (or the clip's own context menu)
   // drops the clip selection. Bubble phase + a closest() marker check, so the
@@ -3254,6 +3281,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
+                  onDeselectClip={handleDeselect} onSetTool={setTool}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               {nonFileTracks.map((t) => {
@@ -3273,6 +3301,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
+                  onDeselectClip={handleDeselect} onSetTool={setTool}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
