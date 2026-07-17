@@ -203,7 +203,9 @@ AudioEngine::AudioEngine()
 {
 #if USE_JUCE
     formatManager.registerBasicFormats();
-    masterGainSource = std::make_unique<GainAudioSource>(&mixerSource, false);
+    loopSource = std::make_unique<LoopAudioSource>(&mixerSource,
+        [this](double seconds, double sr) { rewindTracksForLoop(seconds, sr); });
+    masterGainSource = std::make_unique<GainAudioSource>(loopSource.get(), false);
     masterEffectsSource = std::make_unique<MasterEffectsAudioSource>(masterGainSource.get());
     sourcePlayer.setSource(masterEffectsSource.get());
 #endif
@@ -229,6 +231,7 @@ AudioEngine::~AudioEngine()
     sourcePlayer.setSource(nullptr);
     masterEffectsSource.reset();
     masterGainSource.reset();
+    loopSource.reset();
     mixerSource.removeAllInputs();
     juceTracks.clear();
 #endif
@@ -307,6 +310,15 @@ void AudioEngine::play()
         }
     }
 
+    // Hand the loop source the playhead this pass starts from, then let it wrap. A
+    // playhead sitting past the loop end needs no special case: the first block finds
+    // zero distance to the boundary and rewinds immediately.
+    if (loopSource)
+    {
+        loopSource->setPosition(playheadSeconds);
+        loopSource->setRunning(true);
+    }
+
     // Arm the master fade for this playback pass from the current playhead.
     if (masterEffectsSource && !juceTracks.empty())
     {
@@ -332,6 +344,11 @@ void AudioEngine::pause()
     {
         if (track->transportSource) track->transportSource->stop();
     }
+    if (loopSource)
+    {
+        loopSource->setRunning(false);
+        loopSource->setPosition(playheadSeconds);
+    }
     if (masterEffectsSource) masterEffectsSource->setFadeActive(false);
 #endif
 
@@ -354,6 +371,11 @@ void AudioEngine::stop()
             track->transportSource->setPosition(0.0);
         }
     }
+    if (loopSource)
+    {
+        loopSource->setRunning(false);
+        loopSource->setPosition(0.0);
+    }
     if (masterEffectsSource) masterEffectsSource->setFadeActive(false);
 #endif
 }
@@ -372,6 +394,7 @@ void AudioEngine::seek(double positionSeconds)
             track->transportSource->setPosition(positionSeconds);
         }
     }
+    if (loopSource) loopSource->setPosition(positionSeconds);
     if (playing && masterEffectsSource)
     {
         double sr = sampleRate > 0 ? sampleRate : 44100.0;
@@ -395,6 +418,53 @@ void AudioEngine::setLoop(bool enabled)
 
     LOG_DBG << "[AudioEngine] Loop " << (loopEnabled ? "enabled" : "disabled") << std::endl;
 }
+
+void AudioEngine::setLoopRange(double startSeconds, double endSeconds, bool enabled)
+{
+    std::lock_guard<std::mutex> lock(engineMutex);
+
+#if USE_JUCE
+    if (loopSource)
+    {
+        // Resync the loop source's position from the live transport before arming it.
+        // While the range is off, nothing advances that position — and JS only sends a
+        // seek when the playhead is OUTSIDE the region, so turning Repeat on while
+        // playing INSIDE it (the common case) would otherwise arm the loop with a
+        // position left over from the last play/seek and wrap at the wrong moment.
+        if (playing && !juceTracks.empty() && juceTracks[0]->transportSource)
+            loopSource->setPosition(juceTracks[0]->getCurrentPositionSeconds());
+
+        loopSource->setRange(startSeconds, endSeconds, enabled);
+    }
+#endif
+
+    LOG_DBG << "[AudioEngine] Loop range " << (enabled ? "enabled" : "disabled")
+              << ": " << startSeconds << "s - " << endSeconds << "s" << std::endl;
+}
+
+#if USE_JUCE
+void AudioEngine::rewindTracksForLoop(double timelineSeconds, double outputSampleRate)
+{
+    // AUDIO THREAD. Called by LoopAudioSource the moment the block reaches the loop
+    // end, between two mixer pulls — so no transport is inside its own
+    // getNextAudioBlock here. setPosition() is absolute, which is what keeps the loop
+    // from drifting: every iteration lands on the same sample no matter how the
+    // boundary fell inside the block.
+    const juce::ScopedTryLock stl(tracksLock);
+    if (!stl.isLocked()) return; // a track install holds the vector; the next block wraps
+
+    for (auto& track : juceTracks)
+    {
+        if (track->transportSource)
+            track->transportSource->setPosition(timelineSeconds);
+    }
+
+    // The master fade window is positioned in output samples and would otherwise keep
+    // running past the loop end (a fade-out during a repeat pass).
+    if (masterEffectsSource)
+        masterEffectsSource->setFadePosition((juce::int64)(timelineSeconds * outputSampleRate));
+}
+#endif
 
 void AudioEngine::loadTrack(const std::string& trackId, const std::string& filePath,
                             double startSeconds, double songLength)
@@ -687,7 +757,12 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
         if (juceTracks[i]->id == trackId)
         {
             mixerSource.removeInputSource(juceTracks[i].get());
-            juceTracks[i] = std::move(trackSource);
+            {
+                // Destroying the replaced track under tracksLock so the audio thread's
+                // loop rewind can never walk a dangling TrackAudioSource.
+                const juce::ScopedLock sl(tracksLock);
+                juceTracks[i] = std::move(trackSource);
+            }
             juceTracks[i]->reverbSendBuffer = masterEffectsSource ? masterEffectsSource->getReverbSendBuffer() : nullptr;
             mixerSource.addInputSource(juceTracks[i].get(), false);
 
@@ -714,7 +789,11 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
         trackSource->transportSource->start();
     }
 
-    juceTracks.push_back(std::move(trackSource));
+    {
+        // push_back can reallocate the vector the audio thread's loop rewind walks.
+        const juce::ScopedLock sl(tracksLock);
+        juceTracks.push_back(std::move(trackSource));
+    }
     updateSoloStates();
     updateDspParams();
     LOG_DBG << "[AudioEngine] Track " << trackId << " loaded in JUCE engine." << std::endl;
@@ -835,7 +914,10 @@ void AudioEngine::removeTrack(const std::string& trackId)
             // Pull it out of the mixer before destroying the source so the audio
             // thread never reads a freed TrackAudioSource.
             mixerSource.removeInputSource(juceTracks[i].get());
-            juceTracks.erase(juceTracks.begin() + i);
+            {
+                const juce::ScopedLock sl(tracksLock);
+                juceTracks.erase(juceTracks.begin() + i);
+            }
             break;
         }
     }
@@ -886,7 +968,15 @@ void AudioEngine::clearTracks()
 
 #if USE_JUCE
     mixerSource.removeAllInputs();
-    juceTracks.clear();
+    {
+        const juce::ScopedLock sl(tracksLock);
+        juceTracks.clear();
+    }
+    if (loopSource)
+    {
+        loopSource->setRunning(false);
+        loopSource->setPosition(0.0);
+    }
 #endif
 
     LOG_DBG << "[AudioEngine] All tracks cleared (transpose/tempo DSP reset)." << std::endl;
@@ -1207,6 +1297,9 @@ void AudioEngine::updateDspParams()
         track->setTempo(targetTempo);
         track->setPitchShift(targetPitchShift);
     }
+    // The loop range is expressed in project-timeline seconds, which Vari BPM makes run
+    // faster/slower than real time by exactly this factor (1.0 when Vari BPM is off).
+    if (loopSource) loopSource->setTimelineRate(targetTempo);
 #endif
     
     LOG_DBG << "[AudioEngine] DSP parameters updated: Tempo=" << targetTempo 
@@ -1306,10 +1399,14 @@ void AudioEngine::exportMix(const std::string& exportId,
     bool realtimeCallbackSuspended = true;
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
+    // The export renders through the SAME graph (masterEffects -> gain -> loop -> mixer),
+    // and an export is always the whole timeline — the Repeat region must not wrap it.
+    if (loopSource) loopSource->setBypassed(true);
     LOG_DBG << "[AudioEngine] Realtime audio callback suspended for offline export." << std::endl;
     auto restoreRealtimeCallback = [&]() {
         if (!realtimeCallbackSuspended)
             return;
+        if (loopSource) loopSource->setBypassed(false);
         sourcePlayer.setSource(masterEffectsSource.get());
         deviceManager.addAudioCallback(&sourcePlayer);
         realtimeCallbackSuspended = false;
@@ -1344,6 +1441,7 @@ void AudioEngine::exportMix(const std::string& exportId,
                         track->transportSource->start();
                     }
                 }
+                if (loopSource) loopSource->setPosition(playheadSeconds);
             }
         }
 
@@ -1721,6 +1819,7 @@ void AudioEngine::exportMix(const std::string& exportId,
                     track->transportSource->start();
                 }
             }
+            if (loopSource) loopSource->setPosition(playheadSeconds);
             // Re-arm the realtime master fade for resumed playback.
             if (masterEffectsSource && !juceTracks.empty()) {
                 configureMasterFade(juceTracks[0]->getLengthSeconds(), originalSampleRate);

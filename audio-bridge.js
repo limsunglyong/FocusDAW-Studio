@@ -131,6 +131,7 @@
     nativeState.masterStereo = { l: 0, r: 0 };
     nativeState.masterBandLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     nativeState.hasNativeBandData = false;
+    lastLoopRangeSent = ""; // the engine's copy is gone with the project; force a resend
     try { LocalDAW.setOutputMuted(false); } catch (e) {}
   }
 
@@ -517,12 +518,13 @@
 
     setLoopRange(range) {
       LocalDAW.setLoopRange(range);
+      pushLoopRangeToNative();
     },
 
     // Pull playback into the repeat range EXACTLY ONCE (called on loop-region drag end).
-    // Repeat only self-sustains via the END boundary (handleNativeMessage seeks back when
-    // the position passes loopRange.end), so a region moved AHEAD of the playhead is never
-    // entered on its own. We deliberately do NOT snap continuously during the drag — doing
+    // Repeat only self-sustains via the END boundary (the native engine wraps there; the
+    // web engine's rAF loop restarts there), so a region moved AHEAD of the playhead is
+    // never entered on its own. We deliberately do NOT snap continuously during the drag — doing
     // that (as the reverted v1.15.2 did in the position-frame wrap) fires a seek per frame
     // while the region is still moving, which restarts the SoundTouch grain repeatedly and
     // produces a buzzing drone. A single seek on release behaves like a normal user seek.
@@ -572,6 +574,7 @@
           this.seek(start);
         }
       }
+      pushLoopRangeToNative();
       LocalDAW._emit();
     },
 
@@ -841,6 +844,7 @@
           if (track && track.buffer && !track.needsAudio) syncTrackToNative(track);
         });
         sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+        pushLoopRangeToNative();
         if (LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
         maybeActivateNativeOutput();
         if (!nativeOutputActive) armHandoverFallback();
@@ -855,6 +859,7 @@
       LocalDAW.importProject(json);
       if (this.isNative) {
         sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+        pushLoopRangeToNative();
         // The native engine has no importProject handler, so explicitly push tempo +
         // key (transpose) state — otherwise an imported project plays at the original
         // key/tempo even though the UI shows the restored Key.
@@ -1014,6 +1019,8 @@
       // the mixer sliders show the restored values, until a slider is touched.
       syncMasterToNative();
       sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+      lastLoopRangeSent = ""; // a fresh engine knows nothing; never let the dedupe skip
+      pushLoopRangeToNative();
 
       // If the Output FX EFFECT bypass is active, syncMasterToNative just pushed
       // the real values — override them with neutral ones so both engines match.
@@ -1159,6 +1166,30 @@
     if (t.key) sendToNative({ command: "setKey", key: t.key });
   }
 
+  // Push the Repeat region to the native engine, which wraps playback at the loop end
+  // inside its audio callback (Phase 6 Stage 0) instead of being polled and seeked from
+  // here. Like tempo/key, the native side has no importProject — this must run on
+  // (re)connect and after every import/snapshot restore, or a restored project's Repeat
+  // region silently reverts to whole-song looping.
+  let lastLoopRangeSent = "";
+  function pushLoopRangeToNative() {
+    if (!Bridge.isNative) return;
+    const r = LocalDAW.loopRange;
+    const enabled = !!(LocalDAW.repeatPlayEnabled && r && r.end > r.start);
+    const msg = {
+      command: "setLoopRange",
+      enabled,
+      start: enabled ? r.start : 0,
+      end: enabled ? r.end : 0,
+    };
+    // Dragging the loop region calls setLoopRange on every mousemove; only the ones
+    // that actually move the range are worth a command.
+    const sig = JSON.stringify(msg);
+    if (sig === lastLoopRangeSent) return;
+    lastLoopRangeSent = sig;
+    sendToNative(msg);
+  }
+
   // Handle incoming status messages from the JUCE C++ engine
   function handleNativeMessage(msg) {
     if (!msg || !msg.event) return;
@@ -1178,13 +1209,11 @@
           nativeState.isPlaying = msg.isPlaying;
         }
 
-        // Handle loop wrap immediately if we receive a position past loop end
-        if (nativeState.isPlaying && LocalDAW.repeatPlayEnabled && LocalDAW.loopRange) {
-          if (nativeState.offset >= LocalDAW.loopRange.end) {
-            Bridge.seek(LocalDAW.loopRange.start);
-          }
-        }
-
+        // The loop wrap used to be forced from here (seek back whenever a broadcast
+        // arrived past the loop end). Since Phase 6 Stage 0 the engine wraps itself at
+        // the exact sample inside its audio callback, so a seek from here would only
+        // fight it: a broadcast is up to 100ms old, and by the time it arrives the
+        // engine has already rewound and is legitimately playing inside the range again.
         LocalDAW._emit();
       }
     } else if (msg.event === "trackLoaded") {
@@ -1429,7 +1458,12 @@
     function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
   }
 
-  // Periodic tick loop to update UI playhead while playing in C++ mode
+  // Periodic tick loop to update the UI playhead while playing in C++ mode. This used
+  // to ALSO drive the Repeat wrap (poll the playhead every 30ms, seek back once it had
+  // already overshot the loop end) — which made every iteration a different length and
+  // let the error accumulate. The engine now wraps at the exact sample in its audio
+  // callback (Phase 6 Stage 0, `setLoopRange`), so this is purely a UI refresh; the
+  // wrap the playbar shows comes from Bridge.getPlayhead(), which models the same range.
   let localTickInterval = null;
   function startLocalTickLoop() {
     if (localTickInterval) clearInterval(localTickInterval);
@@ -1438,15 +1472,6 @@
         clearInterval(localTickInterval);
         return;
       }
-
-      // Handle native loop playback wrapping
-      if (LocalDAW.repeatPlayEnabled && LocalDAW.loopRange) {
-        const ph = Bridge.getPlayhead();
-        if (ph >= LocalDAW.loopRange.end) {
-          Bridge.seek(LocalDAW.loopRange.start);
-        }
-      }
-
       LocalDAW._emit();
     }, 30);
   }

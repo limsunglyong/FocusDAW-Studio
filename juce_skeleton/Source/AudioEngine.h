@@ -253,6 +253,141 @@ public:
     std::atomic<float> masterGain { 1.0f };
 };
 
+// Sample-accurate loop range (the Repeat region) for realtime playback.
+//
+// Sits between the track mixer and the master chain:
+//   mixerSource -> LoopAudioSource -> GainAudioSource -> MasterEffectsAudioSource
+//
+// Repeat used to be driven entirely from JS (audio-bridge.js polled the playhead on a
+// 30ms setInterval and sent `seek` once it had already passed the loop end), so every
+// iteration came out a different length and the error accumulated. Phase 6 records one
+// Take per iteration, so the boundary must be exact. This source splits the audio block
+// AT the loop end and rewinds the tracks from inside the audio callback, which makes
+// every iteration exactly floor((end - start) * outputRate) samples: the split is
+// computed from the absolute distance to the boundary, never from where the block
+// happens to fall, so the length cannot drift between iterations.
+//
+// Positions here are PROJECT TIMELINE seconds (what the UI calls the playhead), which is
+// what the JS side sends. `timelineRate` converts them to output samples: with Vari BPM
+// the timeline advances faster than real time by playbackBpm/projectBpm, exactly the
+// ratio SoundTouch is stretching by (it is 1.0 — and therefore exact — whenever Vari BPM
+// is off, which is the case that has to be sample-accurate for recording).
+class LoopAudioSource : public juce::AudioSource
+{
+public:
+    // Called ON THE AUDIO THREAD at each loop boundary with (timelineSeconds,
+    // outputSampleRate). It must reposition the tracks without blocking — see
+    // AudioEngine::rewindTracksForLoop.
+    using RewindFn = std::function<void(double, double)>;
+
+    LoopAudioSource(juce::AudioSource* inputSource, RewindFn rewind)
+        : source(inputSource), rewindTracks(std::move(rewind)) {}
+
+    void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
+    {
+        deviceRate.store(sampleRate > 0.0 ? sampleRate : 44100.0);
+        if (source) source->prepareToPlay(samplesPerBlockExpected, sampleRate);
+    }
+
+    void releaseResources() override
+    {
+        if (source) source->releaseResources();
+    }
+
+    void getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) override
+    {
+        if (source == nullptr) { bufferToFill.clearActiveBufferRegion(); return; }
+
+        const double startS = loopStart.load();
+        const double endS = loopEnd.load();
+        const double sr = deviceRate.load();
+        const double rate = timelineRate.load();
+        const bool wrap = loopActive.load() && running.load() && !bypassed.load()
+            && (endS - startS) >= kMinLoopSeconds && sr > 0.0 && rate > 0.0;
+
+        if (!wrap)
+        {
+            source->getNextAudioBlock(bufferToFill);
+            return;
+        }
+
+        double pos = posSeconds.load();
+        int done = 0;
+        // Bound the iterations defensively: kMinLoopSeconds already guarantees progress,
+        // but the audio thread must never spin on a pathological range.
+        int guard = 64;
+
+        while (done < bufferToFill.numSamples && guard-- > 0)
+        {
+            int segment = bufferToFill.numSamples - done;
+            const double untilEnd = endS - pos;
+            if (untilEnd <= 0.0)
+            {
+                segment = 0;
+            }
+            else
+            {
+                const double outSamplesLeft = untilEnd * sr / rate;
+                if (outSamplesLeft < (double)segment)
+                    segment = (int)std::floor(outSamplesLeft);
+            }
+
+            if (segment > 0)
+            {
+                juce::AudioSourceChannelInfo sub(bufferToFill.buffer,
+                                                 bufferToFill.startSample + done, segment);
+                source->getNextAudioBlock(sub);
+                pos += (double)segment * rate / sr;
+                done += segment;
+            }
+
+            if (done < bufferToFill.numSamples)
+            {
+                // The boundary lands inside this block: rewind every track to the loop
+                // start and keep filling the rest of the block from there.
+                if (rewindTracks) rewindTracks(startS, sr);
+                pos = startS;
+            }
+        }
+
+        if (done < bufferToFill.numSamples)
+            bufferToFill.buffer->clear(bufferToFill.startSample + done,
+                                       bufferToFill.numSamples - done);
+
+        posSeconds.store(pos);
+    }
+
+    // --- Called from the message/command thread ------------------------------
+    void setRange(double startSeconds, double endSeconds, bool enabled)
+    {
+        loopStart.store(startSeconds);
+        loopEnd.store(endSeconds);
+        loopActive.store(enabled);
+    }
+    void setPosition(double timelineSeconds) { posSeconds.store(timelineSeconds); }
+    void setRunning(bool on) { running.store(on); }
+    // Offline export renders through this same chain; the loop must not wrap there.
+    void setBypassed(bool on) { bypassed.store(on); }
+    void setTimelineRate(double rate) { timelineRate.store(rate > 0.0 ? rate : 1.0); }
+    bool isRangeActive() const { return loopActive.load(); }
+    double getLoopStart() const { return loopStart.load(); }
+
+private:
+    static constexpr double kMinLoopSeconds = 0.05;
+
+    juce::AudioSource* source; // non-owning (the engine's mixerSource)
+    RewindFn rewindTracks;
+
+    std::atomic<bool> loopActive { false };
+    std::atomic<bool> running { false };
+    std::atomic<bool> bypassed { false };
+    std::atomic<double> loopStart { 0.0 };
+    std::atomic<double> loopEnd { 0.0 };
+    std::atomic<double> posSeconds { 0.0 };
+    std::atomic<double> deviceRate { 44100.0 };
+    std::atomic<double> timelineRate { 1.0 };
+};
+
 class SoundTouchAudioSource : public juce::PositionableAudioSource
 {
 public:
@@ -1512,7 +1647,11 @@ public:
     void stop();
     void seek(double positionSeconds);
     void setLoop(bool enabled);
-    
+    // Repeat region. Positions are project-timeline seconds. While enabled, playback
+    // wraps at `endSeconds` inside the audio callback (see LoopAudioSource) instead of
+    // being polled and seeked from JS.
+    void setLoopRange(double startSeconds, double endSeconds, bool enabled);
+
     void loadTrack(const std::string& trackId, const std::string& filePath,
                    double startSeconds = 0.0, double songLength = 0.0);
     void removeTrack(const std::string& trackId);
@@ -1629,9 +1768,22 @@ private:
     InputRecorder inputRecorder;
     juce::MixerAudioSource mixerSource;
     juce::AudioFormatManager formatManager;
+    std::unique_ptr<LoopAudioSource> loopSource;
     std::unique_ptr<GainAudioSource> masterGainSource;
     std::unique_ptr<MasterEffectsAudioSource> masterEffectsSource;
     std::vector<std::unique_ptr<TrackAudioSource>> juceTracks;
+
+    // Guards the juceTracks VECTOR ITSELF (element add/replace/erase), not the engine
+    // state that engineMutex covers. The audio thread walks the vector to rewind the
+    // transports at a loop boundary and must never wait on a lock (work principle 5),
+    // so it uses a ScopedTryLock and skips the rewind on the rare block that collides
+    // with a track install; the command thread always takes this INSIDE engineMutex
+    // before mutating the vector, so a track can never be destroyed under the audio
+    // thread's feet.
+    juce::CriticalSection tracksLock;
+
+    // Loop-boundary rewind. AUDIO THREAD ONLY (invoked by LoopAudioSource).
+    void rewindTracksForLoop(double timelineSeconds, double outputSampleRate);
 
     void updateSoloStates();
 #endif

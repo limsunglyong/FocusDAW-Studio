@@ -1558,6 +1558,20 @@
       this._emit();
     },
 
+    // Accept a loop range only if it is usable on THIS project: finite, non-empty, and
+    // inside the current duration. Guards a hand-edited/older .focus and a project whose
+    // duration shrank since it was saved (a region past the end would draw off-timeline
+    // and arm the native loop at an unreachable boundary). Call after `duration` is set.
+    _sanitizeLoopRange(range) {
+      if (!range) return null;
+      const start = Number(range.start);
+      const end = Number(range.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      const s = Math.max(0, Math.min(start, this.duration));
+      const e = Math.max(0, Math.min(end, this.duration));
+      return e > s ? { start: s, end: e } : null;
+    },
+
     setRepeatPlayEnabled(on) {
       const on2 = !!on;
       // Read the true playhead before enabling — mirrors the bridge; snap into the
@@ -1663,6 +1677,11 @@
         schemaVersion: PROJECT_SCHEMA_VERSION,
         projectName,
         duration: this.duration,
+        // The Repeat region travels with the project. Only the region — Repeat itself
+        // is deliberately NOT persisted; see importProject.
+        loopRange: this.loopRange
+          ? { start: this.loopRange.start, end: this.loopRange.end }
+          : null,
         tempo: { ...this.tempo },
         master: { ...this.master, bands: [...this.master.bands] },
         tracks: this.tracks.map(t => ({
@@ -1831,6 +1850,13 @@
       this.tracks.length = 0;
       this._spectrum = null;
       this.duration = json.duration || DURATION;
+      // Restore the Repeat region, but open with Repeat OFF: a project that starts
+      // looping a region the moment it opens would be a surprise, and the region is
+      // right there to switch on. Projects saved before v1.24.1 have no loopRange
+      // field at all — sanitize handles that (and a region past a now-shorter
+      // duration) by returning null, so no migration is needed.
+      this.loopRange = this._sanitizeLoopRange(json.loopRange);
+      this.repeatPlayEnabled = false;
       const jt = json.tempo || {};
       const jtDetectedKey = jt.detectedKey ?? null;
       const jtKey = jt.key ?? null;

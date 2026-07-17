@@ -541,6 +541,15 @@ void WebSocketServer::clientLoop(void* socketHandle)
             bool enabled = getJsonBoolVal(frameText, "enabled");
             audioEngine.setLoop(enabled);
         }
+        else if (cmd == "setLoopRange")
+        {
+            // Repeat region. Sample-accurate wrap happens in the audio callback, so JS
+            // only has to declare the range — it no longer polls and seeks.
+            bool enabled = getJsonBoolVal(frameText, "enabled");
+            double start = getJsonDoubleVal(frameText, "start");
+            double end = getJsonDoubleVal(frameText, "end");
+            audioEngine.setLoopRange(start, end, enabled);
+        }
         else if (cmd == "loadTrack")
         {
             std::string trackId = getJsonStringVal(frameText, "trackId");
