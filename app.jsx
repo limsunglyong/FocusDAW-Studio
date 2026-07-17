@@ -393,6 +393,48 @@ const metronomeBpm = () => (window.DAW && window.DAW.tempo && window.DAW.tempo.p
 const metronomeAvailable = () => metronomeBpm() > 0;
 const metronomeActive = () => isMetronomeOn() && metronomeAvailable();
 
+/* ---------- pre-roll (Phase 6 Stage 2b) ----------
+ * Record from a stopped transport rolls the EXISTING music for a few seconds first and
+ * punches in at the original playhead, instead of counting clicks into it.
+ *
+ * Why this exists, and why it is measured in SECONDS: this app's material is imported
+ * SUNO stems, not MIDI. Their tempo drifts mid-song, and even at a correct BPM a
+ * synthesized click has no way to know the song's beat PHASE — so a click grid built
+ * from one BPM number disagrees with the music. Pre-roll sidesteps both problems by not
+ * being a grid at all: the lead-in IS the song, so it is in time by construction. Bars
+ * would reintroduce the very assumption (a known beat grid) we cannot make.
+ *
+ * Falls back to the count-in when there is nothing to roll into (see prerollAnchorOk).
+ */
+const PREROLL_KEY = "focusdaw-preroll";
+const PREROLL_CHOICES = [0, 2, 4, 8]; // 0 = off; the button cycles through these
+const PREROLL_DEFAULT = 4;
+let prerollSec = (() => {
+  try {
+    const raw = localStorage.getItem(PREROLL_KEY);
+    if (raw == null) return PREROLL_DEFAULT;
+    const n = Number(raw);
+    return PREROLL_CHOICES.includes(n) ? n : PREROLL_DEFAULT;
+  } catch (e) { return PREROLL_DEFAULT; }
+})();
+const prerollSeconds = () => prerollSec;
+const setPrerollSeconds = (s) => {
+  prerollSec = PREROLL_CHOICES.includes(s) ? s : 0;
+  try { localStorage.setItem(PREROLL_KEY, String(prerollSec)); } catch (e) {}
+};
+const cyclePreroll = () => {
+  const i = PREROLL_CHOICES.indexOf(prerollSec);
+  setPrerollSeconds(PREROLL_CHOICES[(i + 1) % PREROLL_CHOICES.length]);
+};
+// Is there anything to actually roll INTO? Two ways there isn't, and both must fall back
+// to the count-in or Record would just sit there playing silence:
+//   - the playhead is at (or within a hair of) the very start — nothing precedes it;
+//   - the pre-roll window lands past the end of every other track, e.g. recording at 3:00
+//     of a song whose music stops at 2:00.
+const PREROLL_MIN_ANCHOR = 0.5;
+const prerollAnchorOk = (playheadSec, songEnd, prerollLen) =>
+  playheadSec > PREROLL_MIN_ANCHOR && songEnd > playheadSec - prerollLen;
+
 function fmtTransportTime(s) {
   const v = Math.max(0, Number.isFinite(s) ? s : 0);
   const m = Math.floor(v / 60);
@@ -417,6 +459,7 @@ function MenuTransport() {
   const clickBpm = metronomeBpm();
   const clickOn = metronomeActive();
   const toggleMetronome = () => { setMetronomeOn(!isMetronomeOn()); };
+  const proll = prerollSeconds();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 7, height: 36 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32, padding: "2px 4px",
@@ -442,6 +485,18 @@ function MenuTransport() {
               : "Count-in metronome: Off — silent 3-2-1 count-in"}
           active={clickOn} disabled={!clickBpm} onClick={toggleMetronome}>
           <Icon name="metronome" size={13} />
+        </MenuTransportButton>
+        {/* One control, cycling off → 2s → 4s → 8s: the label always shows the current
+            length, so there is no hidden state and no menu to open for a 4-value knob. */}
+        <MenuTransportButton wide
+          title={proll
+            ? `Pre-roll: ${proll}s — Record plays the existing music for ${proll}s, then starts recording at the playhead. Click to change (2 → 4 → 8 → off).`
+            : "Pre-roll: Off — Record starts with a count-in instead. Click to turn on (2 → 4 → 8 → off)."}
+          active={proll > 0} onClick={cyclePreroll}>
+          <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <Icon name="preroll" size={11} />
+            {proll > 0 && <span style={{ fontSize: 8.5, fontWeight: 600, lineHeight: 1 }}>{proll}</span>}
+          </span>
         </MenuTransportButton>
         <MenuTransportButton title={recordingInput ? "Stop recording" : canRecord ? "Record armed Audio In track" : "Arm an Audio In track first"}
           active={!!recordingInput} onClick={() => tp("record")}>
@@ -1540,6 +1595,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const prevLoopRef = useRef(null);      // Repeat flag saved when a recording began (restored on stop)
   const transportRef = useRef({});       // latest rule-honoring transport action fns (toolbar/keyboard/mixer)
   const [recordCount, setRecordCount] = useState(null); // 3→2→1 count-in overlay number (null = hidden)
+  const [prerollLeft, setPrerollLeft] = useState(null); // seconds until punch-in (null = not pre-rolling)
   const MAX_UNDO = 50;
   const stretchPreparing = !!DAW._stretchPreviewPreparing;
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
@@ -2538,7 +2594,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const handleMoveClips = useCallback((trackId, clipIds, deltaSec) => {
     lockTimelineZoom();
     const savedRedo = pushUndo();
-    if (DAW.moveClipsBy(trackId, clipIds, deltaSec) === 0) cancelUndo(savedRedo); // fully blocked
+    // Drag commit → jump-capable (matches the drag ghost). Nudge commits via moveClipsBy.
+    if (DAW.moveClipsByResolved(trackId, clipIds, deltaSec) === 0) cancelUndo(savedRedo); // fully blocked
     force((n) => n + 1);
   }, [pushUndo, cancelUndo, lockTimelineZoom]);
   const handleTrimStart = useCallback((trackId, clipId, newStart) => {
@@ -3097,25 +3154,74 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     DAW.tracks.forEach((t) => {
       if (t.id !== target.id && Array.isArray(t.clips)) t.clips.forEach((c) => { songEnd = Math.max(songEnd, c.end || 0); });
     });
+    // Pre-roll wins over the count-in whenever there is actually music to roll into: the
+    // song itself is a better lead-in than any click we could synthesize (see the
+    // pre-roll notes above). `opts.preroll === 0` / no anchor falls back to the count-in.
+    const punchAt = DAW.getPlayhead();
+    // Auto-stop target. songEnd is the end of the BACKING tracks (target excluded), and the
+    // monitor stops the take when the playhead reaches it. But if recording BEGINS at or
+    // past songEnd (playhead seeked beyond the backing material — e.g. adding an outro), the
+    // monitor's very first tick already has playhead ≥ songEnd and kills the take instantly:
+    // it resets the transport to 0 and leaves a broken take baked at a far-out start, which
+    // then desyncs native playback. There is nothing to auto-stop against out there, so
+    // record until manual Stop — exactly like a project with no backing tracks (songEnd 0).
+    // punchAt is where the take begins for every path (immediate, count-in, pre-roll punch).
+    const recordEnd = (songEnd > 0 && punchAt < songEnd - 0.05) ? songEnd : 0;
+    const prerollLen = opts.preroll != null ? opts.preroll : prerollSeconds();
+    // An active Repeat REGION jails the transport inside itself — getPlayhead() clamps to
+    // [start,end] and play() yanks an outside playhead to the region start (audio-bridge).
+    // A pre-roll that rolls back before the region would be dragged straight back in, so
+    // it cannot work there; the count-in still can. Loop + punch semantics get designed
+    // together in Stage 3/6 — this stays a fallback until then.
+    const useProll = prerollLen > 0 && !DAW.isPlaying && opts.countIn == null
+      && !DAW.repeatPlayEnabled && prerollAnchorOk(punchAt, songEnd, prerollLen);
     // Stage 2: one bar of clicks on the project's beat grid, or the legacy silent
     // 3×1s when the metronome is off or the project has no BPM to build a grid from.
-    const click = metronomeActive();
+    const click = !useProll && metronomeActive();
     const bpm = metronomeBpm();
     recordSessionRef.current = {
       trackId: target.id,
+      // ⚠️ Pre-roll MUST leave this null. `start` is where the take's clip is placed, and
+      // toggleRecording only reads the live playhead when it is null. Pinning it to
+      // punchAt would place the clip at punchAt while the recorder actually starts a beat
+      // later (poll tick + device-open await) — and unlike the count-in case the
+      // transport is ROLLING through that gap, so the take would land early by however
+      // long it took. Null keeps placement self-consistent with what was captured.
       start: opts.start != null ? opts.start : null,
-      end: opts.end != null ? opts.end : songEnd,
+      end: opts.end != null ? opts.end : recordEnd,
       loopEnabled: !!opts.loopEnabled,
       countIn: opts.countIn != null ? opts.countIn
-        : (DAW.isPlaying ? 0 : (click ? COUNT_IN_BEATS : COUNT_IN_LEGACY_TICKS)),
+        : (DAW.isPlaying || useProll ? 0 : (click ? COUNT_IN_BEATS : COUNT_IN_LEGACY_TICKS)),
       click,
       bpm,
       tickMs: click ? 60000 / bpm : COUNT_IN_LEGACY_MS,
+      preroll: useProll ? prerollLen : 0,
+      punchAt,                                 // where cancel puts the playhead back
     };
     const session = recordSessionRef.current;
 
     prevLoopRef.current = DAW.loopEnabled;
     if (DAW.loopEnabled) DAW.setLoop(false);
+
+    if (useProll) {
+      if (!enterRecordPhase("countIn")) return; // same phase: cancellable, ARM-locked, seek-blocked
+      DAW.seek(Math.max(0, punchAt - prerollLen));
+      DAW.play();
+      setPrerollLeft(punchAt - DAW.getPlayhead());
+      recordCountRef.current = setInterval(() => {
+        // The transport is the clock here — not a timer counting down from the press.
+        // Watching the playhead means a slow start or a stall cannot punch in early.
+        const left = punchAt - DAW.getPlayhead();
+        if (!DAW.isPlaying) { cancelCountIn(); return; } // playback died under us
+        if (left <= 0) {
+          clearInterval(recordCountRef.current); recordCountRef.current = null;
+          setPrerollLeft(null);
+          beginRecorderAt(target);             // countIn → recording, transport already rolling
+        } else setPrerollLeft(left);
+      }, 50);
+      return;
+    }
+
     if (session.start != null) DAW.seek(session.start);
     if (session.countIn <= 0) { beginRecorderAt(target); return; }
 
@@ -3143,9 +3249,19 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // The click runs on the engine's own clock, so clearing the timer above does not
     // silence it — without this it would keep counting a bar that was cancelled.
     if (DAW.stopMetronome) DAW.stopMetronome();
+    const session = recordSessionRef.current;
     enterRecordPhase(null);
     setRecordCount(null);
+    setPrerollLeft(null);
     recordSessionRef.current = null;
+    // A cancelled pre-roll has to undo what it did: the count-in never touched the
+    // transport, but pre-roll rolled it back and started playback. Put the playhead back
+    // where Record was pressed — dumping the user at 0 (plain stop) loses the spot they
+    // were about to punch in at.
+    if (session && session.preroll) {
+      DAW.stop();
+      DAW.seek(session.punchAt || 0);
+    }
     if (prevLoopRef.current) DAW.setLoop(true); // nothing recorded → restore Repeat
     prevLoopRef.current = null;
     force((n) => n + 1);
@@ -3460,6 +3576,23 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+      {/* Pre-roll indicator. Deliberately NOT the count-in's full-screen dim: pre-roll is
+          spent watching the playhead run at the music and judging your entry, and the
+          overlay would black out the very thing you are watching. */}
+      {prerollLeft != null && (
+        <div style={{ position: "fixed", top: 52, left: 0, right: 0, zIndex: 2000,
+          display: "grid", placeItems: "center", pointerEvents: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 14px", borderRadius: 999,
+            background: "rgba(20,14,6,.82)", border: "1px solid var(--amber)",
+            boxShadow: "0 0 18px var(--amber-soft), 0 8px 22px -12px rgba(0,0,0,.9)" }}>
+            <span className="record-blink" style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--red)" }} />
+            <span style={{ fontSize: 11, letterSpacing: ".14em", color: "var(--cream-2)" }}>PRE-ROLL</span>
+            <span className="mono" style={{ fontSize: 14, color: "var(--amber)", minWidth: 38, textAlign: "right" }}>
+              {prerollLeft.toFixed(1)}s
+            </span>
+          </div>
+        </div>
+      )}
       {recordCount != null && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, display: "grid", placeItems: "center",
           background: "rgba(0,0,0,.45)", pointerEvents: "none" }}>

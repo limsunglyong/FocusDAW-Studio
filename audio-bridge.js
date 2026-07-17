@@ -774,6 +774,11 @@
       if (d && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return d;
     },
+    moveClipsByResolved(trackId, clipIds, deltaSec) {
+      const d = LocalDAW.moveClipsByResolved(trackId, clipIds, deltaSec);
+      if (d && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return d;
+    },
     deleteClips(trackId, clipIds) {
       const ok = LocalDAW.deleteClips(trackId, clipIds);
       if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
@@ -1033,9 +1038,14 @@
       // Sync current tempo & key settings (incl. keyShift — see syncTempoKeyToNative).
       syncTempoKeyToNative();
 
-      // Sync current track layout if already loaded
+      // Sync current track layout if already loaded. This is already a full push at the
+      // current duration, so suppress the per-track songLength re-sync hook (it would make
+      // each track trigger another full pass) and seed lastPushedSongLength directly.
       if (LocalDAW.tracks.length > 0) {
+        syncingAllTracks = true;
         LocalDAW.tracks.forEach(track => syncTrackToNative(track));
+        syncingAllTracks = false;
+        lastPushedSongLength = LocalDAW.duration || 0;
       }
 
       // Sync the FULL master state (volume/EQ/sends/room/fades). A restored
@@ -1374,6 +1384,27 @@
       && track.buffer && !LocalDAW._isTrivialLayout(track));
   }
 
+  // The native engine loops each track at its OWN padded buffer length (songLength baked
+  // in at load time — AudioEngine.cpp decodeAndInstallTrack + per-track setLooping). All
+  // tracks must therefore share the SAME songLength, or they wrap at different points: a
+  // file track loaded when the song was 2:55 keeps looping at 2:55 even after a clip is
+  // moved/recorded out to 3:30, so it "restarts from the top" partway through while the
+  // rest of the mix plays on. syncTrackToNative pushes the CURRENT duration for the one
+  // track it syncs; the others go stale. When the project GROWS, re-push every track's
+  // songLength so the whole mix loops as one. Same mechanism the reconnect path uses.
+  let lastPushedSongLength = 0;
+  let syncingAllTracks = false; // re-entrancy guard: suppress the per-track hook during a bulk push
+  function ensureSongLengthConsistent() {
+    if (!Bridge.isNative || syncingAllTracks) return;
+    const d = LocalDAW.duration || 0;
+    if (Math.abs(d - lastPushedSongLength) < 0.01) return; // duration unchanged → nothing stale
+    lastPushedSongLength = d;
+    syncingAllTracks = true;
+    // Skip a track that is still recording — re-decoding it mid-take would drop the input.
+    LocalDAW.tracks.forEach((t) => { if (t.buffer && !t.needsAudio && !t.recording) syncTrackToNative(t); });
+    syncingAllTracks = false;
+  }
+
   // Helper to synchronize a newly added track to JUCE C++ engine
   function syncTrackToNative(track) {
     if (!track) return;
@@ -1427,6 +1458,11 @@
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "reverb", value: track.params.reverb || 0 });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "echo", value: track.params.echo || 0 });
     sendTrackAutomationToNative(track);
+
+    // If this edit grew (or shrank) the project, the OTHER tracks now hold a stale
+    // songLength and would loop at the wrong point. Re-push them all to the new length.
+    // Guarded so a bulk push does not recurse per track.
+    ensureSongLengthConsistent();
   }
 
   // Forward a track's volume automation to the native engine as an interleaved

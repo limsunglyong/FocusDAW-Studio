@@ -727,11 +727,27 @@
       track.fileName = name;
       track.filePath = options.filePath || null;
       const sourceId = this._sourceId();
-      track.sources = [{
+      // ⚠️ This take REPLACES the track's audio, so the layout state left by the PREVIOUS
+      // take must be torn down with it — both fields below were silently kept, and each
+      // one alone corrupts the track:
+      //   _rawBuffers  still mapped the OLD source id. The new source was never
+      //                registered, so the next edit's re-bake looked it up, missed, and
+      //                skipped the clip → "[bake] clip skipped — no raw buffer" → the
+      //                take vanished. Reachable today: record → move the clip (bakes) →
+      //                record again → any edit.
+      //   _layoutBaked stayed true from that earlier bake while track.buffer is the RAW
+      //                decode again, so the Waveform indexed a source-indexed buffer by
+      //                timeline position (상시 노트: 버퍼 인덱싱 이원성) → wrong drawing.
+      // Stage 3 keeps prior takes instead of replacing them; it will drop this reset and
+      // append via _registerSource, which is why that primitive exists now.
+      track._rawBuffers = {};
+      track._layoutBaked = false;
+      track.sources = [];
+      this._registerSource(track, {
         id: sourceId, filePath: track.filePath, fileName: name,
         duration: decoded.buffer.duration, sampleRate: decoded.buffer.sampleRate,
         channels: decoded.buffer.numberOfChannels, needsAudio: false,
-      }];
+      }, decoded.buffer);
       // Re-recording onto a reopened (placeholder) Audio In track must clear the
       // track-level needsAudio too. Leaving it true keeps the NO AUDIO badge and
       // makes setTrackParam drop Solo/Mute/bpmSource (audio-engine setTrackParam /
@@ -742,7 +758,16 @@
       const clipEnd = limitEnd ? Math.min(start + decoded.buffer.duration, limitEnd) : start + decoded.buffer.duration;
       const clipDuration = Math.max(0, clipEnd - start);
       track.clips = [this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration }, sourceId, decoded.buffer.duration)];
-      track.audioRev = (track.audioRev || 0) + 1;
+      // A take punched in past 0 (record-while-playing, pre-roll, mid-song count-in) is a
+      // NON-trivial layout — its audio belongs at clip.start, not at 0 — so it MUST be
+      // baked, per the 전략 B invariant. Without this bake, track.buffer stays a raw decode
+      // (audio at sample 0) while the bridge's trackIsBakedLayout() still reports "baked"
+      // (it keys off !_isTrivialLayout, and start>0 is already non-trivial). syncTrackToNative
+      // then pushes the RAW pcm with startSeconds=0, so the take sounds at 0:00 while its
+      // waveform sits at clip.start — a visible clip with no sound where it is. Baking makes
+      // track.buffer the timeline-indexed layout (leading silence + take) so native gets it
+      // right. A take at 0 stays trivial here and keeps the cheap filePath fast-path.
+      this._ensureBaked(track);
       this.duration = limitEnd ? Math.max(limitEnd, this._projectClipDuration()) : Math.max(this.duration, start + decoded.buffer.duration);
       this._applyMix();
       this._startHotAddedTrack(track);
@@ -1996,14 +2021,13 @@
           dst[durA + gapN + i] = sB[offB + i] * g;
         }
       }
-      const sid = this._cid();
-      const meta = { id: sid, duration: total / sr, sampleRate: sr, channels: ch,
+      // _sourceId(), not _cid(): this is a source, and _cid() is the CLIP counter — it
+      // was handing out "cN" ids into the source namespace.
+      return this._registerSource(track, {
+        id: this._sourceId(), duration: total / sr, sampleRate: sr, channels: ch,
         fileName: (track.sources && track.sources[0] && track.sources[0].fileName) || track.name || null,
-        filePath: null, needsAudio: false };
-      track.sources = [...(track.sources || []), meta];
-      track._rawBuffers = track._rawBuffers || {};
-      track._rawBuffers[sid] = out;
-      return sid;
+        filePath: null, needsAudio: false,
+      }, out);
     },
 
     joinClips(trackId, clipIdA, clipIdB) {
@@ -2080,17 +2104,50 @@
     // Pristine per-source audio, captured lazily before the first bake (at which
     // point t.buffer is still the original decoded primary source). Re-bakes always
     // read from here, never from an already-baked buffer.
+    // Lazily register the raw buffer of a track whose audio arrived as a plain decode
+    // (import, reconnect, first recording): those paths only set track.buffer, so the
+    // per-source map has to be seeded from it.
+    //
+    // Additive on purpose. This used to be `if (track._rawBuffers) return;` — first call
+    // wins, nothing is ever added — which quietly capped a track at ONE registered
+    // source. Consolidate (v1.21.7) already worked around it by writing _rawBuffers
+    // directly; Take accumulation (Stage 3) would have hit the same wall. Use
+    // _registerSource() to add a source and its raw buffer together.
     _captureRawBuffers(track) {
-      if (track._rawBuffers) return;
-      track._rawBuffers = {};
+      if (!track._rawBuffers) track._rawBuffers = {};
       const primary = track.sources && track.sources[0];
-      if (primary && track.buffer) track._rawBuffers[primary.id] = track.buffer;
+      // Only seed from track.buffer while it still IS a raw decode. Once baked it is the
+      // flattened timeline render, and storing that as a "source" would feed a re-bake
+      // its own output.
+      if (primary && track.buffer && !track._layoutBaked && !track._rawBuffers[primary.id]) {
+        track._rawBuffers[primary.id] = track.buffer;
+      }
+    },
+    // Append a source to the track AND register its raw buffer in one step. These two
+    // must never drift apart: a source whose raw buffer is missing bakes to silence and
+    // its clip vanishes (see _bakeTrackLayout's "no raw buffer" warning).
+    _registerSource(track, meta, rawBuffer) {
+      this._captureRawBuffers(track);
+      track.sources = [...(track.sources || []), meta];
+      if (rawBuffer) track._rawBuffers[meta.id] = rawBuffer;
+      return meta.id;
     },
     _rawBufferForSource(track, sourceId) {
       if (sourceId && track._rawBuffers && track._rawBuffers[sourceId]) return track._rawBuffers[sourceId];
       const primary = track.sources && track.sources[0];
-      if (primary && track._rawBuffers && track._rawBuffers[primary.id]) return track._rawBuffers[primary.id];
-      return null;
+      const primaryRaw = primary && track._rawBuffers ? track._rawBuffers[primary.id] : null;
+      // Only shout for the case that actually corrupts audio: a clip names a NON-primary
+      // source (a real second take/consolidation), that source is missing, yet the primary
+      // IS registered — so we would hand back the primary's audio in its place. Asking for
+      // the primary and missing it (or missing everything) is not a substitution: the
+      // caller gets null and falls back to track.buffer, which is the right raw. That
+      // benign path is hit on every undo snapshot of a not-yet-baked track, and warning
+      // there was pure noise (the false positive T-1.26.1-2 surfaced).
+      if (sourceId && primary && sourceId !== primary.id && primaryRaw) {
+        console.warn("[rawBuffer] source not registered — substituting primary audio",
+          { track: track.id, sourceId, registered: Object.keys(track._rawBuffers || {}) });
+      }
+      return primaryRaw || null;
     },
     _sourceDuration(track, sourceId) {
       const raw = this._rawBufferForSource(track, sourceId);
@@ -2315,6 +2372,74 @@
       if (d > dMax) d = dMax;
       if (d < dMin) d = dMin;
       return Number.isFinite(d) ? d : 0;
+    },
+
+    // Rigid group DROP placement (drag) — the group analogue of _resolveMovePosition. Lets
+    // the whole selection JUMP a non-selected neighbour (land before it / after it) instead
+    // of butting against it, so a middle run (B-C of A-B-C-D) can be dragged ahead of A or
+    // past D, exactly as a single clip can. _clampGroupDelta (butt, no jump) stays for the
+    // arrow-key nudge, matching the single-clip nudge which also does not jump. Returns the
+    // resolved shared delta, or null if neither side fits (drag snaps back to origin).
+    _resolveGroupDelta(track, clipIds, delta) {
+      const sel = new Set(clipIds || []);
+      const picked = (track.clips || []).filter(c => sel.has(c.id) && (c.duration || 0) > 0);
+      if (!picked.length) return 0;
+      const others = (track.clips || []).filter(c => !sel.has(c.id) && (c.duration || 0) > 0);
+      const gMinStart = Math.min(...picked.map(c => c.start));
+      const gMaxEnd = Math.max(...picked.map(c => c.start + (c.duration || 0)));
+      // The whole group shifted by d clears every non-selected clip and stays at/after 0.
+      const freeAt = (d) => {
+        if (gMinStart + d < -1e-6) return false;
+        for (const c of picked) {
+          const cS = c.start + d, cE = c.start + (c.duration || 0) + d;
+          for (const o of others) {
+            if (cS < o.start + o.duration - 1e-6 && cE > o.start + 1e-6) return false;
+          }
+        }
+        return true;
+      };
+      // Pin the group to the timeline head when the drag overshoots before 0 — mirrors
+      // _resolveMovePosition's `s0 = max(0, start)`. Without this, dragging the group well
+      // past A lands it in negative space where it no longer overlaps A, so the jump logic
+      // below sees no obstacle and wrongly reports "blocked" instead of parking before A.
+      const d0 = Math.max(delta, -gMinStart);
+      if (freeAt(d0)) return d0;
+      // Non-selected clips the group would overlap at the pinned delta.
+      const hit = others.filter(o => picked.some(c =>
+        (c.start + d0) < o.start + o.duration - 1e-6 && (c.start + (c.duration || 0) + d0) > o.start + 1e-6));
+      if (!hit.length) return null;
+      let leftStart = Infinity, rightEnd = -Infinity;
+      for (const o of hit) { leftStart = Math.min(leftStart, o.start); rightEnd = Math.max(rightEnd, o.start + o.duration); }
+      const candL = leftStart - gMaxEnd;   // group's RIGHT edge butts the leftmost obstacle → jump BEFORE
+      const candR = rightEnd - gMinStart;  // group's LEFT edge butts the rightmost obstacle → jump AFTER
+      const startInside = hit.some(o => o.start <= gMinStart + d0 && gMinStart + d0 < o.start + o.duration);
+      const endInside   = hit.some(o => o.start < gMaxEnd + d0 && gMaxEnd + d0 <= o.start + o.duration);
+      let cand;
+      if (endInside && !startInside) cand = candL;       // group's leading edge intruded → go before
+      else if (startInside && !endInside) cand = candR;  // trailing edge intruded → go after
+      else cand = (Math.abs(candL - d0) <= Math.abs(candR - d0)) ? candL : candR; // envelop → nearer
+      if (freeAt(cand)) return cand;
+      const alt = (cand === candL) ? candR : candL;      // first choice blocked → try the other side
+      if (freeAt(alt)) return alt;
+      return null;
+    },
+
+    // Drag commit for a 2+ clip selection: jump-capable (see _resolveGroupDelta). The nudge
+    // path uses moveClipsBy (butt/clamp) instead. Returns the delta applied (0 = blocked).
+    moveClipsByResolved(trackId, clipIds, deltaSec) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return 0;
+      const ids = (clipIds || []).filter(id => t.clips.some(c => c.id === id));
+      if (!ids.length) return 0;
+      const d = this._resolveGroupDelta(t, ids, deltaSec);
+      if (d == null || Math.abs(d) < 1e-6) return 0;
+      const sel = new Set(ids);
+      for (const c of t.clips) {
+        if (!sel.has(c.id)) continue;
+        c.start += d; c.end = c.start + (c.duration || 0);
+      }
+      this._reindexClips(t);
+      this._ensureBaked(t);
+      return d;
     },
 
     // Apply a rigid group move. Used by both the arrow-key nudge and the drag commit when
@@ -2577,6 +2702,18 @@
     _scheduleAutomation() {
       clearTimeout(this._autoSchedTimer); this._autoSchedTimer = null; // supersede any pending debounce
       const now = ctx.currentTime;
+      // When the native engine is the audible output the web graph is muted
+      // (masterOutputGain=0), so this per-track curve scheduling is INAUDIBLE — and it is
+      // the crash source: it pre-schedules 64 loops of setValueCurveAtTime, and a gap-track
+      // curve (audioIn's leading silence) scheduled as playback starts near the song end
+      // trips a Chromium Web Audio CHECK, hard-crashing the renderer (exit 0x80000003, no JS
+      // error). Native applies automation itself (sendTrackAutomationToNative), so skip it
+      // while muted: park each autoGain neutral and clear pending events. (_startHotAddedTrack
+      // gates on _outputMuted the same way.)
+      if (this._outputMuted) {
+        this.tracks.forEach((t) => { const g = t.nodes.autoGain.gain; g.cancelScheduledValues(now); g.setValueAtTime(1, now); });
+        return;
+      }
       const dur = this.duration;
       const loops = 64;
       this.tracks.forEach((t) => {
@@ -2615,6 +2752,9 @@
     _scheduleFade() {
       const g = masterFade.gain;
       const now = ctx.currentTime;
+      // Inaudible while native drives the output (native does its own master fade). Skip the
+      // 64-loop ramp pre-scheduling for the same CHECK-crash reason as _scheduleAutomation.
+      if (this._outputMuted) { g.cancelScheduledValues(now); g.setValueAtTime(1, now); return; }
       const dur = this.duration;
       const fi = Math.min(this.master.fadeIn, dur / 2);
       const fo = Math.min(this.master.fadeOut, dur / 2);
@@ -2652,9 +2792,17 @@
     // while native is the active output the web engine is muted to prevent double
     // playback; on fallback to local it is un-muted so the web engine is audible again.
     setOutputMuted(muted) {
+      const wasMuted = this._outputMuted;
       this._outputMuted = !!muted;
       if (!ctx || !masterOutputGain) return;
       ramp(masterOutputGain.gain, this._outputMuted ? 0 : 1);
+      // Un-muting mid-playback (native crash → switchToLocal safety net): automation/fade
+      // were skipped while muted, so the web output would be flat until the next play.
+      // Reschedule now so the fallback is audible with correct envelopes.
+      if (wasMuted && !this._outputMuted && this.isPlaying) {
+        this._scheduleAutomation();
+        this._scheduleFade();
+      }
     },
 
     async play(options = {}) {
@@ -2708,7 +2856,13 @@
       } else {
         this._scheduleFade();
       }
-      this._loop();
+      // Tag this rAF loop with the play token so a later play/seek/stop (each bumps
+      // _playToken) retires it. Without the tag, seek-while-playing (stop→play) leaves the
+      // previous loop's already-scheduled rAF alive — it re-checks only isPlaying, which
+      // the new play has set true again — so every such seek accretes another concurrent
+      // _loop chain. They pile up, each firing _emit() (a full React re-render) per frame,
+      // until the renderer saturates and the window goes black.
+      this._loop(this._playToken);
     },
 
     pause() {
@@ -2843,8 +2997,9 @@
     onTick(cb) { this._tickCbs.push(cb); },
     _emit() { this._tickCbs.forEach((cb) => cb()); },
     _lastLoop: 0,
-    _loop() {
-      if (!this.isPlaying) return;
+    _loop(token) {
+      // Stale chain from a superseded play/seek/stop — let it die (see play()).
+      if (!this.isPlaying || token !== this._playToken) return;
       // Source nodes are one-shot. At the song boundary the engine decides
       // whether to start a fresh pass or stop, using the latest Repeat state.
       const raw = this._projectPositionAt(ctx.currentTime);
@@ -2869,7 +3024,7 @@
         return;
       }
       this._emit();
-      requestAnimationFrame(() => this._loop());
+      requestAnimationFrame(() => this._loop(token));
     },
 
     // ---- offline render to WAV (for export) ----
@@ -3852,7 +4007,9 @@
   Engine.nudgeClip = Engine.nudgeClip.bind(Engine);
   // v1.22.0 multi-clip selection (rigid group move)
   Engine.moveClipsBy = Engine.moveClipsBy.bind(Engine);
+  Engine.moveClipsByResolved = Engine.moveClipsByResolved.bind(Engine);
   Engine._clampGroupDelta = Engine._clampGroupDelta.bind(Engine);
+  Engine._resolveGroupDelta = Engine._resolveGroupDelta.bind(Engine);
   Engine.deleteClips = Engine.deleteClips.bind(Engine);
   Engine.trimClipStart = Engine.trimClipStart.bind(Engine);
   Engine.trimClipEnd = Engine.trimClipEnd.bind(Engine);

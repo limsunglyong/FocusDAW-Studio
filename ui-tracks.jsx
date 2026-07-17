@@ -923,9 +923,11 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
       if (Math.abs(ev.clientX - startX) > 2) d.moved = true;
       const len = d.origEnd - d.origStart;
       if (mode === "move" && groupIds) {
-        // Rigid group: one shared delta clamped to the tightest clip. Preview it on every
-        // selected clip so the user sees the group stop as a unit at the blocker.
-        d.groupDelta = DAW._clampGroupDelta ? DAW._clampGroupDelta(track, groupIds, dsec) : dsec;
+        // Rigid group: one shared delta. Preview the RESOLVED drop position so the group can
+        // jump a neighbour (before A / after D) live, exactly like a single clip — null (no
+        // side fits) pins back to origin. (Nudge still butts via _clampGroupDelta.)
+        const r = DAW._resolveGroupDelta ? DAW._resolveGroupDelta(track, groupIds, dsec) : dsec;
+        d.groupDelta = (r == null) ? 0 : r;
         d.ghostStart = d.origStart + d.groupDelta; d.ghostEnd = d.ghostStart + len;
       }
       else if (mode === "move") {

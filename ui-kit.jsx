@@ -32,6 +32,8 @@ const IC = {
   info: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm0-14v4m0 4h.01",
   // Metronome: trapezoid body + swung pendulum arm (count-in click toggle).
   metronome: "M9.5 3h5l4 18h-13zM4.5 16h15M12 21L16 7",
+  // Pre-roll: an arrow running INTO the record point — playback leads in, then punches in.
+  preroll: "M2 12h7M6.5 8.5L10 12l-3.5 3.5M17 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z",
 };
 function Icon({ name, size = 18, stroke = 1.7, fill = false, style }) {
   const d = IC[name];
