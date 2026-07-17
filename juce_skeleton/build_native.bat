@@ -56,9 +56,22 @@ if not exist "..\bin" (
     mkdir "..\bin"
 )
 
+rem The copy fails when the app (or a stray engine) still holds bin\...exe. This used to
+rem pass silently and print "Completed Successfully" over a STALE binary — you then test
+rem the old engine while believing it is new, and draw conclusions from it. Fail loudly.
 copy /y "build\FocusDAW-AudioEngine_artefacts\Release\FocusDAW-AudioEngine.exe" "..\bin\FocusDAW-AudioEngine.exe"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Compiled fine, but could NOT copy the engine into bin\ — the file is locked.
+    echo [ERROR] Close the app / kill FocusDAW-AudioEngine.exe and run this script again.
+    echo [ERROR] bin\FocusDAW-AudioEngine.exe is STALE — do not test against it.
+    exit /b 1
+)
 if exist "..\dist\win-unpacked\resources\app.asar.unpacked\bin" (
     copy /y "build\FocusDAW-AudioEngine_artefacts\Release\FocusDAW-AudioEngine.exe" "..\dist\win-unpacked\resources\app.asar.unpacked\bin\FocusDAW-AudioEngine.exe"
+    if !ERRORLEVEL! neq 0 (
+        echo [ERROR] Could not copy the engine into dist\win-unpacked — locked. Packaged copy is STALE.
+        exit /b 1
+    )
 )
 
 echo [FocusDAW Build] Completed Successfully.

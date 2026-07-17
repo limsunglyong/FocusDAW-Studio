@@ -25,7 +25,6 @@
     stretchPreviewPreparing: false,
     audioDevices: null,        // last "audioDevices" event from the native engine
     audioDeviceResolvers: [],  // pending requestAudioDevices() promises
-    audioInputKey: null,
     audioInputRequestSeq: 0,
     audioInputPending: {},
     audioInputResolvers: [],
@@ -280,7 +279,16 @@
       const outputName = (settings && settings.outputName) || "";
       const payload = { ...next, outputName };
       const key = JSON.stringify(payload);
-      if (nativeState.audioInputKey === key) return Promise.resolve();
+      // NO "already applied this exact payload" cache here. It assumed the same request
+      // always deserves the same answer, but the answer depends on hardware that changes
+      // underneath us: unplug the mic and the identical payload must now FAIL and say so.
+      // The cache resolved it from memory instead, so the engine was never asked, its
+      // "unknown input device" check never ran, and recording silently produced silence —
+      // for the rest of the session, replug or not (only an app restart cleared it).
+      // The engine has its own keep-warm fast path for a genuinely unchanged device, so
+      // asking every time costs a round trip, not a WASAPI reopen.
+      // `audioInputPending` below still de-dupes requests that are IN FLIGHT — that is a
+      // different thing and stays.
       return new Promise((resolve, reject) => {
         let requestId = nativeState.audioInputPending[key];
         if (!requestId) {
@@ -1251,13 +1259,20 @@
       nativeState.audioInputResolvers = nativeState.audioInputResolvers.filter((entry) => entry.requestId !== requestId);
       const completedKey = matching[0] && matching[0].key;
       if (completedKey) delete nativeState.audioInputPending[completedKey];
-      if (msg.ok && completedKey) nativeState.audioInputKey = completedKey;
       matching.forEach((entry) => {
         console.log(`[AudioInputTiming] setAudioInput ${msg.ok ? "ready" : "failed"} in ${(performance.now() - entry.sentAt).toFixed(1)}ms`);
         if (msg.ok) entry.resolve();
         else entry.reject(new Error(msg.error || "Audio input could not be prepared."));
       });
       if (!msg.ok) console.warn("[AudioBridge] Audio input change failed:", msg.error);
+      LocalDAW._emit();
+    } else if (msg.event === "audioInputLost") {
+      // The engine saw the configured input device leave the system. Tell the UI so it
+      // can drop ARM — an armed track on a device that is gone shows a dead meter and no
+      // error, which is how a user concludes the app is broken (T-1.25.2 특이사항).
+      // Nothing is reopened here: that would close the OUTPUT too and cut playback.
+      console.warn("[AudioBridge] Input device lost:", msg.name || "(unknown)");
+      window.dispatchEvent(new CustomEvent("focusdaw-audio-input-lost", { detail: { name: msg.name || "" } }));
       LocalDAW._emit();
     } else if (msg.event === "recordingStarted") {
       nativeState.recording = !!msg.ok;

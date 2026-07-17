@@ -226,6 +226,8 @@ AudioEngine::~AudioEngine()
 
 #if USE_JUCE
     inputRecorder.stop();
+    for (auto* type : deviceManager.getAvailableDeviceTypes())
+        if (type != nullptr) type->removeListener(this);
     deviceManager.removeAudioCallback(&inputRecorder);
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
@@ -261,6 +263,13 @@ void AudioEngine::init(int sr)
     juce::String err = deviceManager.initialiseWithDefaultDevices(0, 2);
     if (err.isEmpty())
     {
+        // Hear about hot-plugs on every backend, so setAudioInput can tell a genuinely
+        // warm input device from one whose USB cable was pulled (see audioDeviceListChanged).
+        for (auto* type : deviceManager.getAvailableDeviceTypes())
+            if (type != nullptr) { type->addListener(this); ++deviceListenerCount; }
+        LOG_DBG << "[AudioEngine] Device change listener attached to " << deviceListenerCount
+                << " device type(s)." << std::endl;
+
         deviceManager.addAudioCallback(&sourcePlayer);
         deviceManager.addAudioCallback(&inputRecorder);
         if (auto* currentDevice = deviceManager.getCurrentAudioDevice())
@@ -2038,6 +2047,57 @@ std::string AudioEngine::setAudioDevice(const std::string& typeName, const std::
 #endif
 }
 
+#if USE_JUCE
+void AudioEngine::setInputDeviceLostCallback(std::function<void(const std::string&)> cb)
+{
+    std::lock_guard<std::mutex> lock(deviceLostMutex);
+    onInputDeviceLost = std::move(cb);
+}
+
+void AudioEngine::audioDeviceListChanged()
+{
+    // A device was added or removed. Veto the keep-warm fast path once, so the next
+    // setAudioInput really rebuilds instead of handing back a possibly-dead stream.
+    deviceTopologyChanged.store(true);
+
+    if (openedInputName.isEmpty()) return;
+
+    // Is the input we opened still on the system? Read the type's cached list rather than
+    // rescanning — JUCE has already refreshed it before calling us (WASAPI's
+    // systemDeviceChanged does scan() first), and rescanning from inside a device-change
+    // callback invites reentrancy.
+    bool present = false;
+    for (auto* type : deviceManager.getAvailableDeviceTypes())
+    {
+        if (type == nullptr) continue;
+        if (openedInputType.isNotEmpty() && type->getTypeName() != openedInputType) continue;
+        if (type->getDeviceNames(true).contains(openedInputName)) { present = true; break; }
+    }
+
+    if (present)
+    {
+        // Back again. We do NOT reopen it here on purpose: reopening means
+        // closeAudioDevice(), which takes the OUTPUT down with it and would cut playback
+        // the instant a mic is plugged in. The UI re-arms (or records) when the user asks.
+        openedInputMissing = false;
+        return;
+    }
+
+    if (openedInputMissing) return; // already announced
+    openedInputMissing = true;
+    LOG_DBG << "[AudioEngine] Input device disappeared: " << openedInputName.toStdString() << std::endl;
+
+    std::function<void(const std::string&)> cb;
+    {
+        std::lock_guard<std::mutex> lock(deviceLostMutex);
+        cb = onInputDeviceLost;
+    }
+    if (cb) cb(openedInputName.toStdString());
+}
+#else
+void AudioEngine::setInputDeviceLostCallback(std::function<void(const std::string&)>) {}
+#endif
+
 std::string AudioEngine::setAudioInput(const std::string& typeName, const std::string& deviceName,
                                        const std::string& outputName,
                                        int channel, bool stereo, double requestedSampleRate, int requestedBufferSize)
@@ -2055,6 +2115,18 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
         if (!typeObj) return "unknown device type: " + typeName;
         typeObj->scanForDevices();
         auto names = typeObj->getDeviceNames(true);
+
+        // Second, listener-independent hot-plug detector: compare this scan against the
+        // last one we saw. The AudioIODeviceType listener SHOULD catch every add/remove,
+        // but recovery must not hinge on it firing — and this catches the exact repro
+        // (record while unplugged → the failed attempt records a list without the mic,
+        // so the replug is seen as a change even if no event ever arrived).
+        if (!lastInputDeviceList.isEmpty() && lastInputDeviceList != names)
+        {
+            LOG_DBG << "[AudioEngine] Input device list changed since the last request." << std::endl;
+            deviceTopologyChanged.store(true);
+        }
+        lastInputDeviceList = names;
         juce::String wantedName = deviceName.empty()
             ? (names.isEmpty() ? juce::String() : names[juce::jlimit(0, names.size() - 1, typeObj->getDefaultDeviceIndex(true))])
             : juce::String::fromUTF8(deviceName.c_str());
@@ -2098,7 +2170,18 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
         // identical setup makes WASAPI tear down and reopen its stream, which is
         // especially visible as a several-second delay on the first recording.
         // Keep the already-warm callback graph when every requested field matches.
-        if (auto* active = deviceManager.getCurrentAudioDevice())
+        //
+        // ...but ONLY while the device topology has not moved under us. Every field
+        // below is read from OUR cached setup and from a device object that both
+        // survive a hot-unplug, so after pulling the mic's USB they all still match
+        // and this would hand back the same dead stream — for the rest of the session,
+        // replug included (T-1.25.0-5). A hot-plug forces one real reopen instead.
+        if (deviceTopologyChanged.load())
+        {
+            LOG_DBG << "[AudioEngine] Device list changed since the last input open — "
+                    << "forcing a real reopen instead of reusing the warm device." << std::endl;
+        }
+        else if (auto* active = deviceManager.getCurrentAudioDevice())
         {
             const auto activeSetup = deviceManager.getAudioDeviceSetup();
             const bool sameType = deviceManager.getCurrentAudioDeviceType() == wantedType;
@@ -2121,6 +2204,28 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
                 inputRecorder.configureInput(channel, stereo);
                 return {};
             }
+        }
+
+        // After a hot-plug the device object must be REBUILT, and asking JUCE nicely is
+        // not enough — setAudioDeviceSetup() no-ops on an unchanged setup:
+        //
+        //   if (newSetup != currentSetup) sendChangeMessage();
+        //   else if (currentAudioDevice != nullptr) return {};      // ← silently "succeeds"
+        //   ...
+        //   const auto needsNewDevice = currentSetup.inputDeviceName != newSetup.inputDeviceName
+        //                            || currentSetup.outputDeviceName != newSetup.outputDeviceName
+        //                            || currentAudioDevice == nullptr;
+        //
+        // Unplug and replug the mic and every one of those fields is byte-identical, so
+        // JUCE returns success without touching the dead WASAPI client — which is why
+        // skipping our own fast path alone did NOT fix the replug (T-1.25.1-1 ③).
+        // Closing first drops currentAudioDevice to nullptr, and both gates above then
+        // fall through to a genuine createDevice().
+        if (deviceTopologyChanged.load())
+        {
+            LOG_DBG << "[AudioEngine] Closing the audio device to force a real rebuild "
+                    << "(a stale device object survives a hot-unplug)." << std::endl;
+            deviceManager.closeAudioDevice();
         }
 
         // Exclusive Mode rejects a setup whose sample rate / buffer size the device
@@ -2158,6 +2263,14 @@ std::string AudioEngine::setAudioInput(const std::string& typeName, const std::s
                     << "): " << reason << " — restored previous device" << std::endl;
             return "Could not open " + wantedType.toStdString() + " device: " + reason;
         }
+        // The input is open for real, so whatever hot-plug set this flag is now
+        // accounted for and the warm path may be trusted again.
+        deviceTopologyChanged.store(false);
+        // Remember what "our mic" is, so audioDeviceListChanged can tell whether a later
+        // device change took THIS input away (and not some unrelated headphone).
+        openedInputName = wantedName;
+        openedInputType = wantedType;
+        openedInputMissing = false;
         {
             std::lock_guard<std::mutex> lock(engineMutex);
             sampleRate = active->getCurrentSampleRate();

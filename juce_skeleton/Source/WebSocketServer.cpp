@@ -232,6 +232,14 @@ void WebSocketServer::start()
         broadcast(json.str());
     });
 
+    // The configured input device vanished (USB mic pulled). The device object survives
+    // an unplug, so without this the UI has no way to know: an armed track just goes
+    // quiet. The renderer drops ARM on this event.
+    audioEngine.setInputDeviceLostCallback([this](const std::string& name) {
+        broadcast(std::string("{\"event\":\"audioInputLost\",\"name\":\"") + escapeJson(name) + "\"}");
+    });
+
+
     serverThread = std::thread(&WebSocketServer::listenLoop, this);
     timerThread = std::thread(&WebSocketServer::timerLoop, this);
 }
@@ -243,6 +251,7 @@ void WebSocketServer::stop()
     // Detach the loader-thread callback first: it captures `this`, and a track
     // load finishing after this stop() must not broadcast into a dying server.
     audioEngine.setTrackLoadedCallback(nullptr);
+    audioEngine.setInputDeviceLostCallback(nullptr);
 
     // Join the accept loop first so no new client threads appear below.
     if (serverThread.joinable()) serverThread.join();

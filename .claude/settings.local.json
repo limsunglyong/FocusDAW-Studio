@@ -196,7 +196,13 @@
       "Bash(taskkill //F //IM electron.exe)",
       "Bash(node -e \"new Function\\(require\\('fs'\\).readFileSync\\('audio-bridge.js','utf8'\\)\\); console.log\\('bridge OK'\\)\")",
       "Bash(awk 'NR>=1840 && NR<=1960' audio-engine.js)",
-      "Bash(node -e \"new Function\\(require\\('fs'\\).readFileSync\\('audio-engine.js','utf8'\\)\\); console.log\\('audio-engine.js OK'\\)\")"
+      "Bash(node -e \"new Function\\(require\\('fs'\\).readFileSync\\('audio-engine.js','utf8'\\)\\); console.log\\('audio-engine.js OK'\\)\")",
+      "Bash(node \"C:/Users/limsu/AppData/Local/Temp/claude/e--programmings-FocusDAW-Studio/86a588f4-528f-4fc9-9116-7f92bb6ee496/scratchpad/fsm.js\")",
+      "Bash(tasklist //FI \"IMAGENAME eq electron.exe\")",
+      "Bash(timeout 60 node -e ' *)",
+      "Bash(sed -n '/^void AudioDeviceManager::closeAudioDevice\\(\\)/,/^}/p' juce_AudioDeviceManager.cpp)",
+      "Bash(sed -n '/^void AudioDeviceManager::deleteCurrentDevice\\(\\)/,/^}/p' juce_AudioDeviceManager.cpp)",
+      "Bash(awk '/^std::string AudioEngine::setAudioInput/,/^}/' juce_skeleton/Source/AudioEngine.cpp)"
     ]
   }
 }

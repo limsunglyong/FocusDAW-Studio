@@ -1483,6 +1483,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const lastUndoKey = useRef(null);
   const recordingRef = useRef(null);
   const recordCountRef = useRef(null);   // count-in interval id (null = not counting)
+  // Phase 6 Stage 1 — the record flow's ONE source of truth. Holds the busy phase
+  // ("countIn" | "recording" | "stopping" | "finalizing") or null when the flow is not
+  // running; recordPhase() below derives idle/armed from ARM for the full 7-state view.
+  const recordPhaseRef = useRef(null);
+  const recordSessionRef = useRef(null); // { trackId, start, end, loopEnabled, countIn }
   const autoStopRef = useRef(null);      // auto-stop-at-song-end monitor interval id
   const songEndRef = useRef(0);          // end (sec) of longest existing track, captured at record start
   const prevLoopRef = useRef(null);      // Repeat flag saved when a recording began (restored on stop)
@@ -2027,7 +2032,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             });
             const targetTrack = DAW.tracks.find((track) => track.id === msg.id);
             const input = audioInputSettingsForTrack(targetTrack);
-            if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] mixer arm prepare failed:", e));
+            // Same as the main window's ARM: surface the failure and drop ARM instead of
+            // arming a track whose input is not there.
+            if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => reportInputFailure(msg.id, e));
             if (DAW.setInputGain) DAW.setInputGain(
               Math.max(0.1, Math.min(4, targetTrack && targetTrack.params && targetTrack.params.inputGain != null
                 ? targetTrack.params.inputGain : 1))
@@ -2844,9 +2851,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (track.recording) {
       const active = recordingRef.current;
       if (!active || active.trackId !== track.id) return;
+      if (!enterRecordPhase("stopping")) return; // a stop is already in flight
       DAW.stopRecording(active.partPath);
       try {
         await active.promise;
+        enterRecordPhase("finalizing");
         const saved = await window.electronAPI.finalizeRecording(active.partPath, active.finalPath);
         const bytes = await window.electronAPI.readAudioFile(saved.path);
         const attachOptions = { filePath: saved.path, start: active.start };
@@ -2858,6 +2867,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       track.recording = false;
       delete track._recordingDurationLimit;
       recordingRef.current = null;
+      recordSessionRef.current = null;
+      enterRecordPhase(null); // → armed
       fitTimelineToProject();
       force((n) => n + 1);
       return;
@@ -2866,17 +2877,27 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       alert("Only one Audio In track can record at a time.");
       return;
     }
-    const sourcePath = DAW.tracks.find((t) => t.filePath)?.filePath || null;
-    const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
-    const target = await window.electronAPI.prepareRecordingPath(projectPath, `${track.name} ${stamp}.wav`, sourcePath);
-    const input = audioInputSettingsForTrack(track);
+    // Claim the flow BEFORE the awaits below (path prep + device open, both slow enough
+    // to press Record again in): the phase — not `track.recording`, which is only set
+    // once they resolve — is what stops a rival recorder from starting.
+    if (!enterRecordPhase("recording")) return;
+    let target, input;
     try {
+      const sourcePath = DAW.tracks.find((t) => t.filePath)?.filePath || null;
+      const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
+      target = await window.electronAPI.prepareRecordingPath(projectPath, `${track.name} ${stamp}.wav`, sourcePath);
+      input = audioInputSettingsForTrack(track);
       if (DAW.setAudioInput) await DAW.setAudioInput(input);
     } catch (e) {
+      if (recordPhaseRef.current === "recording") enterRecordPhase(null); // nothing started; release
       alert(e.message || String(e));
       return;
     }
-    const start = DAW.getPlayhead();
+    // A Stop during those awaits already released the phase. Honor it — starting now
+    // would leave a recorder running with the transport stopped and nobody to stop it.
+    if (recordPhaseRef.current !== "recording") return;
+    const session = recordSessionRef.current;
+    const start = session && session.start != null ? session.start : DAW.getPlayhead();
     track.recording = true;
     track._recordingStart = start;
     track._recordingPeaks = [];
@@ -2893,6 +2914,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         track.recording = false;
         delete track._recordingDurationLimit;
         recordingRef.current = null;
+        recordSessionRef.current = null;
+        // The engine rejected the take AFTER we claimed the flow. Release it, or Record
+        // stays dead for the rest of the session. Only from "recording": if a stop is
+        // already winding down it owns the release (and awaits this same promise).
+        if (recordPhaseRef.current === "recording") enterRecordPhase(null);
         alert(e.message || String(e));
         force((n) => n + 1);
       }
@@ -2907,8 +2933,70 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // end of the longest existing track (no backing tracks → record until manual
   // stop). Pause and return-to-start are ignored while recording; any transport
   // press during the count-in cancels it.
-  const isCountingIn = () => recordCountRef.current != null;
-  const isRecordingActive = () => DAW.tracks.some((t) => t.kind === "audioIn" && t.recording);
+  //
+  // Phase 6 Stage 1 — explicit state machine:
+  //   idle → armed → countIn → recording → stopping → finalizing → armed
+  // `idle`/`armed` are DERIVED from ARM (a track property the user owns), so the machine
+  // itself only holds the busy phases. Every transition goes through enterRecordPhase(),
+  // which rejects illegal ones instead of letting two flows overlap. That is not
+  // bookkeeping for its own sake — the start and stop paths both `await` (device open,
+  // finalize, decode, attach), and before this the phase was inferred from
+  // `track.recording`, which is only flipped AFTER those awaits. So a second Record/Stop
+  // press inside the gap started a second recorder / finalized and attached the same take
+  // twice. The guards close both windows.
+  const RECORD_TRANSITIONS = {
+    null:        ["countIn", "recording"],   // idle/armed: count-in, or record straight away
+    countIn:     ["recording", null],        // count-in completed, or cancelled
+    // `recording → null` is the ABORTED-START release. The phase is claimed before the
+    // start's awaits, so if the start then fails (device error, engine reject) or a Stop
+    // lands mid-await, there is no recorder to stop — the flow just releases. Without
+    // this edge those paths are stuck in "recording" and Record dies for the session.
+    recording:   ["stopping", null],
+    stopping:    ["finalizing", null],       // null = the take failed; release the flow
+    finalizing:  [null],
+  };
+  const recordPhase = () => {
+    if (recordPhaseRef.current) return recordPhaseRef.current;
+    return DAW.tracks.some((t) => t.kind === "audioIn" && t.params && t.params.arm) ? "armed" : "idle";
+  };
+  const enterRecordPhase = (next) => {
+    const cur = recordPhaseRef.current;
+    const allowed = RECORD_TRANSITIONS[cur === null ? "null" : cur] || [];
+    if (!allowed.includes(next)) {
+      console.warn(`[record] illegal transition ${cur || "idle/armed"} → ${next || "idle/armed"} (ignored)`);
+      return false;
+    }
+    recordPhaseRef.current = next;
+    // Mirror for the other renderers: the ARM lock (v1.20.11) and the record-lock badge
+    // read this global. Kept as a mirror rather than a second source of truth.
+    window.__recordCountdownActive = next === "countIn";
+    return true;
+  };
+  // The input could not be opened (unplugged, held by another app, ...). Say so once and
+  // clear ARM: an armed track whose device is gone shows a dead meter and no error, which
+  // is exactly how a user ends up thinking the app is broken.
+  const reportInputFailure = (trackId, err) => {
+    console.warn("[AudioInput] arm prepare failed:", err);
+    if (trackId) DAW.setTrackParam(trackId, "arm", false);
+    force((n) => n + 1);
+    alert((err && err.message) || String(err));
+  };
+  // The engine lost the configured input device (USB pulled). Drop every ARM so no track
+  // sits armed on a device that is not there. Deliberately does NOT reopen anything —
+  // reopening drags the OUTPUT down with it (closeAudioDevice) and would cut playback.
+  const disarmAllInputs = (deviceName) => {
+    const armed = DAW.tracks.filter((t) => t.kind === "audioIn" && t.params && t.params.arm);
+    if (!armed.length) return;
+    armed.forEach((t) => DAW.setTrackParam(t.id, "arm", false));
+    force((n) => n + 1);
+    console.warn(`[AudioInput] input device lost (${deviceName || "unknown"}) — disarmed ${armed.length} track(s)`);
+  };
+
+  const isCountingIn = () => recordPhase() === "countIn";
+  // "The recorder is busy" — recording OR winding down. Matches the old semantics
+  // exactly: `track.recording` also stayed true through stop+finalize, so the transport
+  // guards that used it kept blocking until the take was attached.
+  const isRecordingActive = () => ["recording", "stopping", "finalizing"].includes(recordPhase());
   const stopAutoStopMonitor = () => { if (autoStopRef.current) { clearInterval(autoStopRef.current); autoStopRef.current = null; } };
   const startAutoStopMonitor = () => {
     stopAutoStopMonitor();
@@ -2919,55 +3007,93 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }, 120);
   };
   const beginRecorderAt = async (target) => {
-    let end = 0;
-    DAW.tracks.forEach((t) => {
-      if (t.id !== target.id && Array.isArray(t.clips)) t.clips.forEach((c) => { end = Math.max(end, c.end || 0); });
-    });
-    songEndRef.current = end;
-    if (end > 0) target._recordingDurationLimit = end;
+    const session = recordSessionRef.current;
+    songEndRef.current = session.end || 0;
+    if (session.end > 0) target._recordingDurationLimit = session.end;
     else delete target._recordingDurationLimit;
     const wasPlaying = DAW.isPlaying;
-    await toggleRecording(target);          // starts the recorder at the current playhead
+    await toggleRecording(target);          // starts the recorder at session.start
     if (!isRecordingActive()) {             // start failed (device error etc.) → undo repeat change
       if (prevLoopRef.current) DAW.setLoop(true);
       prevLoopRef.current = null;
+      recordSessionRef.current = null;
       return;
     }
     if (!wasPlaying) DAW.play();             // count-in case: begin playback from the same position
     startAutoStopMonitor();
     force((n) => n + 1);
   };
-  const beginRecordFlow = () => {
-    const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
-    if (!target) return;
+  // Phase 6 Stage 1 — the single entry point for "start recording".
+  //   trackId     the Audio In track to record onto (default: the armed one)
+  //   start       timeline seconds to record from, and the transport seeks there.
+  //               Default null = "wherever the playhead is when the recorder actually
+  //               starts" — NOT the playhead now: the start path awaits a device open,
+  //               and while playing the playhead moves during it, so freezing it here
+  //               would place the take early by that much.
+  //   end         stop here; 0 = record until manual stop (default: end of the longest
+  //               other track, which is what the auto-stop monitor has always used)
+  //   loopEnabled record across Repeat iterations. Stage 3 splits a Take per iteration
+  //               here; for now it is carried on the session and Repeat still goes off,
+  //               so behavior is unchanged.
+  //   countIn     count-in ticks before play+record (default: 3 when the transport is
+  //               stopped, 0 while it is already playing). Stage 2 makes these beats.
+  const startRecordFlow = (opts = {}) => {
+    const target = opts.trackId
+      ? DAW.tracks.find((t) => t.id === opts.trackId)
+      : DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
+    if (!target || target.kind !== "audioIn") return;
+    if (recordPhaseRef.current) return; // a flow is already running
+
+    let songEnd = 0;
+    DAW.tracks.forEach((t) => {
+      if (t.id !== target.id && Array.isArray(t.clips)) t.clips.forEach((c) => { songEnd = Math.max(songEnd, c.end || 0); });
+    });
+    recordSessionRef.current = {
+      trackId: target.id,
+      start: opts.start != null ? opts.start : null,
+      end: opts.end != null ? opts.end : songEnd,
+      loopEnabled: !!opts.loopEnabled,
+      countIn: opts.countIn != null ? opts.countIn : (DAW.isPlaying ? 0 : 3),
+    };
+    const session = recordSessionRef.current;
+
     prevLoopRef.current = DAW.loopEnabled;
     if (DAW.loopEnabled) DAW.setLoop(false);
-    if (DAW.isPlaying) { beginRecorderAt(target); return; }
-    let n = 3;                               // 3-second count-in overlay before play+record
+    if (session.start != null) DAW.seek(session.start);
+    if (session.countIn <= 0) { beginRecorderAt(target); return; }
+
+    let n = session.countIn;                 // count-in overlay before play+record
+    if (!enterRecordPhase("countIn")) return;
     setRecordCount(n);
-    window.__recordCountdownActive = true;
     recordCountRef.current = setInterval(() => {
       n -= 1;
       if (n <= 0) {
         clearInterval(recordCountRef.current); recordCountRef.current = null;
-        window.__recordCountdownActive = false;
         setRecordCount(null);
-        beginRecorderAt(target);
+        beginRecorderAt(target);             // countIn → recording happens inside
       } else setRecordCount(n);
     }, 1000);
   };
+  const beginRecordFlow = () => startRecordFlow();
   const cancelCountIn = () => {
+    if (recordPhaseRef.current !== "countIn") return;
     if (recordCountRef.current) { clearInterval(recordCountRef.current); recordCountRef.current = null; }
-    window.__recordCountdownActive = false;
+    enterRecordPhase(null);
     setRecordCount(null);
+    recordSessionRef.current = null;
     if (prevLoopRef.current) DAW.setLoop(true); // nothing recorded → restore Repeat
     prevLoopRef.current = null;
     force((n) => n + 1);
   };
   const doStopRecording = () => {
+    // Only a live recording can be stopped. A press while the flow is already winding
+    // down (stopping/finalizing) used to re-enter the stop path and finalize + attach
+    // the same take twice; now it is a no-op.
+    if (recordPhaseRef.current !== "recording") return;
     stopAutoStopMonitor();
     const target = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
     if (target) toggleRecording(target);      // stop + finalize the recorder
+    else enterRecordPhase(null);              // the start is still awaiting; release so it aborts
     DAW.stop();                               // stop playback (playhead → 0)
     if (prevLoopRef.current) DAW.setLoop(true); // restore Repeat
     prevLoopRef.current = null;
@@ -2986,6 +3112,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     DAW.userSeek(t);
     force((n) => n + 1);
   };
+
+  // The native engine noticed the configured input device disappear (see audio-bridge
+  // "audioInputLost"). Nothing else tells the UI: an armed track just goes quiet.
+  useEffect(() => {
+    const onInputLost = (e) => disarmAllInputs(e && e.detail && e.detail.name);
+    window.addEventListener("focusdaw-audio-input-lost", onInputLost);
+    return () => window.removeEventListener("focusdaw-audio-input-lost", onInputLost);
+  });
 
   useEffect(() => {
     const onRecordToggle = () => transportRef.current.transportRecordToggle && transportRef.current.transportRecordToggle();
@@ -3091,7 +3225,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           DAW.setTrackParam(track.id, "arm", false);
       });
       const input = audioInputSettingsForTrack(targetTrack);
-      if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => console.warn("[AudioInput] arm prepare failed:", e));
+      // ARM has to answer "is the input actually there?" the same way Record does. It
+      // used to swallow the failure into a console warning, so ARM would light up on a
+      // device that was gone and the user only learned about it from a meter that never
+      // moved (T-1.25.2 특이사항). Report it and drop ARM — a lit ARM button that cannot
+      // hear anything is a lie.
+      if (DAW.setAudioInput) DAW.setAudioInput(input).catch((e) => reportInputFailure(id, e));
       if (DAW.setInputGain) DAW.setInputGain(
         Math.max(0.1, Math.min(4, targetTrack && targetTrack.params && targetTrack.params.inputGain != null
           ? targetTrack.params.inputGain : 1))

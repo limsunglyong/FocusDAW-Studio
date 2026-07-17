@@ -1636,6 +1636,14 @@ private:
 #endif
 
 class AudioEngine
+#if USE_JUCE
+    // Listens for device add/remove so a hot-unplugged input can be noticed. JUCE's
+    // AudioDeviceManager will NOT do it for us: audioDeviceListChanged() only reopens
+    // when `currentAudioDevice->getName()` vanishes from the list, and for a WASAPI
+    // in+out device that name is the OUTPUT endpoint. Unplug only the mic and the
+    // output is still there, so JUCE keeps the device — with a dead input inside it.
+    : private juce::AudioIODeviceType::Listener
+#endif
 {
 public:
     AudioEngine();
@@ -1692,6 +1700,15 @@ public:
     // Assigned/read under loadMutex: the server clears it (nullptr) in stop() so
     // a load finishing during shutdown cannot call into a destroyed server.
     void setTrackLoadedCallback(std::function<void(const std::string&, bool, int)> cb);
+
+    // Invoked (message thread) when the input device we had opened disappears from the
+    // system — a pulled USB mic. Nothing else can tell the UI: the device object survives
+    // the unplug, so an armed track simply goes quiet with no error. The server
+    // broadcasts an "audioInputLost" event so the UI can drop ARM. Deliberately only a
+    // NOTIFICATION: reopening here would close the output too and cut playback.
+    // Assigned/read under deviceLostMutex; the server clears it on shutdown.
+    void setInputDeviceLostCallback(std::function<void(const std::string&)> cb);
+
 
     // Block until the background load queue is drained (offline export must not
     // render while tracks are still decoding, or it would miss them).
@@ -1784,6 +1801,27 @@ private:
 
     // Loop-boundary rewind. AUDIO THREAD ONLY (invoked by LoopAudioSource).
     void rewindTracksForLoop(double timelineSeconds, double outputSampleRate);
+
+    // juce::AudioIODeviceType::Listener — a device was added or removed.
+    void audioDeviceListChanged() override;
+    // Set on any hot-plug, cleared by the next successful full input open. It exists to
+    // veto the "keep the warm device" fast path in setAudioInput: after an unplug the
+    // cached setup still names the mic and the device object still reports its input
+    // channels, so every field matches and the fast path would hand back the SAME dead
+    // stream — even after the mic is plugged back in.
+    std::atomic<bool> deviceTopologyChanged { false };
+    // Input device names seen at the last setAudioInput scan. Message thread only.
+    // Backs the listener-independent hot-plug check (see setAudioInput).
+    juce::StringArray lastInputDeviceList;
+    // The input device/type we last opened successfully — what "our mic" means when the
+    // device list changes. Message thread only.
+    juce::String openedInputName, openedInputType;
+    bool openedInputMissing = false; // so the loss is announced once, not per event
+    std::function<void(const std::string&)> onInputDeviceLost; // guarded by deviceLostMutex
+    std::mutex deviceLostMutex;
+    // Device types we attached the change listener to. Only logged (FOCUSDAW_VERBOSE):
+    // if this is ever 0 the hot-plug detection is dead and nothing else will say so.
+    int deviceListenerCount = 0;
 
     void updateSoloStates();
 #endif
