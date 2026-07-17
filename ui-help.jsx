@@ -688,19 +688,20 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">정지 상태에서 Record</th><td className="manual-td">화면 중앙에 <strong>3 → 2 → 1 카운트인</strong> 오버레이가 나타난 뒤, 현재 재생 위치에서 <strong>재생과 녹음이 동시에</strong> 시작됩니다.</td></tr>
+                      <tr><th className="manual-th">정지 상태에서 Record</th><td className="manual-td">화면 중앙에 <strong>카운트인</strong> 오버레이가 나타난 뒤, 현재 재생 위치에서 <strong>재생과 녹음이 동시에</strong> 시작됩니다. 메트로놈이 켜져 있으면 <strong>4 → 3 → 2 → 1</strong>(프로젝트 BPM 기준 한 마디), 꺼져 있으면 <strong>3 → 2 → 1</strong>(1초 간격 무음)입니다.</td></tr>
                       <tr><th className="manual-th">재생 중 Record</th><td className="manual-td">카운트인 없이 <strong>즉시</strong> 녹음이 시작됩니다.</td></tr>
+                      <tr><th className="manual-th">메트로놈(카운트인 클릭)</th><td className="manual-td">트랜스포트의 <strong>메트로놈 버튼</strong>으로 켜고 끕니다. 켜면 카운트인 동안 <strong>프로젝트 BPM에 맞춘 4박 클릭</strong>이 울려 연주 진입 타이밍을 귀로 잡을 수 있습니다(첫 박은 높은 음으로 강조). 클릭은 <strong>모니터 출력 전용</strong>이라 <strong>녹음 파일과 Export에는 들어가지 않으며</strong>, 녹음이 시작되면 멈춥니다. 프로젝트 <strong>BPM이 없으면 버튼이 비활성</strong>되고 기존 무음 카운트인으로 동작합니다.</td></tr>
                       <tr><th className="manual-th">Repeat 자동 해제</th><td className="manual-td">Record를 누르면 반복(Loop)이 <strong>자동으로 꺼집니다</strong>. 녹음이 끝나면 이전 반복 상태로 <strong>복원</strong>됩니다.</td></tr>
                       <tr><th className="manual-th">자동 종료</th><td className="manual-td">재생이 <strong>기존 트랙 중 가장 긴 트랙의 끝</strong>에 도달하면 녹음과 재생이 자동으로 멈춥니다. 기존 트랙이 없으면 직접 Stop을 누를 때까지 계속 녹음합니다.</td></tr>
                       <tr><th className="manual-th">녹음 중 Record / Stop</th><td className="manual-td">녹음과 재생을 모두 정지합니다. 트랜스포트는 0초로 복귀합니다.</td></tr>
                       <tr><th className="manual-th">녹음 중 Play/Pause · 처음으로 이동</th><td className="manual-td">녹음 중에는 <strong>무시</strong>됩니다. 녹음을 멈추려면 Record 또는 Stop을 사용하세요.</td></tr>
-                      <tr><th className="manual-th">카운트인 도중 조작</th><td className="manual-td">카운트인이 진행되는 동안 Record / Stop / Play를 누르면 카운트인과 녹음이 <strong>취소</strong>됩니다.</td></tr>
+                      <tr><th className="manual-th">카운트인 도중 조작</th><td className="manual-td">카운트인이 진행되는 동안 Record / Stop / Play를 누르면 카운트인과 녹음이 <strong>취소</strong>되고 메트로놈 클릭도 즉시 멈춥니다.</td></tr>
                     </tbody>
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/49-record-countin.png" alt="3-2-1 카운트인 오버레이" className="manual-img" />
-                    <div className="manual-figcaption">정지 상태에서 Record를 누르면 화면 중앙에 <strong>3 → 2 → 1 카운트인</strong> 오버레이가 뜬 뒤 재생과 녹음이 함께 시작됩니다. 상단 Record 버튼이 빨갛게 켜지고, 무장된 Audio In 트랙이 녹음 대상이 됩니다.</div>
+                    <img src="manual/live-screens/49-record-countin.png" alt="카운트인 오버레이" className="manual-img" />
+                    <div className="manual-figcaption">정지 상태에서 Record를 누르면 화면 중앙에 <strong>카운트인</strong> 오버레이가 뜬 뒤 재생과 녹음이 함께 시작됩니다(메트로놈 On = 프로젝트 BPM 기준 <strong>4 → 3 → 2 → 1</strong> + 클릭, Off = <strong>3 → 2 → 1</strong> 무음). 상단 Record 버튼이 빨갛게 켜지고, 무장된 Audio In 트랙이 녹음 대상이 됩니다.</div>
                   </div>
 
                   <div className="manual-warning">녹음·카운트인 중에는 <strong>키보드 이동키(←/→/,/./0)와 타임라인·눈금자 마우스 클릭 이동(seek)이 모두 차단</strong>됩니다. 녹음 중 실수로 플레이헤드가 튀는 것을 막기 위한 것으로, 위치를 바꾸려면 먼저 녹음을 멈추세요.</div>
@@ -750,19 +751,20 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">Record from stopped</th><td className="manual-td">A <strong>3 → 2 → 1 count-in</strong> overlay appears in the center of the screen, then <strong>playback and recording start together</strong> from the current position.</td></tr>
+                      <tr><th className="manual-th">Record from stopped</th><td className="manual-td">A <strong>count-in</strong> overlay appears in the center of the screen, then <strong>playback and recording start together</strong> from the current position. With the metronome on it counts <strong>4 → 3 → 2 → 1</strong> (one bar at the project BPM); with it off, <strong>3 → 2 → 1</strong> silently, a second apart.</td></tr>
                       <tr><th className="manual-th">Record while playing</th><td className="manual-td">Recording begins <strong>immediately</strong>, with no count-in.</td></tr>
+                      <tr><th className="manual-th">Metronome (count-in click)</th><td className="manual-td">Toggled with the <strong>metronome button</strong> in the transport. When on, the count-in plays <strong>four clicks on the project's BPM</strong> so you can hear your way in (the downbeat is accented). The click is <strong>monitor-only</strong> — it is <strong>never in the recorded file or an Export</strong> — and it stops once recording starts. Without a project BPM the button is <strong>disabled</strong> and the count-in stays silent.</td></tr>
                       <tr><th className="manual-th">Repeat auto-off</th><td className="manual-td">Pressing Record <strong>turns Loop off automatically</strong>, and <strong>restores</strong> the previous loop state when recording ends.</td></tr>
                       <tr><th className="manual-th">Auto-stop</th><td className="manual-td">When playback reaches the <strong>end of the longest existing track</strong>, recording and playback stop automatically. With no existing tracks, recording continues until you press Stop.</td></tr>
                       <tr><th className="manual-th">Record / Stop while recording</th><td className="manual-td">Stops both recording and playback; the transport returns to 0.</td></tr>
                       <tr><th className="manual-th">Play/Pause · Return-to-start while recording</th><td className="manual-td"><strong>Ignored</strong> during recording. Use Record or Stop to end the take.</td></tr>
-                      <tr><th className="manual-th">During the count-in</th><td className="manual-td">Pressing Record / Stop / Play <strong>cancels</strong> the count-in and the recording.</td></tr>
+                      <tr><th className="manual-th">During the count-in</th><td className="manual-td">Pressing Record / Stop / Play <strong>cancels</strong> the count-in and the recording, and silences the click immediately.</td></tr>
                     </tbody>
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/49-record-countin.png" alt="3-2-1 count-in overlay" className="manual-img" />
-                    <div className="manual-figcaption">Pressing Record from a stopped state shows a <strong>3 → 2 → 1 count-in</strong> overlay in the center, then starts playback and recording together. The transport Record button lights red and the armed Audio In track becomes the record target.</div>
+                    <img src="manual/live-screens/49-record-countin.png" alt="count-in overlay" className="manual-img" />
+                    <div className="manual-figcaption">Pressing Record from a stopped state shows a <strong>count-in</strong> overlay in the center, then starts playback and recording together (metronome on = <strong>4 → 3 → 2 → 1</strong> with clicks on the project BPM; off = a silent <strong>3 → 2 → 1</strong>). The transport Record button lights red and the armed Audio In track becomes the record target.</div>
                   </div>
 
                   <div className="manual-warning">During recording and the count-in, the <strong>keyboard seek keys (←/→/,/./0) and mouse-click seeking on the timeline/ruler are all blocked</strong> to keep the playhead from jumping mid-take. Stop recording first if you need to move the position.</div>

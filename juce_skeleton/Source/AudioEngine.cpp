@@ -23,6 +23,85 @@ namespace {
         const float ratio = post / prePeak;      // (0,1]
         return ratio >= 1.0f ? 0.0f : -20.0f * std::log10(ratio);
     }
+
+    // ---- Count-in metronome click (Phase 6 Stage 2) ---------------------------
+    constexpr double kClickSeconds = 0.05;   // burst length; must stay under one beat
+    constexpr double kClickDecay   = 0.012;  // exponential decay time constant
+    constexpr double kAccentHz     = 1568.0; // downbeat (bar start)
+    constexpr double kBeatHz       = 784.0;  // other beats, an octave below the accent
+    constexpr float  kClickLevel   = 0.5f;
+
+    // A click, not a beep: a short sine burst under an exponential decay. Rendered once
+    // per device open (see MetronomeClick::audioDeviceAboutToStart).
+    void buildClickWave(std::vector<float>& dest, double sr, double freqHz)
+    {
+        const int len = juce::jmax(1, (int) std::round(sr * kClickSeconds));
+        dest.assign((size_t) len, 0.0f);
+        for (int i = 0; i < len; ++i)
+        {
+            const double t = i / sr;
+            dest[(size_t) i] = (float) (std::sin(juce::MathConstants<double>::twoPi * freqHz * t)
+                                        * std::exp(-t / kClickDecay));
+        }
+    }
+}
+
+void MetronomeClick::audioDeviceAboutToStart(juce::AudioIODevice* device)
+{
+    // A rate change invalidates both the rendered clicks and the beat grid; a count-in
+    // cannot survive it meaningfully, so drop it rather than click at the wrong tempo.
+    active.store(false);
+    const double sr = device != nullptr ? device->getCurrentSampleRate() : 44100.0;
+    deviceSampleRate.store(sr > 0.0 ? sr : 44100.0);
+    buildClickWave(accentWave, deviceSampleRate.load(), kAccentHz);
+    buildClickWave(normalWave, deviceSampleRate.load(), kBeatHz);
+}
+
+void MetronomeClick::start(double bpm, int beats)
+{
+    const double sr = deviceSampleRate.load();
+    if (sr <= 0.0 || bpm <= 0.0 || beats <= 0) return;
+    // The UI already refuses a count-in without a project BPM; this only keeps a wild
+    // value from producing a beat shorter than the click itself.
+    const double safeBpm = juce::jlimit(20.0, 300.0, bpm);
+    samplesPerBeat.store((juce::int64) std::llround(sr * 60.0 / safeBpm));
+    beatCount.store(beats);
+    pendingReset.store(true);
+    active.store(true); // last: publishes everything above to the audio thread
+}
+
+void MetronomeClick::audioDeviceIOCallbackWithContext(const float* const*, int,
+    float* const* output, int numOutputs, int numSamples, const juce::AudioIODeviceCallbackContext&)
+{
+    // AudioDeviceManager hands secondary callbacks an UNCLEARED scratch buffer, and it is
+    // summed into the mix. Anything left untouched here is full-scale garbage — the same
+    // trap documented in InputRecorder's callback.
+    if (output == nullptr) return;
+    for (int ch = 0; ch < numOutputs; ++ch)
+        if (output[ch] != nullptr)
+            juce::FloatVectorOperations::clear(output[ch], numSamples);
+
+    if (!active.load()) return;
+    const juce::int64 period = samplesPerBeat.load();
+    const int totalBeats = beatCount.load();
+    if (period <= 0 || totalBeats <= 0) { active.store(false); return; }
+    if (pendingReset.exchange(false)) playPosition = 0;
+
+    juce::int64 pos = playPosition;
+    for (int i = 0; i < numSamples; ++i, ++pos)
+    {
+        const juce::int64 beatIndex = pos / period;
+        // Ends exactly on the downbeat AFTER the last click — the instant the recorder
+        // is meant to start, so the click never bleeds into the take's first beat.
+        if (beatIndex >= totalBeats) { active.store(false); break; }
+        const std::vector<float>& wave = (beatIndex == 0) ? accentWave : normalWave;
+        const juce::int64 offset = pos - beatIndex * period;
+        if (offset >= (juce::int64) wave.size()) continue;
+        const float s = wave[(size_t) offset] * kClickLevel;
+        for (int ch = 0; ch < numOutputs; ++ch)
+            if (output[ch] != nullptr) output[ch][i] += s;
+    }
+    playPosition = pos;
 }
 
 bool InputRecorder::start(const juce::File& file, double sr, int inputChannel, bool stereo,
@@ -226,8 +305,10 @@ AudioEngine::~AudioEngine()
 
 #if USE_JUCE
     inputRecorder.stop();
+    metronome.stop();
     for (auto* type : deviceManager.getAvailableDeviceTypes())
         if (type != nullptr) type->removeListener(this);
+    deviceManager.removeAudioCallback(&metronome);
     deviceManager.removeAudioCallback(&inputRecorder);
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
@@ -272,6 +353,7 @@ void AudioEngine::init(int sr)
 
         deviceManager.addAudioCallback(&sourcePlayer);
         deviceManager.addAudioCallback(&inputRecorder);
+        deviceManager.addAudioCallback(&metronome);
         if (auto* currentDevice = deviceManager.getCurrentAudioDevice())
         {
             {
@@ -2335,6 +2417,22 @@ void AudioEngine::cancelRecording()
 {
 #if USE_JUCE
     inputRecorder.cancel();
+#endif
+}
+
+void AudioEngine::startCountIn(double bpm, int beats)
+{
+#if USE_JUCE
+    metronome.start(bpm, beats);
+#else
+    (void) bpm; (void) beats;
+#endif
+}
+
+void AudioEngine::stopMetronome()
+{
+#if USE_JUCE
+    metronome.stop();
 #endif
 }
 

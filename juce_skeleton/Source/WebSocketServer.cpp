@@ -748,6 +748,15 @@ void WebSocketServer::clientLoop(void* socketHandle)
             audioEngine.cancelRecording();
             broadcast("{\"event\":\"recordingCancelled\"}");
         }
+        else if (cmd == "startCountIn")
+        {
+            audioEngine.startCountIn(getJsonDoubleVal(frameText, "bpm"),
+                                     (int) getJsonDoubleVal(frameText, "beats"));
+        }
+        else if (cmd == "stopMetronome")
+        {
+            audioEngine.stopMetronome();
+        }
         else if (cmd == "export")
         {
             std::string exportId = getJsonStringVal(frameText, "exportId");

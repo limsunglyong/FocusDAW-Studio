@@ -84,6 +84,47 @@ private:
     std::atomic<unsigned int> peakWrite { 0 };
     std::atomic<unsigned int> peakRead { 0 };
 };
+
+// Count-in metronome click (Phase 6 Stage 2).
+//
+// Deliberately registered as its OWN device callback rather than as a node in the
+// playback chain (mixerSource -> LoopAudioSource -> Gain -> MasterEffects). That
+// placement is what makes the click monitor-only, which Phase 6 requires:
+//   - it can never reach the recorded WAV: InputRecorder writes the INPUT samples
+//     and this only ever touches the OUTPUT buffer;
+//   - it can never reach an Export: exportMix renders offline through the source
+//     chain, and this is not in it;
+//   - it is unaffected by master volume/fades, which a count-in should be.
+//
+// The beat grid is derived from the callback's own sample counter, so it is
+// sample-accurate and cannot drift the way a timer-driven click would.
+class MetronomeClick : public juce::AudioIODeviceCallback
+{
+public:
+    // Play `beats` clicks at `bpm` and then stop on its own. Safe to call from any
+    // thread: the sequence is described entirely by the atomics below.
+    void start(double bpm, int beats);
+    void stop() { active.store(false); }
+    bool isActive() const { return active.load(); }
+
+    void audioDeviceIOCallbackWithContext(const float* const* input, int numInputs,
+        float* const* output, int numOutputs, int numSamples,
+        const juce::AudioIODeviceCallbackContext&) override;
+    void audioDeviceAboutToStart(juce::AudioIODevice*) override;
+    void audioDeviceStopped() override { active.store(false); }
+
+private:
+    std::atomic<bool> active { false };
+    std::atomic<bool> pendingReset { false };  // consumed by the audio thread on the next block
+    std::atomic<juce::int64> samplesPerBeat { 0 };
+    std::atomic<int> beatCount { 0 };
+    std::atomic<double> deviceSampleRate { 0.0 };
+    juce::int64 playPosition = 0;              // AUDIO THREAD ONLY
+    // Pre-rendered so the audio thread never synthesises or allocates (work principle 5).
+    // Written in audioDeviceAboutToStart, which JUCE calls before any callback for that
+    // device, so this needs no lock.
+    std::vector<float> accentWave, normalWave;
+};
 #endif
 
 struct TrackInfo
@@ -1728,6 +1769,11 @@ public:
                               const std::string& outputName,
                               int channel, bool stereo, double requestedSampleRate, int requestedBufferSize);
     void setInputGain(float gain) { inputRecorder.setInputGain(gain); }
+    // Count-in metronome (Phase 6 Stage 2). Plays `beats` clicks at `bpm` on the
+    // monitor output only — never the recorded WAV, never an Export (see
+    // MetronomeClick). stopMetronome() is the count-in cancel path.
+    void startCountIn(double bpm, int beats);
+    void stopMetronome();
     std::string startRecording(const std::string& filePath, int channel, bool stereo,
                                float gain, bool monitor, bool limiter);
     std::string stopRecording();
@@ -1783,6 +1829,7 @@ private:
     juce::AudioDeviceManager deviceManager;
     juce::AudioSourcePlayer sourcePlayer;
     InputRecorder inputRecorder;
+    MetronomeClick metronome;
     juce::MixerAudioSource mixerSource;
     juce::AudioFormatManager formatManager;
     std::unique_ptr<LoopAudioSource> loopSource;

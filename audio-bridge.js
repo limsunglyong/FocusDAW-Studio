@@ -529,6 +529,23 @@
       pushLoopRangeToNative();
     },
 
+    // Count-in metronome (Phase 6 Stage 2). Native-only by design, and not a gap:
+    // recording itself is native-only (the web engine has no getUserMedia), so a
+    // count-in click with no native engine has nothing to count into. The native
+    // click is generated in its own device callback, which is what keeps it out of
+    // the recorded WAV and out of Export (see MetronomeClick in AudioEngine.h).
+    startCountIn(bpm, beats) {
+      if (!this.isNative || !nativeOutputActive) return false;
+      if (!(bpm > 0) || !(beats > 0)) return false;
+      sendToNative({ command: "startCountIn", bpm, beats: beats | 0 });
+      return true;
+    },
+
+    stopMetronome() {
+      if (!this.isNative) return;
+      sendToNative({ command: "stopMetronome" });
+    },
+
     // Pull playback into the repeat range EXACTLY ONCE (called on loop-region drag end).
     // Repeat only self-sustains via the END boundary (the native engine wraps there; the
     // web engine's rAF loop restarts there), so a region moved AHEAD of the playhead is

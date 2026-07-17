@@ -30,6 +30,8 @@ const IC = {
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.5-4.5",
   book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5v-14A2.5 2.5 0 0 1 6.5 3H20v14H6.5",
   info: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm0-14v4m0 4h.01",
+  // Metronome: trapezoid body + swung pendulum arm (count-in click toggle).
+  metronome: "M9.5 3h5l4 18h-13zM4.5 16h15M12 21L16 7",
 };
 function Icon({ name, size = 18, stroke = 1.7, fill = false, style }) {
   const d = IC[name];

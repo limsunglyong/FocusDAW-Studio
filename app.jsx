@@ -334,15 +334,18 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
 }
 
 /* ---------- transport ---------- */
-function MenuTransportButton({ title, active, children, onClick, wide }) {
+function MenuTransportButton({ title, active, children, onClick, wide, disabled }) {
   const handleClick = (e) => {
+    if (disabled) return;
     if (onClick) onClick(e);
     e.currentTarget.blur();
   };
   return (
-    <button onClick={handleClick} title={title}
+    <button onClick={handleClick} title={title} disabled={!!disabled}
       style={{ width: wide ? 34 : 27, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
         outline: "none",
+        opacity: disabled ? 0.4 : 1,
+        cursor: disabled ? "default" : "pointer",
         color: active ? "#241a0a" : "var(--cream-2)",
         background: active
           ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
@@ -350,13 +353,45 @@ function MenuTransportButton({ title, active, children, onClick, wide }) {
         border: "1px solid " + (active ? "var(--amber)" : "var(--line-strong)"),
         boxShadow: active ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)",
         transition: "background .14s ease, color .14s ease, box-shadow .14s ease, transform .08s ease" }}
-      onMouseDown={(e) => (e.currentTarget.style.transform = "translateY(1px)")}
+      onMouseDown={(e) => { if (!disabled) e.currentTarget.style.transform = "translateY(1px)"; }}
       onMouseUp={(e) => (e.currentTarget.style.transform = "translateY(0)")}
       onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}>
       {children}
     </button>
   );
 }
+
+/* ---------- count-in metronome (Phase 6 Stage 2) ----------
+ * The click itself is generated in the native engine's own device callback
+ * (MetronomeClick in AudioEngine.h) — that is what keeps it out of the recorded WAV
+ * and out of Export. Everything here is the UI/timing side.
+ *
+ * The On/Off flag is a UI preference rather than engine or project state, so it is not
+ * on DAW and not in the .focus file. MenuTransport (the toggle) and Studio (the record
+ * flow) have no shared ancestor state, hence module level + localStorage. MenuTransport
+ * re-renders every frame via useTick(), so a change needs no event to show up.
+ */
+const METRONOME_KEY = "focusdaw-metronome";
+let metronomeEnabled = (() => {
+  try {
+    const raw = localStorage.getItem(METRONOME_KEY);
+    return raw == null ? true : raw === "1"; // default On — the BPM count-in is the Stage 2 norm
+  } catch (e) { return true; }
+})();
+const isMetronomeOn = () => metronomeEnabled;
+const setMetronomeOn = (on) => {
+  metronomeEnabled = !!on;
+  try { localStorage.setItem(METRONOME_KEY, metronomeEnabled ? "1" : "0"); } catch (e) {}
+};
+const COUNT_IN_BEATS = 4;          // one 4/4 bar
+const COUNT_IN_LEGACY_TICKS = 3;   // the pre-Stage-2 silent count-in: 3 ticks, a second apart
+const COUNT_IN_LEGACY_MS = 1000;
+const metronomeBpm = () => (window.DAW && window.DAW.tempo && window.DAW.tempo.projectBpm) || 0;
+// A metronome needs a beat grid, and a project with no detected BPM has none. Rather
+// than click at a made-up tempo, the toggle goes disabled and the count-in falls back
+// to the legacy silent 3×1s path.
+const metronomeAvailable = () => metronomeBpm() > 0;
+const metronomeActive = () => isMetronomeOn() && metronomeAvailable();
 
 function fmtTransportTime(s) {
   const v = Math.max(0, Number.isFinite(s) ? s : 0);
@@ -379,6 +414,9 @@ function MenuTransport() {
   // Repeat off/restore, ignore pause/return-to-start while recording, etc.).
   const tp = (action) => window.dispatchEvent(new CustomEvent("focusdaw-transport", { detail: { action } }));
   const toggleLoop = () => { DAW.setLoop(!loop); };
+  const clickBpm = metronomeBpm();
+  const clickOn = metronomeActive();
+  const toggleMetronome = () => { setMetronomeOn(!isMetronomeOn()); };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 7, height: 36 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32, padding: "2px 4px",
@@ -395,6 +433,15 @@ function MenuTransport() {
         </MenuTransportButton>
         <MenuTransportButton title="Loop" active={loop} onClick={toggleLoop}>
           <Icon name="repeat" size={13} />
+        </MenuTransportButton>
+        <MenuTransportButton
+          title={!clickBpm
+            ? "Metronome needs a project BPM — detect or set one first"
+            : clickOn
+              ? `Count-in metronome: On — ${COUNT_IN_BEATS} clicks at ${Math.round(clickBpm)} BPM before recording`
+              : "Count-in metronome: Off — silent 3-2-1 count-in"}
+          active={clickOn} disabled={!clickBpm} onClick={toggleMetronome}>
+          <Icon name="metronome" size={13} />
         </MenuTransportButton>
         <MenuTransportButton title={recordingInput ? "Stop recording" : canRecord ? "Record armed Audio In track" : "Arm an Audio In track first"}
           active={!!recordingInput} onClick={() => tp("record")}>
@@ -3035,8 +3082,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   //   loopEnabled record across Repeat iterations. Stage 3 splits a Take per iteration
   //               here; for now it is carried on the session and Repeat still goes off,
   //               so behavior is unchanged.
-  //   countIn     count-in ticks before play+record (default: 3 when the transport is
-  //               stopped, 0 while it is already playing). Stage 2 makes these beats.
+  //   countIn     count-in ticks before play+record (0 while already playing). Stage 2
+  //               made these BEATS: with the metronome on and a project BPM, the default
+  //               is one 4/4 bar (4 ticks, 60/BPM apart) with an audible native click.
+  //               Off / no BPM keeps the legacy silent 3 ticks a second apart.
   const startRecordFlow = (opts = {}) => {
     const target = opts.trackId
       ? DAW.tracks.find((t) => t.id === opts.trackId)
@@ -3048,12 +3097,20 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     DAW.tracks.forEach((t) => {
       if (t.id !== target.id && Array.isArray(t.clips)) t.clips.forEach((c) => { songEnd = Math.max(songEnd, c.end || 0); });
     });
+    // Stage 2: one bar of clicks on the project's beat grid, or the legacy silent
+    // 3×1s when the metronome is off or the project has no BPM to build a grid from.
+    const click = metronomeActive();
+    const bpm = metronomeBpm();
     recordSessionRef.current = {
       trackId: target.id,
       start: opts.start != null ? opts.start : null,
       end: opts.end != null ? opts.end : songEnd,
       loopEnabled: !!opts.loopEnabled,
-      countIn: opts.countIn != null ? opts.countIn : (DAW.isPlaying ? 0 : 3),
+      countIn: opts.countIn != null ? opts.countIn
+        : (DAW.isPlaying ? 0 : (click ? COUNT_IN_BEATS : COUNT_IN_LEGACY_TICKS)),
+      click,
+      bpm,
+      tickMs: click ? 60000 / bpm : COUNT_IN_LEGACY_MS,
     };
     const session = recordSessionRef.current;
 
@@ -3065,6 +3122,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     let n = session.countIn;                 // count-in overlay before play+record
     if (!enterRecordPhase("countIn")) return;
     setRecordCount(n);
+    // The native click owns the beat grid (it counts samples in the audio callback);
+    // this timer only drives the on-screen number. Two clocks, but they are only asked
+    // to agree for the length of one bar, so any drift between them stays far below
+    // what an eye can catch against the clicks.
+    if (session.click) DAW.startCountIn(session.bpm, session.countIn);
     recordCountRef.current = setInterval(() => {
       n -= 1;
       if (n <= 0) {
@@ -3072,12 +3134,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         setRecordCount(null);
         beginRecorderAt(target);             // countIn → recording happens inside
       } else setRecordCount(n);
-    }, 1000);
+    }, session.tickMs);
   };
   const beginRecordFlow = () => startRecordFlow();
   const cancelCountIn = () => {
     if (recordPhaseRef.current !== "countIn") return;
     if (recordCountRef.current) { clearInterval(recordCountRef.current); recordCountRef.current = null; }
+    // The click runs on the engine's own clock, so clearing the timer above does not
+    // silence it — without this it would keep counting a bar that was cancelled.
+    if (DAW.stopMetronome) DAW.stopMetronome();
     enterRecordPhase(null);
     setRecordCount(null);
     recordSessionRef.current = null;
@@ -3400,7 +3465,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           background: "rgba(0,0,0,.45)", pointerEvents: "none" }}>
           <div key={recordCount} style={{ fontSize: "11vmin", fontWeight: 400, lineHeight: 1, color: "var(--cream)",
             fontFamily: '"Orbitron", var(--mono, monospace)', textShadow: "0 0 40px rgba(0,0,0,.85), 0 8px 30px rgba(0,0,0,.6)",
-            animation: "recordCountPulse .9s ease-out" }}>
+            // One pulse per tick. The .9s of the old 1s-per-tick count-in outlasts a beat
+            // at any tempo over 67 BPM, which left the number frozen mid-pulse — each tick
+            // remounts it (key) and restarts an animation that never got to finish.
+            animation: `recordCountPulse ${Math.min(900, (recordSessionRef.current && recordSessionRef.current.tickMs ? recordSessionRef.current.tickMs : 1000) * 0.9)}ms ease-out` }}>
             {recordCount}
           </div>
         </div>
