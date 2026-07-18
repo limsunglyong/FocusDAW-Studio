@@ -601,7 +601,7 @@ function snapshotSig(snap) {
     master: snap.master,
     eqBands: snap.eqBands,
     tempo: snap.tempo,
-    tracks: (snap.tracks || []).map((t) => ({ id: t.id, params: t.params, clips: t.clips, takes: t.takes })),
+    tracks: (snap.tracks || []).map((t) => ({ id: t.id, params: t.params, clips: t.clips, takes: t.takes, activeTakeId: t.activeTakeId })),
   });
 }
 const TOOL_TIPS  = { select: "Select / Seek (S)", scissors: "Split clip (C)", join: "Join clips (J)" };
@@ -2619,6 +2619,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (id) setClipSel({ trackId, clipIds: [id] }); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
   const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
+  // Phase 6 Stage 4 — Take Lanes. Switching the active Take or deleting one re-bakes the
+  // track (only the active lane plays), so both are undoable engine edits.
+  const handleSetActiveTake = useCallback((trackId, takeId) => {
+    const savedRedo = pushUndo();
+    if (!DAW.setActiveTake(trackId, takeId)) cancelUndo(savedRedo); else force((n) => n + 1);
+  }, [pushUndo, cancelUndo]);
+  const handleDeleteTake = useCallback((trackId, takeId) => {
+    const savedRedo = pushUndo();
+    if (!DAW.deleteTake(trackId, takeId)) cancelUndo(savedRedo); else force((n) => n + 1);
+  }, [pushUndo, cancelUndo]);
   const handlePasteClip = useCallback((trackId, atStart) => {
     lockTimelineZoom(); pushUndo(); const id = DAW.pasteClip(trackId, atStart);
     lastClipTrackRef.current = trackId;
@@ -2686,6 +2696,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath, reconnectTrackId: track.id });
       } catch (err) {
         console.warn("Failed to reconnect audio:", track.filePath, err);
+      }
+    }
+    // Phase 6 Stage 3: an Audio In track can hold several Takes, each a separate source
+    // WAV. addFileBuffer above only reconnects the PRIMARY (sources[0]); reload every
+    // additional Take's audio too, or the active lane (if it's a non-primary Take) bakes
+    // to silence on reopen.
+    for (const track of DAW.tracks) {
+      const extras = (track.sources || []).slice(1).filter((s) => s.needsAudio && s.filePath);
+      for (const src of extras) {
+        try {
+          const ab = await window.electronAPI.readAudioFile(src.filePath);
+          await DAW.hydrateSource(track.id, src.id, ab, { filePath: src.filePath });
+        } catch (err) {
+          console.warn("Failed to reconnect take audio:", src.filePath, err);
+        }
       }
     }
     setLoading({ active: true, total: missing.length, done: missing.length, label: "Finalizing..." });
@@ -2964,12 +2989,25 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         const bytes = await window.electronAPI.readAudioFile(saved.path);
         const attachOptions = { filePath: saved.path, start: active.start };
         if (active.durationLimit > 0) attachOptions.end = active.durationLimit;
-        await DAW.attachRecording(track.id, saved.fileName, bytes, attachOptions);
+        // Snapshot the PRE-take state so Undo removes exactly this recording (and only it).
+        // attachRecording appends a Take; without this, the recording was not undoable, so
+        // the next Ctrl+Z reverted the last edit BEFORE the take (e.g. a clip move) instead
+        // — restoring an earlier layout and confusingly dropping the take. Pushed right
+        // before the append (after finalize/read succeed) so a failed take leaves no entry.
+        pushUndo();
+        if (active.loopTake) {
+          // Stage 3b: cut the continuous loop recording into one Take per iteration.
+          await DAW.attachLoopRecording(track.id, saved.fileName, bytes,
+            { filePath: saved.path, loopStart: active.loopStart, loopEnd: active.loopEnd });
+        } else {
+          await DAW.attachRecording(track.id, saved.fileName, bytes, attachOptions);
+        }
       } catch (e) {
         alert(`Recording could not be finalized: ${e.message || e}`);
       }
       track.recording = false;
       delete track._recordingDurationLimit;
+      delete track._recordLoop;
       recordingRef.current = null;
       recordSessionRef.current = null;
       enterRecordPhase(null); // → armed
@@ -3004,6 +3042,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const start = session && session.start != null ? session.start : DAW.getPlayhead();
     track.recording = true;
     track._recordingStart = start;
+    // Loop-Take: tell the live-preview waveform to WRAP the growing recording back into the
+    // Repeat region instead of drawing it off to the right past the loop end (Stage 3b/4 UX).
+    track._recordLoop = (session && session.loopTake && session.loopEnd > session.loopStart)
+      ? { start: session.loopStart, end: session.loopEnd } : null;
     track._recordingPeaks = [];
     track._recordingSampleRate = 44100;
     const durationLimit = Number(track._recordingDurationLimit) || 0;
@@ -3012,11 +3054,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       gain: Math.max(0.1, Math.min(4, track.params.inputGain == null ? 1 : track.params.inputGain)),
       monitor: !!track.params.monitor, limiter: track.params.limiter !== false,
     });
-    recordingRef.current = { trackId: track.id, ...target, start, durationLimit, promise };
+    // Carry loop-Take info through to the stop path (the session ref may be cleared by then).
+    recordingRef.current = { trackId: track.id, ...target, start, durationLimit, promise,
+      loopTake: !!(session && session.loopTake),
+      loopStart: session && session.loopStart || 0,
+      loopEnd: session && session.loopEnd || 0 };
     promise.catch((e) => {
       if (recordingRef.current && recordingRef.current.trackId === track.id) {
         track.recording = false;
         delete track._recordingDurationLimit;
+        delete track._recordLoop;
         recordingRef.current = null;
         recordSessionRef.current = null;
         // The engine rejected the take AFTER we claimed the flow. Release it, or Record
@@ -3028,7 +3075,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       }
     });
     force((n) => n + 1);
-  }, [projectPath, fitTimelineToProject]);
+  }, [projectPath, fitTimelineToProject, pushUndo]);
 
   // ---- Recording transport flow (record start/stop rules) ------------------
   // Record from a stopped transport shows a 3s count-in then starts play+record;
@@ -3108,6 +3155,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (!isRecordingActive()) { stopAutoStopMonitor(); return; }
       const end = songEndRef.current;
       if (end > 0 && (DAW.getPlayhead() >= end - 0.03 || !DAW.isPlaying)) doStopRecording();
+      // Loop-take records through the Repeat until manual Stop (no position limit); only a
+      // dead transport (playback failed under us) forces it to end here.
+      else if (recordingRef.current && recordingRef.current.loopTake && !DAW.isPlaying) doStopRecording();
     }, 120);
   };
   const beginRecorderAt = async (target) => {
@@ -3179,6 +3229,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // 3×1s when the metronome is off or the project has no BPM to build a grid from.
     const click = !useProll && metronomeActive();
     const bpm = metronomeBpm();
+    // Phase 6 Stage 3b — loop-Take recording. Pressing Record with the Repeat REGION active
+    // records straight through the loop; on Stop the one continuous WAV is cut into a Take
+    // per iteration (attachLoopRecording). The take clips sit at the loop start, the Repeat
+    // stays ON so native keeps wrapping (LoopAudioSource), and there is NO position auto-stop
+    // — the user stops manually. Falls back to normal single-take recording when Repeat is off.
+    const lr = DAW.loopRange;
+    const loopTake = !!(DAW.repeatPlayEnabled && lr && (lr.end - lr.start) > 0.05);
     recordSessionRef.current = {
       trackId: target.id,
       // ⚠️ Pre-roll MUST leave this null. `start` is where the take's clip is placed, and
@@ -3187,8 +3244,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       // later (poll tick + device-open await) — and unlike the count-in case the
       // transport is ROLLING through that gap, so the take would land early by however
       // long it took. Null keeps placement self-consistent with what was captured.
-      start: opts.start != null ? opts.start : null,
-      end: opts.end != null ? opts.end : recordEnd,
+      // Loop-take pins start to the loop start so the take clips (and the seek) align to it.
+      start: loopTake ? lr.start : (opts.start != null ? opts.start : null),
+      end: loopTake ? 0 : (opts.end != null ? opts.end : recordEnd),
+      loopTake,
+      loopStart: loopTake ? lr.start : 0,
+      loopEnd: loopTake ? lr.end : 0,
       loopEnabled: !!opts.loopEnabled,
       countIn: opts.countIn != null ? opts.countIn
         : (DAW.isPlaying || useProll ? 0 : (click ? COUNT_IN_BEATS : COUNT_IN_LEGACY_TICKS)),
@@ -3576,23 +3637,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
-      {/* Pre-roll indicator. Deliberately NOT the count-in's full-screen dim: pre-roll is
-          spent watching the playhead run at the music and judging your entry, and the
-          overlay would black out the very thing you are watching. */}
-      {prerollLeft != null && (
-        <div style={{ position: "fixed", top: 52, left: 0, right: 0, zIndex: 2000,
-          display: "grid", placeItems: "center", pointerEvents: "none" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 14px", borderRadius: 999,
-            background: "rgba(20,14,6,.82)", border: "1px solid var(--amber)",
-            boxShadow: "0 0 18px var(--amber-soft), 0 8px 22px -12px rgba(0,0,0,.9)" }}>
-            <span className="record-blink" style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--red)" }} />
-            <span style={{ fontSize: 11, letterSpacing: ".14em", color: "var(--cream-2)" }}>PRE-ROLL</span>
-            <span className="mono" style={{ fontSize: 14, color: "var(--amber)", minWidth: 38, textAlign: "right" }}>
-              {prerollLeft.toFixed(1)}s
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Pre-roll's countdown now rides on the recording track's lane at the punch position
+          (TrackRow `countIn`), which is exactly where the player is looking as the arrangement
+          scrolls toward the entry — so the old top-of-screen pill is gone. */}
+      {/* Count-in (no pre-roll: recording from a stopped transport) keeps the original big
+          centre number. Only the PRE-ROLL countdown moved to an in-track badge (below), since
+          during pre-roll the player is watching the arrangement scroll toward the punch. */}
       {recordCount != null && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, display: "grid", placeItems: "center",
           background: "rgba(0,0,0,.45)", pointerEvents: "none" }}>
@@ -3731,12 +3781,23 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
+                  onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               {nonFileTracks.map((t) => {
                 const i = DAW.tracks.findIndex((track) => track.id === t.id);
                 const trackLaneH = t.kind === "audioIn" ? audioInLaneHeight : laneH;
-                return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={trackLaneH} sizeLaneH={laneH}
+                // PRE-ROLL only: show the countdown AS A BADGE at the punch position on the
+                // recording track's own lane, so the player sees WHERE the take will begin
+                // while the arrangement scrolls toward it. The plain count-in (no pre-roll)
+                // keeps its original big centre number instead (see the overlay below).
+                const rs = recordSessionRef.current;
+                const countIn = prerollLeft != null && rs && rs.trackId === t.id ? {
+                  atSec: rs.punchAt != null ? rs.punchAt : (rs.start != null ? rs.start : 0),
+                  label: prerollLeft.toFixed(1) + "s",
+                  kind: "preroll",
+                } : null;
+                return <TrackRow key={t.id} track={t} idx={i} pxPerSec={pxPerSec} ampZoom={ampZoom} laneH={trackLaneH} sizeLaneH={laneH} countIn={countIn}
                   playhead={playhead} playbackLevel={DAW.getTrackLevel(t.id)}
                   inputLevel={t.kind === "audioIn" ? DAW.getInputLevel() : 0}
                   inputGr={t.kind === "audioIn" && DAW.getInputGainReduction ? DAW.getInputGainReduction() : 0}
@@ -3753,6 +3814,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
+                  onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   tool={tool} onSplit={handleSplit} onJoin={handleJoin} onBeforeChange={pushUndo} />;
               })}
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}

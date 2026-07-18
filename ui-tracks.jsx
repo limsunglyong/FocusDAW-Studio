@@ -89,6 +89,34 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
         const pointCount = Math.floor(livePeaks.length / 3);
         const lastSample = livePeaks[(pointCount - 1) * 3] || 1;
         const totalSeconds = lastSample / sr;
+        // Loop-Take (Stage 3b): the recording runs continuously across Repeat iterations, so
+        // wrap each point's timeline position back into [loopStart, loopEnd] — the passes
+        // stack inside the region instead of trailing off to the right past the loop end.
+        const rLoop = track._recordLoop && track._recordLoop.end > track._recordLoop.start ? track._recordLoop : null;
+        if (rLoop) {
+          const len = rLoop.end - rLoop.start;
+          const wrapT = (t) => rLoop.start + (((t - rLoop.start) % len) + len) % len;
+          const mid = height / 2;
+          const stride = Math.max(1, Math.floor(pointCount / Math.max(1, drawW * 1.5)));
+          c2d.strokeStyle = track.color; c2d.lineWidth = 1; c2d.globalAlpha = .9;
+          c2d.beginPath();
+          for (let i = 0; i < pointCount; i += stride) {
+            const windowEnd = Math.min(pointCount, i + stride);
+            let min = 0, max = 0;
+            for (let j = i; j < windowEnd; j++) {
+              const pMin = livePeaks[j * 3 + 1] || 0, pMax = livePeaks[j * 3 + 2] || 0;
+              if (pMin < min) min = pMin; if (pMax > max) max = pMax;
+            }
+            const x = wrapT(recordingStart + (livePeaks[i * 3] / sr)) * pxPerSec - drawStart;
+            if (x < 0 || x > drawW) continue;
+            c2d.moveTo(x, mid - max * mid * .92 * ampZoom);
+            c2d.lineTo(x, mid - min * mid * .92 * ampZoom);
+          }
+          c2d.stroke(); c2d.globalAlpha = 1;
+          const headX = wrapT(recordingStart + totalSeconds) * pxPerSec - drawStart;
+          c2d.fillStyle = "#df5b52"; c2d.fillRect(headX, 0, 1.5, height);
+          return;
+        }
         const visibleStartSeconds = Math.max(0, drawStart / pxPerSec - recordingStart);
         const visibleEndSeconds = Math.min(totalSeconds, (drawStart + drawW) / pxPerSec - recordingStart);
         const firstPoint = Math.max(0, Math.floor((visibleStartSeconds / Math.max(totalSeconds, .001)) * pointCount) - 2);
@@ -840,11 +868,18 @@ function ClipContextMenu({ x, y, items, hint, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
   const [hoveredClipId, setHoveredClipId] = useState(null);
+  // Phase 6 Stage 4 — Take Lanes. An Audio In track that holds Takes can expand a lane per
+  // Take below its main lane; clicking a lane makes it active, and only the active Take is
+  // baked/played (Stage 3a). Take data (incl. per-source peaks to draw inactive lanes) comes
+  // from the engine; a track with 0–1 takes shows no expander.
+  const [takesOpen, setTakesOpen] = useState(false);
+  const takeLanes = (track.kind === "audioIn" && DAW.getTakeLanes) ? DAW.getTakeLanes(track.id) : [];
+  const takeLaneH = Math.max(40, Math.round((track.kind === "audioIn" ? laneH : laneH) * 0.5));
 
   // Phase 5 (전략 B): clip move/trim on Audio In / Bounce tracks. During a drag we
   // only move a visual "ghost" and commit the engine edit (which re-bakes t.buffer)
@@ -965,10 +1000,18 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
 
+  // Stage 3: one Audio In track can hold several Takes, but only the ACTIVE take's clips
+  // are live (baked/played/exported). Until the Take Lanes UI (Stage 4) arrives, the
+  // timeline shows just the active lane so alternate takes don't stack as overlapping
+  // ghost clips. A track with no takes (file/bounce/legacy) has activeTakeId null → every
+  // clip is active, so those tracks render exactly as before.
+  const activeTakeId = (track.takes && track.takes.length && track.activeTakeId) ? track.activeTakeId : null;
+  const isActiveClip = (c) => !activeTakeId || !c.takeId || c.takeId === activeTakeId;
+  const activeClips = (track.clips || []).filter(isActiveClip);
   // The clips the user can actually SEE, in timeline order. The render skips
   // zero-duration placeholders, so the scissors/join tools must ignore them too —
   // otherwise they can be picked as a join partner or shift the neighbour lookup.
-  const visibleClips = () => (track.clips || [])
+  const visibleClips = () => activeClips
     .filter(c => (c.end - c.start) > 0)
     .sort((a, b) => a.start - b.start);
   // The pair a join click would merge: this clip + its NEXT visible neighbour (or the
@@ -1014,6 +1057,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   const toolCursor = tool === 'scissors' ? 'crosshair' : tool === 'join' ? 'cell' : 'text';
 
   return (
+    <React.Fragment>
     <div style={{ display: "flex", minWidth: "min-content" }}>
       <TrackHeader track={track} idx={idx} playbackLevel={playbackLevel} inputLevel={inputLevel} inputGr={inputGr} recordingActive={recordingActive} onParam={onParam} onRemove={onRemove} laneH={laneH} sizeLaneH={sizeLaneH} onFocusFx={onFocusFx} selected={selected} onSelect={onSelect} indent={headerIndent} onMuteAllFiles={onMuteAllFiles} onRename={onRename} />
       <div onMouseDown={(e) => { if (e.button !== 0) return; if (onSelect) onSelect(e); if (!(e.ctrlKey || e.metaKey || e.shiftKey)) laneClick(e); }}
@@ -1030,8 +1074,22 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
           isolation: "isolate",
           borderBottom: "1px solid var(--line)", overflow: "hidden", cursor: toolCursor }}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
-        <Waveform track={track} clips={track.clips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} volume={track.params.volume} />
+        <Waveform track={track} clips={activeClips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} volume={track.params.volume} />
         {p.autoOn && <AutomationOverlay track={track} pxPerSec={pxPerSec} height={laneH} onBeforeChange={onBeforeChange} />}
+        {/* Take Lanes expander — only when this Audio In track actually holds Takes. Sticks
+            to the left so it stays on screen while the arrangement scrolls. */}
+        {takeLanes.length > 0 && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); setTakesOpen(o => !o); }}
+            title={takesOpen ? "Hide take lanes" : "Show take lanes"}
+            style={{ position: "sticky", left: 6, top: 6, float: "left", zIndex: 7,
+              display: "inline-flex", alignItems: "center", gap: 4, height: 18, padding: "0 7px",
+              borderRadius: 9, border: "1px solid rgba(232,176,75,.35)", cursor: "pointer",
+              background: "color-mix(in srgb, var(--surface2) 82%, var(--amber) 18%)",
+              color: "var(--amber)", fontSize: 9.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+            <span style={{ transition: "transform .16s", transform: takesOpen ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
+            {takeLanes.length} take{takeLanes.length > 1 ? "s" : ""}
+          </button>
+        )}
         {/* scissors hover highlight */}
         {hoveredClipId && tool === 'scissors' && (() => {
           const clip = track.clips.find(c => c.id === hoveredClipId);
@@ -1059,7 +1117,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             joined across a gap carries that silence INSIDE one clip, which looks exactly
             like two clips. Read-only (pointerEvents:none) so the lane still receives the
             split/join clicks. */}
-        {clipEditable && (tool === "scissors" || tool === "join") && !p.autoOn && (track.clips || []).map((clip) => {
+        {clipEditable && (tool === "scissors" || tool === "join") && !p.autoOn && activeClips.map((clip) => {
           if ((clip.end - clip.start) <= 0) return null;
           return <div key={`bound-${clip.id}`} style={{ position: "absolute", top: 2, bottom: 2,
             left: clip.start * pxPerSec, width: Math.max(2, (clip.end - clip.start) * pxPerSec),
@@ -1070,7 +1128,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             Only on editable (Audio In / Bounce) tracks, in select mode, when not
             editing automation. Clip rects cover only clip ranges, so lane gaps
             remain click-to-seek. */}
-        {clipEditable && tool === "select" && !p.autoOn && (track.clips || []).map((clip) => {
+        {clipEditable && tool === "select" && !p.autoOn && activeClips.map((clip) => {
           const cd = clipDrag.current;
           const dr = cd && cd.clipId === clip.id ? cd : null;
           // During a rigid group drag every OTHER selected clip ghosts by the same delta.
@@ -1109,6 +1167,19 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
               {sel && (
                 <span className="mono" style={{ ...CLIP_TIME_STYLE, bottom: 2, right: 4 }}>{fmtClipTime(en)}</span>
               )}
+              {/* Stage 3a: the only visible sign that recordings accumulate as Takes (the
+                  Take Lanes UI is Stage 4). Under the start time on the selected active clip,
+                  show which Take is active + how many exist ("Take B · 2/2"). Shifts right of
+                  the moving spinner (top:15,left:4) so both are readable during a drag. */}
+              {sel && activeTakeId && (() => {
+                const tk = (track.takes || []).find((t) => t.id === clip.takeId);
+                if (!tk) return null;
+                const n = (track.takes || []).length;
+                return <span className="mono" style={{ ...CLIP_TIME_STYLE, top: 15, left: moving ? 18 : 4,
+                  color: "var(--amber)", opacity: .85 }}>
+                  {n > 1 ? `${tk.name} · ${(tk.index || 0) + 1}/${n}` : tk.name}
+                </span>;
+              })()}
               {/* Move in progress (drag or held arrow key): the engine re-bake is deferred
                   to the commit, so this marks "position not written yet". */}
               {sel && moving && (
@@ -1127,7 +1198,80 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             hint={clip ? "Drag to move · drag edges to trim\nCtrl+click clips to select several · ←/→ nudges\nEsc or click away to deselect" : null}
             onClose={closeClipMenu} />;
         })()}
+        {countIn && (
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: countIn.atSec * pxPerSec,
+            pointerEvents: "none", zIndex: 11 }}>
+            {/* punch marker line + countdown badge at the record start position */}
+            <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 2,
+              background: "var(--red)", boxShadow: "0 0 8px rgba(223,91,82,.8)" }} />
+            <div className="record-blink" style={{ position: "absolute", top: 6, left: 5,
+              display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999,
+              background: "rgba(20,14,6,.9)", border: "1px solid var(--amber)", whiteSpace: "nowrap",
+              boxShadow: "0 0 14px var(--amber-soft)" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--red)" }} />
+              <span style={{ fontSize: 9, letterSpacing: ".12em", color: "var(--cream-2)" }}>
+                {countIn.kind === "preroll" ? "PRE-ROLL" : "COUNT-IN"}
+              </span>
+              <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>{countIn.label}</span>
+            </div>
+          </div>
+        )}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 }} />
+      </div>
+    </div>
+    {takesOpen && takeLanes.map((tk) => (
+      <TakeLaneRow key={tk.id} take={tk} trackId={track.id} laneW={laneW} laneH={takeLaneH}
+        pxPerSec={pxPerSec} ampZoom={ampZoom} playhead={playhead}
+        onActivate={() => { if (!tk.active && onSetActiveTake) onSetActiveTake(track.id, tk.id); }}
+        onDelete={() => onDeleteTake && onDeleteTake(track.id, tk.id)} />
+    ))}
+    </React.Fragment>
+  );
+}
+
+/* ---------- one Take lane (Phase 6 Stage 4) ----------
+   Renders an inactive/active Take's waveform on its own row under the track. The Take's
+   audio is NOT in the track's baked buffer (only the active one is), so it draws from a
+   pseudo-track built on the SOURCE raw buffer + peaks (tk.render) sampled by clip.offset. */
+function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead, onActivate, onDelete }) {
+  const phx = (playhead / Math.max(0.001, DAW.duration)) * laneW;
+  const active = take.active;
+  return (
+    <div style={{ display: "flex", minWidth: "min-content" }}>
+      <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 7,
+        height: laneH, padding: "0 10px 0 26px", display: "flex", alignItems: "center", gap: 8,
+        background: active ? "color-mix(in srgb, var(--surface2) 80%, var(--amber) 20%)"
+                           : "color-mix(in srgb, var(--surface2) 96%, var(--amber) 4%)",
+        borderRight: "1px solid var(--line-strong)", borderBottom: "1px solid var(--line)",
+        cursor: "pointer" }}
+        onClick={onActivate} title={active ? "Active take" : "Click to make this the active take"}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", flex: "0 0 9px",
+          background: active ? "var(--amber)" : "transparent",
+          border: active ? "none" : "1.5px solid var(--dim)" }} />
+        <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: active ? "var(--amber)" : "var(--cream-2)" }}>
+            {take.name}{take.partial ? " (partial)" : ""}
+          </span>
+          <span style={{ fontSize: 9, color: "var(--muted)", fontWeight: 600 }}>
+            {active ? "active" : "click to select"}
+          </span>
+        </span>
+        <button type="button" title="Delete this take"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          style={{ marginLeft: "auto", width: 20, height: 20, borderRadius: 5, flex: "0 0 20px",
+            border: "1px solid var(--line-strong)", background: "transparent", color: "var(--muted)",
+            cursor: "pointer", fontSize: 12, lineHeight: 1, display: "grid", placeItems: "center" }}>×</button>
+      </div>
+      <div style={{ position: "relative", width: laneW, height: laneH, overflow: "hidden",
+        isolation: "isolate", borderBottom: "1px solid var(--line)", cursor: "pointer",
+        background: active ? "rgba(232,176,75,.05)" : "rgba(255,255,255,.008)" }}
+        onClick={onActivate}>
+        <TimeGrid pxPerSec={pxPerSec} height={laneH} />
+        {take.render && <Waveform track={take.render} clips={take.clips} pxPerSec={pxPerSec}
+          ampZoom={ampZoom} height={laneH} volume={1} />}
+        {!active && <div style={{ position: "absolute", inset: 0, background: "rgba(10,14,22,.34)", pointerEvents: "none" }} />}
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5,
+          background: "var(--cream)", opacity: .5, pointerEvents: "none", zIndex: 10 }} />
       </div>
     </div>
   );

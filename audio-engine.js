@@ -364,6 +364,35 @@
       return id;
     },
     _sourceId() { return "src_" + Math.random().toString(36).slice(2, 10); },
+    _takeId() { return "take_" + Math.random().toString(36).slice(2, 10); },
+    // "Take A", "Take B", … "Take Z", "Take AA" — spreadsheet-column labelling so a long
+    // loop session keeps readable names. index is 0-based.
+    _takeLabel(index) {
+      let n = Math.max(0, index | 0), s = "";
+      do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+      return "Take " + s;
+    },
+    // The active take is the one lane whose clips bake / play / export. A track with no
+    // takes (file/bounce, or a legacy Audio In from before Stage 3) has none, and then
+    // EVERY clip is live — so non-audioIn tracks and old projects are unaffected.
+    _activeTakeId(track) {
+      if (track && track.activeTakeId && (track.takes || []).some(t => t.id === track.activeTakeId)) {
+        return track.activeTakeId;
+      }
+      return null;
+    },
+    // A clip is "live" when it belongs to the active take, OR carries no takeId at all
+    // (file/bounce clips, consolidations, anything predating takes) — those are shared
+    // across lanes and must always render. Only a clip tagged with a DIFFERENT take is
+    // hidden from bake/overlap/playback.
+    _isActiveClip(track, clip) {
+      const act = this._activeTakeId(track);
+      if (!act) return true;
+      return !clip.takeId || clip.takeId === act;
+    },
+    _activeClips(track) {
+      return (track.clips || []).filter(c => this._isActiveClip(track, c));
+    },
     _trackKindFor({ kind = null, isDemo = false } = {}) {
       if (kind === "audioIn" || kind === "bounce" || kind === "file") return kind;
       return isDemo ? "file" : "file";
@@ -424,6 +453,31 @@
         track.clips = track.clips.map(c => this._normalizeClip(c, c.sourceId || primary.id, primary.duration || 0));
       }
       track.takes = Array.isArray(track.takes) ? track.takes.map(t => ({ ...t })) : [];
+      if (track.activeTakeId === undefined) track.activeTakeId = null;
+      // --- Take hygiene: deterministic, gap-free numbering ---
+      // Undo/redo across track delete + re-add (the undo stack still holds the old track's
+      // takes), or deleting a take's clip, could leave `takes` out of sync with the clips
+      // actually present — orphan take entries no clip references, or a non-contiguous index
+      // that makes a fresh 1st recording label itself "Take C". This runs on every serialize/
+      // snapshot/import/undo-apply, so keep the take list == the takes the clips actually use,
+      // in recording (append) order, and renumber labels A, B, C… with no gaps. The next
+      // recording is then always the next letter and no phantom take can reappear.
+      if (track.takes.length || (track.clips || []).some(c => c.takeId)) {
+        const referenced = new Set((track.clips || []).map(c => c.takeId).filter(Boolean));
+        const rebuilt = track.takes.filter(t => referenced.has(t.id));  // keep append order
+        const liveIds = new Set(rebuilt.map(t => t.id));
+        // A clip pointing at a take that no longer exists (dangling id — never a real entry,
+        // or dropped above) would be hidden forever by _isActiveClip. Detach it (takeId=null)
+        // so it stays visible as a shared clip instead of vanishing.
+        for (const c of (track.clips || [])) { if (c.takeId && !liveIds.has(c.takeId)) c.takeId = null; }
+        rebuilt.forEach((t, i) => { t.index = i; t.name = this._takeLabel(i); });
+        track.takes = rebuilt;
+      }
+      // Drop a dangling activeTakeId (points at a take that no longer exists) so
+      // _activeTakeId() falls back sensibly instead of hiding every clip.
+      if (track.activeTakeId && !track.takes.some(t => t.id === track.activeTakeId)) {
+        track.activeTakeId = track.takes.length ? track.takes[track.takes.length - 1].id : null;
+      }
       return track;
     },
     _serializedSources(track) {
@@ -630,7 +684,7 @@
       });
     },
 
-    _addTrack({ name, type, color, buffer, peaks = null, isDemo = false, fileName = null, filePath = null, needsAudio = false, kind = null, lockedToZero = undefined, sources = null, clips = null, takes = null }) {
+    _addTrack({ name, type, color, buffer, peaks = null, isDemo = false, fileName = null, filePath = null, needsAudio = false, kind = null, lockedToZero = undefined, sources = null, clips = null, takes = null, activeTakeId = null }) {
       const id = "t" + (this.tracks.length + 1) + "_" + Math.random().toString(36).slice(2, 6);
       // persistent nodes
       const fader = ctx.createGain();
@@ -686,6 +740,7 @@
         }],
         clips: clips ? clips.map(c => ({ ...c })) : [this._normalizeClip({ start: 0, end: sourceDuration, offset: 0 }, sourceId, sourceDuration)],
         takes: Array.isArray(takes) ? takes.map(t => ({ ...t })) : [],
+        activeTakeId: activeTakeId || null,
         isDemo, fileName, filePath, needsAudio, audioRev: 0,
         _meterBuf: new Float32Array(meter.fftSize),
       };
@@ -719,45 +774,43 @@
       const track = this.tracks.find((t) => t.id === trackId && t.kind === "audioIn");
       if (!track) throw new Error("Audio In track was not found.");
       const decoded = await this._decodeAudio(arrayBuffer, null);
-      track.buffer = decoded.buffer;
-      track.peaks = decoded.peaks.fine;
-      track.peaksMedium = decoded.peaks.medium;
-      track.peaksCoarse = decoded.peaks.coarse;
-      track.peakAmp = maxAbsPeak(decoded.peaks.coarse);
-      track.fileName = name;
-      track.filePath = options.filePath || null;
       const sourceId = this._sourceId();
-      // ⚠️ This take REPLACES the track's audio, so the layout state left by the PREVIOUS
-      // take must be torn down with it — both fields below were silently kept, and each
-      // one alone corrupts the track:
-      //   _rawBuffers  still mapped the OLD source id. The new source was never
-      //                registered, so the next edit's re-bake looked it up, missed, and
-      //                skipped the clip → "[bake] clip skipped — no raw buffer" → the
-      //                take vanished. Reachable today: record → move the clip (bakes) →
-      //                record again → any edit.
-      //   _layoutBaked stayed true from that earlier bake while track.buffer is the RAW
-      //                decode again, so the Waveform indexed a source-indexed buffer by
-      //                timeline position (상시 노트: 버퍼 인덱싱 이원성) → wrong drawing.
-      // Stage 3 keeps prior takes instead of replacing them; it will drop this reset and
-      // append via _registerSource, which is why that primitive exists now.
-      track._rawBuffers = {};
-      track._layoutBaked = false;
-      track.sources = [];
+      // Stage 3 — each recording APPENDS a Take instead of replacing the track's audio.
+      // The pre-Stage-3 code reset track._rawBuffers/_layoutBaked/sources here (a take was
+      // the whole track, so the previous one had to be torn down). Now every take is kept:
+      // _registerSource adds this source + its raw buffer additively (see _captureRawBuffers),
+      // the take is tagged onto its clip, and _ensureBaked bakes only the ACTIVE take's
+      // clips. So we must NOT clear those maps — doing so would drop earlier takes' raws.
+      this._captureRawBuffers(track);   // preserve the current primary raw before we grow
       this._registerSource(track, {
-        id: sourceId, filePath: track.filePath, fileName: name,
+        id: sourceId, filePath: options.filePath || null, fileName: name,
         duration: decoded.buffer.duration, sampleRate: decoded.buffer.sampleRate,
         channels: decoded.buffer.numberOfChannels, needsAudio: false,
       }, decoded.buffer);
+      // Track-level fileName/filePath identify the PRIMARY (first) take/source — the one
+      // importProject reloads as sources[0]. Only stamp them on the first recording so a
+      // reopened project's track identity stays pinned to Take A, not the latest take.
+      if (!track.fileName) track.fileName = name;
+      if (!track.filePath) track.filePath = options.filePath || null;
       // Re-recording onto a reopened (placeholder) Audio In track must clear the
       // track-level needsAudio too. Leaving it true keeps the NO AUDIO badge and
       // makes setTrackParam drop Solo/Mute/bpmSource (audio-engine setTrackParam /
       // audio-bridge gate), even though the buffer now plays fine.
       track.needsAudio = false;
+      // Register the take and make it active — the newest take is what plays/bakes/exports
+      // (matches a DAW punching in a fresh take). Inactive takes are preserved as data only.
+      const takeId = this._takeId();
+      const takeIndex = (track.takes || []).length;
+      track.takes = [...(track.takes || []), {
+        id: takeId, name: this._takeLabel(takeIndex), index: takeIndex,
+        sourceId, partial: !!options.partial,
+      }];
+      track.activeTakeId = takeId;
       const start = Math.max(0, options.start || 0);
       const limitEnd = Number(options.end) > start ? Number(options.end) : 0;
       const clipEnd = limitEnd ? Math.min(start + decoded.buffer.duration, limitEnd) : start + decoded.buffer.duration;
       const clipDuration = Math.max(0, clipEnd - start);
-      track.clips = [this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration }, sourceId, decoded.buffer.duration)];
+      track.clips = [...track.clips, this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration, takeId }, sourceId, decoded.buffer.duration)];
       // A take punched in past 0 (record-while-playing, pre-roll, mid-song count-in) is a
       // NON-trivial layout — its audio belongs at clip.start, not at 0 — so it MUST be
       // baked, per the 전략 B invariant. Without this bake, track.buffer stays a raw decode
@@ -772,6 +825,140 @@
       this._applyMix();
       this._startHotAddedTrack(track);
       return track;
+    },
+
+    // Phase 6 Stage 3b — loop-Take recording. One continuous WAV was captured across N
+    // Repeat iterations (native records the input straight through; LoopAudioSource makes
+    // every iteration exactly floor((end-start)*rate) samples, so the passes are equal
+    // length). Instead of writing one file per pass on the audio thread, we register the
+    // WHOLE recording as ONE source and cut it into Takes by sourceOffset: Take k reads
+    // [k*passDur, (k+1)*passDur) of that source and is placed at loopStart. All Takes share
+    // one source + one file, so reopen reloads them with the existing single-source path.
+    // The active-lane model (Stage 3a) already bakes/plays only the active Take, and the
+    // alternates (same start, same source, different offset) are legal because overlap is
+    // judged per-lane.
+    async attachLoopRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = this.tracks.find((t) => t.id === trackId && t.kind === "audioIn");
+      if (!track) throw new Error("Audio In track was not found.");
+      const decoded = await this._decodeAudio(arrayBuffer, null);
+      const buf = decoded.buffer;
+      const loopStart = Math.max(0, options.loopStart || 0);
+      const loopEnd = Number(options.loopEnd) > loopStart ? Number(options.loopEnd) : loopStart + buf.duration;
+      const passDur = Math.max(0.05, loopEnd - loopStart);
+      const total = buf.duration;
+      // Whole passes + a trailing partial. A tail under ~50ms is dropped as capture slop;
+      // a recording shorter than one pass is kept as a single (partial) Take, not lost.
+      const EPS = 0.02;
+      let nFull = Math.max(0, Math.floor((total + EPS) / passDur));
+      const tail = total - nFull * passDur;
+      const hasPartial = tail > 0.05;
+      if (nFull === 0 && !hasPartial) { nFull = 1; }
+
+      // One source = the whole recording; every Take slices it via sourceOffset.
+      this._captureRawBuffers(track);
+      const sourceId = this._sourceId();
+      this._registerSource(track, {
+        id: sourceId, filePath: options.filePath || null, fileName: name,
+        duration: buf.duration, sampleRate: buf.sampleRate, channels: buf.numberOfChannels, needsAudio: false,
+      }, buf);
+      if (!track.fileName) track.fileName = name;
+      if (!track.filePath) track.filePath = options.filePath || null;
+      track.needsAudio = false;
+
+      const addTake = (offset, dur, partial) => {
+        const takeId = this._takeId();
+        const idx = (track.takes || []).length;
+        track.takes = [...(track.takes || []), {
+          id: takeId, name: this._takeLabel(idx), index: idx, sourceId, partial: !!partial,
+        }];
+        track.clips = [...track.clips, this._normalizeClip(
+          { start: loopStart, end: loopStart + dur, offset, sourceOffset: offset, duration: dur, takeId },
+          sourceId, buf.duration)];
+        return takeId;
+      };
+      let lastFull = null;
+      for (let i = 0; i < nFull; i++) lastFull = addTake(i * passDur, passDur, false);
+      const partialId = hasPartial ? addTake(nFull * passDur, tail, true) : null;
+      // Land on the last COMPLETE pass (a full-length take), or the partial if that is all
+      // there is. The user can switch lanes once Stage 4 ships.
+      track.activeTakeId = lastFull || partialId;
+
+      this._ensureBaked(track);
+      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this._applyMix();
+      this._startHotAddedTrack(track);
+      return track;
+    },
+
+    // ---- Phase 6 Stage 4 — Take Lanes -------------------------------------
+    // Make a different Take the live one. Only the active Take bakes/plays/exports
+    // (Stage 3a), so this re-bakes and the bridge re-syncs native.
+    setActiveTake(trackId, takeId) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
+      if (!(t.takes || []).some(k => k.id === takeId)) return false;
+      if (t.activeTakeId === takeId) return false;
+      t.activeTakeId = takeId;
+      this._ensureBaked(t);
+      return true;
+    },
+    // Delete one Take and its clips. _normalizeTrackLayout then prunes/renumbers the rest
+    // (Take hygiene) and drops the source's raw if nothing references it anymore.
+    deleteTake(trackId, takeId) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
+      if (!(t.takes || []).some(k => k.id === takeId)) return false;
+      const goneSources = new Set((t.clips || []).filter(c => c.takeId === takeId).map(c => c.sourceId));
+      t.clips = (t.clips || []).filter(c => c.takeId !== takeId);
+      if (t.activeTakeId === takeId) {
+        const remain = (t.takes || []).filter(k => k.id !== takeId);
+        t.activeTakeId = remain.length ? remain[remain.length - 1].id : null;
+      }
+      t.takes = (t.takes || []).filter(k => k.id !== takeId);
+      // Drop now-unreferenced source metadata + raw so it can't linger or be re-baked.
+      for (const sid of goneSources) {
+        if (!(t.clips || []).some(c => c.sourceId === sid)) {
+          t.sources = (t.sources || []).filter((s, i) => i === 0 || s.id !== sid); // never drop primary
+          if (t._rawBuffers) delete t._rawBuffers[sid];
+          if (t._sourcePeaks) delete t._sourcePeaks[sid];
+        }
+      }
+      this._normalizeTrackLayout(t);
+      this._ensureBaked(t);
+      this._applyMix();
+      return true;
+    },
+    // Peaks for a source's RAW buffer, cached per source. Take lanes render inactive Takes
+    // (not in the baked buffer) by sampling their source raw at the clip's sourceOffset.
+    _sourcePeaksFor(track, sourceId) {
+      const raw = this._rawBufferForSource(track, sourceId);
+      if (!raw) return null;
+      track._sourcePeaks = track._sourcePeaks || {};
+      const cached = track._sourcePeaks[sourceId];
+      if (cached && cached.buffer === raw) return cached;
+      const pk = computePeakLevels(raw);
+      const entry = { buffer: raw, peaks: pk.fine, peaksMedium: pk.medium, peaksCoarse: pk.coarse,
+        peakAmp: maxAbsPeak(pk.coarse) };
+      track._sourcePeaks[sourceId] = entry;
+      return entry;
+    },
+    // UI-facing: one entry per Take with everything the lane needs to draw + label.
+    // `render` is a pseudo-track (source raw buffer + peaks, layoutBaked=false) so the
+    // existing Waveform can draw it by sampling clip.offset (source-indexed).
+    getTakeLanes(trackId) {
+      const t = this.tracks.find(x => x.id === trackId);
+      if (!t || !(t.takes || []).length) return [];
+      return (t.takes || []).map(tk => {
+        const clips = (t.clips || []).filter(c => c.takeId === tk.id);
+        const sp = clips.length ? this._sourcePeaksFor(t, clips[0].sourceId) : null;
+        return {
+          id: tk.id, name: tk.name, index: tk.index, partial: !!tk.partial,
+          active: t.activeTakeId === tk.id, clips,
+          render: sp ? {
+            buffer: sp.buffer, peaks: sp.peaks, peaksMedium: sp.peaksMedium,
+            peaksCoarse: sp.peaksCoarse, peakAmp: sp.peakAmp, color: t.color,
+            _layoutBaked: false, recording: false, audioRev: t.audioRev || 0,
+          } : null,
+        };
+      });
     },
 
     // Remove a single track from the live graph. Splicing the tracks array (as the
@@ -908,6 +1095,30 @@
       this.duration = Math.max(this.duration, this._projectClipDuration());
       this._startHotAddedTrack(t);
       return t;
+    },
+
+    // Reload a NON-primary source's audio (a second/third Take) after a project reopen.
+    // addFileBuffer/_assignDecodedToTrack only reconnect sources[0]; the extra Takes each
+    // have their own recording WAV, so the reconnect flow calls this per source. We drop the
+    // decoded buffer into _rawBuffers[sourceId], clear the source's needsAudio, and re-bake
+    // so the active lane (which may BE this source) picks it up.
+    async hydrateSource(trackId, sourceId, arrayBuffer, options = {}) {
+      const track = this.tracks.find(t => t.id === trackId);
+      if (!track) return null;
+      const src = (track.sources || []).find(s => s.id === sourceId);
+      if (!src) return null;
+      const cacheKey = this._decodedCacheKeyForBuffer(src.fileName || track.name, arrayBuffer, { filePath: src.filePath });
+      const decoded = await this._decodeAudio(arrayBuffer, cacheKey);
+      track._rawBuffers = track._rawBuffers || {};
+      track._rawBuffers[sourceId] = decoded.buffer;
+      src.needsAudio = false;
+      src.duration = decoded.buffer.duration;
+      src.sampleRate = decoded.buffer.sampleRate;
+      src.channels = decoded.buffer.numberOfChannels;
+      this._ensureBaked(track);
+      this._applyMix();
+      this._startHotAddedTrack(track);
+      return track;
     },
 
     async addFile(file) {
@@ -1496,6 +1707,7 @@
           params: t.params,
           clips: this._serializedClips(t),
           takes: Array.isArray(t.takes) ? t.takes : [],
+          activeTakeId: t.activeTakeId || null,
         })),
       });
     },
@@ -1726,6 +1938,7 @@
           },
           clips: this._serializedClips(t),
           takes: Array.isArray(t.takes) ? t.takes.map(take => ({ ...take })) : [],
+          activeTakeId: t.activeTakeId || null,
         })),
       };
     },
@@ -1760,10 +1973,14 @@
           // "raw", and clips whose sourceOffset lies past its (shorter) end would vanish
           // on the next re-bake. _rawBufferForSource returns the raw when baked, else t.buffer.
           buffer: (this._rawBufferForSource(t, t.sources && t.sources[0] && t.sources[0].id) || t.buffer) || null,
+          // Every source's raw buffer, by id (kept by reference — undo stack is in-memory).
+          // Needed so non-primary Takes' audio survives undo/redo, not just the primary's.
+          rawBuffers: t._rawBuffers ? { ...t._rawBuffers } : null,
           sources: this._serializedSources(t),
           params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })) },
           clips: this._serializedClips(t),
           takes: Array.isArray(t.takes) ? t.takes.map(take => ({ ...take })) : [],
+          activeTakeId: t.activeTakeId || null,
         })),
       };
     },
@@ -1818,6 +2035,7 @@
             sources: Array.isArray(st.sources) ? st.sources.map(s => ({ ...s })) : null,
             clips: Array.isArray(st.clips) ? st.clips.map(c => ({ ...c })) : null,
             takes: Array.isArray(st.takes) ? st.takes.map(take => ({ ...take })) : [],
+            activeTakeId: st.activeTakeId || null,
             isDemo: !!st.isDemo,
             fileName: st.fileName || (source && source.fileName) || null,
             filePath: st.filePath || (source && source.filePath) || null,
@@ -1847,11 +2065,16 @@
         if (st.lockedToZero !== undefined) t.lockedToZero = !!st.lockedToZero;
         if (Array.isArray(st.sources)) t.sources = st.sources.map(s => ({ ...s }));
         if (Array.isArray(st.takes)) t.takes = st.takes.map(take => ({ ...take }));
+        if (st.activeTakeId !== undefined) t.activeTakeId = st.activeTakeId || null;
         if (Array.isArray(st.clips)) t.clips = st.clips.map(c => ({ ...c }));
         this._normalizeTrackLayout(t);
-        // getSnapshot stored the RAW source buffer, so re-seat it as this track's primary
-        // raw (correcting any baked buffer a prior undo may have cached as "raw") without
-        // discarding other sources' raws, then re-derive the display buffer from the clip
+        // getSnapshot kept every source's RAW buffer by reference (snapshots live in the
+        // in-memory undo stack, so holding AudioBuffers is fine). Restore the WHOLE map so
+        // a non-primary Take's audio survives undo/redo — otherwise re-baking the active
+        // lane after an undo would find its source missing and drop the clip.
+        if (st.rawBuffers) t._rawBuffers = { ...st.rawBuffers };
+        // Re-seat the primary raw from st.buffer too (corrects any baked buffer a prior
+        // undo may have cached as "raw"), then re-derive the display buffer from the clip
         // layout — so undo/redo can never make a clip vanish by shrinking the raw.
         if (t.buffer && t.sources && t.sources[0]) {
           t._rawBuffers = t._rawBuffers || {};
@@ -1935,6 +2158,7 @@
           sources,
           clips,
           takes: td.takes,
+          activeTakeId: td.activeTakeId || null,
           isDemo: !!td.isDemo, fileName, filePath,
           needsAudio: isAudioPlaceholder,
         });
@@ -2136,6 +2360,12 @@
       if (sourceId && track._rawBuffers && track._rawBuffers[sourceId]) return track._rawBuffers[sourceId];
       const primary = track.sources && track.sources[0];
       const primaryRaw = primary && track._rawBuffers ? track._rawBuffers[primary.id] : null;
+      // A source still awaiting reopen hydration (needsAudio, e.g. a non-primary Take or the
+      // shared loop-recording source) legitimately has no raw yet. Return null so the bake
+      // SKIPS its clip (silence) until hydrateSource re-bakes — substituting the primary here
+      // would briefly play the wrong Take — and stay quiet (this window is expected).
+      const srcMeta = sourceId ? (track.sources || []).find(s => s.id === sourceId) : null;
+      if (srcMeta && srcMeta.needsAudio) return null;
       // Only shout for the case that actually corrupts audio: a clip names a NON-primary
       // source (a real second take/consolidation), that source is missing, yet the primary
       // IS registered — so we would hand back the primary's audio in its place. Asking for
@@ -2161,6 +2391,12 @@
     // full source length, no per-clip params/automation. Matches the untouched
     // import/record case so existing projects stay byte-identical (no bake).
     _isTrivialLayout(track) {
+      // Any track carrying more than one take is never trivial: the trivial fast-path
+      // hands back the PRIMARY source's raw buffer as-is, but the live audio is the
+      // ACTIVE take (which may be a non-primary source at a non-zero start). Force a bake
+      // so track.buffer reflects the active lane, not Take A. Single-take/legacy tracks
+      // fall through to the original test and keep byte-identical behavior.
+      if ((track.takes || []).length > 1) return false;
       const clips = track.clips || [];
       if (clips.length !== 1) return false;
       const c = clips[0];
@@ -2181,7 +2417,9 @@
     _bakeTrackLayout(track) {
       if (!ctx) return null;
       this._captureRawBuffers(track);
-      const clips = (track.clips || []).filter(c => !c.muted && (c.duration || 0) > 0);
+      // Bake the ACTIVE take only (Stage 3 / Q3): inactive takes are preserved as data
+      // but never mixed into the flattened buffer, so overlapping alternates don't sum.
+      const clips = this._activeClips(track).filter(c => !c.muted && (c.duration || 0) > 0);
       const layoutEnd = clips.reduce((m, c) => Math.max(m, (c.start || 0) + (c.duration || 0)), 0);
       let sr = ctx.sampleRate, chCount = 2;
       const anyRaw = this._rawBufferForSource(track, clips[0] && clips[0].sourceId);
@@ -2191,7 +2429,13 @@
       for (const c of clips) {
         const raw = this._rawBufferForSource(track, c.sourceId);
         if (!raw) {
-          console.warn("[bake] clip skipped — no raw buffer for source", { track: track.id, clip: c.id, sourceId: c.sourceId });
+          // A source still flagged needsAudio is EXPECTED to be missing here: on reopen the
+          // primary reconnect re-bakes before the extra Takes are hydrated (hydrateSource
+          // re-bakes once each arrives). Only shout for a source that should already be loaded.
+          const src = (track.sources || []).find(s => s.id === c.sourceId);
+          if (!(src && src.needsAudio)) {
+            console.warn("[bake] clip skipped — no raw buffer for source", { track: track.id, clip: c.id, sourceId: c.sourceId });
+          }
           continue;
         }
         const gain = (c.gain == null ? 1 : c.gain);
@@ -2265,8 +2509,12 @@
       // cascades). Self-heals coincident/overlapping clips left by older buggy pastes
       // so they can't persist as an uneditable empty clip. Zero-duration placeholders
       // (start==end) are inert here.
+      // The no-overlap invariant is per-LANE: only the active take's clips must not
+      // collide. Inactive takes are alternates for the same time span and are expected to
+      // overlap the active lane, so they are skipped here (Q3 — 겹침 판정 활성 레인 한정).
       let prevEnd = 0;
       for (const c of track.clips) {
+        if (!this._isActiveClip(track, c)) continue;
         const dur = c.duration || 0;
         if (dur > 0 && (c.start || 0) < prevEnd - 1e-6) {
           c.start = prevEnd; c.end = prevEnd + dur;
@@ -2282,7 +2530,7 @@
     // — e.g. a 2nd paste at the same playhead — creating a fully-overlapping clip.)
     _clampStartNoOverlap(track, clipId, start, dur) {
       let s = Math.max(0, start);
-      const others = track.clips.filter(c => c.id !== clipId).sort((a, b) => a.start - b.start);
+      const others = track.clips.filter(c => c.id !== clipId && this._isActiveClip(track, c)).sort((a, b) => a.start - b.start);
       let moved = true, guard = 0;
       while (moved && guard++ <= others.length) {
         moved = false;
@@ -2305,7 +2553,7 @@
     // (paste/duplicate keep _clampStartNoOverlap's "always push right" behavior.)
     _resolveMovePosition(track, clipId, start, dur) {
       const s0 = Math.max(0, start);
-      const clips = (track.clips || []).filter(c => c.id !== clipId && (c.duration || 0) > 0);
+      const clips = (track.clips || []).filter(c => c.id !== clipId && (c.duration || 0) > 0 && this._isActiveClip(track, c));
       const free = (pos) => pos >= -1e-6 && !clips.some(o => {
         const oS = o.start, oE = o.start + o.duration;
         return pos < oE - 1e-6 && pos + dur > oS + 1e-6;
@@ -2335,7 +2583,7 @@
       const dur = c.duration || 0;
       let lo = 0, hi = Infinity;
       for (const o of (track.clips || [])) {
-        if (o.id === c.id || (o.duration || 0) <= 0) continue;
+        if (o.id === c.id || (o.duration || 0) <= 0 || !this._isActiveClip(track, o)) continue;
         const oS = o.start, oE = o.start + o.duration;
         if (oE <= c.start + 1e-6) lo = Math.max(lo, oE);          // neighbor to the left
         else if (oS >= c.end - 1e-6) hi = Math.min(hi, oS - dur); // neighbor to the right
@@ -2355,7 +2603,7 @@
       const sel = new Set(clipIds || []);
       const picked = (track.clips || []).filter(c => sel.has(c.id) && (c.duration || 0) > 0);
       if (!picked.length) return 0;
-      const others = (track.clips || []).filter(c => !sel.has(c.id) && (c.duration || 0) > 0);
+      const others = (track.clips || []).filter(c => !sel.has(c.id) && (c.duration || 0) > 0 && this._isActiveClip(track, c));
       let dMin = -Infinity, dMax = Infinity;
       for (const c of picked) {
         const cS = c.start, cE = c.start + (c.duration || 0);
@@ -2384,7 +2632,7 @@
       const sel = new Set(clipIds || []);
       const picked = (track.clips || []).filter(c => sel.has(c.id) && (c.duration || 0) > 0);
       if (!picked.length) return 0;
-      const others = (track.clips || []).filter(c => !sel.has(c.id) && (c.duration || 0) > 0);
+      const others = (track.clips || []).filter(c => !sel.has(c.id) && (c.duration || 0) > 0 && this._isActiveClip(track, c));
       const gMinStart = Math.min(...picked.map(c => c.start));
       const gMaxEnd = Math.max(...picked.map(c => c.start + (c.duration || 0)));
       // The whole group shifted by d clears every non-selected clip and stays at/after 0.
@@ -2437,6 +2685,7 @@
         if (!sel.has(c.id)) continue;
         c.start += d; c.end = c.start + (c.duration || 0);
       }
+      this._shiftInactiveTakeClips(t, d);
       this._reindexClips(t);
       this._ensureBaked(t);
       return d;
@@ -2455,6 +2704,7 @@
         if (!sel.has(c.id)) continue;
         c.start += d; c.end = c.start + (c.duration || 0);
       }
+      this._shiftInactiveTakeClips(t, d);
       this._reindexClips(t);
       this._ensureBaked(t);
       return d;
@@ -2474,12 +2724,30 @@
       return true;
     },
 
+    // Comp move (Stage 4, Q: "all takes move together"): the visible/editable clip is always
+    // the ACTIVE Take's; when it moves, the INACTIVE Takes' clips ride along by the same delta
+    // so the alternates stay aligned as one region. Only inactive Takes shift here — the active
+    // move itself is applied by the caller, and null-takeId clips (shared) stay put.
+    _shiftInactiveTakeClips(track, delta) {
+      if (!delta || Math.abs(delta) < 1e-9) return;
+      const act = this._activeTakeId(track);
+      if (!act) return;
+      for (const c of track.clips) {
+        if (c.takeId && c.takeId !== act) {
+          c.start = Math.max(0, (c.start || 0) + delta);
+          c.end = c.start + (c.duration || 0);
+        }
+      }
+    },
+
     moveClip(trackId, clipId, newStart) {
       const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
       const c = t.clips.find(x => x.id === clipId); if (!c) return false;
       const s = this._resolveMovePosition(t, clipId, newStart, c.duration);
       if (s == null || Math.abs(s - c.start) < 1e-6) return false; // no valid/effective slot → keep origin
+      const delta = s - c.start;
       c.start = s; c.end = s + c.duration;
+      this._shiftInactiveTakeClips(t, delta);
       this._reindexClips(t);
       this._ensureBaked(t);
       return true;
@@ -2492,7 +2760,9 @@
       const c = t.clips.find(x => x.id === clipId); if (!c) return false;
       const s = this._clampNudgeStart(t, c, deltaSec);
       if (Math.abs(s - c.start) < 1e-6) return false;
+      const delta = s - c.start;
       c.start = s; c.end = s + (c.duration || 0);
+      this._shiftInactiveTakeClips(t, delta);
       this._reindexClips(t);
       this._ensureBaked(t);
       return true;
@@ -2631,9 +2901,12 @@
         samplerCache.set(clip, s);
         return s;
       };
+      // Only the active take is baked/played, so per-clip volume/automation must be read
+      // from the active lane — an inactive alternate overlapping this position must not win.
+      const liveClips = this._activeClips(track);
       for (let i = 0; i < n; i++) {
         const pos = (i / (n - 1)) * dur;
-        const clip = track.clips.find(c => pos >= c.start && pos < c.end);
+        const clip = liveClips.find(c => pos >= c.start && pos < c.end);
         if (!clip) { curve[i] = 0.0001; continue; }
         const clipDur = (clip.end - clip.start) || 1e-6;
         const localT = (pos - clip.start) / clipDur;

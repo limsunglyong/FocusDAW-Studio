@@ -726,6 +726,35 @@
       return track;
     },
 
+    // Loop-Take recording: slice one continuous WAV into N Takes, then push the baked
+    // active lane to native (same reconnect-sync shape as attachRecording).
+    async attachLoopRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = await LocalDAW.attachLoopRecording(trackId, name, arrayBuffer, options);
+      if (this.isNative && track) syncTrackToNative(track);
+      return track;
+    },
+
+    // Take Lanes (Stage 4): switching the active Take or deleting one re-bakes the track,
+    // so push the new active lane to native.
+    setActiveTake(trackId, takeId) {
+      const ok = LocalDAW.setActiveTake(trackId, takeId);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    deleteTake(trackId, takeId) {
+      const ok = LocalDAW.deleteTake(trackId, takeId);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+
+    // Reconnect a non-primary Take's audio on project reopen, then push the re-baked
+    // active layout to native (mirrors addFileBuffer's reconnect sync).
+    async hydrateSource(trackId, sourceId, arrayBuffer, options = {}) {
+      const track = await LocalDAW.hydrateSource(trackId, sourceId, arrayBuffer, options);
+      if (this.isNative && track) syncTrackToNative(track);
+      return track;
+    },
+
     // Phase 5 clip editing (전략 B): run on the web engine, then re-sync the
     // affected track's baked layout to native. copyClip is pure clipboard state,
     // so it falls through the proxy to LocalDAW unchanged (no native sync needed).
