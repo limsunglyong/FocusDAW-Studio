@@ -749,6 +749,15 @@
       return track;
     },
 
+    // Loop-Punch Comp (Phase 7 Stage 1): empty the Repeat region on the base and register one
+    // region-scoped Take per loop pass, then push the re-baked active layout to native (same
+    // reconnect-sync shape as attachRecording / attachLoopRecording).
+    async attachLoopPunchRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = await LocalDAW.attachLoopPunchRecording(trackId, name, arrayBuffer, options);
+      if (this.isNative && track) syncTrackToNative(track);
+      return track;
+    },
+
     // Take Lanes (Stage 4): switching the active Take or deleting one re-bakes the track,
     // so push the new active lane to native.
     setActiveTake(trackId, takeId) {
@@ -1365,7 +1374,14 @@
         track._recordingSampleRate = Number(msg.sampleRate) || track._recordingSampleRate || 44100;
         const lastSample = msg.points.length >= 3 ? Number(msg.points[msg.points.length - 3]) : 0;
         const recordedEnd = (track._recordingStart || 0) + lastSample / track._recordingSampleRate;
-        if (!track._recordingDurationLimit && recordedEnd >= LocalDAW.duration - 1) LocalDAW.duration = recordedEnd + 60;
+        // A LOOP recording (loop-Take / loop-punch) runs continuously across Repeat iterations,
+        // so recordedEnd (= loopStart + total elapsed) climbs without bound even though the audio
+        // wraps back into the fixed [loopStart, loopEnd] region. Growing duration off that linear
+        // end made the timeline/OUTPUT FX stretch far to the right during recording whenever the
+        // region sat near the song's end (loopStart ≈ duration → the guard fired every batch).
+        // The region is already within the project, so a loop recording never needs more room —
+        // only a non-loop take that genuinely records past the end does.
+        if (!track._recordingDurationLimit && !track._recordLoop && recordedEnd >= LocalDAW.duration - 1) LocalDAW.duration = recordedEnd + 60;
         track.audioRev = (track.audioRev || 0) + 1;
         LocalDAW._emit();
       }

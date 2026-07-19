@@ -98,21 +98,35 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
           const wrapT = (t) => rLoop.start + (((t - rLoop.start) % len) + len) % len;
           const mid = height / 2;
           const stride = Math.max(1, Math.floor(pointCount / Math.max(1, drawW * 1.5)));
-          c2d.strokeStyle = track.color; c2d.lineWidth = 1; c2d.globalAlpha = .9;
-          c2d.beginPath();
-          for (let i = 0; i < pointCount; i += stride) {
-            const windowEnd = Math.min(pointCount, i + stride);
-            let min = 0, max = 0;
-            for (let j = i; j < windowEnd; j++) {
-              const pMin = livePeaks[j * 3 + 1] || 0, pMax = livePeaks[j * 3 + 2] || 0;
-              if (pMin < min) min = pMin; if (pMax > max) max = pMax;
+          // Each completed pass becomes a Take (A, B, C…). All passes wrap into the SAME region,
+          // so the pass being recorded now (left of the head) is drawn ON TOP of the earlier ones.
+          // In the track colour alone that overlap reads as "the old take is still bright" — so the
+          // finished passes are faded (v1.36.6) AND the live pass is drawn in the recording red
+          // (v1.36.7), matching the red head: red = recording now, faint = previous takes.
+          const REC_COLOR = "#df5b52";
+          const curPass = Math.floor((totalSeconds + 1e-6) / len);
+          const drawPass = (wantCurrent, alpha, color) => {
+            c2d.strokeStyle = color; c2d.lineWidth = 1; c2d.globalAlpha = alpha;
+            c2d.beginPath();
+            for (let i = 0; i < pointCount; i += stride) {
+              const isCurrent = Math.floor((livePeaks[i * 3] / sr) / len) >= curPass;
+              if (isCurrent !== wantCurrent) continue;
+              const windowEnd = Math.min(pointCount, i + stride);
+              let min = 0, max = 0;
+              for (let j = i; j < windowEnd; j++) {
+                const pMin = livePeaks[j * 3 + 1] || 0, pMax = livePeaks[j * 3 + 2] || 0;
+                if (pMin < min) min = pMin; if (pMax > max) max = pMax;
+              }
+              const x = wrapT(recordingStart + (livePeaks[i * 3] / sr)) * pxPerSec - drawStart;
+              if (x < 0 || x > drawW) continue;
+              c2d.moveTo(x, mid - max * mid * .92 * ampZoom);
+              c2d.lineTo(x, mid - min * mid * .92 * ampZoom);
             }
-            const x = wrapT(recordingStart + (livePeaks[i * 3] / sr)) * pxPerSec - drawStart;
-            if (x < 0 || x > drawW) continue;
-            c2d.moveTo(x, mid - max * mid * .92 * ampZoom);
-            c2d.lineTo(x, mid - min * mid * .92 * ampZoom);
-          }
-          c2d.stroke(); c2d.globalAlpha = 1;
+            c2d.stroke();
+          };
+          if (curPass > 0) drawPass(false, .2, track.color); // previous passes (Take A…), faded track colour
+          drawPass(true, .95, REC_COLOR);                    // the pass being recorded now, recording red
+          c2d.globalAlpha = 1;
           const headX = wrapT(recordingStart + totalSeconds) * pxPerSec - drawStart;
           c2d.fillStyle = "#df5b52"; c2d.fillRect(headX, 0, 1.5, height);
           return;
@@ -156,6 +170,11 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
       }
 
       const mid = height / 2;
+      // Loop recording (Loop-Punch Comp / loop-Take): fade the EXISTING waveform (the previous
+      // take + base) extra-faint so the live take wrapping into the region reads clearly on top —
+      // fainter than a plain/punch recording's dim. Keyed on _recordLoop, which is set only for
+      // the two loop modes (single punch / normal recording keep the regular recording dim).
+      const loopRec = !!(track.recording && track._recordLoop && track._recordLoop.end > track._recordLoop.start);
       let peakScale = volume * 0.92 * ampZoom;
       if (normalizeToPeak) {
         let maxPeak = Number.isFinite(track.peakAmp) ? track.peakAmp : 0;
@@ -218,14 +237,14 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
           colMax[x - x0] = mx;
         }
 
-        c2d.fillStyle = track.color + (track.recording ? "12" : "33");
+        c2d.fillStyle = track.color + (loopRec ? "08" : track.recording ? "12" : "33");
         c2d.strokeStyle = track.color;
         c2d.lineWidth = 1;
         c2d.beginPath();
         for (let x = x0; x <= x1; x++) c2d.lineTo(x, mid - colMax[x - x0] * mid * peakScale);
         for (let x = x1; x >= x0; x--) c2d.lineTo(x, mid - colMin[x - x0] * mid * peakScale);
         c2d.closePath(); c2d.fill();
-        c2d.globalAlpha = track.recording ? .22 : .85; c2d.stroke(); c2d.globalAlpha = 1;
+        c2d.globalAlpha = loopRec ? .12 : track.recording ? .22 : .85; c2d.stroke(); c2d.globalAlpha = 1;
 
         // clipping indicator: peak × volume > 1.0 (ampZoom 무관, 신호 레벨만 판정)
         if (volume > 1.0) {
@@ -1320,6 +1339,47 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             </div>
           </div>
         )}
+        {/* Loop recording (Loop-Punch Comp / loop-Take): show which Take is being captured NOW,
+            anchored just RIGHT of the Repeat region's right edge — but flipped to inside the region
+            when there is no room on the right (region at the project end), so it is never clipped by
+            the lane's overflow:hidden (v1.36.2 right-align → v1.36.4 edge flip). The pass index comes
+            from elapsed recording time (live peaks) ÷ pass length; takeBase aligns the letter with
+            the final Take Lane numbering (v1.36.1). */}
+        {(() => {
+          const rLoop = track.recording && track._recordLoop && track._recordLoop.end > track._recordLoop.start
+            ? track._recordLoop : null;
+          const lp = rLoop && Array.isArray(track._recordingPeaks) ? track._recordingPeaks : null;
+          if (!rLoop || !lp || lp.length < 3) return null;
+          const sr = track._recordingSampleRate || 44100;
+          const elapsed = (lp[(Math.floor(lp.length / 3) - 1) * 3] || 0) / sr;
+          const passDur = Math.max(0.05, rLoop.end - rLoop.start);
+          const idx = (rLoop.takeBase || 0) + Math.max(0, Math.floor(elapsed / passDur));
+          const letter = (n => { let x = Math.max(0, n | 0), s = ""; do { s = String.fromCharCode(65 + (x % 26)) + s; x = Math.floor(x / 26) - 1; } while (x >= 0); return s; })(idx);
+          // Place the badge just right of the region. But the lane is width=laneW + overflow:hidden,
+          // so when the region sits at the project end (regionRight ≈ laneW) the badge would fall
+          // past the edge and be CLIPPED — invisible (v1.36.3 stopped growing duration during loop
+          // recording, so there is no longer spare room out there). If it would not fit on the
+          // right, flip it to right-align at the region's right edge (extending left, inside), which
+          // is always within laneW and therefore visible.
+          const regionRightPx = rLoop.end * pxPerSec;
+          const EST_W = 124; // approx badge width + margin; generous so we flip before clipping
+          const fitsRight = regionRightPx + 6 + EST_W <= laneW;
+          const posStyle = fitsRight
+            ? { left: regionRightPx + 6 }
+            : { left: Math.max(0, regionRightPx - 5), transform: "translateX(-100%)" };
+          return (
+            <div style={{ position: "absolute", top: 6, ...posStyle,
+              pointerEvents: "none", zIndex: 11 }}>
+              <div className="record-blink" style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                padding: "3px 9px", borderRadius: 999, background: "rgba(20,14,6,.9)", border: "1px solid var(--red)",
+                whiteSpace: "nowrap", boxShadow: "0 0 12px rgba(223,91,82,.5)" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--red)" }} />
+                <span style={{ fontSize: 9, letterSpacing: ".1em", color: "var(--cream-2)" }}>REC</span>
+                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: "var(--amber)" }}>{"Take " + letter}</span>
+              </div>
+            </div>
+          );
+        })()}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 }} />
       </div>
     </div>

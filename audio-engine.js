@@ -965,6 +965,102 @@
       return track;
     },
 
+    // Phase 7 Stage 1 — Loop-Punch Comp. Punch ON + Repeat ON records N passes across the
+    // Repeat region in one continuous WAV (native loops the input straight through — same
+    // capture as attachLoopRecording). This is the intersection of single Punch (v1.35.0) and
+    // loop-Take (v1.30.0): unlike single Punch (one clip merged into the active take) or plain
+    // loop-Take (region takes that hide any prior full take), it KEEPS the base outside [in,out]:
+    //   (1) empty [in,out] among the currently-active clips (deleteRange's split/trim rules) and
+    //       DETACH the surviving pieces to takeId=null so they always render — that is the shared
+    //       base, common to every pass;
+    //   (2) slice the recording into one [in,out]-scoped Take per pass (active = last full pass).
+    // _isActiveClip then renders base(null) + the active pass only, so Take Lanes switches passes
+    // by swapping just the region clip — no re-splice. options.loopStart/loopEnd are the (offset-
+    // shifted) in/out points, matching attachLoopRecording.
+    async attachLoopPunchRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = this.tracks.find((t) => t.id === trackId && t.kind === "audioIn");
+      if (!track) throw new Error("Audio In track was not found.");
+      const decoded = await this._decodeAudio(arrayBuffer, null);
+      const buf = decoded.buffer;
+      const inPt = Math.max(0, options.loopStart || 0);
+      const outPt = Number(options.loopEnd) > inPt ? Number(options.loopEnd) : inPt + buf.duration;
+      const passDur = Math.max(0.05, outPt - inPt);
+      const total = buf.duration;
+      // Whole passes + a trailing partial (same accounting as attachLoopRecording).
+      const EPS = 0.02;
+      let nFull = Math.max(0, Math.floor((total + EPS) / passDur));
+      const tail = total - nFull * passDur;
+      const hasPartial = tail > 0.05;
+      if (nFull === 0 && !hasPartial) { nFull = 1; }
+
+      // One source = the whole recording; every pass Take slices it via sourceOffset.
+      this._captureRawBuffers(track);
+      const sourceId = this._sourceId();
+      this._registerSource(track, {
+        id: sourceId, filePath: options.filePath || null, fileName: name,
+        duration: buf.duration, sampleRate: buf.sampleRate, channels: buf.numberOfChannels, needsAudio: false,
+      }, buf);
+      if (!track.fileName) track.fileName = name;
+      if (!track.filePath) track.filePath = options.filePath || null;
+      track.needsAudio = false;
+
+      // (1) Empty [inPt, outPt] among ACTIVE clips; the surviving pieces become the shared base
+      // (takeId=null → always rendered, per _isActiveClip). Inactive takes are left untouched. A
+      // split/trim that moves the start off origin clears recordedStart/recordedOffsetMs so its
+      // Cal. badge is not misleading (same rule as deleteRange / attachPunchRecording).
+      const base = [];
+      for (const c of track.clips) {
+        if (!this._isActiveClip(track, c)) { base.push(c); continue; }          // inactive take → untouched
+        const cS = c.start, cE = c.start + c.duration;
+        if (cE <= inPt || cS >= outPt) { base.push({ ...c, takeId: null }); continue; } // outside → base
+        if (cS >= inPt && cE <= outPt) continue;                                // fully inside → removed
+        const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
+        if (cS < inPt && cE > outPt) {                                          // spans → split around the region
+          base.push(this._normalizeClip({ ...c, id: this._cid(), takeId: null, start: cS, end: inPt, duration: inPt - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
+          const rOff = curOff + (outPt - cS);
+          base.push(this._normalizeClip({ ...c, id: this._cid(), takeId: null, start: outPt, end: cE, duration: cE - outPt, sourceOffset: rOff, offset: rOff, recordedStart: null, recordedOffsetMs: null, params: null, automation: null }, c.sourceId, 0));
+        } else if (cS < inPt) {                                                 // trim right edge
+          base.push(this._normalizeClip({ ...c, takeId: null, start: cS, end: inPt, duration: inPt - cS }, c.sourceId, 0));
+        } else {                                                               // trim left edge
+          const nOff = curOff + (outPt - cS);
+          base.push(this._normalizeClip({ ...c, takeId: null, start: outPt, end: cE, duration: cE - outPt, sourceOffset: nOff, offset: nOff, recordedStart: null, recordedOffsetMs: null }, c.sourceId, 0));
+        }
+      }
+      track.clips = base;
+
+      // (2) One region-scoped Take per pass, sliced from the single source by sourceOffset.
+      const addTake = (offset, dur, partial) => {
+        const takeId = this._takeId();
+        const idx = (track.takes || []).length;
+        track.takes = [...(track.takes || []), {
+          id: takeId, name: this._takeLabel(idx), index: idx, sourceId, partial: !!partial,
+        }];
+        track.clips = [...track.clips, this._normalizeClip(
+          { start: inPt, end: inPt + dur, offset, sourceOffset: offset, duration: dur, takeId,
+            recordedStart: inPt, recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 },
+          sourceId, buf.duration)];
+        return takeId;
+      };
+      let lastFull = null;
+      for (let i = 0; i < nFull; i++) lastFull = addTake(i * passDur, passDur, false);
+      const partialId = hasPartial ? addTake(nFull * passDur, tail, true) : null;
+      track.activeTakeId = lastFull || partialId;
+
+      this._reindexClips(track);
+      // The base's active take was CONSUMED here (its region clip removed, its outside clips
+      // detached to takeId=null), so it now references no clip and is an orphan. Normalize
+      // prunes it and renumbers the passes from Take A (deleteTake does the same after removing
+      // a take). Without this the orphan lingers as a phantom empty Take lane and the passes
+      // label from B onward until an autosave/reopen normalizes — the record-time badge
+      // (v1.36.1) reads takeBase to match this same numbering.
+      this._normalizeTrackLayout(track);
+      this._ensureBaked(track);
+      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this._applyMix();
+      this._startHotAddedTrack(track);
+      return track;
+    },
+
     // ---- Phase 6 Stage 4 — Take Lanes -------------------------------------
     // Make a different Take the live one. Only the active Take bakes/plays/exports
     // (Stage 3a), so this re-bakes and the bridge re-syncs native.

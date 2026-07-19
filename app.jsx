@@ -521,7 +521,9 @@ function MenuTransport() {
         <MenuTransportButton
           title={punchRegionValid()
             ? (isPunchOn()
-                ? "Punch: On — Record replaces the Repeat region [in→out] in the active take (pre-roll → auto punch-in/out)"
+                ? (DAW.repeatPlayEnabled
+                    ? "Punch + Repeat: Loop-Punch Comp — Record captures a Take per pass across the region, keeps the base outside it; switch passes in Take Lanes"
+                    : "Punch: On — Record replaces the Repeat region [in→out] in the active take (pre-roll → auto punch-in/out). Turn Repeat ON too for Loop-Punch Comp")
                 : "Punch: Off — Click to make Record replace only the Repeat region instead of stacking a take")
             : "Punch: needs a Repeat region — drag one on the output track first (Record will fall back to normal until then)"}
           active={isPunchOn()} onClick={() => { setPunchOn(!isPunchOn()); }}>
@@ -3054,6 +3056,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           // instead of stacking a Take. attachOptions.start/end already carry the (offset-
           // shifted) in/out points, so the engine empties that span and splices the clip in.
           await DAW.attachPunchRecording(track.id, saved.fileName, bytes, attachOptions);
+        } else if (active.loopPunch) {
+          // Phase 7 Stage 1: like loopTake, cut the continuous recording into one Take per
+          // iteration — but empty the region on the base and keep it (Loop-Punch Comp). Same
+          // offset-shifted loop window (preserves pass length = loopEnd - loopStart).
+          const loopShift = Math.min(recOffsetSec, active.loopStart);
+          await DAW.attachLoopPunchRecording(track.id, saved.fileName, bytes,
+            { filePath: saved.path, loopStart: active.loopStart - loopShift, loopEnd: active.loopEnd - loopShift, recordedOffsetMs: recOffsetMs });
         } else if (active.loopTake) {
           // Stage 3b: cut the continuous loop recording into one Take per iteration.
           // Shift the whole loop window earlier by the same offset, preserving pass length
@@ -3106,8 +3115,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     track._recordingStart = start;
     // Loop-Take: tell the live-preview waveform to WRAP the growing recording back into the
     // Repeat region instead of drawing it off to the right past the loop end (Stage 3b/4 UX).
-    track._recordLoop = (session && session.loopTake && session.loopEnd > session.loopStart)
-      ? { start: session.loopStart, end: session.loopEnd } : null;
+    // takeBase = how many Takes will precede this recording's passes in the final numbering, so
+    // the live "Take X" badge (v1.36.1) matches what Take Lanes shows. loopPunch consumes the
+    // active take (it becomes the null base) so only the NON-active takes survive before the new
+    // passes (usually 0 → passes start at Take A). loopTake keeps every take and appends after.
+    track._recordLoop = (session && (session.loopTake || session.loopPunch) && session.loopEnd > session.loopStart)
+      ? { start: session.loopStart, end: session.loopEnd,
+          takeBase: session.loopPunch
+            ? (track.takes || []).filter(t => t.id !== track.activeTakeId).length
+            : (track.takes || []).length }
+      : null;
     track._recordingPeaks = [];
     track._recordingSampleRate = 44100;
     const durationLimit = Number(track._recordingDurationLimit) || 0;
@@ -3119,6 +3136,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // Carry loop-Take info through to the stop path (the session ref may be cleared by then).
     recordingRef.current = { trackId: track.id, ...target, start, durationLimit, promise,
       loopTake: !!(session && session.loopTake),
+      loopPunch: !!(session && session.loopPunch),
       loopStart: session && session.loopStart || 0,
       loopEnd: session && session.loopEnd || 0,
       punch: !!(session && session.punch),
@@ -3220,9 +3238,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (!isRecordingActive()) { stopAutoStopMonitor(); return; }
       const end = songEndRef.current;
       if (end > 0 && (DAW.getPlayhead() >= end - 0.03 || !DAW.isPlaying)) doStopRecording();
-      // Loop-take records through the Repeat until manual Stop (no position limit); only a
-      // dead transport (playback failed under us) forces it to end here.
-      else if (recordingRef.current && recordingRef.current.loopTake && !DAW.isPlaying) doStopRecording();
+      // Loop-take / loop-punch record through the Repeat until manual Stop (no position limit);
+      // only a dead transport (playback failed under us) forces it to end here.
+      else if (recordingRef.current && (recordingRef.current.loopTake || recordingRef.current.loopPunch) && !DAW.isPlaying) doStopRecording();
     }, 120);
   };
   const beginRecorderAt = async (target) => {
@@ -3279,8 +3297,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // punch-outs at the region end, and REPLACES that span in the active take. Punch wins
     // over loop-Take recording (both key off the same region).
     const lr = DAW.loopRange;
-    const punch = !!(isPunchOn() && lr && (lr.end - lr.start) > 0.05);
-    const punchAt = punch ? lr.start : DAW.getPlayhead();
+    const region = !!(lr && (lr.end - lr.start) > 0.05);
+    // Phase 7 Stage 1 — Loop-Punch Comp. With BOTH Punch AND Repeat ON over a region, Record
+    // captures N passes across the region (loop-Take capture) but KEEPS the base outside it,
+    // registering each pass as a region-scoped Take (attachLoopPunchRecording). Single Punch is
+    // therefore now Punch ON while Repeat is OFF; loop-Take is Repeat ON while Punch is OFF.
+    const loopPunch = !!(isPunchOn() && DAW.repeatPlayEnabled && region);
+    const punch = !!(isPunchOn() && !DAW.repeatPlayEnabled && region);
+    const punchAt = (punch || loopPunch) ? lr.start : DAW.getPlayhead();
     // Auto-stop target. songEnd is the end of the BACKING tracks (target excluded), and the
     // monitor stops the take when the playhead reaches it. But if recording BEGINS at or
     // past songEnd (playhead seeked beyond the backing material — e.g. adding an outro), the
@@ -3308,8 +3332,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // per iteration (attachLoopRecording). The take clips sit at the loop start, the Repeat
     // stays ON so native keeps wrapping (LoopAudioSource), and there is NO position auto-stop
     // — the user stops manually. Falls back to normal single-take recording when Repeat is off.
-    // Punch takes priority over loop-Take when both would apply (both use the same region).
-    const loopTake = !punch && !!(DAW.repeatPlayEnabled && lr && (lr.end - lr.start) > 0.05);
+    // Plain loop-Take is Repeat ON while Punch is OFF; Punch ON + Repeat ON is loopPunch above.
+    const loopTake = !!(!isPunchOn() && DAW.repeatPlayEnabled && region);
     recordSessionRef.current = {
       trackId: target.id,
       // ⚠️ Pre-roll MUST leave this null. `start` is where the take's clip is placed, and
@@ -3320,14 +3344,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       // long it took. Null keeps placement self-consistent with what was captured.
       // Loop-take pins start to the loop start so the take clips (and the seek) align to it.
       // Punch pins start to the region in point and end to the out point (auto punch-out).
-      start: punch ? lr.start : (loopTake ? lr.start : (opts.start != null ? opts.start : null)),
-      end: punch ? lr.end : (loopTake ? 0 : (opts.end != null ? opts.end : recordEnd)),
+      start: punch ? lr.start : ((loopTake || loopPunch) ? lr.start : (opts.start != null ? opts.start : null)),
+      end: punch ? lr.end : ((loopTake || loopPunch) ? 0 : (opts.end != null ? opts.end : recordEnd)),
       punch,
       punchStart: punch ? lr.start : 0,
       punchEnd: punch ? lr.end : 0,
       loopTake,
-      loopStart: loopTake ? lr.start : 0,
-      loopEnd: loopTake ? lr.end : 0,
+      loopPunch,
+      loopStart: (loopTake || loopPunch) ? lr.start : 0,
+      loopEnd: (loopTake || loopPunch) ? lr.end : 0,
       loopEnabled: !!opts.loopEnabled,
       countIn: opts.countIn != null ? opts.countIn
         : (DAW.isPlaying || useProll ? 0 : (click ? COUNT_IN_BEATS : COUNT_IN_LEGACY_TICKS)),
