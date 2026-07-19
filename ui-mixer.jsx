@@ -898,6 +898,13 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
 
   const loopRange = DAW.loopRange;
   const repeatOn = DAW.repeatPlayEnabled;
+  // Phase 6 Stage 6 — when Punch mode is on (app.jsx focusdaw-punch) and repeat-play is off,
+  // this region is serving PUNCH, not loop playback. Label it as its actual role so "Repeat
+  // OFF" does not read as "unused". Read live from localStorage (same per-render cadence the
+  // repeat flag uses); the region button still toggles repeat-play on click.
+  let punchModeOn = false;
+  try { punchModeOn = localStorage.getItem("focusdaw-punch") === "1"; } catch (e) {}
+  const punchRole = punchModeOn && !repeatOn;   // region is the punch [in,out] span, loop off
   const leftX = loopRange ? (loopRange.start / DAW.duration) * laneW : 0;
   const rightX = loopRange ? (loopRange.end / DAW.duration) * laneW : 0;
 
@@ -1152,16 +1159,17 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
                   fontWeight: 700,
                   letterSpacing: ".04em",
                   cursor: "pointer",
-                  background: repeatOn ? "var(--amber)" : "var(--surface2)",
-                  color: repeatOn ? "#1b1712" : "var(--cream-2)",
-                  border: "1px solid " + (repeatOn ? "var(--amber)" : "var(--line-strong)"),
-                  boxShadow: repeatOn ? "0 0 10px rgba(232,176,75,.4)" : "none",
+                  background: repeatOn ? "var(--amber)" : punchRole ? "rgba(232,176,75,.18)" : "var(--surface2)",
+                  color: repeatOn ? "#1b1712" : punchRole ? "var(--amber)" : "var(--cream-2)",
+                  border: "1px solid " + (repeatOn ? "var(--amber)" : punchRole ? "var(--amber)" : "var(--line-strong)"),
+                  boxShadow: repeatOn ? "0 0 10px rgba(232,176,75,.4)" : punchRole ? "0 0 8px rgba(232,176,75,.3)" : "none",
                   pointerEvents: "auto",
                   whiteSpace: "nowrap",
                   transition: "background .15s, color .15s, box-shadow .15s"
                 }}
+                title={punchRole ? "This region is the PUNCH [in→out] span. Click to also loop-play it (Repeat)." : undefined}
               >
-                Repeat {repeatOn ? "ON" : "OFF"}
+                {repeatOn ? "Repeat ON" : punchRole ? "PUNCH" : "Repeat OFF"}
               </button>
             </div>
 

@@ -432,9 +432,16 @@
     seek(t) {
       LocalDAW.seek(t);
       if (this.isNative && nativeOutputActive) {
+        // Clamp BEFORE sending to native. The native seek() does not clamp its
+        // playheadSeconds, and its 100ms position broadcast overwrites
+        // nativeState.offset — so a negative seek (arrow-key held past 0) used to
+        // park the native playhead below zero and the playbar sat "stuck" at 0 for
+        // a few presses until the value climbed back up. Clamping here means native
+        // never sees <0, so no broadcast can drag the offset negative.
+        const ct = Math.max(0, Math.min(t, LocalDAW.duration));
         nativeState.lastSeekSentAt = Date.now();
-        sendToNative({ command: "seek", positionSeconds: t });
-        nativeState.offset = Math.max(0, Math.min(t, LocalDAW.duration));
+        sendToNative({ command: "seek", positionSeconds: ct });
+        nativeState.offset = ct;
         nativeState.startTime = Date.now();
       }
     },
@@ -730,6 +737,14 @@
     // active lane to native (same reconnect-sync shape as attachRecording).
     async attachLoopRecording(trackId, name, arrayBuffer, options = {}) {
       const track = await LocalDAW.attachLoopRecording(trackId, name, arrayBuffer, options);
+      if (this.isNative && track) syncTrackToNative(track);
+      return track;
+    },
+
+    // Punch recording (Stage 6): replace the [in,out] span in the active take, then push the
+    // re-baked active layout to native (same reconnect-sync shape as attachRecording).
+    async attachPunchRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = await LocalDAW.attachPunchRecording(trackId, name, arrayBuffer, options);
       if (this.isNative && track) syncTrackToNative(track);
       return track;
     },

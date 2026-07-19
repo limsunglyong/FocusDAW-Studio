@@ -429,6 +429,18 @@
         gain: Number.isFinite(clip && clip.gain) ? clip.gain : 1.0,
         muted: !!(clip && clip.muted),
         takeId: (clip && clip.takeId) || null,
+        // Phase 6 Stage 5 — the timeline position where this take was ORIGINALLY placed at
+        // record time (offset-compensated). Kept as a fixed anchor so the UI can show how far
+        // the user has since nudged the clip (recordedStart - start), turning a manual
+        // alignment into an empirical input-latency reading. null on non-recording/derived
+        // clips (import, duplicate, paste, or a split/trim that moved the start off origin).
+        recordedStart: Number.isFinite(clip && clip.recordedStart) ? clip.recordedStart : null,
+        // Phase 6 Stage 5-B (v1.34.2) — the Recording offset (ms) that was IN EFFECT when this
+        // take was recorded. Fixed at record time and never rewritten, so "Recording Offset
+        // Cal." can base its new value on the take's own record-time offset (recordedOffsetMs −
+        // shift), not the current global offset — otherwise re-calibrating a take compounds the
+        // offset (e.g. 110 + 90 = 200 instead of 10 + 90 = 100). null on derived clips.
+        recordedOffsetMs: Number.isFinite(clip && clip.recordedOffsetMs) ? clip.recordedOffsetMs : null,
         params: clip && clip.params ? { ...clip.params } : null,
         automation: clip && clip.automation ? clip.automation.map(p => ({ ...p })) : null,
       };
@@ -506,6 +518,8 @@
         gain: c.gain,
         muted: !!c.muted,
         takeId: c.takeId || null,
+        recordedStart: Number.isFinite(c.recordedStart) ? c.recordedStart : null,
+        recordedOffsetMs: Number.isFinite(c.recordedOffsetMs) ? c.recordedOffsetMs : null,
         params: c.params ? { ...c.params } : null,
         automation: c.automation ? c.automation.map(p => ({ ...p })) : null,
       }));
@@ -810,7 +824,7 @@
       const limitEnd = Number(options.end) > start ? Number(options.end) : 0;
       const clipEnd = limitEnd ? Math.min(start + decoded.buffer.duration, limitEnd) : start + decoded.buffer.duration;
       const clipDuration = Math.max(0, clipEnd - start);
-      track.clips = [...track.clips, this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration, takeId }, sourceId, decoded.buffer.duration)];
+      track.clips = [...track.clips, this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration, takeId, recordedStart: start, recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 }, sourceId, decoded.buffer.duration)];
       // A take punched in past 0 (record-while-playing, pre-roll, mid-song count-in) is a
       // NON-trivial layout — its audio belongs at clip.start, not at 0 — so it MUST be
       // baked, per the 전략 B invariant. Without this bake, track.buffer stays a raw decode
@@ -822,6 +836,67 @@
       // right. A take at 0 stays trivial here and keeps the cheap filePath fast-path.
       this._ensureBaked(track);
       this.duration = limitEnd ? Math.max(limitEnd, this._projectClipDuration()) : Math.max(this.duration, start + decoded.buffer.duration);
+      this._applyMix();
+      this._startHotAddedTrack(track);
+      return track;
+    },
+
+    // Phase 6 Stage 6 — Punch recording. Instead of stacking a Take, REPLACE the [in, out]
+    // span inside the ACTIVE take: empty that span among the active take's clips (same
+    // split/trim rules as deleteRange, but scoped to active clips so inactive takes are left
+    // intact) and splice the new recording in as one clip tagged to the active take. The rest
+    // of the arrangement is untouched. options.start/end are the (offset-compensated) in/out
+    // points the record flow captured; a source is registered additively like attachRecording.
+    async attachPunchRecording(trackId, name, arrayBuffer, options = {}) {
+      const track = this.tracks.find((t) => t.id === trackId && t.kind === "audioIn");
+      if (!track) throw new Error("Audio In track was not found.");
+      const decoded = await this._decodeAudio(arrayBuffer, null);
+      const sourceId = this._sourceId();
+      this._captureRawBuffers(track);
+      this._registerSource(track, {
+        id: sourceId, filePath: options.filePath || null, fileName: name,
+        duration: decoded.buffer.duration, sampleRate: decoded.buffer.sampleRate,
+        channels: decoded.buffer.numberOfChannels, needsAudio: false,
+      }, decoded.buffer);
+      if (!track.fileName) track.fileName = name;
+      if (!track.filePath) track.filePath = options.filePath || null;
+      track.needsAudio = false;
+
+      const inPt = Math.max(0, options.start || 0);
+      const outPt = Number(options.end) > inPt ? Number(options.end) : inPt + decoded.buffer.duration;
+      const clipEnd = Math.min(inPt + decoded.buffer.duration, outPt);
+      const clipDuration = Math.max(0, clipEnd - inPt);
+      const activeId = this._activeTakeId(track); // punch clip joins the active take (null = no takes)
+
+      // Empty [inPt, outPt] among ACTIVE clips only. Mirrors deleteRange's split/trim, but a
+      // piece whose start MOVES off origin (right split, left trim) clears recordedStart/
+      // recordedOffsetMs so its Cal. badge is not misleading (same rule as deleteRange).
+      const next = [];
+      for (const c of track.clips) {
+        if (!this._isActiveClip(track, c)) { next.push(c); continue; }        // inactive take → untouched
+        const cS = c.start, cE = c.start + c.duration;
+        if (cE <= inPt || cS >= outPt) { next.push(c); continue; }            // outside the punch span
+        if (cS >= inPt && cE <= outPt) continue;                              // fully inside → removed
+        const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
+        if (cS < inPt && cE > outPt) {                                        // spans → split around the punch
+          next.push(this._normalizeClip({ ...c, id: this._cid(), start: cS, end: inPt, duration: inPt - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
+          const rOff = curOff + (outPt - cS);
+          next.push(this._normalizeClip({ ...c, id: this._cid(), start: outPt, end: cE, duration: cE - outPt, sourceOffset: rOff, offset: rOff, recordedStart: null, recordedOffsetMs: null, params: null, automation: null }, c.sourceId, 0));
+        } else if (cS < inPt) {                                               // trim right edge
+          next.push(this._normalizeClip({ ...c, start: cS, end: inPt, duration: inPt - cS }, c.sourceId, 0));
+        } else {                                                             // trim left edge
+          const nOff = curOff + (outPt - cS);
+          next.push(this._normalizeClip({ ...c, start: outPt, end: cE, duration: cE - outPt, sourceOffset: nOff, offset: nOff, recordedStart: null, recordedOffsetMs: null }, c.sourceId, 0));
+        }
+      }
+      // Splice the punch clip in (tagged to the active take so it plays/bakes/exports with it).
+      next.push(this._normalizeClip({ start: inPt, end: clipEnd, offset: 0, duration: clipDuration, takeId: activeId,
+        recordedStart: inPt, recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 },
+        sourceId, decoded.buffer.duration));
+      track.clips = next;
+      this._reindexClips(track);
+      this._ensureBaked(track);
+      this.duration = Math.max(this.duration, this._projectClipDuration());
       this._applyMix();
       this._startHotAddedTrack(track);
       return track;
@@ -872,7 +947,7 @@
           id: takeId, name: this._takeLabel(idx), index: idx, sourceId, partial: !!partial,
         }];
         track.clips = [...track.clips, this._normalizeClip(
-          { start: loopStart, end: loopStart + dur, offset, sourceOffset: offset, duration: dur, takeId },
+          { start: loopStart, end: loopStart + dur, offset, sourceOffset: offset, duration: dur, takeId, recordedStart: loopStart, recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 },
           sourceId, buf.duration)];
         return takeId;
       };
@@ -2825,12 +2900,12 @@
         if (cS < from && cE > to) {                                    // spanning → split
           next.push(this._normalizeClip({ ...c, id: this._cid(), start: cS, end: from, duration: from - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
           const rOff = curOff + (to - cS);
-          next.push(this._normalizeClip({ ...c, id: this._cid(), start: to, end: cE, duration: cE - to, sourceOffset: rOff, offset: rOff, params: null, automation: null }, c.sourceId, 0));
+          next.push(this._normalizeClip({ ...c, id: this._cid(), start: to, end: cE, duration: cE - to, sourceOffset: rOff, offset: rOff, recordedStart: null, recordedOffsetMs: null, params: null, automation: null }, c.sourceId, 0));
         } else if (cS < from) {                                        // trim right edge
           next.push(this._normalizeClip({ ...c, start: cS, end: from, duration: from - cS }, c.sourceId, 0));
         } else {                                                       // trim left edge
           const nOff = curOff + (to - cS);
-          next.push(this._normalizeClip({ ...c, start: to, end: cE, duration: cE - to, sourceOffset: nOff, offset: nOff }, c.sourceId, 0));
+          next.push(this._normalizeClip({ ...c, start: to, end: cE, duration: cE - to, sourceOffset: nOff, offset: nOff, recordedStart: null, recordedOffsetMs: null }, c.sourceId, 0));
         }
       }
       t.clips = next.length ? next : [this._normalizeClip({ start: 0, end: 0, offset: 0, duration: 0 }, (t.sources && t.sources[0] && t.sources[0].id) || null, 0)];
@@ -2844,7 +2919,7 @@
       const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
       const c = t.clips.find(x => x.id === clipId); if (!c) return false;
       const start = this._clampStartNoOverlap(t, null, atStart == null ? c.end : atStart, c.duration);
-      const copy = this._normalizeClip({ ...c, id: this._cid(), start, end: start + c.duration,
+      const copy = this._normalizeClip({ ...c, id: this._cid(), start, end: start + c.duration, recordedStart: null, recordedOffsetMs: null,
         params: c.params ? { ...c.params } : null, automation: c.automation ? c.automation.map(p => ({ ...p })) : null },
         c.sourceId, 0);
       t.clips = [...t.clips, copy];
@@ -2881,7 +2956,7 @@
       }
       const dur = cb.clip.duration || 0;
       const start = this._clampStartNoOverlap(t, null, atStart, dur);
-      const clip = this._normalizeClip({ ...cb.clip, id: this._cid(), start, end: start + dur }, sid, 0);
+      const clip = this._normalizeClip({ ...cb.clip, id: this._cid(), start, end: start + dur, recordedStart: null, recordedOffsetMs: null }, sid, 0);
       t.clips = [...t.clips, clip];
       this._reindexClips(t);
       this._ensureBaked(t);

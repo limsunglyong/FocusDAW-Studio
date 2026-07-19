@@ -862,6 +862,12 @@ function deviceModeLabel(type) {
 // exposing BOTH an input and output endpoint are offered, and choosing one endpoint
 // auto-selects its partner on the same interface. DirectSound is hidden. Choices
 // are applied atomically via DAW.applyDeviceSetup (bridge persists + re-applies).
+// Phase 6 Stage 5 — recording latency offset (see DeviceSetupSection). Kept as
+// module constants so the exact key strings are used everywhere (app.jsx reads
+// OFFSET_MS_KEY at record-finalize time).
+const OFFSET_MS_KEY = "focusdaw-record-offset-ms";
+const OFFSET_AUTO_KEY = "focusdaw-record-offset-auto";
+
 function DeviceSetupSection() {
   const [devices, setDevices] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -873,6 +879,18 @@ function DeviceSetupSection() {
   const [sampleRate, setSampleRate] = useState(savedIn.sampleRate || 0);
   const [bufferSize, setBufferSize] = useState(savedIn.bufferSize || 0);
   const [error, setError] = useState("");
+
+  // Phase 6 Stage 5 — recording input-latency compensation. A recorded take is
+  // captured `offset` ms LATE relative to the backing track, so at finalize the
+  // clip is slid EARLIER by this many ms (app.jsx). Applied value lives in one
+  // localStorage number (focusdaw-record-offset-ms) that app.jsx reads directly.
+  // In Auto mode it tracks the driver's input-latency estimate; a manual value
+  // overrides it. Global (a property of the interface, per user decision).
+  const [offsetAuto, setOffsetAuto] = useState(() => localStorage.getItem(OFFSET_AUTO_KEY) !== "0");
+  const [offsetMs, setOffsetMs] = useState(() => {
+    const v = Number(localStorage.getItem(OFFSET_MS_KEY));
+    return Number.isFinite(v) ? v : 0;
+  });
 
   const isNative = !!DAW.isNative;
   const refresh = async () => {
@@ -887,6 +905,32 @@ function DeviceSetupSection() {
   const current = devices && devices.current;
   const activeMode = mode || (types[0] ? types[0].type : "");
   const exclusive = /exclusive/i.test(activeMode);
+
+  // Driver input-latency estimate, in whole ms (null when no input device is open).
+  const estMs = (current && current.inputLatency > 0 && current.sampleRate > 0)
+    ? Math.round(current.inputLatency / current.sampleRate * 1000) : null;
+  // In Auto mode, keep the applied offset in lockstep with the driver estimate so
+  // app.jsx (which only reads the resolved number) gets the right value without any
+  // device plumbing. A device/mode change that moves the estimate updates it here.
+  useEffect(() => {
+    if (offsetAuto && estMs != null && estMs !== offsetMs) {
+      localStorage.setItem(OFFSET_MS_KEY, String(estMs));
+      setOffsetMs(estMs);
+    }
+  }, [offsetAuto, estMs]);
+  const setAuto = (on) => {
+    setOffsetAuto(on);
+    localStorage.setItem(OFFSET_AUTO_KEY, on ? "1" : "0");
+    if (on && estMs != null) { localStorage.setItem(OFFSET_MS_KEY, String(estMs)); setOffsetMs(estMs); }
+  };
+  const setManualMs = (v) => {
+    // −100..+500ms guard. Negative = push the take LATER (manual fine-tune, v1.33.1);
+    // positive = pull it EARLIER to compensate input latency.
+    const n = Math.max(-100, Math.min(500, Math.round(Number(v) || 0)));
+    setOffsetMs(n);
+    localStorage.setItem(OFFSET_MS_KEY, String(n));
+    if (offsetAuto) { setOffsetAuto(false); localStorage.setItem(OFFSET_AUTO_KEY, "0"); }
+  };
   const entry = types.find((t) => t.type === activeMode) || { devices: [], inputDevices: [] };
 
   const outByKey = {}; (entry.devices || []).forEach((n) => { outByKey[deviceInterfaceKey(n)] = n; });
@@ -993,6 +1037,31 @@ function DeviceSetupSection() {
           Latency: {parts.join(" · ")} <span style={{ color: "var(--muted)" }}>(driver estimate)</span>
         </div>;
       })()}
+
+      {/* Phase 6 Stage 5 — recording input-latency compensation (global) */}
+      <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, color: "var(--cream)", fontWeight: 600 }}>Recording offset</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--dim)", cursor: isNative ? "pointer" : "default" }}>
+              <input type="checkbox" checked={offsetAuto} disabled={!isNative} onChange={(e) => setAuto(e.target.checked)} />
+              Auto
+            </label>
+            <input type="number" min="-100" max="500" step="1" value={offsetMs}
+              disabled={!isNative || offsetAuto}
+              onChange={(e) => setManualMs(e.target.value)}
+              style={{ width: 64, height: 28, textAlign: "right", fontSize: 12, padding: "0 7px", borderRadius: 6, border: "1px solid var(--line-strong)", background: "var(--panel)", color: "var(--cream)", opacity: (!isNative || offsetAuto) ? 0.5 : 1 }} />
+            <span style={{ fontSize: 11.5, color: "var(--dim)" }}>ms</span>
+          </div>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
+          Recorded takes are shifted to line up with the backing track — <strong style={{ color: "var(--muted)" }}>positive</strong> pulls them earlier (compensates the input's capture delay), <strong style={{ color: "var(--muted)" }}>negative</strong> pushes them later (manual fine-tune).
+          {offsetAuto
+            ? (estMs != null ? <> Auto follows the driver estimate (<strong style={{ color: "var(--muted)" }}>{estMs} ms</strong>).</> : <> Auto uses the driver estimate — open an input device to read it.</>)
+            : (estMs != null ? <> Manual override; driver estimate is <strong style={{ color: "var(--muted)" }}>{estMs} ms</strong>.</> : <> Manual override.</>)}
+        </div>
+      </div>
+
       <div style={{ marginTop: 8 }}>
         <button className="btn" onClick={refresh} disabled={!isNative || loading} style={{ height: 30, fontSize: 12, padding: "0 12px", border: "1px solid var(--line-strong)", display: "inline-flex", alignItems: "center", gap: 7 }}>
           {loading && <span aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", border: "2px solid var(--line-strong)", borderTopColor: "var(--cream)", animation: "spin 0.7s linear infinite" }} />}

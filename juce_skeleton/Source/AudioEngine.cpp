@@ -474,7 +474,10 @@ void AudioEngine::stop()
 void AudioEngine::seek(double positionSeconds)
 {
     std::lock_guard<std::mutex> lock(engineMutex);
-    playheadSeconds = positionSeconds;
+    // Never let the playhead go negative — a below-zero position parked here would
+    // be echoed back by the 100ms position broadcast and stall the UI playbar at 0.
+    // (The JS bridge already clamps before sending; this is defense in depth.)
+    playheadSeconds = juce::jmax(0.0, positionSeconds);
     LOG_DBG << "[AudioEngine] Seek to: " << playheadSeconds << "s" << std::endl;
 
 #if USE_JUCE

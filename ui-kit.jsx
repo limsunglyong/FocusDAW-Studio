@@ -34,6 +34,8 @@ const IC = {
   metronome: "M9.5 3h5l4 18h-13zM4.5 16h15M12 21L16 7",
   // Pre-roll: an arrow running INTO the record point — playback leads in, then punches in.
   preroll: "M2 12h7M6.5 8.5L10 12l-3.5 3.5M17 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z",
+  // Punch: a record dot bracketed by an in/out region — record replaces just that span.
+  punch: "M7 5H4v14h3M17 5h3v14h-3M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
 };
 function Icon({ name, size = 18, stroke = 1.7, fill = false, style }) {
   const d = IC[name];

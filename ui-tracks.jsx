@@ -868,7 +868,60 @@ function ClipContextMenu({ x, y, items, hint, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null }) {
+// Confirmation modal shown after "Recording Offset Cal." folds a clip's manual alignment
+// into the global Recording offset. Shows the before/after value so the user knows exactly
+// what became the new setting. Portaled + Esc/backdrop to close (matches app dialog style).
+function RecordingOffsetCalModal({ prev, next, recOff, moveMs, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") onClose(); };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  return ReactDOM.createPortal(
+    <div onMouseDown={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 5000, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}>
+      <div onMouseDown={(e) => e.stopPropagation()}
+        style={{ width: 380, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+        <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+          <Icon name="disc" size={18} style={{ color: "var(--amber)" }} />
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Recording offset updated</span>
+        </div>
+        <div style={{ padding: "18px 20px 20px" }}>
+          <div style={{ fontSize: 12.5, color: "var(--cream-2)", lineHeight: 1.5, marginBottom: 16 }}>
+            The clip's manual alignment has been folded into the global <b>Recording offset</b>.
+            It now applies to future takes.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
+            padding: "14px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10 }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 10, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Previous</div>
+              <div className="mono" style={{ fontSize: 16, color: "var(--faint)" }}>{prev}ms</div>
+            </div>
+            <Icon name="chevron" size={16} style={{ color: "var(--muted)" }} />
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 10, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--amber)", marginBottom: 4 }}>New offset</div>
+              <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>{next}ms</div>
+            </div>
+          </div>
+          {/* Decomposition in the user's terms: record-time offset + how far the clip was
+              pulled earlier = the new offset (e.g. recorded 10ms + moved 90ms = 100ms). */}
+          <div className="mono" style={{ textAlign: "center", fontSize: 11, color: "var(--muted)", marginTop: 10 }}>
+            {`recorded ${recOff}ms ${moveMs >= 0 ? "+" : "−"} ${Math.abs(moveMs)}ms = ${next}ms`}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+            <button className="btn" onClick={onClose}
+              style={{ padding: "8px 20px", fontSize: 13, background: "var(--amber)", color: "var(--bg)", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -890,6 +943,8 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   // clipId null = the menu was opened over empty lane space (paste target only).
   const [clipMenu, setClipMenu] = useState(null); // { clipId, x, y }
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
+  // Recording Offset Cal. confirmation modal payload: { prev, next } (ms). null = hidden.
+  const [calResult, setCalResult] = useState(null);
   const openClipMenu = (e, clip) => {
     if (!clipEditable) return;
     e.preventDefault(); e.stopPropagation();
@@ -915,9 +970,38 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     // With 2+ clips selected the single-clip actions (Copy/Duplicate/Split/Join) still act
     // on the right-clicked clip only; Delete acts on the whole selection, so it says so.
     const groupN = selectedClipIds.includes(clip.id) ? selectedClipIds.length : 1;
+    // Phase 6 Stage 5-B (방안 B, v1.34.2) — "Recording Offset Cal.": fold this take's manual
+    // alignment into the GLOBAL Recording offset so future takes land pre-aligned. shiftMs =
+    // (start - recordedStart)*1000 is the user's own movement (negative = pulled earlier), and
+    // is what the menu shows. The new offset re-bases off THIS take's RECORD-TIME offset
+    // (recordedOffsetMs), NOT the current global offset — otherwise re-calibrating a moved take
+    // compounds the value (110 + 90 → 200 instead of 10 + 90 → 100). Recording offset is
+    // positive-pulls-earlier, so new = recordedOffsetMs − shiftMs. Clamped to the Settings
+    // field's −100..+500, Auto cleared (manual override wins). curOff is only the modal's "prev".
+    const OFF_MS_KEY = "focusdaw-record-offset-ms", OFF_AUTO_KEY = "focusdaw-record-offset-auto";
+    const shiftMs = Number.isFinite(clip.recordedStart) ? Math.round((clip.start - clip.recordedStart) * 1000) : 0;
+    const canCal = Number.isFinite(clip.recordedStart) && Math.abs(shiftMs) >= 1;
+    const curOff = Number(localStorage.getItem(OFF_MS_KEY)) || 0;      // current global (modal "prev")
+    const recOff = Number.isFinite(clip.recordedOffsetMs) ? clip.recordedOffsetMs : 0; // record-time offset
+    const newOff = Math.max(-100, Math.min(500, recOff - shiftMs));
     return [
       { label: groupN > 1 ? `Deselect (${groupN} selected)` : "Deselect", hint: "Esc",
         onClick: () => onDeselectClip && onDeselectClip() },
+      ...(canCal ? [
+        { sep: true },
+        { label: (
+            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.3 }}>
+              <span>Recording Offset Cal.</span>
+              {/* User's own movement only (matches the clip badge), not the combined result. */}
+              <span className="mono" style={{ fontSize: 10.5, color: "var(--cream-2)" }}>{`moved ${shiftMs > 0 ? "+" : ""}${shiftMs}ms`}</span>
+            </span>
+          ),
+          onClick: () => {
+            localStorage.setItem(OFF_MS_KEY, String(newOff));
+            localStorage.setItem(OFF_AUTO_KEY, "0"); // manual value overrides Auto
+            setCalResult({ prev: curOff, next: newOff, recOff, moveMs: -shiftMs });
+          } },
+      ] : []),
       { sep: true },
       { label: "Copy", hint: "Ctrl+C", onClick: () => onCopyClip && onCopyClip(track.id, clip.id) },
       { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
@@ -1076,12 +1160,15 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         <Waveform track={track} clips={activeClips} pxPerSec={pxPerSec} ampZoom={ampZoom} height={laneH} volume={track.params.volume} />
         {p.autoOn && <AutomationOverlay track={track} pxPerSec={pxPerSec} height={laneH} onBeforeChange={onBeforeChange} />}
-        {/* Take Lanes expander — only when this Audio In track actually holds Takes. Sticks
-            to the left so it stays on screen while the arrangement scrolls. */}
+        {/* Take Lanes expander — only when this Audio In track actually holds Takes. The lane's
+            own overflow:hidden traps position:sticky inside it, so instead we pin the badge to
+            the viewport's left edge (just right of the sticky header) by absolute-positioning it
+            at the current horizontal scroll offset: viewport-x = HEADER_W + 6, independent of
+            scroll (lane-x scrollLeft maps to just past the header). Keeps it visible zoomed in. */}
         {takeLanes.length > 0 && (
           <button type="button" onClick={(e) => { e.stopPropagation(); setTakesOpen(o => !o); }}
             title={takesOpen ? "Hide take lanes" : "Show take lanes"}
-            style={{ position: "sticky", left: 6, top: 6, float: "left", zIndex: 7,
+            style={{ position: "absolute", left: viewScrollLeft + 6, top: 6, zIndex: 7,
               display: "inline-flex", alignItems: "center", gap: 4, height: 18, padding: "0 7px",
               borderRadius: 9, border: "1px solid rgba(232,176,75,.35)", cursor: "pointer",
               background: "color-mix(in srgb, var(--surface2) 82%, var(--amber) 18%)",
@@ -1180,6 +1267,21 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
                   {n > 1 ? `${tk.name} · ${(tk.index || 0) + 1}/${n}` : tk.name}
                 </span>;
               })()}
+              {/* Phase 6 Stage 5 (방안 B) — how far this take has been nudged from where it was
+                  recorded. Reads the live ghost start `s`, so the number tracks a drag in real
+                  time: align the take by ear against the backing, then read the shift. Sign
+                  convention (user, v1.34.1): pulling the clip EARLIER (left) reads NEGATIVE —
+                  i.e. the raw timeline delta (s - recordedStart). Right-click ▸ Recording
+                  Offset Cal. bakes this into the global Recording offset. Hidden when unmoved
+                  (<0.5 ms) or on derived clips (recordedStart == null). */}
+              {sel && Number.isFinite(clip.recordedStart) && Math.abs(s - clip.recordedStart) >= 0.0005 && (() => {
+                const shiftMs = Math.round((s - clip.recordedStart) * 1000); // <0 = pulled earlier
+                return <span className="mono"
+                  title={`Shifted ${shiftMs > 0 ? "+" : ""}${shiftMs} ms from where it was recorded (negative = pulled earlier).\nRight-click ▸ Recording Offset Cal. to fold this into the global Recording offset.`}
+                  style={{ ...CLIP_TIME_STYLE, bottom: 2, left: 4, color: "var(--cream)", opacity: .9 }}>
+                  {`off ${shiftMs > 0 ? "+" : ""}${shiftMs}ms`}
+                </span>;
+              })()}
               {/* Move in progress (drag or held arrow key): the engine re-bake is deferred
                   to the commit, so this marks "position not written yet". */}
               {sel && moving && (
@@ -1198,6 +1300,8 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             hint={clip ? "Drag to move · drag edges to trim\nCtrl+click clips to select several · ←/→ nudges\nEsc or click away to deselect" : null}
             onClose={closeClipMenu} />;
         })()}
+        {calResult && <RecordingOffsetCalModal prev={calResult.prev} next={calResult.next}
+          recOff={calResult.recOff} moveMs={calResult.moveMs} onClose={() => setCalResult(null)} />}
         {countIn && (
           <div style={{ position: "absolute", top: 0, bottom: 0, left: countIn.atSec * pxPerSec,
             pointerEvents: "none", zIndex: 11 }}>
@@ -1391,7 +1495,10 @@ function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, pl
 
 /* ---------- time grid lines ---------- */
 function TimeGrid({ pxPerSec, height }) {
-  const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
+  // Sub-second step is 0.2 (not 0.25): ruler labels resolve to 1 decimal (0.1s), and 0.25s
+  // ticks land on 10.25/10.75 which round to "10.3"/"10.8" — a 50ms label-vs-tick mismatch.
+  // 0.2s ticks are exact at 1-decimal, so grid lines stay aligned with the ruler's labels.
+  const steps = [0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
   const majorStep = steps.find((s) => s * pxPerSec >= 96) || steps[steps.length - 1];
   const minorStep = majorStep / 2;
   const lines = [];
@@ -1413,7 +1520,10 @@ function rulerLabel(t, step) {
 }
 function Ruler({ pxPerSec, playhead, onSeek, onAddTrack, onAddAudioIn }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
-  const STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
+  // 0.2 (not 0.25) as the smallest step so every labeled tick is exact at the label's
+  // 1-decimal (0.1s) resolution — 0.25s ticks (10.25/10.75) round to 10.3/10.8 and read as
+  // a ~50ms misalignment against the playhead/clip times. See rulerLabel.
+  const STEPS = [0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
   const step = STEPS.find((s) => s * pxPerSec >= 76) || STEPS[STEPS.length - 1];
   const marks = [];
   for (let i = 0; i * step <= DAW.duration + 1e-6; i++) {
