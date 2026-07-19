@@ -1859,28 +1859,23 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.17.4 - v1.17.10",
-  date: "2026-07-08",
+  range: "v1.30.0 - v1.35.1",
+  date: "2026-07-19",
   features: [
-    "Added the Source/Clip project model with schemaVersion 2, track kind, locked-to-zero file tracks, sources, clips, and takes metadata.",
-    "Added project file drag and drop, so .focus files can be opened directly from the arrange view.",
-    "Added a dedicated Save As... command while keeping Save Project for the current project path.",
-    "Added file-track fold and unfold workflow with a collapsed waveform overlay for dense stem sessions.",
+    "Loop-Take recording: with a Repeat region set, Record captures one take per loop pass, and the new Take Lanes let you expand, audition, switch the active take, and delete takes.",
+    "Punch recording: turn on Punch and Record re-records only the Repeat region — a pre-roll leads in, punch-in and punch-out happen automatically at the region edges, and only that span in the active take is replaced.",
+    "Recording latency offset: a Recording offset in Settings, Device Setup slides recorded takes earlier to line up with the backing track, using the driver estimate (Auto) or a manual value.",
+    "Recording Offset Cal.: after nudging a recorded clip into place, right-click it and choose Recording Offset Cal. to fold that alignment into the global offset for future takes.",
   ],
   improvements: [
-    "Improved project audio reconnection: missing placeholders reconnect only by original file path or explicit track id, while same-name files from another folder import as new tracks.",
-    "Improved native engine project switching by clearing stale native tracks and pending loads before a new project is imported.",
-    "Improved hot-loaded file playback sync so decoded tracks join the current transport position with a short fade-in.",
-    "Refined track scrolling and file-track overlay rendering for cleaner, more stable arrange navigation.",
-    "NO AUDIO tracks now keep BPM Source, Solo, and Mute controls disabled until audio is re-linked.",
+    "Recorded clips now show how far they have been moved from where they were recorded (off ±ms), updating live as you drag.",
+    "Recording feedback polish: a pre-roll countdown badge appears at the punch position on the track, and the loop-take live waveform wraps inside the Repeat region.",
+    "The take-count badge stays pinned beside the track header when you zoom in or scroll the timeline.",
+    "The OUTPUT track region button reads PUNCH when the region is being used for punch recording.",
   ],
   fixes: [
-    "Fixed hidden previous-project audio continuing to play after opening another project.",
-    "Fixed repeated native File not found retries for missing placeholder paths during project import.",
-    "Fixed NO AUDIO Solo state causing UI mute indicators and actual playback to disagree.",
-    "Fixed newly imported audio from a different folder becoming NO AUDIO after saving and reopening.",
-    "Fixed Save Project opening the save dialog when the project name and .focus file name differed.",
-    "Fixed an Electron first-repeat handover case where the playhead could jump to the loop start unexpectedly.",
+    "Fixed ruler time labels not lining up with the real time at high zoom levels.",
+    "Fixed play bar arrow-key nudges so they snap to whole seconds, and seeking left past the start no longer flickers the playhead to zero.",
   ],
 };
 
