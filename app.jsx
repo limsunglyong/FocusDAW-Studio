@@ -635,7 +635,7 @@ function snapshotSig(snap) {
     tracks: (snap.tracks || []).map((t) => ({ id: t.id, params: t.params, clips: t.clips, takes: t.takes, activeTakeId: t.activeTakeId })),
   });
 }
-const TOOL_TIPS  = { select: "Select / Seek (S)", scissors: "Split clip (C)", join: "Join clips (J)" };
+const TOOL_TIPS  = { select: "Select / Seek (S)", scissors: "Split clip (C)", join: "Merge clips (J)" };
 function ToolBar({ tool, setTool }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 6px",
@@ -2577,11 +2577,30 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     return () => clearInterval(id);
   }, [projectName, projectPath]);
 
+  // Phase 7 — write any freshly consolidated source to disk. A consolidated source is
+  // rendered in memory, and importProject can only reload sources that carry a filePath,
+  // so without this the clip falls back to the primary audio on reopen (the v1.21.7 known
+  // bug). Best-effort and fire-and-forget: on failure the source stays memory-only, i.e.
+  // the old behaviour, and the edit itself still stands.
+  // audioBufferToWav lives in ui-dialogs.jsx — same global renderer scope (see 앱개발.md
+  // "렌더러는 번들이 아니라 전역 스코프 공유").
+  const persistConsolidated = useCallback(() => {
+    if (!window.electronAPI || !window.electronAPI.saveConsolidatedAudio) return;
+    if (!DAW.persistConsolidatedSources) return;
+    const anchorPath = projectPath || (DAW.tracks
+      .map((t) => t.filePath || (t.sources && t.sources[0] && t.sources[0].filePath) || null)
+      .find(Boolean) || null);
+    DAW.persistConsolidatedSources(async (buffer, suggestedName) => {
+      const wavBuffer = await audioBufferToWav(buffer).arrayBuffer();
+      return window.electronAPI.saveConsolidatedAudio(
+        wavBuffer, projectPath || null, suggestedName, projectPath ? null : anchorPath);
+    }).then((res) => {
+      if (res && res.failed) console.warn("[consolidate] some sources stayed memory-only", res);
+    }).catch((err) => console.warn("[consolidate] persist failed", err));
+  }, [projectPath]);
+
   const handleSplit = useCallback((trackId, clipId, atSec) => {
     pushUndo(); DAW.splitClip(trackId, clipId, atSec); force((n) => n + 1);
-  }, [pushUndo]);
-  const handleJoin = useCallback((trackId, clipIdA, clipIdB) => {
-    pushUndo(); DAW.joinClips(trackId, clipIdA, clipIdB); force((n) => n + 1);
   }, [pushUndo]);
 
   // Phase 5 — Audio In / Bounce clip editing (전략 B). Each mutating op takes one
@@ -2651,6 +2670,45 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (id) setClipSel({ trackId, clipIds: [id] }); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
   const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
+  // Keyed by canConsolidateClips()'s reason code. Each says what to do next, not just what
+  // went wrong — "same Take lane" alone left the user guessing which clip was the problem.
+  const CONSOLIDATE_REFUSAL = {
+    few: "Select 2 or more clips (Ctrl+click) to merge them.",
+    lane: "These clips belong to different lanes.\n\nOne of them is shared audio (outside the punch/repeat region, heard under every take) and the other belongs to a single take. Merging them would either double that take under all the others, or make the shared audio disappear when you switch takes.\n\nSelect clips from the same take, or from the shared audio only.",
+    between: "Another clip sits between the selected ones.\n\nThe merged clip would cover its position and push it out of place. Ctrl+click that middle clip to include it in the merge, or merge the neighbouring clips separately.",
+    track: "Track not found.",
+  };
+  // Phase 7 — Consolidate Clips: flatten the selected clips (+ the silence between them)
+  // into one clip backed by a newly rendered WAV. Menu enables it only for 2+ clips.
+  const handleConsolidateClips = useCallback((trackId, clipIds) => {
+    const ids = Array.isArray(clipIds) ? clipIds : [];
+    if (ids.length < 2) return;
+    // Check first so the refusal can say WHICH rule was hit — and so no undo snapshot is
+    // taken for an edit that will not happen.
+    const check = DAW.canConsolidateClips ? DAW.canConsolidateClips(trackId, ids) : { ok: true };
+    if (!check.ok) {
+      window.alert(CONSOLIDATE_REFUSAL[check.reason] || "Consolidate is not possible for this selection.");
+      return;
+    }
+    lockTimelineZoom();
+    const savedRedo = pushUndo();
+    const id = DAW.consolidateClips(trackId, ids);
+    if (!id) {
+      cancelUndo(savedRedo);   // nothing changed → drop the empty snapshot, keep Redo alive
+      window.alert("Consolidate failed: the clips' source audio is not loaded yet. Try again once the waveform is visible.");
+      return;
+    }
+    setClipSel({ trackId, clipIds: [id] });
+    force((n) => n + 1);
+    persistConsolidated();
+  }, [pushUndo, cancelUndo, lockTimelineZoom, persistConsolidated]);
+  // Merge TOOL (J: click a clip to merge it with its neighbour). Same handler as the menu,
+  // so the refusal messages, undo hygiene and WAV persistence are identical on both routes.
+  // It used to pushUndo() before calling the engine, which left a no-op undo entry whenever
+  // the merge was refused — that entry eats the next Ctrl+Z (see "Undo 스냅샷 정합성" note).
+  const handleJoin = useCallback((trackId, clipIdA, clipIdB) => {
+    handleConsolidateClips(trackId, [clipIdA, clipIdB]);
+  }, [handleConsolidateClips]);
   // Phase 6 Stage 4 — Take Lanes. Switching the active Take or deleting one re-bakes the
   // track (only the active lane plays), so both are undoable engine edits.
   const handleSetActiveTake = useCallback((trackId, takeId) => {
@@ -3803,7 +3861,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           <div style={{ width: 1, height: 30, background: "var(--line)" }} />
           <ZoomBar pxPerSec={pxPerSec} setPx={setPxFromUser} ampZoom={ampZoom} setAmp={setAmp} timeMin={timeMinPx} />
           <div style={{ width: 1, height: 30, background: "var(--line)" }} />
-          {/* Select/Seek · Split · Join tools hidden on screen (code kept) — re-enable: <ToolBar tool={tool} setTool={setTool} /> + a divider */}
+          {/* Select/Seek · Split · Merge tools hidden on screen (code kept) — re-enable: <ToolBar tool={tool} setTool={setTool} /> + a divider */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, letterSpacing: ".06em" }}>TRACK SIZE</span>
             <Seg small value={laneH} onChange={setLaneH} options={[{ v: 68, l: "S" }, { v: 96, l: "M" }, { v: 132, l: "L" }]} />
@@ -3893,6 +3951,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
+                  onConsolidateClips={handleConsolidateClips}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
                   onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   viewScrollLeft={timelineView.scrollLeft}
@@ -3927,6 +3986,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
+                  onConsolidateClips={handleConsolidateClips}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
                   onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   viewScrollLeft={timelineView.scrollLeft}

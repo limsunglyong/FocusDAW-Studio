@@ -845,6 +845,11 @@
       LocalDAW.joinClips(trackId, clipIdA, clipIdB);
       if (this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
     },
+    consolidateClips(trackId, clipIds) {
+      const id = LocalDAW.consolidateClips(trackId, clipIds);
+      if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return id;
+    },
 
     addDemoTracks() {
       LocalDAW.addDemoTracks();

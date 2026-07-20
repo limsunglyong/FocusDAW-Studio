@@ -1220,8 +1220,18 @@
         track.sources[0].filePath = track.filePath || track.sources[0].filePath || null;
         track.sources[0].fileName = track.fileName || track.sources[0].fileName || track.name || null;
       }
-      if (track.clips && track.clips.length === 1 && track.clips[0].start === 0) {
-        track.clips[0] = this._normalizeClip({ ...track.clips[0], end: decoded.buffer.duration, duration: decoded.buffer.duration }, track.sources[0].id, decoded.buffer.duration);
+      // Stretch the lone clip to the freshly decoded PRIMARY audio — the untouched
+      // "one clip == whole file" case, where the saved duration may be stale.
+      // Guard on the clip actually BELONGING to the primary source: after a Consolidate
+      // (or a non-contiguous Join) a track can legitimately hold exactly one clip at 0
+      // that points at a CONSOLIDATED source. Rewriting that to sources[0] re-pointed the
+      // clip at the original audio and stretched it to the original length, so reopening
+      // showed the pre-consolidation clip and silently discarded the merge (v1.37.0 field
+      // report: "재열기하면 원래 clip 1개만 남아있음").
+      const primaryId = track.sources && track.sources[0] && track.sources[0].id;
+      const lone = track.clips && track.clips.length === 1 ? track.clips[0] : null;
+      if (lone && lone.start === 0 && (!lone.sourceId || lone.sourceId === primaryId)) {
+        track.clips[0] = this._normalizeClip({ ...lone, end: decoded.buffer.duration, duration: decoded.buffer.duration }, primaryId, decoded.buffer.duration);
       }
       track.audioRev = (track.audioRev || 0) + 1;
       track._stretchPreview = null;
@@ -2375,106 +2385,212 @@
       if (this.isPlaying) this._scheduleAutomation();
     },
 
-    // Concatenate two clips' ACTUAL audio into a fresh source buffer + register it, with
-    // a micro-fade at the seam. Used when joining clips that are NOT source-contiguous
-    // (e.g. copies, or different source ranges) so neither half is lost: a single
-    // source-read clip cannot represent "sourceA[..] then sourceB[..]". gapSec (timeline
-    // silence between the two clips) is written between them so the join keeps both clips
-    // where they sit. Returns the new sourceId, or null if a raw buffer is missing.
-    _consolidateClips(track, first, second, gapSec = 0) {
-      if (!ctx) return null;
+    // Flatten `clips` (timeline order) into ONE new
+    // source buffer, writing the timeline gap between neighbours as silence so every clip
+    // keeps its position, with a micro-fade on both sides of each seam. `gaps[i]` is the
+    // silence between clips[i] and clips[i+1]; omit it to derive gaps from clip.start.
+    // Returns the new sourceId, or null if any raw buffer is missing (caller must then
+    // leave the clips untouched rather than lose audio).
+    _renderClipsToSource(track, clips, gaps = null) {
+      if (!ctx || !clips || clips.length < 2) return null;
       this._captureRawBuffers(track);
-      const rawA = this._rawBufferForSource(track, first.sourceId);
-      const rawB = this._rawBufferForSource(track, second.sourceId);
-      if (!rawA || !rawB) return null;
-      const sr = rawA.sampleRate;
-      const ch = Math.max(rawA.numberOfChannels, rawB.numberOfChannels);
-      const offA = Math.max(0, Math.round((first.sourceOffset != null ? first.sourceOffset : (first.offset || 0)) * sr));
-      const offB = Math.max(0, Math.round((second.sourceOffset != null ? second.sourceOffset : (second.offset || 0)) * sr));
-      const durA = Math.round((first.duration || 0) * sr);
-      const durB = Math.round((second.duration || 0) * sr);
-      const nA = Math.max(0, Math.min(durA, rawA.length - offA));
-      const nB = Math.max(0, Math.min(durB, rawB.length - offB));
-      const gapN = Math.max(0, Math.round((gapSec || 0) * sr));
-      const total = Math.max(1, durA + gapN + durB);
+      const raws = clips.map(c => this._rawBufferForSource(track, c.sourceId));
+      if (raws.some(r => !r)) return null;
+      const sr = raws[0].sampleRate;
+      const ch = raws.reduce((m, r) => Math.max(m, r.numberOfChannels), 1);
+      const gapN = clips.slice(0, -1).map((c, i) => {
+        const g = gaps && gaps[i] != null
+          ? gaps[i]
+          : (clips[i + 1].start - (c.start + (c.duration || 0)));
+        return Math.max(0, Math.round((g || 0) * sr));
+      });
+      // Per-clip source window. `n` clamps to what the raw actually holds, while `dur`
+      // (the clip's declared length) drives layout, so a short raw leaves silence rather
+      // than sliding every later clip earlier.
+      const parts = clips.map((c, i) => {
+        const off = Math.max(0, Math.round((c.sourceOffset != null ? c.sourceOffset : (c.offset || 0)) * sr));
+        const dur = Math.round((c.duration || 0) * sr);
+        return { raw: raws[i], off, dur, n: Math.max(0, Math.min(dur, raws[i].length - off)), gain: c.gain == null ? 1 : c.gain };
+      });
+      const total = Math.max(1, parts.reduce((s, p) => s + p.dur, 0) + gapN.reduce((s, g) => s + g, 0));
       const out = ctx.createBuffer(ch, total, sr);
-      const gA = first.gain == null ? 1 : first.gain;
-      const gB = second.gain == null ? 1 : second.gain;
-      const fadeN = Math.min(Math.floor(this._MICRO_FADE * sr), Math.floor(Math.min(nA, nB) / 2));
+      const maxFade = Math.floor(this._MICRO_FADE * sr);
       for (let c = 0; c < ch; c++) {
         const dst = out.getChannelData(c);
-        const sA = rawA.getChannelData(Math.min(c, rawA.numberOfChannels - 1));
-        for (let i = 0; i < nA; i++) {
-          let g = gA;
-          if (fadeN > 0 && i >= nA - fadeN) g *= (nA - i) / fadeN; // fade out at seam
-          dst[i] = sA[offA + i] * g;
-        }
-        const sB = rawB.getChannelData(Math.min(c, rawB.numberOfChannels - 1));
-        for (let i = 0; i < nB; i++) {
-          let g = gB;
-          if (fadeN > 0 && i < fadeN) g *= i / fadeN;             // fade in at seam
-          dst[durA + gapN + i] = sB[offB + i] * g;
+        let write = 0;
+        for (let p = 0; p < parts.length; p++) {
+          const { raw, off, dur, n, gain } = parts[p];
+          const src = raw.getChannelData(Math.min(c, raw.numberOfChannels - 1));
+          // Fade only at real seams (not the outer edges of the consolidated source) and
+          // never longer than half the shorter neighbour, so short clips can't fade out
+          // more audio than they hold.
+          const prevN = p > 0 ? parts[p - 1].n : 0;
+          const nextN = p < parts.length - 1 ? parts[p + 1].n : 0;
+          const fadeIn = p > 0 ? Math.min(maxFade, Math.floor(Math.min(n, prevN) / 2)) : 0;
+          const fadeOut = p < parts.length - 1 ? Math.min(maxFade, Math.floor(Math.min(n, nextN) / 2)) : 0;
+          for (let i = 0; i < n; i++) {
+            let g = gain;
+            if (fadeIn > 0 && i < fadeIn) g *= i / fadeIn;
+            if (fadeOut > 0 && i >= n - fadeOut) g *= (n - i) / fadeOut;
+            dst[write + i] = src[off + i] * g;
+          }
+          write += dur + (gapN[p] || 0);
         }
       }
       // _sourceId(), not _cid(): this is a source, and _cid() is the CLIP counter — it
       // was handing out "cN" ids into the source namespace.
-      return this._registerSource(track, {
+      const sourceId = this._registerSource(track, {
         id: this._sourceId(), duration: total / sr, sampleRate: sr, channels: ch,
         fileName: (track.sources && track.sources[0] && track.sources[0].fileName) || track.name || null,
         filePath: null, needsAudio: false,
       }, out);
+      // Queue for disk persistence. A consolidated source lives only in memory, and
+      // importProject can only reload sources that carry a filePath — without this the
+      // clip silently falls back to the primary audio on reopen (v1.21.7 known bug).
+      // The caller (app.jsx) drains this via persistConsolidatedSources().
+      this._pendingConsolidations.push({ trackId: track.id, sourceId });
+      return sourceId;
     },
 
-    joinClips(trackId, clipIdA, clipIdB) {
-      const t = this.tracks.find(x => x.id === trackId); if (!t) return;
-      const a = t.clips.find(c => c.id === clipIdA);
-      const b = t.clips.find(c => c.id === clipIdB);
-      if (!a || !b || a === b) return;
-      if ((a.duration || 0) <= 0 || (b.duration || 0) <= 0) return; // empty placeholder — nothing to join
-      // Order by TIMELINE position and require timeline adjacency. This used to compare
-      // ARRAY indices (|ia-ib| === 1), which silently refused a perfectly valid join as
-      // soon as anything (e.g. a zero-duration placeholder) sat between them in the array.
-      const first = a.start <= b.start ? a : b;
-      const second = first === a ? b : a;
-      const between = t.clips.some(c => c !== first && c !== second && (c.duration || 0) > 0
-        && c.start > first.start + 1e-6 && c.start < second.start - 1e-6);
-      if (between) return; // not neighbours on the timeline
-      const firstOff = first.sourceOffset != null ? first.sourceOffset : (first.offset || 0);
-      const secondOff = second.sourceOffset != null ? second.sourceOffset : (second.offset || 0);
-      // Gap on the timeline: joining across it must keep both clips where they are, so the
-      // merged clip spans first.start..second.end with the gap carried as silence.
-      const gap = Math.max(0, second.start - (first.start + (first.duration || 0)));
-      // Contiguous = a true re-join of split-adjacent pieces (same source, no timeline gap,
-      // second picks up exactly where first ends): a single continuous source read is
-      // correct & cheap. With a gap the source read would slide the second half earlier.
-      const contiguous = first.sourceId === second.sourceId
-        && gap < 1e-3
-        && Math.abs(secondOff - (firstOff + (first.duration || 0))) < 1e-3;
-      let merged;
-      if (contiguous) {
-        const sourceId = first.sourceId || second.sourceId || (t.sources && t.sources[0] && t.sources[0].id) || null;
-        merged = { id: this._cid(), start: first.start, end: second.end,
-          offset: firstOff, sourceId, sourceOffset: firstOff,
-          duration: second.end - first.start, gain: first.gain ?? 1.0, muted: !!first.muted,
-          takeId: first.takeId || second.takeId || null, params: first.params, automation: first.automation };
-      } else {
-        // Copies / different ranges: consolidate both audios into a new source, else the
-        // second clip's audio would be lost on the next re-bake (reads past source end).
-        const sid = this._consolidateClips(t, first, second, gap);
-        if (!sid) return; // missing raw — leave the clips untouched rather than lose audio
-        const dur = (first.duration || 0) + gap + (second.duration || 0);
-        merged = { id: this._cid(), start: first.start, end: first.start + dur,
-          offset: 0, sourceId: sid, sourceOffset: 0, duration: dur,
-          gain: 1.0, muted: !!first.muted, takeId: first.takeId || second.takeId || null,
-          params: null, automation: null };
+    // Drain the consolidation queue: hand each in-memory source to `saveFn` and record
+    // the resulting path on the source so reopen hydrates it like any other take WAV.
+    //   saveFn(audioBuffer, suggestedFileName) -> { path, fileName } | null
+    // Best-effort by design: a failure leaves the source as memory-only, i.e. exactly the
+    // pre-v1.37.0 behaviour, so consolidation itself never fails because of disk trouble.
+    async persistConsolidatedSources(saveFn) {
+      if (typeof saveFn !== "function") return { saved: 0, failed: this._pendingConsolidations.length };
+      const queue = this._pendingConsolidations;
+      this._pendingConsolidations = [];
+      let saved = 0, failed = 0;
+      for (const item of queue) {
+        const track = this.tracks.find(t => t.id === item.trackId);
+        const src = track && (track.sources || []).find(s => s.id === item.sourceId);
+        const raw = track && track._rawBuffers ? track._rawBuffers[item.sourceId] : null;
+        if (!track || !src || !raw) { failed++; continue; }
+        // Already on disk (e.g. a redo re-queued it) — nothing to write.
+        if (src.filePath) { saved++; continue; }
+        try {
+          const base = this._displayName(src.fileName || track.name || "Consolidated");
+          const res = await saveFn(raw, `${base} (Consolidated).wav`);
+          if (res && res.path) {
+            // RE-RESOLVE the source after the await. _normalizeTrackLayout rebuilds
+            // track.sources as fresh COPIES ([primary, ...slice(1).map(s => ({...s}))]) and
+            // runs on every serialize/snapshot/import — autosave alone fires it every 1.5s.
+            // Writing to the object captured before the await therefore lands on an orphan:
+            // the WAV reaches disk but the project saves filePath: null, the source is never
+            // hydrated on reopen, and the clip bakes to silence (v1.37.0 field report).
+            const live = (this.tracks.find(t => t.id === item.trackId) || track);
+            const target = (live.sources || []).find(s => s.id === item.sourceId) || src;
+            target.filePath = res.path;
+            target.fileName = res.fileName || target.fileName;
+            saved++;
+          } else failed++;
+        } catch (err) {
+          console.warn("[consolidate] failed to persist source", item.sourceId, err);
+          failed++;
+        }
       }
-      // Drop the two source clips by identity (not by index) and re-sort, so the array
-      // stays in timeline order no matter where they sat.
-      t.clips = [...t.clips.filter(c => c !== first && c !== second), merged]
+      return { saved, failed };
+    },
+
+    // Are these clips a plain re-join of split-adjacent pieces? Same source, no timeline
+    // gap, and each one picks up in the source exactly where the previous ended — i.e.
+    // nothing was moved or trimmed since the split. Then merging is a single continuous
+    // source read: no new file, no re-render. Any other shape needs a fresh render,
+    // because one source-read clip cannot express "sourceA[..] then sourceB[..]".
+    _isHealableRun(clips) {
+      for (let i = 1; i < clips.length; i++) {
+        const prev = clips[i - 1], cur = clips[i];
+        if (cur.sourceId !== prev.sourceId) return false;
+        const gap = (cur.start || 0) - ((prev.start || 0) + (prev.duration || 0));
+        if (Math.abs(gap) > 1e-3) return false;
+        const prevOff = prev.sourceOffset != null ? prev.sourceOffset : (prev.offset || 0);
+        const curOff = cur.sourceOffset != null ? cur.sourceOffset : (cur.offset || 0);
+        if (Math.abs(curOff - (prevOff + (prev.duration || 0))) > 1e-3) return false;
+      }
+      return true;
+    },
+
+    // Why a merge would be refused, as a checkable result the UI can turn into a
+    // specific message (and could use to disable the menu item). Kept separate from the
+    // mutator so the reason is never guessed from a bare null.
+    canConsolidateClips(trackId, clipIds) {
+      const t = this.tracks.find(x => x.id === trackId);
+      if (!t) return { ok: false, reason: "track" };
+      const ids = Array.isArray(clipIds) ? clipIds : [];
+      const picked = t.clips.filter(c => ids.includes(c.id) && (c.duration || 0) > 0)
+        .sort((a, b) => (a.start || 0) - (b.start || 0));
+      if (picked.length < 2) return { ok: false, reason: "few" };
+      // Same lane only. Selecting across two Take LANES is not reachable from the UI (a Take
+      // Lane row is display-only; the main lane renders _activeClips), so what this actually
+      // guards is a mix of BASE clips (takeId=null, always rendered) and ACTIVE-take clips —
+      // side by side in the main lane, and exactly the Loop-Punch Comp layout (v1.36.0: base
+      // outside the region, one take clip per pass inside). Merging those is broken either
+      // way: tag the result null and the take's audio plays under EVERY other take (doubled);
+      // tag it with the takeId and the base audio vanishes when the user switches takes.
+      const lane = picked[0].takeId || null;
+      if (picked.some(c => (c.takeId || null) !== lane)) return { ok: false, reason: "lane" };
+      // An unselected clip inside the span would be overrun: the merged clip covers
+      // first.start..last.end, so _reindexClips would shove that clip to the right, off its
+      // timeline position, while its slot inside the merge is rendered as silence
+      // (v1.37.0 field report: "중간 clip이 그대로 남아 있음" — it had actually been displaced).
+      // Join already refuses the same shape via its `between` check; match it.
+      const from = picked[0].start, to = picked[picked.length - 1].start + (picked[picked.length - 1].duration || 0);
+      const straddled = t.clips.filter(c => !picked.includes(c) && (c.duration || 0) > 0
+        && this._isActiveClip(t, c)
+        && (c.start || 0) < to - 1e-6 && (c.start || 0) + (c.duration || 0) > from + 1e-6);
+      if (straddled.length) return { ok: false, reason: "between", count: straddled.length };
+      // "heal" = cheap path (no new file); "render" = writes a consolidated WAV. Reported so
+      // the UI can tell the user which one will happen before they commit.
+      return { ok: true, picked, lane, strategy: this._isHealableRun(picked) ? "heal" : "render" };
+    },
+
+    // Phase 7 — the single user-facing merge (v1.37.3: Join and Consolidate unified).
+    // Picks the strategy itself: a plain re-join of split pieces reads the source straight
+    // through (nothing written to disk), anything else renders the selection — and the
+    // silence between the clips — into one new source. Non-destructive w.r.t. the ORIGINAL
+    // files either way, and every other clip is left alone.
+    consolidateClips(trackId, clipIds) {
+      const check = this.canConsolidateClips(trackId, clipIds);
+      if (!check.ok) return null;
+      const t = this.tracks.find(x => x.id === trackId);
+      const { picked, lane, strategy } = check;
+      const first = picked[0], last = picked[picked.length - 1];
+      const dur = (last.start + (last.duration || 0)) - first.start;
+      let merged;
+      if (strategy === "heal") {
+        // Split-adjacent pieces, untouched since the split: one continuous source read.
+        const firstOff = first.sourceOffset != null ? first.sourceOffset : (first.offset || 0);
+        merged = {
+          id: this._cid(), start: first.start, end: first.start + dur,
+          offset: firstOff, sourceId: first.sourceId, sourceOffset: firstOff, duration: dur,
+          gain: first.gain ?? 1.0, muted: !!first.muted, takeId: lane,
+          params: first.params, automation: first.automation,
+        };
+      } else {
+        const sid = this._renderClipsToSource(t, picked);
+        if (!sid) return null;   // missing raw — leave the clips untouched rather than lose audio
+        merged = {
+          id: this._cid(), start: first.start, end: first.start + dur,
+          offset: 0, sourceId: sid, sourceOffset: 0, duration: dur,
+          gain: 1.0, muted: !!first.muted, takeId: lane,
+          params: null, automation: null,
+        };
+      }
+      t.clips = [...t.clips.filter(c => !picked.includes(c)), merged]
         .sort((x, y) => (x.start || 0) - (y.start || 0));
       this._normalizeTrackLayout(t);
-      this._ensureBaked(t);   // was missing → join left a stale buffer; the next edit re-baked and dropped audio
+      this._ensureBaked(t);
       if (this.isPlaying) this._scheduleAutomation();
+      return merged.id;
+    },
+
+    // Kept as the entry point for the merge TOOL (J: click a clip to merge it with its
+    // neighbour), which supplies exactly two clip ids. Everything below is now one code
+    // path — consolidateClips picks heal-vs-render itself, so the tool and the menu can
+    // never disagree about what a merge does. Returns the merged clip id, or null.
+    joinClips(trackId, clipIdA, clipIdB) {
+      return this.consolidateClips(trackId, [clipIdA, clipIdB]);
     },
 
     setClipParam(trackId, clipId, key, val) {
@@ -2495,6 +2611,10 @@
     // ============================================================
     _MICRO_FADE: 0.004,   // 4ms click/pop guard at clip boundaries
     _MIN_CLIP: 0.02,      // 20ms minimum clip length
+
+    // Consolidated sources awaiting a disk write ({ trackId, sourceId }). Drained by
+    // persistConsolidatedSources(); see _renderClipsToSource for why this exists.
+    _pendingConsolidations: [],
 
     // Pristine per-source audio, captured lazily before the first bake (at which
     // point t.buffer is still the original decoded primary source). Re-bakes always
@@ -4444,6 +4564,9 @@
   Engine.computePeaks = computePeaks;
   Engine.splitClip = Engine.splitClip.bind(Engine);
   Engine.joinClips = Engine.joinClips.bind(Engine);
+  Engine.consolidateClips = Engine.consolidateClips.bind(Engine);
+  Engine.canConsolidateClips = Engine.canConsolidateClips.bind(Engine);
+  Engine.persistConsolidatedSources = Engine.persistConsolidatedSources.bind(Engine);
   Engine.setClipParam = Engine.setClipParam.bind(Engine);
   // Phase 5 clip editing (전략 B)
   Engine.moveClip = Engine.moveClip.bind(Engine);

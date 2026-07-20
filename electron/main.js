@@ -416,6 +416,39 @@ ipcMain.handle('save-bounce-audio', async (event, wavBuffer, projectPath, fileNa
   };
 });
 
+// Save a consolidated clip render (Phase 7 "Consolidate Clips"):
+//   <Project> Audio/Consolidated/<name>.wav
+// Unlike a bounce, this MUST succeed even before the first save — a consolidated
+// source with no filePath cannot be reloaded on reopen (the clip would fall back to
+// the primary audio), so an unsaved project falls back to the temp recordings dir
+// rather than failing. Save As copy rules move it into the project folder later.
+ipcMain.handle('save-consolidated-audio', async (event, wavBuffer, projectPath, fileName, sourcePath) => {
+  assertTrustedIpc(event);
+  let outDir = null;
+  if (projectPath) {
+    const safeProjectPath = assertFilePath(projectPath, PROJECT_EXT, 'project');
+    const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
+    outDir = path.join(path.dirname(safeProjectPath), `${projectBase} Audio`, 'Consolidated');
+  } else if (sourcePath) {
+    const safeSourcePath = assertFilePath(sourcePath, AUDIO_EXT, 'source audio');
+    outDir = path.join(path.dirname(safeSourcePath), 'Consolidated');
+  } else {
+    outDir = path.join(app.getPath('temp'), 'FocusDAW Consolidated');
+  }
+  fs.mkdirSync(outDir, { recursive: true });
+  const rawName = String(fileName || 'Consolidated.wav');
+  const base = safeFileBase(path.basename(rawName, path.extname(rawName) || '.wav'));
+  const outPath = uniqueFilePath(outDir, base, 'wav');
+  fs.writeFileSync(outPath, Buffer.from(wavBuffer));
+  return {
+    saved: true,
+    path: outPath,
+    fileName: path.basename(outPath),
+    dir: outDir,
+    temp: !projectPath && !sourcePath,
+  };
+});
+
 ipcMain.handle('prepare-recording-path', async (event, projectPath, fileName, sourcePath) => {
   assertTrustedIpc(event);
   let recordingDir;

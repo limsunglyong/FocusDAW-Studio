@@ -868,7 +868,8 @@ function ClipContextMenu({ x, y, items, hint, onClose }) {
       {items.map((it, i) => it.sep ? (
         <div key={i} style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
       ) : (
-        <div key={i} onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+        <div key={i} title={it.title || undefined}
+          onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
           style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7,
             cursor: it.disabled ? "default" : "pointer", fontSize: 12.5, opacity: it.disabled ? 0.38 : 1 }}
           onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = "var(--surface3)"; }}
@@ -940,7 +941,7 @@ function RecordingOffsetCalModal({ prev, next, recOff, moveMs, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -1031,7 +1032,19 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
       // (same as the C/J shortcuts). The menu closes and the cursor changes; the user
       // then clicks the clip to split (at click point) or join (with adjacent clip).
       { label: "Split", hint: "C", onClick: () => onSetTool && onSetTool("scissors") },
-      { label: "Join", hint: "J", onClick: () => onSetTool && onSetTool("join") },
+      // v1.37.3 — Join and Consolidate were one operation under two names (Join fell back to
+      // consolidating whenever the pieces were not source-contiguous), which is exactly the
+      // distinction a user cannot see. Now one command: with 2+ clips selected it merges them
+      // immediately; otherwise it arms the merge tool so a click merges a clip with its
+      // neighbour. The engine picks heal-vs-render, so both routes behave identically.
+      { label: groupN > 1 ? `Merge ${groupN} clips` : "Merge Clips", hint: "J",
+        title: groupN > 1
+          ? "Merge the selected clips into one."
+          : "Click a clip to merge it with its neighbour, or Ctrl+click several clips first.",
+        onClick: () => {
+          if (groupN > 1 && onConsolidateClips) onConsolidateClips(track.id, selectedClipIds);
+          else if (onSetTool) onSetTool("join");
+        } },
       { sep: true },
       { label: groupN > 1 ? `Delete ${groupN} clips` : "Delete", hint: "Del", icon: "trash",
         onClick: () => onDeleteClip && onDeleteClip(track.id, clip.id) },
