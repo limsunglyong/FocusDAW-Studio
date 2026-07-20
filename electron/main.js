@@ -457,6 +457,64 @@ ipcMain.handle('save-consolidated-audio', async (event, wavBuffer, projectPath, 
   };
 });
 
+// Choose a project save path WITHOUT writing (Save As collect flow, Phase 7). The renderer
+// needs the path up front so it can copy the project's audio into that folder and rewrite
+// the source paths BEFORE the .focus is written (save-project does the actual write after).
+ipcMain.handle('choose-project-path', async (event, defaultName) => {
+  assertTrustedIpc(event);
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    defaultPath: safeFileBase(defaultName) + '.focus',
+    filters: [{ name: 'FocusDAW Project', extensions: ['focus'] }],
+    title: 'Save Project',
+  });
+  if (canceled || !filePath) return { canceled: true };
+  return { path: filePath, dir: path.dirname(filePath) };
+});
+
+// Collect the project's app-generated audio (recordings / bounces / consolidations) into the
+// project's own "<Project> Audio/<category>/" folder and return each file's path RELATIVE to
+// the .focus, so the saved project is self-contained and portable (Save As copy rules, Phase 7).
+// Imported file-track stems are intentionally NOT collected (user decision 2026-07-21): they
+// stay referenced where they are. Files already inside the project folder are left in place and
+// just reported with their relative path (idempotent on a plain re-save).
+//   items: [{ key, filePath (absolute), category }]  category ∈ Recordings|Bounces|Consolidated
+//   returns: [{ key, relPath, absPath }]  or  { key, error } when a copy fails
+ipcMain.handle('collect-project-audio', async (event, targetPath, items) => {
+  assertTrustedIpc(event);
+  const safeProjectPath = assertFilePath(targetPath, PROJECT_EXT, 'project');
+  const projectDir = path.dirname(safeProjectPath);
+  const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
+  const audioRoot = path.join(projectDir, `${projectBase} Audio`);
+  const CATEGORIES = new Set(['Recordings', 'Bounces', 'Consolidated']);
+  const asRel = (abs) => path.relative(projectDir, abs).split(path.sep).join('/');
+  const out = [];
+  for (const item of (Array.isArray(items) ? items : [])) {
+    const key = item && item.key;
+    try {
+      const srcAbs = assertFilePath(item && item.filePath, AUDIO_EXT, 'source audio');
+      if (!fs.existsSync(srcAbs)) { out.push({ key, error: 'missing' }); continue; }
+      const category = CATEGORIES.has(item.category) ? item.category : 'Recordings';
+      // Already inside this project's Audio folder → keep in place, just report relative.
+      const rel = path.relative(audioRoot, srcAbs);
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+        out.push({ key, relPath: asRel(srcAbs), absPath: srcAbs });
+        continue;
+      }
+      const destDir = path.join(audioRoot, category);
+      fs.mkdirSync(destDir, { recursive: true });
+      const ext = (path.extname(srcAbs).slice(1) || 'wav').toLowerCase();
+      const base = safeFileBase(path.basename(srcAbs, path.extname(srcAbs)));
+      const destAbs = uniqueFilePath(destDir, base, ext);
+      fs.copyFileSync(srcAbs, destAbs);
+      out.push({ key, relPath: asRel(destAbs), absPath: destAbs });
+    } catch (err) {
+      console.warn('[collect] failed to collect source', key, err);
+      out.push({ key, error: String(err && err.message || err) });
+    }
+  }
+  return { items: out, dir: audioRoot };
+});
+
 ipcMain.handle('prepare-recording-path', async (event, projectPath, fileName, sourcePath) => {
   assertTrustedIpc(event);
   let recordingDir;

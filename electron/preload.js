@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Project persistence
   saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),
+  chooseProjectPath: (name)       => ipcRenderer.invoke('choose-project-path', name),
+  collectProjectAudio: (targetPath, items) => ipcRenderer.invoke('collect-project-audio', targetPath, items),
   openProject:    ()              => ipcRenderer.invoke('open-project'),
   readProjectFile:(filePath)      => ipcRenderer.invoke('read-project-file', filePath),
 

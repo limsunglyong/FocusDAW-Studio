@@ -770,6 +770,18 @@
       if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return ok;
     },
+    // Comp Lane (Phase 7): assigning a region to a take or clearing the comp re-bakes the
+    // track's flattened buffer, so push it to native (getComp is read-only → proxy delegates).
+    setCompRegion(trackId, start, end, takeId) {
+      const ok = LocalDAW.setCompRegion(trackId, start, end, takeId);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    clearComp(trackId) {
+      const ok = LocalDAW.clearComp(trackId);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
 
     // Reconnect a non-primary Take's audio on project reopen, then push the re-baked
     // active layout to native (mirrors addFileBuffer's reconnect sync).

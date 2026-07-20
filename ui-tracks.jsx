@@ -941,7 +941,7 @@ function RecordingOffsetCalModal({ prev, next, recOff, moveMs, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onSetCompRegion, onClearComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -953,6 +953,9 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   const [takesOpen, setTakesOpen] = useState(false);
   const takeLanes = (track.kind === "audioIn" && DAW.getTakeLanes) ? DAW.getTakeLanes(track.id) : [];
   const takeLaneH = Math.max(40, Math.round((track.kind === "audioIn" ? laneH : laneH) * 0.5));
+  // Comp Lane (Phase 7): per-region take assignment. `comp` is null until the user swipes a
+  // region on a take lane; each lane then highlights the sub-regions currently assigned to it.
+  const comp = (track.kind === "audioIn" && DAW.getComp) ? DAW.getComp(track.id) : null;
 
   // Phase 5 (전략 B): clip move/trim on Audio In / Bounce tracks. During a drag we
   // only move a visual "ghost" and commit the engine edit (which re-bakes t.buffer)
@@ -1399,7 +1402,9 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     {takesOpen && takeLanes.map((tk) => (
       <TakeLaneRow key={tk.id} take={tk} trackId={track.id} laneW={laneW} laneH={takeLaneH}
         pxPerSec={pxPerSec} ampZoom={ampZoom} playhead={playhead}
+        comp={comp} compActive={!!(comp && comp.length)}
         onActivate={() => { if (!tk.active && onSetActiveTake) onSetActiveTake(track.id, tk.id); }}
+        onCompRegion={(start, end) => onSetCompRegion && onSetCompRegion(track.id, start, end, tk.id)}
         onDelete={() => onDeleteTake && onDeleteTake(track.id, tk.id)} />
     ))}
     {/* Phase 7 Stage 4 — commit the comp. Lives INSIDE the expanded take lanes: it only
@@ -1408,21 +1413,35 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     {takesOpen && takeLanes.length > 0 && (
       <div style={{ display: "flex", minWidth: "min-content" }}>
         <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 7,
-          padding: "6px 10px 8px 26px", background: "var(--surface2)",
+          display: "flex", gap: 6, padding: "6px 10px 8px 26px", background: "var(--surface2)",
           borderRight: "1px solid var(--line-strong)", borderBottom: "1px solid var(--line-strong)" }}>
           <button type="button"
             onClick={(e) => { e.stopPropagation(); onFlattenComp && onFlattenComp(track.id); }}
-            title={`Commit the comp: the active take and the shared audio become one clip, and the other ${takeLanes.length - 1 || ""} take${takeLanes.length === 2 ? "" : "s"} are dropped.\nUndo restores them, and the recorded WAV files stay on disk.`}
-            style={{ width: "100%", height: 22, borderRadius: 6, cursor: "pointer",
+            title={comp && comp.length
+              ? `Commit the comp: each region's take and the shared audio become one clip, and the other takes are dropped.\nUndo restores them, and the recorded WAV files stay on disk.`
+              : `Commit the comp: the active take and the shared audio become one clip, and the other ${takeLanes.length - 1 || ""} take${takeLanes.length === 2 ? "" : "s"} are dropped.\nUndo restores them, and the recorded WAV files stay on disk.`}
+            style={{ flex: 1, height: 22, borderRadius: 6, cursor: "pointer",
               border: "1px solid var(--line-strong)", background: "var(--surface3)",
               color: "var(--cream-2)", fontSize: 10, fontWeight: 700, letterSpacing: ".02em" }}>
             Flatten Comp
           </button>
+          {comp && comp.length > 0 && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); onClearComp && onClearComp(track.id); }}
+              title="Clear the comp — go back to a single active take."
+              style={{ flex: "0 0 auto", height: 22, padding: "0 8px", borderRadius: 6, cursor: "pointer",
+                border: "1px solid var(--line-strong)", background: "transparent",
+                color: "var(--muted)", fontSize: 10, fontWeight: 700, letterSpacing: ".02em" }}>
+              Clear
+            </button>
+          )}
         </div>
         <div style={{ width: laneW, borderBottom: "1px solid var(--line-strong)",
           background: "var(--surface2)", display: "flex", alignItems: "center",
           padding: "0 12px", fontSize: 9.5, color: "var(--faint)" }}>
-          Keeps the active take, drops the others. Undo restores them; recorded files stay on disk.
+          {comp && comp.length
+            ? "Swipe across a take lane to comp that region in. Flatten commits the comp; Undo restores every take."
+            : "Swipe across a take lane to comp part of it in, or click a lane to make it the whole take. Undo restores everything."}
         </div>
       </div>
     )}
@@ -1434,9 +1453,38 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
    Renders an inactive/active Take's waveform on its own row under the track. The Take's
    audio is NOT in the track's baked buffer (only the active one is), so it draws from a
    pseudo-track built on the SOURCE raw buffer + peaks (tk.render) sampled by clip.offset. */
-function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead, onActivate, onDelete }) {
+function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead, comp = null, compActive = false, onActivate, onCompRegion, onDelete }) {
   const phx = (playhead / Math.max(0.001, DAW.duration)) * laneW;
   const active = take.active;
+  const laneRef = useRef(null);
+  const [swipe, setSwipe] = useState(null); // { a, b } px once dragging, drives the selection rect
+  // The timeline sub-regions this take supplies to the comp (comp segments naming it), in px.
+  const mineSegs = (compActive && Array.isArray(comp))
+    ? comp.filter(s => s.takeId === take.id).map(s => ({ l: s.start * pxPerSec, w: Math.max(1, (s.end - s.start) * pxPerSec) }))
+    : null;
+
+  // Swipe = comp a region into this take; a bare click (no drag past threshold) = activate.
+  const onDown = (e) => {
+    if (e.button !== 0 || !onCompRegion) return;
+    const rect = laneRef.current && laneRef.current.getBoundingClientRect();
+    if (!rect) return;
+    const x0 = e.clientX - rect.left;
+    const move = (ev) => {
+      const x = ev.clientX - rect.left;
+      if (Math.abs(x - x0) >= 4) setSwipe({ a: Math.min(x, x0), b: Math.max(x, x0) });
+    };
+    const up = (ev) => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      const x = ev.clientX - rect.left;
+      setSwipe(null);
+      if (Math.abs(x - x0) >= 4) onCompRegion(Math.min(x, x0) / pxPerSec, Math.max(x, x0) / pxPerSec);
+      else if (onActivate) onActivate();
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+
   return (
     <div style={{ display: "flex", minWidth: "min-content" }}>
       <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 7,
@@ -1454,7 +1502,8 @@ function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead,
             {take.name}{take.partial ? " (partial)" : ""}
           </span>
           <span style={{ fontSize: 9, color: "var(--muted)", fontWeight: 600 }}>
-            {active ? "active" : "click to select"}
+            {compActive ? (mineSegs && mineSegs.length ? "in comp — swipe to add" : "swipe to comp in")
+                        : (active ? "active" : "click or swipe")}
           </span>
         </span>
         <button type="button" title="Delete this take"
@@ -1463,14 +1512,28 @@ function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead,
             border: "1px solid var(--line-strong)", background: "transparent", color: "var(--muted)",
             cursor: "pointer", fontSize: 12, lineHeight: 1, display: "grid", placeItems: "center" }}>×</button>
       </div>
-      <div style={{ position: "relative", width: laneW, height: laneH, overflow: "hidden",
-        isolation: "isolate", borderBottom: "1px solid var(--line)", cursor: "pointer",
+      <div ref={laneRef} style={{ position: "relative", width: laneW, height: laneH, overflow: "hidden",
+        isolation: "isolate", borderBottom: "1px solid var(--line)",
+        cursor: onCompRegion ? "ew-resize" : "pointer",
         background: active ? "rgba(232,176,75,.05)" : "rgba(255,255,255,.008)" }}
-        onClick={onActivate}>
+        onMouseDown={onDown}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         {take.render && <Waveform track={take.render} clips={take.clips} pxPerSec={pxPerSec}
           ampZoom={ampZoom} height={laneH} volume={1} />}
-        {!active && <div style={{ position: "absolute", inset: 0, background: "rgba(10,14,22,.34)", pointerEvents: "none" }} />}
+        {/* When a comp is active, dim the whole lane and cut holes over the regions this take
+            supplies — those read at full brightness so the comp is visible at a glance. */}
+        {compActive
+          ? <>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(10,14,22,.52)", pointerEvents: "none" }} />
+              {mineSegs && mineSegs.map((s, i) => (
+                <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: s.l, width: s.w,
+                  background: "rgba(232,176,75,.14)", boxShadow: "inset 0 0 0 1px rgba(232,176,75,.55)",
+                  pointerEvents: "none", zIndex: 4 }} />
+              ))}
+            </>
+          : (!active && <div style={{ position: "absolute", inset: 0, background: "rgba(10,14,22,.34)", pointerEvents: "none" }} />)}
+        {swipe && <div style={{ position: "absolute", top: 0, bottom: 0, left: swipe.a, width: Math.max(1, swipe.b - swipe.a),
+          background: "rgba(232,176,75,.28)", boxShadow: "inset 0 0 0 1px var(--amber)", pointerEvents: "none", zIndex: 6 }} />}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5,
           background: "var(--cream)", opacity: .5, pointerEvents: "none", zIndex: 10 }} />
       </div>

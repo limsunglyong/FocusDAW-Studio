@@ -393,6 +393,45 @@
     _activeClips(track) {
       return (track.clips || []).filter(c => this._isActiveClip(track, c));
     },
+    // Timeline span the Takes occupy (loop/punch Takes all share [loopStart,loopEnd]).
+    // Used to seed a comp and to clamp swipes. null when the track has no Take clips.
+    _takeRegion(track) {
+      let lo = Infinity, hi = -Infinity;
+      for (const c of (track.clips || [])) {
+        if (!c.takeId) continue;
+        const s = c.start || 0, e = s + (c.duration || 0);
+        if (s < lo) lo = s;
+        if (e > hi) hi = e;
+      }
+      return hi > lo ? { start: lo, end: hi } : null;
+    },
+    // Comp Lane (Phase 7). `track.comp` is a sorted, gap-free, non-overlapping list of
+    // { start, end, takeId } segments tiling the take region: each region plays the audio
+    // of its assigned Take, SLICED to the segment. This is the one comp-aware clip source —
+    // bake, the volume curve, and Flatten all read it, so a comp renders/plays/exports/
+    // commits identically. Without a comp it degrades to _activeClips (single active lane).
+    // The seams between differing takes are picked up by _planClipEdges as normal butt
+    // joints and get the equal-power crossfade (v1.38.0) for free.
+    _renderClips(track) {
+      const comp = track && track.comp;
+      if (!Array.isArray(comp) || !comp.length) return this._activeClips(track);
+      // Base clips (takeId=null: file audio, consolidations, pre-take clips) always render —
+      // a comp only chooses among TAKE audio, never hides the shared base.
+      const out = (track.clips || []).filter(c => !c.takeId);
+      for (const seg of comp) {
+        if (!seg || !seg.takeId || !((seg.end - seg.start) > 1e-4)) continue;
+        for (const c of (track.clips || [])) {
+          if (c.takeId !== seg.takeId) continue;
+          const cStart = c.start || 0, cEnd = cStart + (c.duration || 0);
+          const a = Math.max(seg.start, cStart), b = Math.min(seg.end, cEnd);
+          if (b - a <= 1e-4) continue;
+          const off = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0)) + (a - cStart);
+          out.push({ ...c, id: (c.id || "clip") + "__c" + Math.round(a * 1000),
+            start: a, end: b, offset: off, sourceOffset: off, duration: b - a });
+        }
+      }
+      return out.sort((x, y) => (x.start || 0) - (y.start || 0));
+    },
     _trackKindFor({ kind = null, isDemo = false } = {}) {
       if (kind === "audioIn" || kind === "bounce" || kind === "file") return kind;
       return isDemo ? "file" : "file";
@@ -497,6 +536,27 @@
       // _activeTakeId() falls back sensibly instead of hiding every clip.
       if (track.activeTakeId && !track.takes.some(t => t.id === track.activeTakeId)) {
         track.activeTakeId = track.takes.length ? track.takes[track.takes.length - 1].id : null;
+      }
+      // Comp hygiene (Phase 7): clamp segments to the current take region and re-point any
+      // that name a deleted take at the active fallback, so a dropped take can't leave a
+      // segment rendering silence. Collapses to null when it degenerates to one take/no takes.
+      if (Array.isArray(track.comp) && track.comp.length) {
+        const region = this._takeRegion(track);
+        if (!region || !track.takes.length) {
+          track.comp = null;
+        } else {
+          const liveTakeIds = new Set(track.takes.map(t => t.id));
+          const fallback = (track.activeTakeId && liveTakeIds.has(track.activeTakeId))
+            ? track.activeTakeId : track.takes[track.takes.length - 1].id;
+          const cleaned = track.comp
+            .map(s => ({ start: Math.max(region.start, s.start), end: Math.min(region.end, s.end),
+              takeId: liveTakeIds.has(s.takeId) ? s.takeId : fallback }))
+            .filter(s => s.end - s.start > 1e-3)
+            .sort((a, b) => a.start - b.start);
+          track.comp = this._coalesceComp(cleaned, region);
+        }
+      } else if (track.comp != null) {
+        track.comp = null;
       }
       return track;
     },
@@ -706,7 +766,7 @@
       });
     },
 
-    _addTrack({ name, type, color, buffer, peaks = null, isDemo = false, fileName = null, filePath = null, needsAudio = false, kind = null, lockedToZero = undefined, sources = null, clips = null, takes = null, activeTakeId = null }) {
+    _addTrack({ name, type, color, buffer, peaks = null, isDemo = false, fileName = null, filePath = null, needsAudio = false, kind = null, lockedToZero = undefined, sources = null, clips = null, takes = null, activeTakeId = null, comp = null }) {
       const id = "t" + (this.tracks.length + 1) + "_" + Math.random().toString(36).slice(2, 6);
       // persistent nodes
       const fader = ctx.createGain();
@@ -763,6 +823,7 @@
         clips: clips ? clips.map(c => ({ ...c })) : [this._normalizeClip({ start: 0, end: sourceDuration, offset: 0 }, sourceId, sourceDuration)],
         takes: Array.isArray(takes) ? takes.map(t => ({ ...t })) : [],
         activeTakeId: activeTakeId || null,
+        comp: Array.isArray(comp) && comp.length ? comp.map(s => ({ ...s })) : null,
         isDemo, fileName, filePath, needsAudio, audioRev: 0,
         _meterBuf: new Float32Array(meter.fftSize),
       };
@@ -1082,7 +1143,82 @@
       if (!(t.takes || []).some(k => k.id === takeId)) return false;
       if (t.activeTakeId === takeId) return false;
       t.activeTakeId = takeId;
+      // Switching the active lane wholesale abandons any per-region comp — the comp was a
+      // choice AMONG takes, and "make this the only take" supersedes it.
+      t.comp = null;
       this._ensureBaked(t);
+      return true;
+    },
+    // Comp Lane (Phase 7) — assign timeline region [start,end] to `takeId` (a swipe on the
+    // Take lane). The comp is seeded, the first time, as the whole take region = the current
+    // active take, so it always tiles gap-free; each swipe then splits/re-assigns part of it.
+    // A comp that collapses back to one take over the whole region is stored as no comp (that
+    // take simply becomes active). Undoable via the same snapshot path as setActiveTake.
+    setCompRegion(trackId, start, end, takeId) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
+      if (!(t.takes || []).some(k => k.id === takeId)) return false;
+      const region = this._takeRegion(t); if (!region) return false;
+      const a = Math.max(region.start, Math.min(start, end));
+      const b = Math.min(region.end, Math.max(start, end));
+      if (b - a <= 1e-3) return false;
+      const seed = this._activeTakeId(t) || takeId;
+      let segs = (Array.isArray(t.comp) && t.comp.length)
+        ? t.comp.map(s => ({ ...s }))
+        : [{ start: region.start, end: region.end, takeId: seed }];
+      // Interval-replace: trim/split any segment overlapping [a,b], then insert [a,b]→takeId.
+      const next = [];
+      for (const s of segs) {
+        if (s.end <= a + 1e-4 || s.start >= b - 1e-4) { next.push(s); continue; }
+        if (s.start < a) next.push({ start: s.start, end: a, takeId: s.takeId });
+        if (s.end > b) next.push({ start: b, end: s.end, takeId: s.takeId });
+      }
+      next.push({ start: a, end: b, takeId });
+      next.sort((x, y) => x.start - y.start);
+      t.comp = this._coalesceComp(next, region);
+      // A single-take comp is just that take active — reflect it so the lane UI agrees.
+      if (!t.comp) t.activeTakeId = takeId;
+      this._ensureBaked(t);
+      return true;
+    },
+    // Merge touching same-take segments; return null when the result is one take spanning the
+    // whole region (i.e. no comp). Keeps the seam list minimal → fewer crossfades.
+    _coalesceComp(segs, region) {
+      const merged = [];
+      for (const s of segs) {
+        if (!(s.end - s.start > 1e-4)) continue;
+        const last = merged[merged.length - 1];
+        if (last && last.takeId === s.takeId && Math.abs(last.end - s.start) < 1e-3) last.end = s.end;
+        else merged.push({ ...s });
+      }
+      if (merged.length <= 1 && (!merged.length ||
+          (merged[0].start <= region.start + 1e-3 && merged[0].end >= region.end - 1e-3))) {
+        return null;
+      }
+      return merged;
+    },
+    clearComp(trackId) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t || !t.comp) return false;
+      t.comp = null;
+      this._ensureBaked(t);
+      return true;
+    },
+    getComp(trackId) {
+      const t = this.tracks.find(x => x.id === trackId);
+      return (t && Array.isArray(t.comp) && t.comp.length) ? t.comp.map(s => ({ ...s })) : null;
+    },
+    // Repoint a source's stored file path (Save As collect, Phase 7): after the project's
+    // audio is copied into the project folder, the source must reference the NEW location so
+    // reopen reconnects from there. Audio-only metadata — the loaded buffer is untouched. Also
+    // mirrors onto track.filePath/fileName when it is the primary source (reconnect reads that).
+    setSourcePath(trackId, sourceId, filePath, fileName) {
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
+      const src = (t.sources || []).find(s => s.id === sourceId); if (!src) return false;
+      src.filePath = filePath || null;
+      if (fileName) src.fileName = fileName;
+      if (t.sources[0] && t.sources[0].id === sourceId) {
+        t.filePath = filePath || null;
+        if (fileName) t.fileName = fileName;
+      }
       return true;
     },
     // Delete one Take and its clips. _normalizeTrackLayout then prunes/renumbers the rest
@@ -1902,6 +2038,7 @@
           clips: this._serializedClips(t),
           takes: Array.isArray(t.takes) ? t.takes : [],
           activeTakeId: t.activeTakeId || null,
+          comp: Array.isArray(t.comp) && t.comp.length ? t.comp.map(s => ({ ...s })) : null,
         })),
       });
     },
@@ -2133,6 +2270,7 @@
           clips: this._serializedClips(t),
           takes: Array.isArray(t.takes) ? t.takes.map(take => ({ ...take })) : [],
           activeTakeId: t.activeTakeId || null,
+          comp: Array.isArray(t.comp) && t.comp.length ? t.comp.map(s => ({ ...s })) : null,
         })),
       };
     },
@@ -2175,6 +2313,7 @@
           clips: this._serializedClips(t),
           takes: Array.isArray(t.takes) ? t.takes.map(take => ({ ...take })) : [],
           activeTakeId: t.activeTakeId || null,
+          comp: Array.isArray(t.comp) && t.comp.length ? t.comp.map(s => ({ ...s })) : null,
         })),
       };
     },
@@ -2230,6 +2369,7 @@
             clips: Array.isArray(st.clips) ? st.clips.map(c => ({ ...c })) : null,
             takes: Array.isArray(st.takes) ? st.takes.map(take => ({ ...take })) : [],
             activeTakeId: st.activeTakeId || null,
+            comp: Array.isArray(st.comp) ? st.comp.map(s => ({ ...s })) : null,
             isDemo: !!st.isDemo,
             fileName: st.fileName || (source && source.fileName) || null,
             filePath: st.filePath || (source && source.filePath) || null,
@@ -2260,6 +2400,7 @@
         if (Array.isArray(st.sources)) t.sources = st.sources.map(s => ({ ...s }));
         if (Array.isArray(st.takes)) t.takes = st.takes.map(take => ({ ...take }));
         if (st.activeTakeId !== undefined) t.activeTakeId = st.activeTakeId || null;
+        if (st.comp !== undefined) t.comp = Array.isArray(st.comp) ? st.comp.map(s => ({ ...s })) : null;
         if (Array.isArray(st.clips)) t.clips = st.clips.map(c => ({ ...c }));
         this._normalizeTrackLayout(t);
         // getSnapshot kept every source's RAW buffer by reference (snapshots live in the
@@ -2353,6 +2494,7 @@
           clips,
           takes: td.takes,
           activeTakeId: td.activeTakeId || null,
+          comp: Array.isArray(td.comp) ? td.comp.map(s => ({ ...s })) : null,
           isDemo: !!td.isDemo, fileName, filePath,
           needsAudio: isAudioPlaceholder,
         });
@@ -2714,7 +2856,9 @@
       const t = this.tracks.find(x => x.id === trackId);
       if (!t) return { ok: false, reason: "track" };
       if (!Array.isArray(t.takes) || !t.takes.length) return { ok: false, reason: "noTakes" };
-      const active = this._activeClips(t).filter(c => (c.duration || 0) > 0)
+      // Comp-aware: with a comp active this flattens the COMPED audio (each region's take),
+      // otherwise the single active lane. Both come through _renderClips.
+      const active = this._renderClips(t).filter(c => (c.duration || 0) > 0)
         .sort((a, b) => (a.start || 0) - (b.start || 0));
       if (!active.length) return { ok: false, reason: "empty" };
       // Verify EVERY raw up front: _renderClipsToSource mutates the track (registers a
@@ -2761,6 +2905,7 @@
       t.clips = out.sort((a, b) => (a.start || 0) - (b.start || 0));
       t.takes = [];
       t.activeTakeId = null;
+      t.comp = null;
       this._normalizeTrackLayout(t);
       this._ensureBaked(t);
       if (this.isPlaying) this._scheduleAutomation();
@@ -2939,7 +3084,7 @@
       // but never mixed into the flattened buffer, so overlapping alternates don't sum.
       // Timeline order: the edge planner compares each clip with its NEIGHBOUR, so the list
       // has to be sorted (clips[] is normally sorted, but a bake can run mid-edit).
-      const clips = this._activeClips(track).filter(c => !c.muted && (c.duration || 0) > 0)
+      const clips = this._renderClips(track).filter(c => !c.muted && (c.duration || 0) > 0)
         .sort((a, b) => (a.start || 0) - (b.start || 0));
       const layoutEnd = clips.reduce((m, c) => Math.max(m, (c.start || 0) + (c.duration || 0)), 0);
       let sr = ctx.sampleRate, chCount = 2;
@@ -2983,6 +3128,11 @@
     // peaks/audioRev and, if playing, restarts the track's live source.
     _ensureBaked(track) {
       if (!track) return;
+      // Strategy B re-renders the WHOLE track on every edit, so cost scales with
+      // track length, not edit size. Timings go to the console under [perf bake]
+      // so long tracks can be measured in the real app (시험.md T-1.41.4-1).
+      const _t0 = performance.now();
+      let _tBake = 0, _tPeaks = 0;
       this._captureRawBuffers(track);
       if (this._isTrivialLayout(track)) {
         const primary = track.sources && track.sources[0];
@@ -2991,21 +3141,31 @@
         // Raw buffer is source-indexed: the Waveform samples peaks by clip.offset.
         track._layoutBaked = false;
       } else {
+        const _b0 = performance.now();
         const baked = this._bakeTrackLayout(track);
+        _tBake = performance.now() - _b0;
         // Baked buffer is TIMELINE-indexed (clip audio placed at clip.start), so the
         // Waveform must sample its peaks by timeline position, not clip.offset.
         if (baked) { track.buffer = baked; track._layoutBaked = true; }
       }
       if (track.buffer) {
+        const _p0 = performance.now();
         const pk = computePeakLevels(track.buffer);
         track.peaks = pk.fine; track.peaksMedium = pk.medium; track.peaksCoarse = pk.coarse;
         track.peakAmp = maxAbsPeak(pk.coarse);
+        _tPeaks = performance.now() - _p0;
       }
       track.audioRev = (track.audioRev || 0) + 1;
       // Recompute exactly (not Math.max) so moving/trimming a clip earlier lets the
       // ruler shrink back; _projectClipDuration keeps the DURATION floor + other tracks.
       this.duration = this._projectClipDuration();
       if (this.isPlaying) { this._startHotAddedTrack(track); this._scheduleAutomation(); }
+      const _total = performance.now() - _t0;
+      const _len = track.buffer ? track.buffer.duration : 0;
+      console.log(
+        `[perf bake] ${track.name || track.id} len=${_len.toFixed(1)}s clips=${(track.clips || []).length}` +
+        ` bake=${_tBake.toFixed(1)}ms peaks=${_tPeaks.toFixed(1)}ms total=${_total.toFixed(1)}ms`
+      );
     },
 
     // Positional clip edits are allowed only on Audio In / Bounce tracks. File
@@ -3412,9 +3572,10 @@
         samplerCache.set(clip, s);
         return s;
       };
-      // Only the active take is baked/played, so per-clip volume/automation must be read
-      // from the active lane — an inactive alternate overlapping this position must not win.
-      const liveClips = this._activeClips(track);
+      // Only the rendered clips are baked/played, so per-clip volume/automation must be read
+      // from them — an inactive alternate (or a take outside its comp segment) overlapping
+      // this position must not win. Comp-aware so each segment reads its own lane's curve.
+      const liveClips = this._renderClips(track);
       for (let i = 0; i < n; i++) {
         const pos = (i / (n - 1)) * dur;
         const clip = liveClips.find(c => pos >= c.start && pos < c.end);

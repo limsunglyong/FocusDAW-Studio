@@ -27,6 +27,26 @@ function parentFolderName(filePath) {
   return parts.length >= 2 ? parts[parts.length - 2] : "";
 }
 
+// Absolute path? Windows drive (C:\ or C:/), UNC (\\ or //), or POSIX root (/). A collected
+// source stores a RELATIVE path (Save As, Phase 7); everything else is absolute.
+function isAbsolutePath(p) {
+  return /^([a-zA-Z]:[\\/]|[\\/]{2}|[\\/])/.test(p || "");
+}
+function dirnameFromPath(filePath) {
+  const s = String(filePath || "");
+  const i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+  return i >= 0 ? s.slice(0, i) : "";
+}
+// Resolve a stored source path for reading. A relative path (collected file) is resolved
+// against the project's own folder; absolute paths (imported stems, legacy projects) pass
+// through unchanged. read-audio-file then normalises the separators via path.resolve.
+function resolveSourcePath(filePath, projectPath) {
+  if (!filePath) return filePath;
+  if (isAbsolutePath(filePath)) return filePath;
+  const dir = dirnameFromPath(projectPath);
+  return dir ? dir + "/" + filePath : filePath;
+}
+
 function readDirectoryEntryRootFiles(entry) {
   return new Promise((resolve) => {
     if (!entry || !entry.isDirectory || !entry.createReader) {
@@ -632,7 +652,7 @@ function snapshotSig(snap) {
     master: snap.master,
     eqBands: snap.eqBands,
     tempo: snap.tempo,
-    tracks: (snap.tracks || []).map((t) => ({ id: t.id, params: t.params, clips: t.clips, takes: t.takes, activeTakeId: t.activeTakeId })),
+    tracks: (snap.tracks || []).map((t) => ({ id: t.id, params: t.params, clips: t.clips, takes: t.takes, activeTakeId: t.activeTakeId, comp: t.comp })),
   });
 }
 const TOOL_TIPS  = { select: "Select / Seek (S)", scissors: "Split clip (C)", join: "Merge clips (J)" };
@@ -2531,13 +2551,57 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
   }, [bpmOpen]);
 
+  // Save As collect (Phase 7): copy app-generated audio (recordings/bounces/consolidations)
+  // into "<Project> Audio/" and repoint each source at its new location, stored RELATIVE to
+  // the .focus so the project is self-contained and portable. Imported file-track stems are
+  // NOT collected (user decision 2026-07-21) — they keep their absolute reference. Files
+  // already inside the project folder are just re-pathed relative (no copy). Best-effort:
+  // a failed copy leaves that source on its old path (the edit/save still stands).
+  const collectProjectAudioForSave = useCallback(async (targetPath) => {
+    if (!window.electronAPI || !window.electronAPI.collectProjectAudio || !targetPath) return;
+    const items = [];
+    const back = new Map();
+    for (const t of DAW.tracks) {
+      const trackCat = t.kind === "bounce" ? "Bounces" : t.kind === "audioIn" ? "Recordings" : null;
+      for (const s of (t.sources || [])) {
+        if (!s.filePath) continue;
+        const consolidated = /consolidated/i.test(s.filePath) || /\(Consolidated\)/i.test(s.fileName || "");
+        const cat = consolidated ? "Consolidated" : trackCat;
+        if (!cat) continue; // imported file-track stem → not collected
+        const key = t.id + "::" + s.id;
+        items.push({ key, filePath: resolveSourcePath(s.filePath, projectPath), category: cat });
+        back.set(key, { trackId: t.id, sourceId: s.id, fileName: s.fileName });
+      }
+    }
+    if (!items.length) return;
+    const res = await window.electronAPI.collectProjectAudio(targetPath, items);
+    for (const r of (res && res.items) || []) {
+      if (!r || r.error || !r.relPath) continue;
+      const b = back.get(r.key); if (!b) continue;
+      DAW.setSourcePath(b.trackId, b.sourceId, r.relPath, b.fileName);
+    }
+  }, [projectPath]);
+
   const saveProject = useCallback(async (forceDialog = false) => {
     const currentName = (projectNameRef && projectNameRef.current) || projectName || DEFAULT_PROJECT_NAME;
-    const json = DAW.exportProject(currentName);
     let savedPath = projectPath || null;
     let savedName = currentName;
     if (window.electronAPI) {
-      const targetPath = !forceDialog ? projectPath : null;
+      // Resolve the target path FIRST (Save As / first save open a dialog) so the audio can be
+      // collected into the project folder and the sources re-pathed BEFORE the .focus is
+      // written — otherwise the JSON would carry stale temp/absolute source paths.
+      let targetPath = (!forceDialog && projectPath) ? projectPath : null;
+      if (!targetPath && window.electronAPI.chooseProjectPath) {
+        const chosen = await window.electronAPI.chooseProjectPath(currentName);
+        if (!chosen || chosen.canceled || !chosen.path) return;
+        targetPath = chosen.path;
+      }
+      if (targetPath) {
+        try { await collectProjectAudioForSave(targetPath); }
+        catch (err) { console.warn("[save] audio collect failed — sources keep old paths", err); }
+      }
+      // Export AFTER collecting so the JSON carries the new relative source paths.
+      const json = DAW.exportProject(currentName);
       const result = await window.electronAPI.saveProject(json, currentName, targetPath);
       if (!result || result.saved === false) return;
       if (result.path && onProjectPathChange) onProjectPathChange(result.path);
@@ -2551,6 +2615,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         if (savedName !== currentName && onRenameProject) onRenameProject(savedName);
       }
     } else {
+      const json = DAW.exportProject(currentName);
       const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -2560,7 +2625,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       URL.revokeObjectURL(url);
     }
     saveRecentProject(savedName, savedPath, { updateSavedList: !!savedPath });
-  }, [projectName, projectNameRef, projectPath, onProjectPathChange, onRenameProject]);
+  }, [projectName, projectNameRef, projectPath, onProjectPathChange, onRenameProject, collectProjectAudioForSave]);
 
   const saveProjectAs = useCallback(() => saveProject(true), [saveProject]);
 
@@ -2758,6 +2823,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const savedRedo = pushUndo();
     if (!DAW.deleteTake(trackId, takeId)) cancelUndo(savedRedo); else force((n) => n + 1);
   }, [pushUndo, cancelUndo]);
+  // Phase 7 Comp Lane — swipe a region on a take lane to comp it in, or Clear to drop the comp.
+  // Both re-bake the track (like setActiveTake), so both are undoable engine edits.
+  const handleSetCompRegion = useCallback((trackId, start, end, takeId) => {
+    const savedRedo = pushUndo();
+    if (!DAW.setCompRegion(trackId, start, end, takeId)) cancelUndo(savedRedo); else force((n) => n + 1);
+  }, [pushUndo, cancelUndo]);
+  const handleClearComp = useCallback((trackId) => {
+    const savedRedo = pushUndo();
+    if (!DAW.clearComp(trackId)) cancelUndo(savedRedo); else force((n) => n + 1);
+  }, [pushUndo, cancelUndo]);
   const handlePasteClip = useCallback((trackId, atStart) => {
     lockTimelineZoom(); pushUndo(); const id = DAW.pasteClip(trackId, atStart);
     lastClipTrackRef.current = trackId;
@@ -2812,8 +2887,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     return () => window.removeEventListener("keyup", onUp, true);
   }, [commitNudge]);
 
-  const reconnectProjectAudio = useCallback(async () => {
+  // `pathForOpen` is passed explicitly by loadProjectJson because the projectPath PROP has
+  // not re-rendered yet at that point — a collected source stores a path relative to the
+  // .focus, so resolving it needs the project path being opened, not the previous one.
+  const reconnectProjectAudio = useCallback(async (pathForOpen) => {
     if (!window.electronAPI) return;
+    const base = pathForOpen || projectPath || null;
     const missing = DAW.tracks.filter((t) => t.needsAudio && t.filePath);
     if (!missing.length) return;
     setLoading({ active: true, total: missing.length, done: 0, label: "Reconnecting audio..." });
@@ -2821,7 +2900,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const track = missing[i];
       setLoading({ active: true, total: missing.length, done: i, label: basenameFromPath(track.filePath) || track.name });
       try {
-        const ab = await window.electronAPI.readAudioFile(track.filePath);
+        const abs = resolveSourcePath(track.filePath, base);
+        const ab = await window.electronAPI.readAudioFile(abs);
         await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath, reconnectTrackId: track.id });
       } catch (err) {
         console.warn("Failed to reconnect audio:", track.filePath, err);
@@ -2835,7 +2915,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const extras = (track.sources || []).slice(1).filter((s) => s.needsAudio && s.filePath);
       for (const src of extras) {
         try {
-          const ab = await window.electronAPI.readAudioFile(src.filePath);
+          const abs = resolveSourcePath(src.filePath, base);
+          const ab = await window.electronAPI.readAudioFile(abs);
           await DAW.hydrateSource(track.id, src.id, ab, { filePath: src.filePath });
         } catch (err) {
           console.warn("Failed to reconnect take audio:", src.filePath, err);
@@ -2844,7 +2925,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
     setLoading({ active: true, total: missing.length, done: missing.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
-  }, []);
+  }, [projectPath]);
 
   const loadProjectJson = useCallback(async (json, openedPath = null) => {
     const nextPath = openedPath || json.projectPath || null;
@@ -2860,7 +2941,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     undoStack.current = [];
     redoStack.current = [];
     if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
-    await reconnectProjectAudio();
+    await reconnectProjectAudio(nextPath);
     fitTimelineToProject();
     saveRecentProject(nextName, nextPath);
     force((n) => n + 1);
@@ -3991,6 +4072,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
                   onFlattenComp={handleFlattenComp}
+                  onSetCompRegion={handleSetCompRegion} onClearComp={handleClearComp}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
                   onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   viewScrollLeft={timelineView.scrollLeft}
@@ -4027,6 +4109,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
                   onFlattenComp={handleFlattenComp}
+                  onSetCompRegion={handleSetCompRegion} onClearComp={handleClearComp}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
                   onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   viewScrollLeft={timelineView.scrollLeft}
