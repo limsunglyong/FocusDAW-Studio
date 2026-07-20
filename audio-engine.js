@@ -482,7 +482,15 @@
         // or dropped above) would be hidden forever by _isActiveClip. Detach it (takeId=null)
         // so it stays visible as a shared clip instead of vanishing.
         for (const c of (track.clips || [])) { if (c.takeId && !liveIds.has(c.takeId)) c.takeId = null; }
-        rebuilt.forEach((t, i) => { t.index = i; t.name = this._takeLabel(i); });
+        // "Original" takes (pre-punch audio parked by _parkDisplacedAsTakes, v1.40.0) keep a
+        // name instead of a letter, and are skipped by the A/B/C counter so the recorded
+        // passes still read Take A, B, C… — the live record badge predicts those letters.
+        let passIdx = 0, origIdx = 0;
+        rebuilt.forEach((t, i) => {
+          t.index = i;
+          if (t.kind === "original") { t.name = origIdx === 0 ? "Original" : `Original ${origIdx + 1}`; origIdx++; }
+          else t.name = this._takeLabel(passIdx++);
+        });
         track.takes = rebuilt;
       }
       // Drop a dangling activeTakeId (points at a take that no longer exists) so
@@ -811,20 +819,29 @@
       // makes setTrackParam drop Solo/Mute/bpmSource (audio-engine setTrackParam /
       // audio-bridge gate), even though the buffer now plays fine.
       track.needsAudio = false;
-      // Register the take and make it active — the newest take is what plays/bakes/exports
-      // (matches a DAW punching in a fresh take). Inactive takes are preserved as data only.
-      const takeId = this._takeId();
-      const takeIndex = (track.takes || []).length;
-      track.takes = [...(track.takes || []), {
-        id: takeId, name: this._takeLabel(takeIndex), index: takeIndex,
-        sourceId, partial: !!options.partial,
-      }];
-      track.activeTakeId = takeId;
       const start = Math.max(0, options.start || 0);
       const limitEnd = Number(options.end) > start ? Number(options.end) : 0;
       const clipEnd = limitEnd ? Math.min(start + decoded.buffer.duration, limitEnd) : start + decoded.buffer.duration;
       const clipDuration = Math.max(0, clipEnd - start);
-      track.clips = [...track.clips, this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration, takeId, recordedStart: start, recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 }, sourceId, decoded.buffer.duration)];
+      // A plain re-record REPLACES THE WHOLE TRACK (user decision, v1.40.2) — the pre-Stage-3a
+      // behaviour. "Re-record" means "do this take again", not "comp it": the new recording
+      // stands alone and Undo is the way back.
+      //
+      // Stage 3a (v1.29.x) had made it append a Take instead. That LOOKED like replacement
+      // because the previous take went inactive and was hidden — until Comp Flatten (v1.39.0)
+      // started producing base clips (takeId=null), which _isActiveClip always renders, so the
+      // old audio and the new recording sounded together. v1.40.1 then only cleared the span
+      // the new take covered, which left the old audio split around it (3 clips instead of 1).
+      // Clearing everything is what the user expects and what the app did originally.
+      //
+      // Take-based recording still exists where it is the point: Loop-Take (attachLoopRecording)
+      // and Punch (attachPunchRecording / attachLoopPunchRecording).
+      track.clips = [this._normalizeClip({ start, end: clipEnd, offset: 0, duration: clipDuration,
+        takeId: null, recordedStart: start,
+        recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 },
+        sourceId, decoded.buffer.duration)];
+      track.activeTakeId = null;
+      this._normalizeTrackLayout(track);   // no clip references the old takes → they are pruned
       // A take punched in past 0 (record-while-playing, pre-roll, mid-song count-in) is a
       // NON-trivial layout — its audio belongs at clip.start, not at 0 — so it MUST be
       // baked, per the 전략 B invariant. Without this bake, track.buffer stays a raw decode
@@ -868,32 +885,28 @@
       const clipDuration = Math.max(0, clipEnd - inPt);
       const activeId = this._activeTakeId(track); // punch clip joins the active take (null = no takes)
 
-      // Empty [inPt, outPt] among ACTIVE clips only. Mirrors deleteRange's split/trim, but a
-      // piece whose start MOVES off origin (right split, left trim) clears recordedStart/
-      // recordedOffsetMs so its Cal. badge is not misleading (same rule as deleteRange).
-      const next = [];
-      for (const c of track.clips) {
-        if (!this._isActiveClip(track, c)) { next.push(c); continue; }        // inactive take → untouched
-        const cS = c.start, cE = c.start + c.duration;
-        if (cE <= inPt || cS >= outPt) { next.push(c); continue; }            // outside the punch span
-        if (cS >= inPt && cE <= outPt) continue;                              // fully inside → removed
-        const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
-        if (cS < inPt && cE > outPt) {                                        // spans → split around the punch
-          next.push(this._normalizeClip({ ...c, id: this._cid(), start: cS, end: inPt, duration: inPt - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
-          const rOff = curOff + (outPt - cS);
-          next.push(this._normalizeClip({ ...c, id: this._cid(), start: outPt, end: cE, duration: cE - outPt, sourceOffset: rOff, offset: rOff, recordedStart: null, recordedOffsetMs: null, params: null, automation: null }, c.sourceId, 0));
-        } else if (cS < inPt) {                                               // trim right edge
-          next.push(this._normalizeClip({ ...c, start: cS, end: inPt, duration: inPt - cS }, c.sourceId, 0));
-        } else {                                                             // trim left edge
-          const nOff = curOff + (outPt - cS);
-          next.push(this._normalizeClip({ ...c, start: outPt, end: cE, duration: cE - outPt, sourceOffset: nOff, offset: nOff, recordedStart: null, recordedOffsetMs: null }, c.sourceId, 0));
-        }
+      // Split the ACTIVE clips at the punch span. Pieces outside stay exactly as they were
+      // (still on the active take); pieces inside are parked as a take instead of being
+      // discarded, so the pre-punch audio remains selectable (v1.40.0).
+      const sliced = this._sliceActiveAtRegion(track, inPt, outPt);
+      const parked = this._parkDisplacedAsTakes(track, sliced.inside, { separate: true });
+      // The punch clip joins the active take. When the track had NO takes at all, the punch
+      // clip would be base (takeId=null → always rendered) while the parked original sits on
+      // a take — both would sound in the region at once. Give the punch its own take so the
+      // two are proper alternatives, and make it the active one.
+      let punchTakeId = activeId;
+      if (!punchTakeId && parked) {
+        punchTakeId = this._takeId();
+        track.takes = [...(track.takes || []), { id: punchTakeId, name: this._takeLabel(0), index: (track.takes || []).length }];
       }
-      // Splice the punch clip in (tagged to the active take so it plays/bakes/exports with it).
-      next.push(this._normalizeClip({ start: inPt, end: clipEnd, offset: 0, duration: clipDuration, takeId: activeId,
+      const next = [...sliced.untouched, ...sliced.outside, ...(parked ? parked.clips : [])];
+      // Splice the punch clip in (tagged to the punch take so it plays/bakes/exports with it).
+      next.push(this._normalizeClip({ start: inPt, end: clipEnd, offset: 0, duration: clipDuration, takeId: punchTakeId,
         recordedStart: inPt, recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 },
         sourceId, decoded.buffer.duration));
       track.clips = next;
+      if (punchTakeId) track.activeTakeId = punchTakeId;   // the new punch is what you hear
+      this._normalizeTrackLayout(track);   // name the parked "Original", renumber the passes
       this._reindexClips(track);
       this._ensureBaked(track);
       this.duration = Math.max(this.duration, this._projectClipDuration());
@@ -940,6 +953,16 @@
       if (!track.filePath) track.filePath = options.filePath || null;
       track.needsAudio = false;
 
+      // Loop-Take recording REPLACES the track (user decision, v1.40.3) — same rule as a plain
+      // re-record: recording with Punch OFF means "record this track again", so the previous
+      // content goes and the passes become Take A, B, C… in recording order. Appending instead
+      // left the old audio in place, and any base clip (takeId=null) renders on EVERY lane, so
+      // the previous track and Take A sounded together. Punch is the mode that keeps what was
+      // there (attachPunchRecording / attachLoopPunchRecording park it as a selectable take).
+      track.clips = [];
+      track.takes = [];
+      track.activeTakeId = null;
+
       const addTake = (offset, dur, partial) => {
         const takeId = this._takeId();
         const idx = (track.takes || []).length;
@@ -958,6 +981,7 @@
       // there is. The user can switch lanes once Stage 4 ships.
       track.activeTakeId = lastFull || partialId;
 
+      this._normalizeTrackLayout(track);   // keep take numbering/pruning on the shared path
       this._ensureBaked(track);
       this.duration = Math.max(this.duration, this._projectClipDuration());
       this._applyMix();
@@ -1004,29 +1028,18 @@
       if (!track.filePath) track.filePath = options.filePath || null;
       track.needsAudio = false;
 
-      // (1) Empty [inPt, outPt] among ACTIVE clips; the surviving pieces become the shared base
-      // (takeId=null → always rendered, per _isActiveClip). Inactive takes are left untouched. A
-      // split/trim that moves the start off origin clears recordedStart/recordedOffsetMs so its
-      // Cal. badge is not misleading (same rule as deleteRange / attachPunchRecording).
-      const base = [];
-      for (const c of track.clips) {
-        if (!this._isActiveClip(track, c)) { base.push(c); continue; }          // inactive take → untouched
-        const cS = c.start, cE = c.start + c.duration;
-        if (cE <= inPt || cS >= outPt) { base.push({ ...c, takeId: null }); continue; } // outside → base
-        if (cS >= inPt && cE <= outPt) continue;                                // fully inside → removed
-        const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
-        if (cS < inPt && cE > outPt) {                                          // spans → split around the region
-          base.push(this._normalizeClip({ ...c, id: this._cid(), takeId: null, start: cS, end: inPt, duration: inPt - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
-          const rOff = curOff + (outPt - cS);
-          base.push(this._normalizeClip({ ...c, id: this._cid(), takeId: null, start: outPt, end: cE, duration: cE - outPt, sourceOffset: rOff, offset: rOff, recordedStart: null, recordedOffsetMs: null, params: null, automation: null }, c.sourceId, 0));
-        } else if (cS < inPt) {                                                 // trim right edge
-          base.push(this._normalizeClip({ ...c, takeId: null, start: cS, end: inPt, duration: inPt - cS }, c.sourceId, 0));
-        } else {                                                               // trim left edge
-          const nOff = curOff + (outPt - cS);
-          base.push(this._normalizeClip({ ...c, takeId: null, start: outPt, end: cE, duration: cE - outPt, sourceOffset: nOff, offset: nOff, recordedStart: null, recordedOffsetMs: null }, c.sourceId, 0));
-        }
-      }
-      track.clips = base;
+      // (1) Split the ACTIVE clips at the region. Pieces OUTSIDE become the shared base
+      // (takeId=null → always rendered, per _isActiveClip). Pieces INSIDE are no longer
+      // discarded (v1.40.0): they are parked as a take so the pre-punch audio stays
+      // selectable next to the recorded passes. Inactive takes are left untouched.
+      const sliced = this._sliceActiveAtRegion(track, inPt, outPt);
+      const parked = this._parkDisplacedAsTakes(track, sliced.inside);
+      track.clips = [
+        ...sliced.untouched,
+        ...sliced.outside.map(c => ({ ...c, takeId: null })),
+        ...(parked ? parked.clips : []),
+      ];
+
 
       // (2) One region-scoped Take per pass, sliced from the single source by sourceOffset.
       const addTake = (offset, dur, partial) => {
@@ -2385,9 +2398,97 @@
       if (this.isPlaying) this._scheduleAutomation();
     },
 
+    // ---- Clip edge rendering (Phase 7: comp crossfade, v1.38.0) -------------------
+    // Both render paths (live bake + consolidate render) classify every boundary between
+    // neighbouring clips the same way, so what you hear while editing is what a merge
+    // bakes in. A "desc" is one clip ready to render:
+    //   { raw, srcStart, dstStart, n, gain, sourceId }   (all in SAMPLES)
+    //
+    // Boundary kinds:
+    //   continuous — same source, offsets run straight through, no timeline gap. This is a
+    //                split nobody moved: the audio is ALREADY continuous, so any fade here
+    //                is a dip the original never had. Render it flat.
+    //   seam       — different audio meets. Equal-power crossfade, using handle material
+    //                (the source beyond the clip's trimmed edge) so neither side is muted
+    //                to make room. Clip start/duration are untouched — this is purely a
+    //                render-time overlap, so the no-overlap invariant still holds.
+    //   gap        — silence between them. Micro-fade both sides, as before.
+    // With no handle on either side a seam falls back to the old micro-fade.
+    //
+    // `outer` is what the FIRST clip's left edge and the LAST clip's right edge get:
+    //   "micro" — live bake. Those edges meet silence on the timeline, so they need the
+    //             click guard.
+    //   "none"  — consolidate render. Those edges become the merged CLIP's own edges, and
+    //             the bake micro-fades them again when it places the clip; fading here too
+    //             would double-fade (the merged audio started/ended at zero — caught by
+    //             simulation when this defaulted to "micro").
+    _planClipEdges(descs, sr, { outer = "micro" } = {}) {
+      const want = Math.floor(this._CROSSFADE * sr);
+      const plan = descs.map(() => ({ left: { mode: "micro" }, right: { mode: "micro" } }));
+      if (descs.length) {
+        plan[0].left = { mode: outer };
+        plan[descs.length - 1].right = { mode: outer };
+      }
+      for (let i = 0; i + 1 < descs.length; i++) {
+        const a = descs[i], b = descs[i + 1];
+        const gap = b.dstStart - (a.dstStart + a.n);
+        if (gap > 1) continue;                     // silence between → micro-fade both sides
+        if (a.sourceId === b.sourceId && Math.abs(b.srcStart - (a.srcStart + a.n)) <= 1 && Math.abs(gap) <= 1) {
+          plan[i].right = { mode: "none" }; plan[i + 1].left = { mode: "none" };
+          continue;                                 // untouched split → render straight through
+        }
+        // Handle available past each trimmed edge, capped so a fade can never eat more than
+        // half of either clip.
+        const cap = Math.max(0, Math.min(want, Math.floor(a.n / 2), Math.floor(b.n / 2)));
+        const useTail = Math.min(cap, Math.max(0, a.raw.length - (a.srcStart + a.n)));
+        const useHead = Math.min(cap - useTail, Math.max(0, b.srcStart));
+        const L = useTail + useHead;
+        if (L <= 0) continue;                      // no handle either side → micro-fade
+        plan[i].right = { mode: "xfade", L, ext: useTail };
+        plan[i + 1].left = { mode: "xfade", L, ext: useHead };
+      }
+      return plan;
+    },
+
+    // Mix descs into `out` following the edge plan. Additive (+=): the crossfade IS the
+    // overlap of two extended reads, so both sides must sum.
+    _renderDescs(descs, plan, out, sr) {
+      const micro = Math.floor(this._MICRO_FADE * sr);
+      const chCount = out.numberOfChannels;
+      const len = out.length;
+      const HALF_PI = Math.PI / 2;
+      for (let i = 0; i < descs.length; i++) {
+        const d = descs[i], p = plan[i];
+        const extL = p.left.mode === "xfade" ? p.left.ext : 0;
+        const extR = p.right.mode === "xfade" ? p.right.ext : 0;
+        const total = extL + d.n + extR;
+        const s0 = d.srcStart - extL;
+        const t0 = d.dstStart - extL;
+        const microN = Math.min(micro, Math.floor(d.n / 2));
+        for (let ch = 0; ch < chCount; ch++) {
+          const src = d.raw.getChannelData(Math.min(ch, d.raw.numberOfChannels - 1));
+          const dst = out.getChannelData(ch);
+          for (let j = 0; j < total; j++) {
+            const di = t0 + j, si = s0 + j;
+            if (di < 0 || di >= len || si < 0 || si >= d.raw.length) continue;
+            let g = d.gain;
+            if (p.left.mode === "xfade") { if (j < p.left.L) g *= Math.sin((j / p.left.L) * HALF_PI); }
+            else if (p.left.mode === "micro" && microN > 0 && j < microN) g *= j / microN;
+            if (p.right.mode === "xfade") {
+              const rs = total - p.right.L;
+              if (j >= rs) g *= Math.cos(((j - rs) / p.right.L) * HALF_PI);
+            } else if (p.right.mode === "micro" && microN > 0 && j >= total - microN) {
+              g *= (total - j) / microN;
+            }
+            dst[di] += src[si] * g;
+          }
+        }
+      }
+    },
+
     // Flatten `clips` (timeline order) into ONE new
     // source buffer, writing the timeline gap between neighbours as silence so every clip
-    // keeps its position, with a micro-fade on both sides of each seam. `gaps[i]` is the
+    // keeps its position, with the same edge treatment the live bake uses. `gaps[i]` is the
     // silence between clips[i] and clips[i+1]; omit it to derive gaps from clip.start.
     // Returns the new sourceId, or null if any raw buffer is missing (caller must then
     // leave the clips untouched rather than lose audio).
@@ -2407,36 +2508,23 @@
       // Per-clip source window. `n` clamps to what the raw actually holds, while `dur`
       // (the clip's declared length) drives layout, so a short raw leaves silence rather
       // than sliding every later clip earlier.
-      const parts = clips.map((c, i) => {
-        const off = Math.max(0, Math.round((c.sourceOffset != null ? c.sourceOffset : (c.offset || 0)) * sr));
+      let write = 0;
+      const descs = clips.map((c, i) => {
+        const srcStart = Math.max(0, Math.round((c.sourceOffset != null ? c.sourceOffset : (c.offset || 0)) * sr));
         const dur = Math.round((c.duration || 0) * sr);
-        return { raw: raws[i], off, dur, n: Math.max(0, Math.min(dur, raws[i].length - off)), gain: c.gain == null ? 1 : c.gain };
+        const d = {
+          raw: raws[i], srcStart, dstStart: write, dur,
+          n: Math.max(0, Math.min(dur, raws[i].length - srcStart)),
+          gain: c.gain == null ? 1 : c.gain, sourceId: c.sourceId,
+        };
+        write += dur + (gapN[i] || 0);
+        return d;
       });
-      const total = Math.max(1, parts.reduce((s, p) => s + p.dur, 0) + gapN.reduce((s, g) => s + g, 0));
+      const total = Math.max(1, descs.reduce((s, d) => s + d.dur, 0) + gapN.reduce((s, g) => s + g, 0));
       const out = ctx.createBuffer(ch, total, sr);
-      const maxFade = Math.floor(this._MICRO_FADE * sr);
-      for (let c = 0; c < ch; c++) {
-        const dst = out.getChannelData(c);
-        let write = 0;
-        for (let p = 0; p < parts.length; p++) {
-          const { raw, off, dur, n, gain } = parts[p];
-          const src = raw.getChannelData(Math.min(c, raw.numberOfChannels - 1));
-          // Fade only at real seams (not the outer edges of the consolidated source) and
-          // never longer than half the shorter neighbour, so short clips can't fade out
-          // more audio than they hold.
-          const prevN = p > 0 ? parts[p - 1].n : 0;
-          const nextN = p < parts.length - 1 ? parts[p + 1].n : 0;
-          const fadeIn = p > 0 ? Math.min(maxFade, Math.floor(Math.min(n, prevN) / 2)) : 0;
-          const fadeOut = p < parts.length - 1 ? Math.min(maxFade, Math.floor(Math.min(n, nextN) / 2)) : 0;
-          for (let i = 0; i < n; i++) {
-            let g = gain;
-            if (fadeIn > 0 && i < fadeIn) g *= i / fadeIn;
-            if (fadeOut > 0 && i >= n - fadeOut) g *= (n - i) / fadeOut;
-            dst[write + i] = src[off + i] * g;
-          }
-          write += dur + (gapN[p] || 0);
-        }
-      }
+      // outer: "none" — the ends of the merged audio are the merged CLIP's edges, and the
+      // bake fades those when it places the clip. Fading them here as well would double-fade.
+      this._renderDescs(descs, this._planClipEdges(descs, sr, { outer: "none" }), out, sr);
       // _sourceId(), not _cid(): this is a source, and _cid() is the CLIP counter — it
       // was handing out "cN" ids into the source namespace.
       const sourceId = this._registerSource(track, {
@@ -2545,6 +2633,140 @@
       return { ok: true, picked, lane, strategy: this._isHealableRun(picked) ? "heal" : "render" };
     },
 
+    // Split the ACTIVE clips around [inPt, outPt] and hand back the pieces separately.
+    // Punch used to DROP whatever fell inside the region, which threw the pre-punch audio
+    // away for good (v1.40.0 user report: "원본을 선택할 수 있는 방법이 필요합니다"). The
+    // audio itself always survived — the source stays registered and the WAV stays on disk —
+    // but nothing pointed at it any more. Returning the inside pieces lets the caller keep
+    // them as a take instead.
+    //
+    // Piece identity: the first piece cut from a clip reuses that clip's id (so selection and
+    // undo stay stable); extra pieces get fresh ids. A piece whose start MOVES off the
+    // original origin clears recordedStart/recordedOffsetMs, so its Recording Offset Cal.
+    // badge cannot mislead (same rule as deleteRange).
+    _sliceActiveAtRegion(track, inPt, outPt) {
+      const untouched = [], outside = [], inside = [];
+      for (const c of track.clips) {
+        if (!this._isActiveClip(track, c)) { untouched.push(c); continue; }
+        const cS = c.start, cE = c.start + (c.duration || 0);
+        if (cE <= inPt || cS >= outPt) { outside.push(c); continue; }
+        const curOff = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
+        let first = true;
+        const idFor = () => (first ? (first = false, c.id) : this._cid());
+        if (cS < inPt) {
+          outside.push(this._normalizeClip({ ...c, id: idFor(), start: cS, end: inPt,
+            duration: inPt - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
+        }
+        const mS = Math.max(cS, inPt), mE = Math.min(cE, outPt);
+        if (mE - mS > 1e-6) {
+          const mOff = curOff + (mS - cS);
+          const moved = mS > cS + 1e-9;
+          inside.push(this._normalizeClip({ ...c, id: idFor(), start: mS, end: mE,
+            duration: mE - mS, sourceOffset: mOff, offset: mOff,
+            ...(moved ? { recordedStart: null, recordedOffsetMs: null } : {}) }, c.sourceId, 0));
+        }
+        if (cE > outPt) {
+          const rOff = curOff + (outPt - cS);
+          outside.push(this._normalizeClip({ ...c, id: idFor(), start: outPt, end: cE,
+            duration: cE - outPt, sourceOffset: rOff, offset: rOff,
+            recordedStart: null, recordedOffsetMs: null, params: null, automation: null }, c.sourceId, 0));
+        }
+      }
+      return { untouched, outside, inside };
+    },
+
+    // Park displaced region audio in a take so the user can select it back. Pieces that
+    // already belong to a take keep it (that take simply survives, shrunk to the region);
+    // pieces from the shared base go into a new take flagged `kind: "original"`, which
+    // _normalizeTrackLayout names "Original" instead of consuming a Take A/B/C letter.
+    // `separate: true` forces EVERY displaced piece onto the new "Original" take, even one
+    // that already belonged to a take. Single punch needs this: its new clip joins the ACTIVE
+    // take, so a displaced piece left on that same take would sit under it and both would
+    // sound (v1.40.1 user report: "take A가 원본 트랙에 sum 됩니다"). Loop-punch does not —
+    // its passes are brand-new takes, so nothing collides and keeping a piece on its own take
+    // preserves that take's identity.
+    _parkDisplacedAsTakes(track, inside, { separate = false } = {}) {
+      if (!inside.length) return null;
+      let originalId = null;
+      const newTake = () => {
+        if (!originalId) {
+          originalId = this._takeId();
+          track.takes = [...(track.takes || []), {
+            id: originalId, name: "Original", index: (track.takes || []).length, kind: "original",
+          }];
+        }
+        return originalId;
+      };
+      const out = inside.map(c => {
+        if (c.takeId && !separate) return c;           // already a take → it survives as-is
+        return { ...c, takeId: newTake() };
+      });
+      return { clips: out, originalId };
+    },
+
+    // ---- Comp Flatten (Phase 7 Stage 4, v1.39.0) ---------------------------------
+    // Commit the comp: the ACTIVE take plus the shared base become ordinary audio, and the
+    // alternate takes are dropped. This is the one operation allowed to merge across lanes —
+    // Merge refuses that because the alternatives are still live, and here discarding them
+    // IS the point. Undoable, and the recorded WAVs stay on disk (only project references
+    // change), so nothing is destroyed that Undo or a re-import cannot bring back.
+    canFlattenComp(trackId) {
+      const t = this.tracks.find(x => x.id === trackId);
+      if (!t) return { ok: false, reason: "track" };
+      if (!Array.isArray(t.takes) || !t.takes.length) return { ok: false, reason: "noTakes" };
+      const active = this._activeClips(t).filter(c => (c.duration || 0) > 0)
+        .sort((a, b) => (a.start || 0) - (b.start || 0));
+      if (!active.length) return { ok: false, reason: "empty" };
+      // Verify EVERY raw up front: _renderClipsToSource mutates the track (registers a
+      // source, queues a disk write), so a failure discovered halfway would leave the track
+      // half-flattened. Refuse before touching anything.
+      if (active.some(c => !this._rawBufferForSource(t, c.sourceId))) return { ok: false, reason: "raw" };
+      // Contiguous runs: a gap between clips (a deleted or moved clip) stays a gap, so
+      // silence is never baked into a WAV and the empty span remains usable.
+      const runs = [];
+      let cur = [active[0]];
+      for (let i = 1; i < active.length; i++) {
+        const prev = active[i - 1], c = active[i];
+        if ((c.start || 0) - ((prev.start || 0) + (prev.duration || 0)) <= 1e-3) cur.push(c);
+        else { runs.push(cur); cur = [c]; }
+      }
+      runs.push(cur);
+      return { ok: true, runs, takeCount: t.takes.length, clipCount: active.length };
+    },
+
+    flattenComp(trackId) {
+      const check = this.canFlattenComp(trackId);
+      if (!check.ok) return null;
+      const t = this.tracks.find(x => x.id === trackId);
+      const out = [];
+      for (const run of check.runs) {
+        if (run.length === 1) {
+          // Nothing to merge — just detach it from its take so it survives as plain audio.
+          // No re-render, so the audio stays bit-identical.
+          out.push({ ...run[0], takeId: null });
+          continue;
+        }
+        const sid = this._renderClipsToSource(t, run);
+        if (!sid) return null;
+        const first = run[0], last = run[run.length - 1];
+        const dur = (last.start + (last.duration || 0)) - first.start;
+        out.push({
+          id: this._cid(), start: first.start, end: first.start + dur,
+          offset: 0, sourceId: sid, sourceOffset: 0, duration: dur,
+          gain: 1.0, muted: !!first.muted, takeId: null,
+          params: null, automation: null,
+        });
+      }
+      // Alternate takes' clips are simply not carried over — that is the commit.
+      t.clips = out.sort((a, b) => (a.start || 0) - (b.start || 0));
+      t.takes = [];
+      t.activeTakeId = null;
+      this._normalizeTrackLayout(t);
+      this._ensureBaked(t);
+      if (this.isPlaying) this._scheduleAutomation();
+      return out.map(c => c.id);
+    },
+
     // Phase 7 — the single user-facing merge (v1.37.3: Join and Consolidate unified).
     // Picks the strategy itself: a plain re-join of split pieces reads the source straight
     // through (nothing written to disk), anything else renders the selection — and the
@@ -2609,7 +2831,12 @@
     //  + micro fade + clip.gain) so the existing single-source playback / Export /
     //  native loadTrack path keeps working (buffer-time == timeline-time).
     // ============================================================
-    _MICRO_FADE: 0.004,   // 4ms click/pop guard at clip boundaries
+    _MICRO_FADE: 0.004,   // 4ms click/pop guard where a clip meets SILENCE
+    // Phase 7 — equal-power crossfade where two different audios butt together (comp
+    // boundary, punch in/out, moved clip against its neighbour). Fixed length by user
+    // decision (2026-07-20): long enough to remove the click, short enough that no audible
+    // level dip appears. Uses handle material past the trimmed edge; see _planClipEdges.
+    _CROSSFADE: 0.010,    // 10ms
     _MIN_CLIP: 0.02,      // 20ms minimum clip length
 
     // Consolidated sources awaiting a disk write ({ trackId, sourceId }). Drained by
@@ -2710,13 +2937,17 @@
       this._captureRawBuffers(track);
       // Bake the ACTIVE take only (Stage 3 / Q3): inactive takes are preserved as data
       // but never mixed into the flattened buffer, so overlapping alternates don't sum.
-      const clips = this._activeClips(track).filter(c => !c.muted && (c.duration || 0) > 0);
+      // Timeline order: the edge planner compares each clip with its NEIGHBOUR, so the list
+      // has to be sorted (clips[] is normally sorted, but a bake can run mid-edit).
+      const clips = this._activeClips(track).filter(c => !c.muted && (c.duration || 0) > 0)
+        .sort((a, b) => (a.start || 0) - (b.start || 0));
       const layoutEnd = clips.reduce((m, c) => Math.max(m, (c.start || 0) + (c.duration || 0)), 0);
       let sr = ctx.sampleRate, chCount = 2;
       const anyRaw = this._rawBufferForSource(track, clips[0] && clips[0].sourceId);
       if (anyRaw) { sr = anyRaw.sampleRate; chCount = anyRaw.numberOfChannels; }
       const length = Math.max(1, Math.ceil(layoutEnd * sr));
       const out = ctx.createBuffer(chCount, length, sr);
+      const descs = [];
       for (const c of clips) {
         const raw = this._rawBufferForSource(track, c.sourceId);
         if (!raw) {
@@ -2742,20 +2973,9 @@
               rawDuration: raw.duration, srcStart, layoutLen: length, dstStart, usedPrimaryFallback });
           continue;
         }
-        const fadeN = Math.min(Math.floor(this._MICRO_FADE * sr), Math.floor(n / 2));
-        for (let ch = 0; ch < chCount; ch++) {
-          const src = raw.getChannelData(Math.min(ch, raw.numberOfChannels - 1));
-          const dst = out.getChannelData(ch);
-          for (let i = 0; i < n; i++) {
-            let g = gain;
-            if (fadeN > 0) {
-              if (i < fadeN) g *= i / fadeN;
-              else if (i >= n - fadeN) g *= (n - i) / fadeN;
-            }
-            dst[dstStart + i] += src[srcStart + i] * g;
-          }
-        }
+        descs.push({ raw, srcStart, dstStart, n, gain, sourceId: c.sourceId });
       }
+      this._renderDescs(descs, this._planClipEdges(descs, sr), out, sr);
       return out;
     },
 
@@ -4566,6 +4786,8 @@
   Engine.joinClips = Engine.joinClips.bind(Engine);
   Engine.consolidateClips = Engine.consolidateClips.bind(Engine);
   Engine.canConsolidateClips = Engine.canConsolidateClips.bind(Engine);
+  Engine.flattenComp = Engine.flattenComp.bind(Engine);
+  Engine.canFlattenComp = Engine.canFlattenComp.bind(Engine);
   Engine.persistConsolidatedSources = Engine.persistConsolidatedSources.bind(Engine);
   Engine.setClipParam = Engine.setClipParam.bind(Engine);
   // Phase 5 clip editing (전략 B)

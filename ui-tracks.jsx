@@ -941,7 +941,7 @@ function RecordingOffsetCalModal({ prev, next, recOff, moveMs, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -1402,6 +1402,30 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         onActivate={() => { if (!tk.active && onSetActiveTake) onSetActiveTake(track.id, tk.id); }}
         onDelete={() => onDeleteTake && onDeleteTake(track.id, tk.id)} />
     ))}
+    {/* Phase 7 Stage 4 — commit the comp. Lives INSIDE the expanded take lanes: it only
+        makes sense once the user is actually choosing between takes, and keeping it out of
+        the always-visible header stops it being hit by accident. */}
+    {takesOpen && takeLanes.length > 0 && (
+      <div style={{ display: "flex", minWidth: "min-content" }}>
+        <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 7,
+          padding: "6px 10px 8px 26px", background: "var(--surface2)",
+          borderRight: "1px solid var(--line-strong)", borderBottom: "1px solid var(--line-strong)" }}>
+          <button type="button"
+            onClick={(e) => { e.stopPropagation(); onFlattenComp && onFlattenComp(track.id); }}
+            title={`Commit the comp: the active take and the shared audio become one clip, and the other ${takeLanes.length - 1 || ""} take${takeLanes.length === 2 ? "" : "s"} are dropped.\nUndo restores them, and the recorded WAV files stay on disk.`}
+            style={{ width: "100%", height: 22, borderRadius: 6, cursor: "pointer",
+              border: "1px solid var(--line-strong)", background: "var(--surface3)",
+              color: "var(--cream-2)", fontSize: 10, fontWeight: 700, letterSpacing: ".02em" }}>
+            Flatten Comp
+          </button>
+        </div>
+        <div style={{ width: laneW, borderBottom: "1px solid var(--line-strong)",
+          background: "var(--surface2)", display: "flex", alignItems: "center",
+          padding: "0 12px", fontSize: 9.5, color: "var(--faint)" }}>
+          Keeps the active take, drops the others. Undo restores them; recorded files stay on disk.
+        </div>
+      </div>
+    )}
     </React.Fragment>
   );
 }

@@ -850,6 +850,11 @@
       if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return id;
     },
+    flattenComp(trackId) {
+      const ids = LocalDAW.flattenComp(trackId);
+      if (ids && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ids;
+    },
 
     addDemoTracks() {
       LocalDAW.addDemoTracks();

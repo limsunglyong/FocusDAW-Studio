@@ -1149,9 +1149,12 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
               width: `${((DAW.loopRange.end - DAW.loopRange.start) / duration) * 100}%`,
               top: 0,
               bottom: 0,
-              background: DAW.repeatPlayEnabled ? "rgba(232,176,75,.15)" : "rgba(255,255,255,.04)",
-              borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.5)" : "rgba(255,255,255,.2)"),
-              borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.5)" : "rgba(255,255,255,.2)"),
+              // Theme accent, not a literal: every theme redefines --amber (blue, green,
+              // cyan…), so a hardcoded rgba(232,176,75) kept the default theme's amber while
+              // the rest of the UI changed colour (v1.40.4).
+              background: DAW.repeatPlayEnabled ? "color-mix(in srgb, var(--amber) 15%, transparent)" : "rgba(255,255,255,.04)",
+              borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "color-mix(in srgb, var(--amber) 50%, transparent)" : "rgba(255,255,255,.2)"),
+              borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "color-mix(in srgb, var(--amber) 50%, transparent)" : "rgba(255,255,255,.2)"),
               pointerEvents: "none"
             }}
           />
@@ -2678,6 +2681,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     between: "Another clip sits between the selected ones.\n\nThe merged clip would cover its position and push it out of place. Ctrl+click that middle clip to include it in the merge, or merge the neighbouring clips separately.",
     track: "Track not found.",
   };
+  const FLATTEN_REFUSAL = {
+    noTakes: "This track has no takes to commit — there is nothing to flatten.",
+    empty: "This track has no audio to flatten.",
+    raw: "The take audio is not fully loaded yet. Try again once every take shows a waveform.",
+    track: "Track not found.",
+  };
   // Phase 7 — Consolidate Clips: flatten the selected clips (+ the silence between them)
   // into one clip backed by a newly rendered WAV. Menu enables it only for 2+ clips.
   const handleConsolidateClips = useCallback((trackId, clipIds) => {
@@ -2702,6 +2711,36 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     force((n) => n + 1);
     persistConsolidated();
   }, [pushUndo, cancelUndo, lockTimelineZoom, persistConsolidated]);
+  // Phase 7 Stage 4 — Comp Flatten. Confirms first: this is the one edit that discards the
+  // alternate takes, so the dialog states exactly what survives (Undo, and the WAVs on disk)
+  // rather than a bare "are you sure".
+  const handleFlattenComp = useCallback((trackId) => {
+    const check = DAW.canFlattenComp ? DAW.canFlattenComp(trackId) : { ok: false, reason: "track" };
+    if (!check.ok) {
+      window.alert(FLATTEN_REFUSAL[check.reason] || "Flatten is not possible for this track.");
+      return;
+    }
+    const dropped = Math.max(0, check.takeCount - 1);
+    const ok = window.confirm(
+      `Flatten this comp?\n\n` +
+      `The active take and the shared audio become ordinary clips` +
+      (dropped ? `, and ${dropped} other take${dropped === 1 ? "" : "s"} ${dropped === 1 ? "is" : "are"} dropped` : ``) + `.\n\n` +
+      `Undo restores the takes, and the recorded WAV files stay on disk either way.`
+    );
+    if (!ok) return;
+    lockTimelineZoom();
+    const savedRedo = pushUndo();
+    const ids = DAW.flattenComp(trackId);
+    if (!ids) {
+      cancelUndo(savedRedo);
+      window.alert("Flatten failed: the take audio is not fully loaded yet. Try again once every take shows a waveform.");
+      return;
+    }
+    setClipSel(null);
+    force((n) => n + 1);
+    persistConsolidated();
+  }, [pushUndo, cancelUndo, lockTimelineZoom, persistConsolidated]);
+
   // Merge TOOL (J: click a clip to merge it with its neighbour). Same handler as the menu,
   // so the refusal messages, undo hygiene and WAV persistence are identical on both routes.
   // It used to pushUndo() before calling the engine, which left a no-op undo entry whenever
@@ -3174,14 +3213,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // Loop-Take: tell the live-preview waveform to WRAP the growing recording back into the
     // Repeat region instead of drawing it off to the right past the loop end (Stage 3b/4 UX).
     // takeBase = how many Takes will precede this recording's passes in the final numbering, so
-    // the live "Take X" badge (v1.36.1) matches what Take Lanes shows. loopPunch consumes the
-    // active take (it becomes the null base) so only the NON-active takes survive before the new
-    // passes (usually 0 → passes start at Take A). loopTake keeps every take and appends after.
+    // the live "Take X" badge (v1.36.1) matches what Take Lanes shows. Since v1.40.0 punch no
+    // longer consumes the active take — displaced audio is parked as a take instead — so every
+    // existing take survives. "Original" takes are named, not lettered, so they do not shift the
+    // A/B/C counter and are excluded here (same rule as _normalizeTrackLayout).
     track._recordLoop = (session && (session.loopTake || session.loopPunch) && session.loopEnd > session.loopStart)
       ? { start: session.loopStart, end: session.loopEnd,
-          takeBase: session.loopPunch
-            ? (track.takes || []).filter(t => t.id !== track.activeTakeId).length
-            : (track.takes || []).length }
+          takeBase: (track.takes || []).filter(t => t.kind !== "original").length }
       : null;
     track._recordingPeaks = [];
     track._recordingSampleRate = 44100;
@@ -3952,6 +3990,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
+                  onFlattenComp={handleFlattenComp}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
                   onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   viewScrollLeft={timelineView.scrollLeft}
@@ -3987,6 +4026,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
+                  onFlattenComp={handleFlattenComp}
                   onDeselectClip={handleDeselect} onSetTool={setTool}
                   onSetActiveTake={handleSetActiveTake} onDeleteTake={handleDeleteTake}
                   viewScrollLeft={timelineView.scrollLeft}
@@ -4004,9 +4044,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                     width: ((DAW.loopRange.end - DAW.loopRange.start) / DAW.duration) * Math.max(1, DAW.duration * pxPerSec),
                     top: 0,
                     bottom: 0,
-                    background: DAW.repeatPlayEnabled ? "rgba(232,176,75,.16)" : "rgba(232,176,75,.05)",
-                    borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.75)" : "rgba(255,255,255,.35)"),
-                    borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "rgba(232,176,75,.75)" : "rgba(255,255,255,.35)"),
+                    background: DAW.repeatPlayEnabled
+                      ? "color-mix(in srgb, var(--amber) 16%, transparent)"
+                      : "color-mix(in srgb, var(--amber) 5%, transparent)",
+                    borderLeft: "1px dashed " + (DAW.repeatPlayEnabled ? "color-mix(in srgb, var(--amber) 75%, transparent)" : "rgba(255,255,255,.35)"),
+                    borderRight: "1px dashed " + (DAW.repeatPlayEnabled ? "color-mix(in srgb, var(--amber) 75%, transparent)" : "rgba(255,255,255,.35)"),
                     pointerEvents: "none",
                     zIndex: 9
                   }}

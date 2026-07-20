@@ -1055,7 +1055,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
       <div className="outlane" onMouseDown={onOutlaneMouseDown}
         // isolate: make the lane its own stacking context so the playhead / loop overlays can never
         // paint above the sibling sticky header when scrolled left (seek-back + zoom-in). See TrackRow.
-        style={{ position: "relative", width: laneW, height: laneH, background: "rgba(232,176,75,.04)", cursor: "text", overflow: "hidden", isolation: "isolate" }}>
+        style={{ position: "relative", width: laneW, height: laneH, background: "color-mix(in srgb, var(--amber) 4%, transparent)", cursor: "text", overflow: "hidden", isolation: "isolate" }}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         {/* fade in */}
         <svg width={laneW} height={laneH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
@@ -1078,7 +1078,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
                 width: rightX - leftX,
                 top: 0,
                 bottom: 0,
-                background: repeatOn ? "rgba(232,176,75,.24)" : "rgba(232,176,75,.08)",
+                background: repeatOn ? "color-mix(in srgb, var(--amber) 24%, transparent)" : "color-mix(in srgb, var(--amber) 8%, transparent)",
                 borderLeft: "2px solid " + (repeatOn ? "var(--amber)" : "var(--line-strong)"),
                 borderRight: "2px solid " + (repeatOn ? "var(--amber)" : "var(--line-strong)"),
                 pointerEvents: "none",
@@ -1155,7 +1155,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
                   letterSpacing: ".14em",
                   color: punchModeOn ? "var(--amber)" : "var(--faint)",
                   opacity: punchModeOn ? 1 : 0.5,
-                  textShadow: punchModeOn ? "0 0 8px rgba(232,176,75,.45)" : "none",
+                  textShadow: punchModeOn ? "0 0 8px color-mix(in srgb, var(--amber) 45%, transparent)" : "none",
                   pointerEvents: "none",
                   whiteSpace: "nowrap",
                   transition: "color .15s, opacity .15s, text-shadow .15s"
@@ -1185,7 +1185,7 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
                   background: repeatOn ? "var(--amber)" : "var(--surface2)",
                   color: repeatOn ? "#1b1712" : "var(--cream-2)",
                   border: "1px solid " + (repeatOn ? "var(--amber)" : "var(--line-strong)"),
-                  boxShadow: repeatOn ? "0 0 10px rgba(232,176,75,.4)" : "none",
+                  boxShadow: repeatOn ? "0 0 10px color-mix(in srgb, var(--amber) 40%, transparent)" : "none",
                   pointerEvents: "auto",
                   whiteSpace: "nowrap",
                   transition: "background .15s, color .15s, box-shadow .15s"
