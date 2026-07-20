@@ -168,6 +168,14 @@ function parseLoudnormJson(stderr) {
 
 // Build a loudnorm filter string. When `measured` is supplied, use linear (two-pass
 // transparent) normalization; otherwise single-pass dynamic measurement.
+// Look-ahead limiter used when Export has to make the mix LOUDER (see processAudioFfmpeg).
+// 5 ms attack keeps drum transients intact while still catching them; 50 ms release is slow
+// enough not to pump on a kick pattern. The headroom is because alimiter measures sample
+// peaks only — inter-sample peaks can sit above them.
+const LIMITER_ATTACK_MS = 5;
+const LIMITER_RELEASE_MS = 50;
+const LIMITER_ISP_HEADROOM_DB = 0.3;
+
 function buildLoudnormFilter(ln, measured, printFormat) {
   const I = Number.isFinite(ln.I) ? ln.I : -14;
   const TP = Number.isFinite(ln.TP) ? ln.TP : -1;
@@ -623,6 +631,7 @@ async function processAudioFfmpeg(wavBuffer, options) {
   const tmpOut = path.join(os.tmpdir(), base + '_out.wav');
   fs.writeFileSync(tmpIn, Buffer.from(wavBuffer));
 
+  const stage1 = path.join(os.tmpdir(), base + '_s1.wav');
   try {
     let measured = null;
     if (loudnorm) {
@@ -634,20 +643,65 @@ async function processAudioFfmpeg(wavBuffer, options) {
       measured = parseLoudnormJson(stderr);
     }
 
-    // Final pass: tempo + (linear loudnorm with measured values, or atempo only).
-    const finalChain = [tempoFilter];
-    if (loudnorm) finalChain.push(buildLoudnormFilter(loudnorm, measured, 'summary'));
-    const chain = finalChain.filter(Boolean).join(',');
-    const args = ['-y', '-i', tmpIn];
-    if (chain) args.push('-filter:a', chain);
-    args.push('-ar', String(sampleRate), tmpOut);
-    await runFfmpeg(resolvedFfmpegPath, args);
+    // Getting LOUDER needs a limiter, not loudnorm's dynamic mode.
+    //
+    // loudnorm honours `linear=true` only while the required gain is NEGATIVE. Any positive
+    // gain would push true peak past TP, so it silently falls back to Dynamic mode — a
+    // time-varying gain whose built-in limiter mangles transients. Measured on a kick+bed
+    // signal: at I=-9 the applied gain swung over a 16.9 dB range and the target was still
+    // missed by 3.75 dB (user report: drums distort at -9 LUFS, subtly at -14).
+    //
+    // So: static gain first, then a real look-ahead limiter, then one measured trim.
+    // Same signal, same target: gain swing 5.7 dB and the target missed by 0.74 dB.
+    // Attenuating still goes through linear loudnorm, which is exact and transparent there.
+    const needGain = loudnorm && measured && Number.isFinite(parseFloat(measured.input_i))
+      ? Number(loudnorm.I ?? -14) - parseFloat(measured.input_i)
+      : 0;
+
+    if (loudnorm && needGain > 0.05) {
+      const tp = Number.isFinite(loudnorm.TP) ? loudnorm.TP : -1;
+      // alimiter watches SAMPLE peaks, not inter-sample peaks, so aim below the true-peak
+      // ceiling — without this margin a -1 dBTP target can still overshoot after resampling.
+      const ceil = Math.pow(10, (tp - LIMITER_ISP_HEADROOM_DB) / 20).toFixed(4);
+      const lim = `alimiter=limit=${ceil}:attack=${LIMITER_ATTACK_MS}:release=${LIMITER_RELEASE_MS}:level=disabled`;
+
+      // Stage 1 — tempo (once) + the whole gain, caught by the limiter.
+      const s1chain = [tempoFilter, `volume=${needGain.toFixed(2)}dB`, lim].filter(Boolean).join(',');
+      await runFfmpeg(resolvedFfmpegPath, ['-y', '-i', tmpIn, '-filter:a', s1chain, '-ar', String(sampleRate), stage1]);
+
+      // Limiting costs a little loudness; measure what we actually got and trim once.
+      // One trim lands within ~0.1 dB; more passes creep closer but re-limit harder and
+      // start moving the gain around again, which is the thing we are removing.
+      const s1log = await runFfmpeg(resolvedFfmpegPath,
+        ['-y', '-i', stage1, '-filter:a', buildLoudnormFilter(loudnorm, null, 'json'), '-f', 'null', '-']);
+      const m1 = parseLoudnormJson(s1log);
+      const trim = m1 && Number.isFinite(parseFloat(m1.input_i))
+        ? Number(loudnorm.I ?? -14) - parseFloat(m1.input_i)
+        : 0;
+
+      if (Math.abs(trim) > 0.05) {
+        await runFfmpeg(resolvedFfmpegPath, ['-y', '-i', stage1, '-filter:a',
+          `volume=${trim.toFixed(2)}dB,${lim}`, '-ar', String(sampleRate), tmpOut]);
+      } else {
+        fs.copyFileSync(stage1, tmpOut);
+      }
+    } else {
+      // Attenuating (or no loudnorm): tempo + linear loudnorm exactly as before.
+      const finalChain = [tempoFilter];
+      if (loudnorm) finalChain.push(buildLoudnormFilter(loudnorm, measured, 'summary'));
+      const chain = finalChain.filter(Boolean).join(',');
+      const args = ['-y', '-i', tmpIn];
+      if (chain) args.push('-filter:a', chain);
+      args.push('-ar', String(sampleRate), tmpOut);
+      await runFfmpeg(resolvedFfmpegPath, args);
+    }
 
     const out = fs.readFileSync(tmpOut);
     return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
   } finally {
     try { fs.unlinkSync(tmpIn); } catch (e) {}
     try { fs.unlinkSync(tmpOut); } catch (e) {}
+    try { fs.unlinkSync(stage1); } catch (e) {}
   }
 }
 

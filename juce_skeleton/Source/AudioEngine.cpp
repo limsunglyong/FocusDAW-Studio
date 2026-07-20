@@ -1801,6 +1801,16 @@ void AudioEngine::exportMix(const std::string& exportId,
             float envelope = 0.0f;
             float limitThreshold = std::pow(10.0f, -1.0f / 20.0f);
             float releaseFactor = (float)std::exp(-1.0 / (0.05 * targetSampleRate));
+            // Attack ramp. The envelope used to jump straight to the required reduction in a
+            // SINGLE sample, which puts a step in the gain — a discontinuity in the waveform,
+            // heard as a click on every peak that crosses the threshold. With Normalize on,
+            // the make-up gain pushes every drum hit over the threshold, so it fired on each
+            // one (user report 2026-07-20: noise on drums at -9/-12/-14 LUFS alike, clean with
+            // Normalize off, because then nothing crosses the threshold).
+            // A new peak enters the look-ahead buffer limiterLookahead samples before it
+            // reaches the output, so rising by 1/limiterLookahead per sample always gets the
+            // gain there in time — now as a ramp instead of a step.
+            const float riseStep = 1.0f / (float)limiterLookahead;
 
             float baseProgress = normalize ? 0.5f : 0.0f;
             float progressScale = normalize ? 0.5f : 1.0f;
@@ -1845,7 +1855,12 @@ void AudioEngine::exportMix(const std::string& exportId,
                         reduction = 1.0f - (limitThreshold / peak);
                     }
 
-                    envelope = std::max(envelope * releaseFactor, reduction);
+                    // Rise on a ramp; fall on the release curve, but never below what this
+                    // sample actually needs (std::max keeps the ceiling honoured).
+                    if (reduction > envelope)
+                        envelope = std::min(reduction, envelope + riseStep);
+                    else
+                        envelope = std::max(reduction, envelope * releaseFactor);
                     float currentGain = 1.0f - envelope;
 
                     outL[i] = delayedL * currentGain;
