@@ -1696,7 +1696,11 @@ void AudioEngine::exportMix(const std::string& exportId,
         }
     }
 
-    float targetGain = masterVolume;
+    // Make-up gain ONLY. Master volume stays on masterGainSource (in front of the effects,
+    // where it belongs and where PASS 1 measured it); this is the post-effects loudness trim
+    // applied in the write loop. It used to be seeded with masterVolume because it replaced
+    // masterGainSource — with the two separated, seeding it here would apply master volume twice.
+    float targetGain = 1.0f;
     if (normalize) {
         double measuredLufs = -70.0;
         size_t num100ms = msL.size();
@@ -1752,9 +1756,20 @@ void AudioEngine::exportMix(const std::string& exportId,
         targetGain = (float)std::pow(10.0, gainDb / 20.0);
     }
 
-    // Apply normalized gain dynamically
+    // The loudness make-up gain is applied AFTER the master effects (see the write loop
+    // below), NOT here. masterGainSource feeds MasterEffectsAudioSource, whose last stage is
+    // an unconditional soft clipper (tanh above 0.9). Putting the make-up gain in front of it
+    // drove every peak into that waveshaper:
+    //   user's mix peaked at -1.3 dBFS (0.861); +8.4 dB make-up -> 2.26 into a stage that
+    //   saturates at 1.0, i.e. ~7.1 dB of the measured 7.3 dB crest collapse (18.1 -> 10.8)
+    //   came from the clipper, on every drum hit. Effects were all OFF, so it was the only
+    //   non-linearity in the chain. Normalize OFF and attenuating targets stayed clean because
+    //   nothing crossed the knee.
+    // Keeping master volume here means PASS 1's measurement and PASS 2's output share the same
+    // chain, so the make-up gain lands the loudness exactly instead of being reshaped by the
+    // clipper on the way.
     if (masterGainSource) {
-        masterGainSource->masterGain.store(targetGain);
+        masterGainSource->masterGain.store(masterVolume);
     }
 
     // Reset pipeline for the second rendering pass
@@ -1793,14 +1808,38 @@ void AudioEngine::exportMix(const std::string& exportId,
         } else {
             fileStream.release();
 
-            int limiterLookahead = (int)(0.002 * targetSampleRate);
+            // Look-ahead 8 ms (was 2 ms). The gain ramp spans the look-ahead window, so 2 ms
+            // meant the gain moved over a span far shorter than one cycle of a kick drum
+            // (55 Hz = 18 ms) — that reshapes the low-frequency waveform itself, which is what
+            // remained audible as "noise on the drums" after the clipper was taken out of the
+            // path (v1.41.2). 8 ms is about half a kick cycle and is the usual range for a
+            // mastering limiter. Measured audibility on the user's material, crest 17.4 dB:
+            //   target -14 -> crest -2.7 dB, LRA -0.1  : clean
+            //   target -12 -> crest -4.2 dB, LRA -0.6  : faintly audible
+            //   target  -9 -> crest -5.9 dB, LRA -1.7  : clearly audible
+            int limiterLookahead = (int)(0.008 * targetSampleRate);
             if (limiterLookahead < 1) limiterLookahead = 1;
             std::vector<float> limitBufferL(limiterLookahead, 0.0f);
             std::vector<float> limitBufferR(limiterLookahead, 0.0f);
             int limitWriteIdx = 0;
             float envelope = 0.0f;
             float limitThreshold = std::pow(10.0f, -1.0f / 20.0f);
-            float releaseFactor = (float)std::exp(-1.0 / (0.05 * targetSampleRate));
+            // Release 80 ms on the envelope, plus a 60 ms glide on the gain itself (below).
+            // The glide is applied ONLY while the gain is recovering — never while it is being
+            // pulled down — so the ceiling still cannot be breached.
+            float releaseFactor = (float)std::exp(-1.0 / (0.080 * targetSampleRate));
+            float releaseSmooth = 1.0f - (float)std::exp(-1.0 / (0.060 * targetSampleRate));
+            float smoothedGain = 1.0f;
+
+            // Sliding-window maximum over the look-ahead buffer, via a monotonic deque.
+            // The old code re-scanned the whole buffer for every sample; at 8 ms that would be
+            // ~700 comparisons per sample. This is O(1) amortised, so the longer window costs
+            // nothing (it is in fact faster than the 2 ms version was).
+            const int dqCap = limiterLookahead + 1;
+            std::vector<float> dqVal(dqCap, 0.0f);
+            std::vector<long long> dqPos(dqCap, 0);
+            int dqHead = 0, dqTail = 0;
+            long long sampleCounter = 0;
             // Attack ramp. The envelope used to jump straight to the required reduction in a
             // SINGLE sample, which puts a step in the gain — a discontinuity in the waveform,
             // heard as a click on every peak that crosses the threshold. With Normalize on,
@@ -1836,8 +1875,10 @@ void AudioEngine::exportMix(const std::string& exportId,
                 float* outR = blockBuffer.getWritePointer(1);
 
                 for (int i = 0; i < currentBlockSize; ++i) {
-                    float xL = outL[i];
-                    float xR = outR[i];
+                    // Loudness make-up goes here — after the master FX (and its soft clipper),
+                    // before the limiter. targetGain is 1.0 when normalize is off.
+                    float xL = outL[i] * targetGain;
+                    float xR = outR[i] * targetGain;
 
                     limitBufferL[limitWriteIdx] = xL;
                     limitBufferR[limitWriteIdx] = xR;
@@ -1846,9 +1887,20 @@ void AudioEngine::exportMix(const std::string& exportId,
                     float delayedL = limitBufferL[limitReadIdx];
                     float delayedR = limitBufferR[limitReadIdx];
 
-                    float peak = 0.0f;
-                    for (float val : limitBufferL) peak = std::max(peak, std::abs(val));
-                    for (float val : limitBufferR) peak = std::max(peak, std::abs(val));
+                    // Push this sample's peak, keeping the deque monotonically decreasing, then
+                    // drop entries that have fallen out of the look-ahead window. The front is
+                    // the window maximum.
+                    const float v = std::max(std::abs(xL), std::abs(xR));
+                    while (dqTail != dqHead) {
+                        const int prev = (dqTail - 1 + dqCap) % dqCap;
+                        if (dqVal[prev] <= v) dqTail = prev; else break;
+                    }
+                    dqVal[dqTail] = v;
+                    dqPos[dqTail] = sampleCounter;
+                    dqTail = (dqTail + 1) % dqCap;
+                    while (dqPos[dqHead] <= sampleCounter - limiterLookahead)
+                        dqHead = (dqHead + 1) % dqCap;
+                    const float peak = dqVal[dqHead];
 
                     float reduction = 0.0f;
                     if (peak > limitThreshold) {
@@ -1861,10 +1913,16 @@ void AudioEngine::exportMix(const std::string& exportId,
                         envelope = std::min(reduction, envelope + riseStep);
                     else
                         envelope = std::max(reduction, envelope * releaseFactor);
-                    float currentGain = 1.0f - envelope;
 
-                    outL[i] = delayedL * currentGain;
-                    outR[i] = delayedR * currentGain;
+                    // Glide the gain back up on release; take reductions immediately so the
+                    // ceiling is never breached by the smoothing.
+                    const float gainTarget = 1.0f - envelope;
+                    if (gainTarget < smoothedGain) smoothedGain = gainTarget;
+                    else smoothedGain += (gainTarget - smoothedGain) * releaseSmooth;
+
+                    outL[i] = delayedL * smoothedGain;
+                    outR[i] = delayedR * smoothedGain;
+                    ++sampleCounter;
 
                     limitWriteIdx = (limitWriteIdx + 1) % limiterLookahead;
                 }
