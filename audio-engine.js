@@ -1414,11 +1414,21 @@
       if (ph) {
         ph.fileName = ph.fileName || name;
         ph.filePath = filePath || ph.filePath || null;
+        // Runtime-only absolute path for the native engine (it loads by path and can't
+        // resolve the relative filePath a collected/reopened project stores). Not serialized
+        // — exportProject whitelists fields, so the saved filePath stays relative/portable.
+        if (options.absPath) ph._nativePath = options.absPath;
         this._assignDecodedToTrack(ph, decoded);
         this._applyMix();
         this._startHotAddedTrack(ph);
         return ph;
       }
+      // Reconnect mode (reconnectTrackId set) but no placeholder matched: the target track is
+      // gone or was ALREADY reconnected (needsAudio cleared) — e.g. a reopen superseded a
+      // still-running boot auto-restore reconnect, so two reconnect loops raced over the same
+      // tracks. Materializing a track here is what duplicated the whole project on reopen.
+      // Do nothing instead. Normal imports (no reconnectTrackId) still add a fresh track.
+      if (reconnectTrackId) return null;
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
       const t = this._addTrack({ name: displayName, type: "audio", color, buffer, peaks: decoded.peaks, fileName: name, filePath });

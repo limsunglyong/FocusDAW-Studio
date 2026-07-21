@@ -977,7 +977,9 @@
         LocalDAW.tracks.forEach(track => {
           if (track.filePath && !track.needsAudio) {
             const clip = Array.isArray(track.clips) ? track.clips[0] : null;
-            sendLoadTrack({ command: "loadTrack", trackId: track.id, filePath: track.filePath,
+            // _nativePath (absolute, stamped on reconnect) wins over the possibly-relative
+            // filePath, which the native engine's cwd can't resolve.
+            sendLoadTrack({ command: "loadTrack", trackId: track.id, filePath: track._nativePath || track.filePath,
               startSeconds: clip && clip.start > 0 ? clip.start : 0,
               songLength: LocalDAW.duration || 0 });
           }
@@ -1496,7 +1498,7 @@
       sendLoadTrack({
         command: "loadTrack",
         trackId: track.id,
-        filePath: track.filePath,
+        filePath: track._nativePath || track.filePath,   // absolute (reconnect) beats relative filePath
         type: track.type,
         color: track.color,
         startSeconds: place.startSeconds,

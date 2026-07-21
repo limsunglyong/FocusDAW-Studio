@@ -1438,7 +1438,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         </div>
         <div style={{ width: laneW, borderBottom: "1px solid var(--line-strong)",
           background: "var(--surface2)", display: "flex", alignItems: "center",
-          padding: "0 12px", fontSize: 9.5, color: "var(--faint)" }}>
+          padding: "0 12px", fontSize: 9.5, color: "var(--muted)" }}>
           {comp && comp.length
             ? "Swipe across a take lane to comp that region in. Flatten commits the comp; Undo restores every take."
             : "Swipe across a take lane to comp part of it in, or click a lane to make it the whole take. Undo restores everything."}

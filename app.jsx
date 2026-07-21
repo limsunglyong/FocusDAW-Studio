@@ -490,6 +490,12 @@ function MenuTransport() {
   const armedInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.params && t.params.arm);
   const recordingInput = DAW.tracks.find((t) => t.kind === "audioIn" && t.recording);
   const canRecord = !!(armedInput || recordingInput);
+  // Punch is a "replace the Repeat region" mode, so it only makes sense with a region set.
+  // The button is disabled without one; if a region is later removed while Punch is on, clear
+  // the flag here (useTick re-renders every frame) so Punch can never be armed region-less —
+  // which would otherwise fall through to a destructive whole-track re-record.
+  const punchRegion = punchRegionValid();
+  if (!punchRegion && isPunchOn()) setPunchOn(false);
   // All transport actions go through Studio's rule-honoring handlers (count-in,
   // Repeat off/restore, ignore pause/return-to-start while recording, etc.).
   const tp = (action) => window.dispatchEvent(new CustomEvent("focusdaw-transport", { detail: { action } }));
@@ -539,13 +545,14 @@ function MenuTransport() {
         {/* Punch (Phase 6 Stage 6): mode toggle. With a Repeat region set, Record replaces
             only that [in,out] span in the active take instead of stacking a take. */}
         <MenuTransportButton
-          title={punchRegionValid()
+          disabled={!punchRegion}
+          title={punchRegion
             ? (isPunchOn()
                 ? (DAW.repeatPlayEnabled
                     ? "Punch + Repeat: Loop-Punch Comp — Record captures a Take per pass across the region, keeps the base outside it; switch passes in Take Lanes"
                     : "Punch: On — Record replaces the Repeat region [in→out] in the active take (pre-roll → auto punch-in/out). Turn Repeat ON too for Loop-Punch Comp")
                 : "Punch: Off — Click to make Record replace only the Repeat region instead of stacking a take")
-            : "Punch: needs a Repeat region — drag one on the output track first (Record will fall back to normal until then)"}
+            : "To use Punch, set a Repeat region first — drag one on the timeline."}
           active={isPunchOn()} onClick={() => { setPunchOn(!isPunchOn()); }}>
           <Icon name="punch" size={13} />
         </MenuTransportButton>
@@ -1596,6 +1603,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(null);
+  // Set when a project load (boot restore / File>Open / drop) can't find one or more source
+  // files. Shown as a themed modal (MissingAudioDialog) instead of a bare console warning.
+  const [missingAudio, setMissingAudio] = useState(null);
   const [tool, setTool] = useState("select");
   // v1.22.0: the clip selection is a SET within one track — { trackId, clipIds: [...] }.
   // Multi-select is single-track by design: clip join/merge and the rigid group move are
@@ -2604,16 +2614,21 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       const json = DAW.exportProject(currentName);
       const result = await window.electronAPI.saveProject(json, currentName, targetPath);
       if (!result || result.saved === false) return;
-      if (result.path && onProjectPathChange) onProjectPathChange(result.path);
       if (result.path) savedPath = result.path;
       // The project name follows the file name: a Save As to "untitled123.focus"
       // renames the project to "untitled123". Without this the Recent Saved list
       // and the title kept showing the pre-dialog name. The file itself is
       // stamped with the same name by the main process before writing.
+      // ⚠️ ORDER MATTERS: renameProject() resets projectPath to null (a rename normally
+      // means "now an unsaved project"), so it MUST run BEFORE we publish the saved path —
+      // otherwise it clobbers projectPath, the 1.5s autosave then persists projectPath=null,
+      // and on reboot the collected (relative) source paths can't be resolved
+      // ("Invalid audio file path" → NO AUDIO). loadProjectJson already orders it this way.
       if (result.path) {
         savedName = projectNameFromPath(result.path);
         if (savedName !== currentName && onRenameProject) onRenameProject(savedName);
       }
+      if (result.path && onProjectPathChange) onProjectPathChange(result.path);
     } else {
       const json = DAW.exportProject(currentName);
       const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
@@ -2890,21 +2905,40 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // `pathForOpen` is passed explicitly by loadProjectJson because the projectPath PROP has
   // not re-rendered yet at that point — a collected source stores a path relative to the
   // .focus, so resolving it needs the project path being opened, not the previous one.
+  //
+  // Re-entrancy: a reconnect is async and slow (reads WAVs one by one). If a second one
+  // starts while the first is mid-flight — the classic case is the boot auto-restore
+  // reconnect still running when the user does File > Open — the stale loop holds track refs
+  // that importProject has already replaced, and its DAW.addFileBuffer calls would race the
+  // new loop. Each run takes a ticket; after every await it bails if a newer run superseded
+  // it, so only the latest reconnect touches the tracks.
+  const reconnectSeqRef = useRef(0);
   const reconnectProjectAudio = useCallback(async (pathForOpen) => {
     if (!window.electronAPI) return;
+    const seq = ++reconnectSeqRef.current;
+    const superseded = () => reconnectSeqRef.current !== seq;
     const base = pathForOpen || projectPath || null;
+    setMissingAudio(null); // clear any modal from a previous load before this one reports
     const missing = DAW.tracks.filter((t) => t.needsAudio && t.filePath);
     if (!missing.length) return;
+    // Sources we couldn't read, surfaced to the user in a themed modal when the run finishes.
+    const failures = [];
     setLoading({ active: true, total: missing.length, done: 0, label: "Reconnecting audio..." });
     for (let i = 0; i < missing.length; i++) {
+      if (superseded()) return;
       const track = missing[i];
       setLoading({ active: true, total: missing.length, done: i, label: basenameFromPath(track.filePath) || track.name });
       try {
         const abs = resolveSourcePath(track.filePath, base);
         const ab = await window.electronAPI.readAudioFile(abs);
-        await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath, reconnectTrackId: track.id });
+        if (superseded()) return;
+        // Pass the RESOLVED absolute path too: the native engine loads file tracks by path
+        // and its cwd is the app root, so it can't open the relative `filePath` a collected
+        // project stores. addFileBuffer stamps it on the track for the bridge to use.
+        await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath, absPath: abs, reconnectTrackId: track.id });
       } catch (err) {
         console.warn("Failed to reconnect audio:", track.filePath, err);
+        failures.push({ name: track.name || track.fileName || basenameFromPath(track.filePath), filePath: track.filePath });
       }
     }
     // Phase 6 Stage 3: an Audio In track can hold several Takes, each a separate source
@@ -2914,17 +2948,23 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     for (const track of DAW.tracks) {
       const extras = (track.sources || []).slice(1).filter((s) => s.needsAudio && s.filePath);
       for (const src of extras) {
+        if (superseded()) return;
         try {
           const abs = resolveSourcePath(src.filePath, base);
           const ab = await window.electronAPI.readAudioFile(abs);
+          if (superseded()) return;
           await DAW.hydrateSource(track.id, src.id, ab, { filePath: src.filePath });
         } catch (err) {
           console.warn("Failed to reconnect take audio:", src.filePath, err);
+          failures.push({ name: (track.name || basenameFromPath(src.filePath)), filePath: src.filePath });
         }
       }
     }
+    if (superseded()) return;
     setLoading({ active: true, total: missing.length, done: missing.length, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
+    // One modal for the whole load, listing every source that couldn't be found.
+    if (failures.length) setMissingAudio({ items: failures });
   }, [projectPath]);
 
   const loadProjectJson = useCallback(async (json, openedPath = null) => {
@@ -3087,9 +3127,18 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
+  // Boot audio reconnect. Runs ONCE when startup is ready. The base path is read straight
+  // from the restored autosave snapshot rather than the projectPath STATE: collected sources
+  // store paths relative to the .focus, and the state may not have propagated into this
+  // reconnect's closure yet at boot — a null base leaves every relative path unresolvable and
+  // the tracks stuck on "NO AUDIO". The ref guard keeps a dep change from starting a second
+  // reconnect (which the seq guard would then abort mid-load).
+  const bootReconnectedRef = useRef(false);
   useEffect(() => {
-    if (!startupReady) return;
-    reconnectProjectAudio().then(() => {
+    if (!startupReady || bootReconnectedRef.current) return;
+    bootReconnectedRef.current = true;
+    const snapPath = (readRecentProjectSnapshot() || {}).projectPath || null;
+    reconnectProjectAudio(snapPath).then(() => {
       fitTimelineToProject();
       force((n) => n + 1);
     });
@@ -3481,6 +3530,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // therefore now Punch ON while Repeat is OFF; loop-Take is Repeat ON while Punch is OFF.
     const loopPunch = !!(isPunchOn() && DAW.repeatPlayEnabled && region);
     const punch = !!(isPunchOn() && !DAW.repeatPlayEnabled && region);
+    // Punch can only be armed while a Repeat region exists (the button is disabled otherwise,
+    // and MenuTransport auto-clears the flag if the region is removed), so `punch`/`loopPunch`
+    // above already reflect that. No region-less-punch guard is needed here.
     const punchAt = (punch || loopPunch) ? lr.start : DAW.getPlayhead();
     // Auto-stop target. songEnd is the end of the BACKING tracks (target excluded), and the
     // monitor stops the take when the playhead reaches it. But if recording BEGINS at or
@@ -4266,6 +4318,38 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               <button className="btn" onClick={deleteAllTracks}
                 style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--red)", background: "var(--red)", color: "#fff", fontSize: 12.5, fontWeight: 600 }}>
                 Delete all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {missingAudio && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => setMissingAudio(null)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 500, maxWidth: "90vw", background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="info" size={18} style={{ color: "var(--amber)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Some audio files could not be found</span>
+            </div>
+            <div style={{ padding: "16px 20px", fontSize: 13, lineHeight: 1.5, color: "var(--cream-2)" }}>
+              <div style={{ marginBottom: 12 }}>
+                The project opened, but {missingAudio.items.length} audio source{missingAudio.items.length === 1 ? "" : "s"} could not be loaded.
+                Those tracks show <b>NO AUDIO</b> until the missing files are restored to their original location.
+              </div>
+              <div style={{ maxHeight: 210, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface2)" }}>
+                {missingAudio.items.map((it, i) => (
+                  <div key={i} style={{ padding: "8px 12px", borderBottom: i < missingAudio.items.length - 1 ? "1px solid var(--line)" : "none" }}>
+                    <div style={{ fontWeight: 600, fontSize: 12.5 }}>{it.name}</div>
+                    <div className="mono" style={{ fontSize: 10.5, color: "var(--cream-2)", opacity: 0.85, wordBreak: "break-all", marginTop: 2 }}>{it.filePath}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button className="btn" onClick={() => setMissingAudio(null)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                OK
               </button>
             </div>
           </div>
