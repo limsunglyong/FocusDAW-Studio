@@ -272,12 +272,12 @@ function MixerApp() {
               title="Play / Pause"
               onClick={(e) => { channel.postMessage({ type: "REQUEST_PLAY_PAUSE" }); e.currentTarget.blur(); }}
               style={{ width: 34, height: 27, borderRadius: 999, display: "grid", placeItems: "center",
-                outline: "none", color: playing ? "#241a0a" : "var(--cream-2)",
+                outline: "none", color: playing ? "var(--transport-active-fg,#241a0a)" : "var(--cream-2)",
                 background: playing
-                  ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
+                  ? "var(--transport-active-bg,linear-gradient(180deg,var(--amber),var(--amber-deep)))"
                   : "linear-gradient(180deg,var(--surface3),var(--surface2))",
-                border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"),
-                boxShadow: playing ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)" }}>
+                border: "1px solid " + (playing ? "var(--transport-active-border,var(--amber))" : "var(--line-strong)"),
+                boxShadow: playing ? "var(--transport-active-shadow,0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24))" : "inset 0 1px 0 rgba(255,255,255,.05)" }}>
               <Icon name={playing ? "pause" : "play"} size={14} fill />
             </button>
           </div>

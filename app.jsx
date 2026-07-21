@@ -177,7 +177,7 @@ function Dropdown({ label, items, accent }) {
   return (
     <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
       <div className="menu-item" onClick={() => setOpen((o) => !o)}
-        style={{ background: open ? "var(--surface)" : "transparent", color: accent ? "var(--amber)" : "var(--cream-2)", fontWeight: accent ? 600 : 400 }}>
+        style={{ background: open ? "var(--surface)" : "transparent", color: accent ? "var(--menu-accent-fg,var(--amber))" : "var(--cream-2)", fontWeight: accent ? 600 : 400 }}>
         {label}
       </div>
       {open && (
@@ -193,7 +193,7 @@ function Dropdown({ label, items, accent }) {
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, cursor: it.disabled ? "default" : "pointer", fontSize: 12.5, opacity: it.disabled ? 0.38 : 1 }}
                 onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = "var(--surface3)"; }}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                {it.icon && <Icon name={it.icon} size={15} style={{ color: "var(--amber)", flex: "0 0 auto" }} />}
+                {it.icon && <Icon name={it.icon} size={15} style={{ color: "var(--menu-icon-fg,var(--amber))", flex: "0 0 auto" }} />}
                 <span style={{ flex: 1 }}>{it.label}</span>
                 {it.hint && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{it.hint}</span>}
                 {it.submenu && <span style={{ color: "var(--faint)", marginLeft: 2 }}>›</span>}
@@ -213,7 +213,7 @@ function Dropdown({ label, items, accent }) {
                         cursor: sub.disabled ? "default" : "pointer", opacity: sub.disabled ? 0.42 : 1 }}
                       onMouseEnter={(e) => { if (!sub.disabled) e.currentTarget.style.background = "var(--surface3)"; }}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                      {sub.icon && <Icon name={sub.icon} size={14} style={{ color: "var(--amber)", flex: "0 0 auto" }} />}
+                      {sub.icon && <Icon name={sub.icon} size={14} style={{ color: "var(--menu-icon-fg,var(--amber))", flex: "0 0 auto" }} />}
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 12.2, color: "var(--cream-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub.label}</div>
                         {sub.detail && <div className="mono" style={{ marginTop: 2, fontSize: 9.5, color: "var(--faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub.detail}</div>}
@@ -373,12 +373,12 @@ function MenuTransportButton({ title, active, children, onClick, wide, disabled 
         outline: "none",
         opacity: disabled ? 0.4 : 1,
         cursor: disabled ? "default" : "pointer",
-        color: active ? "#241a0a" : "var(--cream-2)",
+        color: active ? "var(--transport-active-fg,#241a0a)" : "var(--cream-2)",
         background: active
-          ? "linear-gradient(180deg,var(--amber),var(--amber-deep))"
+          ? "var(--transport-active-bg,linear-gradient(180deg,var(--amber),var(--amber-deep)))"
           : "linear-gradient(180deg,var(--surface3),var(--surface2))",
-        border: "1px solid " + (active ? "var(--amber)" : "var(--line-strong)"),
-        boxShadow: active ? "0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24)" : "inset 0 1px 0 rgba(255,255,255,.05)",
+        border: "1px solid " + (active ? "var(--transport-active-border,var(--amber))" : "var(--line-strong)"),
+        boxShadow: active ? "var(--transport-active-shadow,0 0 12px var(--amber-soft), inset 0 1px 0 rgba(255,255,255,.24))" : "inset 0 1px 0 rgba(255,255,255,.05)",
         transition: "background .14s ease, color .14s ease, box-shadow .14s ease, transform .08s ease" }}
       onMouseDown={(e) => { if (!disabled) e.currentTarget.style.transform = "translateY(1px)"; }}
       onMouseUp={(e) => (e.currentTarget.style.transform = "translateY(0)")}
@@ -575,8 +575,8 @@ function MenuTransport() {
         background: "linear-gradient(180deg,var(--surface2),var(--bg))", borderRadius: 999,
         border: "1px solid var(--line-strong)", minWidth: 168, height: 32,
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)" }}>
-        <span className="mono" style={{ fontSize: 18, fontWeight: 400, color: "var(--amber)", lineHeight: 1 }}>{fmtTransportTime(playhead)}</span>
-        <span className="mono" style={{ fontSize: 10.8, fontWeight: 400, color: "var(--muted)", lineHeight: 1 }}>/ {fmtTransportTime(duration)}</span>
+        <span className="mono" style={{ fontSize: 18, fontWeight: 400, color: "var(--timecode-fg,var(--amber))", lineHeight: 1 }}>{fmtTransportTime(playhead)}</span>
+        <span className="mono" style={{ fontSize: 10.8, fontWeight: 400, color: "var(--timecode-muted-fg,var(--muted))", lineHeight: 1 }}>/ {fmtTransportTime(duration)}</span>
       </div>
     </div>
   );
@@ -589,13 +589,13 @@ function Transport({ playing, onPlay, onStop, onToStart, loop, onLoop, playhead 
         <button className="iconbtn" onClick={onToStart} title="Return to start"><Icon name="toStart" size={17} /></button>
         <button className="iconbtn" onClick={onStop} title="Stop"><Icon name="stop" size={15} fill /></button>
         <button onClick={onPlay} title="Play / Pause" style={{ width: 42, height: 36, borderRadius: 9, display: "grid", placeItems: "center",
-          background: playing ? "var(--amber)" : "var(--surface2)", color: playing ? "#241a0a" : "var(--cream)", border: "1px solid " + (playing ? "var(--amber)" : "var(--line-strong)"), boxShadow: playing ? "0 0 12px rgba(232,176,75,.45)" : "none" }}>
+          background: playing ? "var(--transport-active-bg,var(--amber))" : "var(--surface2)", color: playing ? "var(--transport-active-fg,#241a0a)" : "var(--cream)", border: "1px solid " + (playing ? "var(--transport-active-border,var(--amber))" : "var(--line-strong)"), boxShadow: playing ? "var(--transport-active-shadow,0 0 12px rgba(232,176,75,.45))" : "none" }}>
           <Icon name={playing ? "pause" : "play"} size={18} fill />
         </button>
         <button className={"iconbtn" + (loop ? " on" : "")} onClick={onLoop} title="Loop"><Icon name="repeat" size={16} /></button>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "3px 14px", background: "var(--bg)", borderRadius: 9, border: "1px solid var(--line)", minWidth: 118, height: 36 }}>
-        <span className="mono" style={{ fontSize: 21, fontWeight: 400, color: "var(--amber)", letterSpacing: ".02em" }}>{fmtTime(playhead)}</span>
+        <span className="mono" style={{ fontSize: 21, fontWeight: 400, color: "var(--timecode-fg,var(--amber))", letterSpacing: ".02em" }}>{fmtTime(playhead)}</span>
       </div>
     </div>
   );
