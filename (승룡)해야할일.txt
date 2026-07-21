@@ -1,0 +1,7 @@
+보컬 입력 처리용 effect
+- EQ
+- 노이즈 reduction
+- Reverb, Echo
+- 이펙트는 실시간 on/off 가능하도록
+
+기존 effect들은 File track에만 적용되도록 하고, 보컬용 effect는 audio input track 별로 적용될 수 있도록.

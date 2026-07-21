@@ -47,6 +47,12 @@ function resolveSourcePath(filePath, projectPath) {
   return dir ? dir + "/" + filePath : filePath;
 }
 
+function releaseVersionLabel(version) {
+  const v = String(version || "").trim();
+  if (!v) return "unknown";
+  return v.startsWith("v") ? v : `v${v}`;
+}
+
 function readDirectoryEntryRootFiles(entry) {
   return new Promise((resolve) => {
     if (!entry || !entry.isDirectory || !entry.createReader) {
@@ -253,7 +259,7 @@ function recentDateLabel(ms) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onSaveAs, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onHelpManual, onHelpReleaseNotes, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onSaveAs, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onHelpManual, onHelpReleaseNotes, onCheckUpdates, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -319,6 +325,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
   const helpItems = [
     { label: "Manual", icon: "book", onClick: onHelpManual },
     { label: "Release Notes", icon: "info", onClick: onHelpReleaseNotes },
+    { label: "Check for Updates", icon: "download", onClick: onCheckUpdates },
     { label: "About", icon: "info", onClick: onHelpAbout },
   ];
   return (
@@ -4417,6 +4424,9 @@ function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("focusdaw-theme") || "default");
   const [mixerTexture, setMixerTexture] = useState(() => localStorage.getItem("focusdaw-mixer-texture") || "none");
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [updateDialog, setUpdateDialog] = useState(null);
+  const manualUpdateCheckRef = useRef(false);
   const registerHandlers = useCallback((h) => { handlersRef.current = h; }, []);
   const renameProject = useCallback((name) => {
     const nextName = name || DEFAULT_PROJECT_NAME;
@@ -4465,6 +4475,67 @@ function App() {
     if (!popup) setShowHelp(true);
   }, []);
 
+  const checkForUpdates = useCallback((manual = false) => {
+    manualUpdateCheckRef.current = !!manual;
+    if (manual) setUpdateDialog({ state: "checking" });
+    if (!window.electronAPI || !window.electronAPI.checkForUpdates) {
+      if (manual) setUpdateDialog({ state: "current", info: { currentVersion: APP_VERSION, latestVersion: APP_VERSION } });
+      return;
+    }
+    window.electronAPI.checkForUpdates().catch((err) => {
+      console.warn("Update check failed:", err);
+      if (manualUpdateCheckRef.current) {
+        manualUpdateCheckRef.current = false;
+        setUpdateDialog({ state: "current", info: { currentVersion: APP_VERSION, latestVersion: APP_VERSION } });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!startupReady) return;
+    checkForUpdates(false);
+  }, [startupReady, checkForUpdates]);
+
+  useEffect(() => {
+    if (!window.electronAPI || !window.electronAPI.onUpdaterState) return undefined;
+    return window.electronAPI.onUpdaterState((state) => {
+      if (!state || !state.state) return;
+      if (state.state === "checking") {
+        if (manualUpdateCheckRef.current) setUpdateDialog({ state: "checking" });
+        return;
+      }
+      if (state.state === "available") {
+        setUpdateInfo({ ...state, updateAvailable: true });
+        if (manualUpdateCheckRef.current) setUpdateDialog({ state: "available", info: state });
+        manualUpdateCheckRef.current = false;
+        return;
+      }
+      if (state.state === "current") {
+        setUpdateInfo(null);
+        if (manualUpdateCheckRef.current) setUpdateDialog({ state: "current", info: state });
+        manualUpdateCheckRef.current = false;
+        return;
+      }
+      if (state.state === "downloading") {
+        setUpdateDialog((cur) => cur ? { state: "downloading", info: state } : cur);
+        return;
+      }
+      if (state.state === "downloaded") {
+        setUpdateInfo({ ...state, updateAvailable: true, downloaded: true });
+        setUpdateDialog({ state: "downloaded", info: state });
+        manualUpdateCheckRef.current = false;
+        return;
+      }
+      if (state.state === "error") {
+        setUpdateInfo(null);
+        if (manualUpdateCheckRef.current || updateDialog) {
+          setUpdateDialog({ state: "current", info: { ...state, latestVersion: state.currentVersion || APP_VERSION } });
+        }
+        manualUpdateCheckRef.current = false;
+      }
+    });
+  }, [updateDialog]);
+
   const H = handlersRef.current;
   return (
     <div className="app">
@@ -4485,6 +4556,7 @@ function App() {
         onDeleteAllTracks={() => H.onDeleteAllTracks && H.onDeleteAllTracks()}
         onHelpManual={openHelpManual}
         onHelpReleaseNotes={() => setShowReleaseNotes(true)}
+        onCheckUpdates={() => checkForUpdates(true)}
         onHelpAbout={() => setShowAbout(true)} />
       <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath} startupReady={startupReady}
         registerHandlers={registerHandlers}
@@ -4499,9 +4571,118 @@ function App() {
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
       {showReleaseNotes && <ReleaseNotesDialog onClose={() => setShowReleaseNotes(false)} />}
       {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}
+      {updateDialog && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => updateDialog.state !== "checking" && setUpdateDialog(null)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 470, maxWidth: "90vw", background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name={updateDialog.state === "available" || updateDialog.state === "downloading" || updateDialog.state === "downloaded" ? "download" : "check"} size={18}
+                style={{ color: "var(--amber)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Check for Updates</span>
+            </div>
+            <div style={{ padding: "18px 20px", fontSize: 13, lineHeight: 1.55, color: "var(--cream-2)" }}>
+              {updateDialog.state === "checking" && (
+                <div>Checking GitHub Releases through electron-updater...</div>
+              )}
+              {updateDialog.state === "available" && updateDialog.info && (
+                <React.Fragment>
+                  <div style={{ marginBottom: 10 }}>A new FocusDAW Studio update is available.</div>
+                  <div className="mono" style={{ fontSize: 12, color: "var(--cream)" }}>
+                    Current: v{updateDialog.info.currentVersion}
+                    <br />
+                    Latest: {releaseVersionLabel(updateDialog.info.latestVersion)}
+                  </div>
+                  {updateDialog.info.releaseDate && (
+                    <div className="mono" style={{ marginTop: 8, fontSize: 10.5, color: "var(--muted)" }}>
+                      Published: {new Date(updateDialog.info.releaseDate).toLocaleString()}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 10 }}>Press OK to download the update.</div>
+                </React.Fragment>
+              )}
+              {updateDialog.state === "current" && updateDialog.info && (
+                <React.Fragment>
+                  <div style={{ marginBottom: 10 }}>FocusDAW Studio is up to date.</div>
+                  <div className="mono" style={{ fontSize: 12, color: "var(--cream)" }}>
+                    Current: v{updateDialog.info.currentVersion}
+                    <br />
+                    Latest: {releaseVersionLabel(updateDialog.info.latestVersion || updateDialog.info.currentVersion)}
+                  </div>
+                </React.Fragment>
+              )}
+              {updateDialog.state === "downloading" && (
+                <React.Fragment>
+                  <div style={{ marginBottom: 10 }}>Downloading update...</div>
+                  <div style={{ height: 8, borderRadius: 999, background: "var(--surface2)", overflow: "hidden", border: "1px solid var(--line)" }}>
+                    <div style={{ height: "100%", width: `${Math.max(0, Math.min(100, updateDialog.info && updateDialog.info.percent || 0))}%`, background: "var(--amber)" }} />
+                  </div>
+                  <div className="mono" style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>
+                    {Math.max(0, Math.min(100, updateDialog.info && updateDialog.info.percent || 0)).toFixed(1)}%
+                  </div>
+                </React.Fragment>
+              )}
+              {updateDialog.state === "downloaded" && (
+                <React.Fragment>
+                  <div style={{ marginBottom: 10 }}>The update has been downloaded.</div>
+                  <div className="mono" style={{ fontSize: 12, color: "var(--cream)" }}>
+                    Ready: {releaseVersionLabel(updateDialog.info && updateDialog.info.latestVersion)}
+                  </div>
+                  <div style={{ marginTop: 10 }}>Press OK to restart and install.</div>
+                </React.Fragment>
+              )}
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              {(updateDialog.state === "available" || updateDialog.state === "downloaded") && (
+                <button className="btn" onClick={() => setUpdateDialog(null)}
+                  style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                  Cancel
+                </button>
+              )}
+              {updateDialog.state !== "checking" && updateDialog.state !== "downloading" && (
+                <button className="btn" onClick={() => {
+                    const state = updateDialog.state;
+                    if (state === "available") {
+                      setUpdateDialog({ state: "downloading", info: { percent: 0 } });
+                      if (window.electronAPI && window.electronAPI.downloadUpdate) {
+                        window.electronAPI.downloadUpdate().catch((err) => {
+                          console.warn("Update download failed:", err);
+                          setUpdateInfo(null);
+                          setUpdateDialog({ state: "current", info: { currentVersion: APP_VERSION, latestVersion: APP_VERSION } });
+                        });
+                      }
+                      return;
+                    }
+                    if (state === "downloaded") {
+                      if (window.electronAPI && window.electronAPI.installUpdate) {
+                        window.electronAPI.installUpdate().catch((err) => {
+                          console.warn("Update install failed:", err);
+                          setUpdateInfo(null);
+                          setUpdateDialog({ state: "current", info: { currentVersion: APP_VERSION, latestVersion: APP_VERSION } });
+                        });
+                      }
+                      return;
+                    }
+                    setUpdateDialog(null);
+                  }}
+                  style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--amber)", background: updateDialog.state === "available" || updateDialog.state === "downloaded" ? "var(--amber)" : "var(--surface2)", color: updateDialog.state === "available" || updateDialog.state === "downloaded" ? "var(--accent-fg)" : "var(--cream-2)", fontSize: 12.5, fontWeight: 700 }}>
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bottombar">
         <span className="bottom-project mono">{projectName || DEFAULT_PROJECT_NAME}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {updateInfo && updateInfo.updateAvailable && (
+            <div className="update-ticker" title="New update available" aria-live="polite">
+              <span className="update-ticker-text">
+                New update available: {releaseVersionLabel(updateInfo.latestVersion)}
+              </span>
+            </div>
+          )}
           <span style={{ fontSize: 10.5, color: "var(--dim)", fontWeight: 600, letterSpacing: ".03em" }}>FocusDAW Studio</span>
           <span className="version-badge">{APP_VERSION}</span>
         </div>

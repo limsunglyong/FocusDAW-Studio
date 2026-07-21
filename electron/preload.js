@@ -38,6 +38,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   winAction:      (action)        => ipcRenderer.invoke('win-action', action),
   onWinState:     (cb)            => ipcRenderer.on('win-state', (_, s) => cb(s)),
   openHelp:       ()              => ipcRenderer.invoke('open-help'),
+  openExternalUrl: (url)          => ipcRenderer.invoke('open-external-url', url),
+  checkForUpdates: ()             => ipcRenderer.invoke('updater-check'),
+  downloadUpdate: ()              => ipcRenderer.invoke('updater-download'),
+  installUpdate: ()               => ipcRenderer.invoke('updater-install'),
+  onUpdaterState: (cb)            => {
+    const listener = (_, state) => cb(state);
+    ipcRenderer.on('updater-state', listener);
+    return () => ipcRenderer.removeListener('updater-state', listener);
+  },
   openAdvancedPan: (target)       => ipcRenderer.invoke('open-advanced-pan', target),
   navigateAdvanced: (target)      => ipcRenderer.invoke('navigate-advanced', target),
 

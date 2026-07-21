@@ -1,11 +1,17 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, screen, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen, Menu, shell } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+let autoUpdater = null;
+try {
+  autoUpdater = require('electron-updater').autoUpdater;
+} catch (err) {
+  console.warn('[FocusDAW] electron-updater not available:', err && err.message);
+}
 
 // Shared renderer webPreferences. `devTools` is gated on !app.isPackaged so the
 // DevTools / debug console is fully unavailable in packaged release builds
@@ -196,6 +202,67 @@ let advancedPanWindow = null;
 let helpWindow = null;
 let forceCloseMixerWindow = false;
 let forceCloseAdvancedPanWindow = false;
+let updaterReady = false;
+let updaterBusy = false;
+let updaterDownloaded = false;
+
+function updatePayload(state, extra = {}) {
+  return {
+    state,
+    currentVersion: app.getVersion(),
+    ...extra,
+  };
+}
+
+function releasePayload(info) {
+  return {
+    latestVersion: (info && (info.version || info.tag || info.releaseName)) || null,
+    releaseName: (info && info.releaseName) || null,
+    releaseDate: (info && info.releaseDate) || null,
+    releaseNotes: (info && info.releaseNotes) || null,
+    htmlUrl: 'https://github.com/limsunglyong/FocusDAW-Studio/releases/latest',
+  };
+}
+
+function setupAutoUpdater() {
+  if (updaterReady || !autoUpdater) return;
+  updaterReady = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on('checking-for-update', () => {
+    updaterBusy = true;
+    sendToMain('updater-state', updatePayload('checking'));
+  });
+  autoUpdater.on('update-available', (info) => {
+    updaterBusy = false;
+    updaterDownloaded = false;
+    sendToMain('updater-state', updatePayload('available', releasePayload(info)));
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    updaterBusy = false;
+    updaterDownloaded = false;
+    sendToMain('updater-state', updatePayload('current', releasePayload(info)));
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    sendToMain('updater-state', updatePayload('downloading', {
+      percent: Number(progress && progress.percent) || 0,
+      transferred: Number(progress && progress.transferred) || 0,
+      total: Number(progress && progress.total) || 0,
+      bytesPerSecond: Number(progress && progress.bytesPerSecond) || 0,
+    }));
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    updaterBusy = false;
+    updaterDownloaded = true;
+    sendToMain('updater-state', updatePayload('downloaded', releasePayload(info)));
+  });
+  autoUpdater.on('error', (err) => {
+    updaterBusy = false;
+    console.warn('[FocusDAW] update check failed:', err && err.message ? err.message : err);
+    sendToMain('updater-state', updatePayload('current', { latestVersion: app.getVersion() }));
+  });
+}
 
 function createWindow() {
   const isMac = process.platform === 'darwin';
@@ -333,6 +400,7 @@ app.whenReady().then(() => {
   // bar, this strips the built-in View ▸ Toggle Developer Tools item and the
   // Alt-key menu, so a release build has no menu path to the debug console.
   Menu.setApplicationMenu(null);
+  setupAutoUpdater();
   startAudioEngine();
   createWindow();
   app.on('activate', () => {
@@ -961,6 +1029,53 @@ ipcMain.handle('open-help', async () => {
   helpWindow.on('closed', () => {
     helpWindow = null;
   });
+});
+
+ipcMain.handle('open-external-url', async (event, url) => {
+  assertTrustedIpc(event);
+  const parsed = new URL(String(url || ''));
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') {
+    throw new Error('Blocked external URL.');
+  }
+  await shell.openExternal(parsed.toString());
+  return true;
+});
+
+ipcMain.handle('updater-check', async (event) => {
+  assertTrustedIpc(event);
+  if (!autoUpdater) {
+    sendToMain('updater-state', updatePayload('current', { latestVersion: app.getVersion() }));
+    return false;
+  }
+  if (!app.isPackaged) {
+    sendToMain('updater-state', updatePayload('current', { latestVersion: app.getVersion() }));
+    return false;
+  }
+  if (updaterBusy) {
+    sendToMain('updater-state', updatePayload('current', { latestVersion: app.getVersion() }));
+    return false;
+  }
+  setupAutoUpdater();
+  await autoUpdater.checkForUpdates();
+  return true;
+});
+
+ipcMain.handle('updater-download', async (event) => {
+  assertTrustedIpc(event);
+  if (!autoUpdater) throw new Error('electron-updater is not available.');
+  if (!app.isPackaged) throw new Error('Auto update downloads run in the packaged app.');
+  if (updaterBusy) return false;
+  updaterBusy = true;
+  await autoUpdater.downloadUpdate();
+  return true;
+});
+
+ipcMain.handle('updater-install', async (event) => {
+  assertTrustedIpc(event);
+  if (!autoUpdater) throw new Error('electron-updater is not available.');
+  if (!updaterDownloaded) throw new Error('No downloaded update is ready to install.');
+  autoUpdater.quitAndInstall(false, true);
+  return true;
 });
 
 // Remember the CONTENT bounds (both position and size) across mixer open/close.
