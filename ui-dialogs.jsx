@@ -1100,6 +1100,7 @@ function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", on
     { id: "settings-device-setup", label: "Audio Devices" },
   ];
   const [activeSection, setActiveSection] = useState(sections[0].id);
+  const [settingsNotice, setSettingsNotice] = useState(null);
   const contentRef = useRef(null);
 
   const goToSection = (id) => {
@@ -1208,7 +1209,10 @@ function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", on
                   } else if (window.mixerPopup && !window.mixerPopup.closed) {
                     window.mixerPopup.close();
                   }
-                  alert("Mixer window position and size have been reset.");
+                  setSettingsNotice({
+                    title: "Mixer window reset",
+                    message: "Mixer window position and size have been reset.",
+                  });
                 }} style={{ height: 32, fontSize: 12.5, padding: "0 14px", border: "1px solid var(--line-strong)" }}>Reset Position</button>
               </div>
             </section>
@@ -1221,6 +1225,27 @@ function SettingsDialog({ currentTheme, onThemeChange, mixerTexture = "none", on
           <button className="btn primary" onClick={onClose}>Done</button>
         </div>
       </div>
+      {settingsNotice && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 900, background: "rgba(8,6,4,.55)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => setSettingsNotice(null)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 400, maxWidth: "88vw", background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="check" size={18} style={{ color: "var(--amber)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>{settingsNotice.title}</span>
+            </div>
+            <div style={{ padding: "18px 20px", fontSize: 13, lineHeight: 1.55, color: "var(--cream-2)" }}>
+              {settingsNotice.message}
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setSettingsNotice(null)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

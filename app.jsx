@@ -1600,12 +1600,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   const [showExport, setShowExport] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [flattenConfirm, setFlattenConfirm] = useState(null);
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(null);
   // Set when a project load (boot restore / File>Open / drop) can't find one or more source
   // files. Shown as a themed modal (MissingAudioDialog) instead of a bare console warning.
   const [missingAudio, setMissingAudio] = useState(null);
+  const [appNotice, setAppNotice] = useState(null);
+  const showAppNotice = useCallback((title, message, tone = "info") => {
+    setAppNotice({ title, message, tone });
+  }, []);
   const [tool, setTool] = useState("select");
   // v1.22.0: the clip selection is a SET within one track — { trackId, clipIds: [...] }.
   // Multi-select is single-track by design: clip join/merge and the rigid group move are
@@ -1880,11 +1885,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     } catch (err) {
       console.error("Merge Tracks failed:", err);
       setLoading(null);
-      window.alert(`Merge Tracks failed: ${err && err.message ? err.message : err}`);
+      showAppNotice("Merge Tracks failed", err && err.message ? err.message : String(err || "Unknown error."), "error");
     } finally {
       setMergeTracksBusy(false);
     }
-  }, [selectedFileTracks, mergeTracksBusy, mergeTracksOptions, mergeTracksName, getDefaultMergeTracksName, projectPath, pushUndo]);
+  }, [selectedFileTracks, mergeTracksBusy, mergeTracksOptions, mergeTracksName, getDefaultMergeTracksName, projectPath, pushUndo, showAppNotice]);
 
   const setProjectBpmFromInput = useCallback((value) => {
     const next = Number(value);
@@ -2776,7 +2781,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // taken for an edit that will not happen.
     const check = DAW.canConsolidateClips ? DAW.canConsolidateClips(trackId, ids) : { ok: true };
     if (!check.ok) {
-      window.alert(CONSOLIDATE_REFUSAL[check.reason] || "Consolidate is not possible for this selection.");
+      showAppNotice("Merge Clips", CONSOLIDATE_REFUSAL[check.reason] || "Consolidate is not possible for this selection.", "warning");
       return;
     }
     lockTimelineZoom();
@@ -2784,42 +2789,38 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const id = DAW.consolidateClips(trackId, ids);
     if (!id) {
       cancelUndo(savedRedo);   // nothing changed → drop the empty snapshot, keep Redo alive
-      window.alert("Consolidate failed: the clips' source audio is not loaded yet. Try again once the waveform is visible.");
+      showAppNotice("Merge Clips failed", "The clips' source audio is not loaded yet. Try again once the waveform is visible.", "error");
       return;
     }
     setClipSel({ trackId, clipIds: [id] });
     force((n) => n + 1);
     persistConsolidated();
-  }, [pushUndo, cancelUndo, lockTimelineZoom, persistConsolidated]);
+  }, [pushUndo, cancelUndo, lockTimelineZoom, persistConsolidated, showAppNotice]);
+  const commitFlattenComp = useCallback((trackId) => {
+    lockTimelineZoom();
+    const savedRedo = pushUndo();
+    const ids = DAW.flattenComp(trackId);
+    if (!ids) {
+      cancelUndo(savedRedo);
+      showAppNotice("Flatten Comp failed", "The take audio is not fully loaded yet. Try again once every take shows a waveform.", "error");
+      return;
+    }
+    setClipSel(null);
+    force((n) => n + 1);
+    persistConsolidated();
+  }, [pushUndo, cancelUndo, lockTimelineZoom, persistConsolidated, showAppNotice]);
+
   // Phase 7 Stage 4 — Comp Flatten. Confirms first: this is the one edit that discards the
   // alternate takes, so the dialog states exactly what survives (Undo, and the WAVs on disk)
   // rather than a bare "are you sure".
   const handleFlattenComp = useCallback((trackId) => {
     const check = DAW.canFlattenComp ? DAW.canFlattenComp(trackId) : { ok: false, reason: "track" };
     if (!check.ok) {
-      window.alert(FLATTEN_REFUSAL[check.reason] || "Flatten is not possible for this track.");
+      showAppNotice("Flatten Comp", FLATTEN_REFUSAL[check.reason] || "Flatten is not possible for this track.", "warning");
       return;
     }
-    const dropped = Math.max(0, check.takeCount - 1);
-    const ok = window.confirm(
-      `Flatten this comp?\n\n` +
-      `The active take and the shared audio become ordinary clips` +
-      (dropped ? `, and ${dropped} other take${dropped === 1 ? "" : "s"} ${dropped === 1 ? "is" : "are"} dropped` : ``) + `.\n\n` +
-      `Undo restores the takes, and the recorded WAV files stay on disk either way.`
-    );
-    if (!ok) return;
-    lockTimelineZoom();
-    const savedRedo = pushUndo();
-    const ids = DAW.flattenComp(trackId);
-    if (!ids) {
-      cancelUndo(savedRedo);
-      window.alert("Flatten failed: the take audio is not fully loaded yet. Try again once every take shows a waveform.");
-      return;
-    }
-    setClipSel(null);
-    force((n) => n + 1);
-    persistConsolidated();
-  }, [pushUndo, cancelUndo, lockTimelineZoom, persistConsolidated]);
+    setFlattenConfirm({ trackId, dropped: Math.max(0, check.takeCount - 1) });
+  }, [showAppNotice]);
 
   // Merge TOOL (J: click a clip to merge it with its neighbour). Same handler as the menu,
   // so the refusal messages, undo hygiene and WAV persistence are identical on both routes.
@@ -3241,7 +3242,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   const toggleRecording = useCallback(async (track) => {
     if (!window.electronAPI || !DAW.isNative) {
-      alert("Audio recording requires the desktop app and native audio engine.");
+      showAppNotice("Recording unavailable", "Audio recording requires the desktop app and native audio engine.", "warning");
       return;
     }
     if (track.recording) {
@@ -3301,7 +3302,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           await DAW.attachRecording(track.id, saved.fileName, bytes, attachOptions);
         }
       } catch (e) {
-        alert(`Recording could not be finalized: ${e.message || e}`);
+        showAppNotice("Recording could not be finalized", e.message || String(e), "error");
       }
       track.recording = false;
       delete track._recordingDurationLimit;
@@ -3314,7 +3315,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       return;
     }
     if (recordingRef.current) {
-      alert("Only one Audio In track can record at a time.");
+      showAppNotice("Recording already active", "Only one Audio In track can record at a time.", "warning");
       return;
     }
     // Claim the flow BEFORE the awaits below (path prep + device open, both slow enough
@@ -3330,7 +3331,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       if (DAW.setAudioInput) await DAW.setAudioInput(input);
     } catch (e) {
       if (recordPhaseRef.current === "recording") enterRecordPhase(null); // nothing started; release
-      alert(e.message || String(e));
+      showAppNotice("Recording could not start", e.message || String(e), "error");
       return;
     }
     // A Stop during those awaits already released the phase. Honor it — starting now
@@ -3379,12 +3380,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         // stays dead for the rest of the session. Only from "recording": if a stop is
         // already winding down it owns the release (and awaits this same promise).
         if (recordPhaseRef.current === "recording") enterRecordPhase(null);
-        alert(e.message || String(e));
+        showAppNotice("Recording failed", e.message || String(e), "error");
         force((n) => n + 1);
       }
     });
     force((n) => n + 1);
-  }, [projectPath, fitTimelineToProject, pushUndo]);
+  }, [projectPath, fitTimelineToProject, pushUndo, showAppNotice]);
 
   // ---- Recording transport flow (record start/stop rules) ------------------
   // Record from a stopped transport shows a 3s count-in then starts play+record;
@@ -3439,7 +3440,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     console.warn("[AudioInput] arm prepare failed:", err);
     if (trackId) DAW.setTrackParam(trackId, "arm", false);
     force((n) => n + 1);
-    alert((err && err.message) || String(err));
+    showAppNotice("Audio input unavailable", (err && err.message) || String(err), "error");
   };
   // The engine lost the configured input device (USB pulled). Drop every ARM so no track
   // sits armed on a device that is not there. Deliberately does NOT reopen anything —
@@ -3846,9 +3847,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
-  // Rename a track from the header (double-click the title). For Audio In tracks
-  // that own a recorded WAV, also rename the file on disk to match and re-point
-  // the track/source references (imported stem files are never renamed).
+  // Rename a track from the header (double-click the title). Track names are UI /
+  // project metadata only: recorded WAV file paths remain stable and keep matching
+  // through track.filePath + sources[].filePath.
   const renameTrack = async (id, newName) => {
     const track = DAW.tracks.find((t) => t.id === id);
     if (!track) return;
@@ -3856,22 +3857,6 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (!name || name === track.name) return;
     pushUndo(); lastUndoKey.current = null;
     track.name = name;
-    force((n) => n + 1);
-    if (track.kind === "audioIn" && track.filePath && window.electronAPI && window.electronAPI.renameRecording) {
-      try {
-        const res = await window.electronAPI.renameRecording(track.filePath, name);
-        if (res && res.path) {
-          track.filePath = res.path;
-          track.fileName = res.fileName;
-          if (Array.isArray(track.sources) && track.sources[0]) {
-            track.sources[0].filePath = res.path;
-            track.sources[0].fileName = res.fileName;
-          }
-        }
-      } catch (e) {
-        alert(`Track renamed, but its recording file could not be renamed: ${e.message || e}`);
-      }
-    }
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
@@ -4318,6 +4303,63 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               <button className="btn" onClick={deleteAllTracks}
                 style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--red)", background: "var(--red)", color: "#fff", fontSize: 12.5, fontWeight: 600 }}>
                 Delete all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {flattenConfirm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => setFlattenConfirm(null)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 480, maxWidth: "90vw", background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="check" size={18} style={{ color: "var(--amber)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Flatten Comp</span>
+            </div>
+            <div style={{ padding: "18px 20px", fontSize: 13, lineHeight: 1.55, color: "var(--cream-2)" }}>
+              <div style={{ marginBottom: 10 }}>
+                The active take and the shared audio become ordinary clips
+                {flattenConfirm.dropped
+                  ? `, and ${flattenConfirm.dropped} other take${flattenConfirm.dropped === 1 ? "" : "s"} ${flattenConfirm.dropped === 1 ? "is" : "are"} dropped.`
+                  : "."}
+              </div>
+              <div>
+                Undo restores the takes, and the recorded WAV files stay on disk either way.
+              </div>
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button className="btn" onClick={() => setFlattenConfirm(null)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button className="btn" onClick={() => { const target = flattenConfirm.trackId; setFlattenConfirm(null); commitFlattenComp(target); }}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--amber)", background: "var(--amber)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 700 }}>
+                Flatten
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {appNotice && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => setAppNotice(null)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 460, maxWidth: "90vw", background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name={appNotice.tone === "error" ? "info" : "check"} size={18}
+                style={{ color: appNotice.tone === "error" ? "var(--red)" : "var(--amber)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>{appNotice.title || "Notice"}</span>
+            </div>
+            <div style={{ padding: "18px 20px", fontSize: 13, lineHeight: 1.55, color: "var(--cream-2)" }}>
+              {String(appNotice.message || "").split(/\n{2,}/).map((part, i) => (
+                <div key={i} style={{ marginTop: i ? 10 : 0, whiteSpace: "pre-wrap" }}>{part}</div>
+              ))}
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button className="btn" onClick={() => setAppNotice(null)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                OK
               </button>
             </div>
           </div>

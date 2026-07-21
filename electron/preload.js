@@ -16,7 +16,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveConsolidatedAudio: (wavBuf, projectPath, fileName, sourcePath) => ipcRenderer.invoke('save-consolidated-audio', wavBuf, projectPath, fileName, sourcePath),
   prepareRecordingPath: (projectPath, fileName, sourcePath) => ipcRenderer.invoke('prepare-recording-path', projectPath, fileName, sourcePath),
   finalizeRecording: (partPath, finalPath) => ipcRenderer.invoke('finalize-recording', partPath, finalPath),
-  renameRecording: (oldPath, newBaseName) => ipcRenderer.invoke('rename-recording', oldPath, newBaseName),
 
   // Project persistence
   saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),

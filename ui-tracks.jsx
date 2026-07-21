@@ -695,7 +695,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
           <span className="mono" title={`Current input gain ${fmtDb(inputGainValue)} dB`}
             style={{ width: 28, height: 16, display: "grid", placeItems: "center", borderRadius: 3,
               border: "1px solid var(--line-strong)", background: "var(--panel-deep, #171512)",
-              color: "var(--cream-2)", fontSize: 7.5, fontVariantNumeric: "tabular-nums" }}>
+              color: "var(--input-gain-readout-fg, var(--cream-2))", fontSize: 7.5, fontVariantNumeric: "tabular-nums" }}>
             {fmtDb(inputGainValue)}
           </span>
           <span className="mono" style={{ fontSize: 8.5,

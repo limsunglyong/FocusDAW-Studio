@@ -543,20 +543,6 @@ ipcMain.handle('finalize-recording', async (event, partPath, finalPath) => {
   return { path: final, fileName: path.basename(final) };
 });
 
-// Rename a recorded audio file on disk to match a renamed Audio In track. Keeps
-// the file in its own folder and picks a unique name (collision-safe).
-ipcMain.handle('rename-recording', async (event, oldPath, newBaseName) => {
-  assertTrustedIpc(event);
-  const src = assertFilePath(oldPath, AUDIO_EXT, 'recording');
-  if (!fs.existsSync(src)) throw new Error('Recording file not found.');
-  const dir = path.dirname(src);
-  const ext = (path.extname(src).slice(1) || 'wav').toLowerCase();
-  const base = safeFileBase(String(newBaseName || 'Recording'));
-  const finalPath = uniqueFilePath(dir, base, ext);
-  fs.renameSync(src, finalPath);
-  return { path: finalPath, fileName: path.basename(finalPath) };
-});
-
 // Save project via native Save dialog
 // The project name always follows the FILE NAME. The renderer exports the json
 // before the Save dialog runs, so json.projectName still holds the old in-app

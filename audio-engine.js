@@ -3366,7 +3366,7 @@
         if (!sel.has(c.id)) continue;
         c.start += d; c.end = c.start + (c.duration || 0);
       }
-      this._shiftInactiveTakeClips(t, d);
+      this._shiftInactiveTakeClips(t, d, ids);
       this._reindexClips(t);
       this._ensureBaked(t);
       return d;
@@ -3385,7 +3385,7 @@
         if (!sel.has(c.id)) continue;
         c.start += d; c.end = c.start + (c.duration || 0);
       }
-      this._shiftInactiveTakeClips(t, d);
+      this._shiftInactiveTakeClips(t, d, ids);
       this._reindexClips(t);
       this._ensureBaked(t);
       return d;
@@ -3405,16 +3405,18 @@
       return true;
     },
 
-    // Comp move (Stage 4, Q: "all takes move together"): the visible/editable clip is always
-    // the ACTIVE Take's; when it moves, the INACTIVE Takes' clips ride along by the same delta
-    // so the alternates stay aligned as one region. Only inactive Takes shift here — the active
-    // move itself is applied by the caller, and null-takeId clips (shared) stay put.
-    _shiftInactiveTakeClips(track, delta) {
+    // Comp move (Stage 4, Q: "all takes move together"): only when the ACTIVE Take clip is
+    // actually moved should the INACTIVE Takes ride along by the same delta. Base/null-takeId
+    // clips are independent timeline material; moving them must not drag an unrelated take
+    // region (B-TakeSibling-OverShift, v1.43.7).
+    _shiftInactiveTakeClips(track, delta, movedClipIds) {
       if (!delta || Math.abs(delta) < 1e-9) return;
       const act = this._activeTakeId(track);
       if (!act) return;
+      const moved = new Set(Array.isArray(movedClipIds) ? movedClipIds : [movedClipIds].filter(Boolean));
+      if (!track.clips.some(c => moved.has(c.id) && c.takeId === act)) return;
       for (const c of track.clips) {
-        if (c.takeId && c.takeId !== act) {
+        if (c.takeId && c.takeId !== act && !moved.has(c.id)) {
           c.start = Math.max(0, (c.start || 0) + delta);
           c.end = c.start + (c.duration || 0);
         }
@@ -3428,7 +3430,7 @@
       if (s == null || Math.abs(s - c.start) < 1e-6) return false; // no valid/effective slot → keep origin
       const delta = s - c.start;
       c.start = s; c.end = s + c.duration;
-      this._shiftInactiveTakeClips(t, delta);
+      this._shiftInactiveTakeClips(t, delta, clipId);
       this._reindexClips(t);
       this._ensureBaked(t);
       return true;
@@ -3443,7 +3445,7 @@
       if (Math.abs(s - c.start) < 1e-6) return false;
       const delta = s - c.start;
       c.start = s; c.end = s + (c.duration || 0);
-      this._shiftInactiveTakeClips(t, delta);
+      this._shiftInactiveTakeClips(t, delta, clipId);
       this._reindexClips(t);
       this._ensureBaked(t);
       return true;
