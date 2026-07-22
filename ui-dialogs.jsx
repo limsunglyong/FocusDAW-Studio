@@ -695,11 +695,11 @@ const THEMES = [
   },
   {
     id: "forest",
-    name: "Forest Green",
-    desc: "dark forest · vivid green · natural & deep",
-    bg: "#0f1a13", bg2: "#162319", surface: "#1d3022",
-    accent: "#5de87a", text: "#d8f0d0", text2: "#9ec49a",
-    green: "#aae060", red: "#e06058", blue: "#60b8c8",
+    name: "Milky Purple",
+    desc: "dark amethyst · milky lilac · soft orchid",
+    bg: "#1b1234", bg2: "#231942", surface: "#352a58",
+    accent: "#E0B1CB", text: "#f4e8f1", text2: "#BE95C4",
+    green: "#BE95C4", red: "#e98aae", blue: "#9F86C0",
   },
   {
     id: "arctic",
