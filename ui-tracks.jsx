@@ -941,7 +941,7 @@ function RecordingOffsetCalModal({ prev, next, recOff, moveMs, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onSetCompRegion, onClearComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onSetClipGain, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onSetCompRegion, onClearComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -1067,12 +1067,23 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     const inSel = selectedClipIds.includes(clip.id);
     const groupIds = (mode === "move" && inSel && selectedClipIds.length > 1) ? selectedClipIds.slice() : null;
     if (!groupIds && onSelectClip) onSelectClip(track.id, clip.id, false);
-    const startX = e.clientX;
+    const startX = e.clientX, startY = e.clientY;
+    const gainH = Math.max(1, laneH - 4);            // clip box inner height (top:2 bottom:2)
+    const origGain = (clip.gain == null ? 1 : clip.gain);
     const d = { clipId: clip.id, mode, startX, moved: false, groupIds, groupDelta: 0,
       origStart: clip.start, origEnd: clip.end,
-      ghostStart: clip.start, ghostEnd: clip.end };
+      ghostStart: clip.start, ghostEnd: clip.end,
+      origGain, ghostGain: origGain };
     clipDrag.current = d; bumpDrag((n) => n + 1);
     const move = (ev) => {
+      if (mode === "gain") {
+        // Vertical drag, cut-only: down reduces gain (top = 0 dB = unity, bottom = mute).
+        const dy = ev.clientY - startY;
+        if (Math.abs(dy) > 2) d.moved = true;
+        d.ghostGain = Math.max(0, Math.min(1, origGain - dy / gainH));
+        bumpDrag((n) => n + 1);
+        return;
+      }
       const dsec = ((ev.clientX - startX) / laneW) * DAW.duration;
       if (Math.abs(ev.clientX - startX) > 2) d.moved = true;
       const len = d.origEnd - d.origStart;
@@ -1109,7 +1120,10 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         if (dd.groupIds && onSelectClip) onSelectClip(track.id, clip.id, false);
         return;
       }
-      if (mode === "move" && dd.groupIds) {
+      if (mode === "gain") {
+        if (Math.abs(dd.ghostGain - dd.origGain) > 1e-4 && onSetClipGain) onSetClipGain(track.id, clip.id, dd.ghostGain);
+      }
+      else if (mode === "move" && dd.groupIds) {
         if (Math.abs(dd.groupDelta) > 1e-6 && onMoveClips) onMoveClips(track.id, dd.groupIds, dd.groupDelta);
       }
       else if (mode === "move" && Math.abs(dd.ghostStart - dd.origStart) > 1e-3 && onMoveClip) onMoveClip(track.id, clip.id, dd.ghostStart);
@@ -1281,6 +1295,37 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
               <div onMouseDown={(e) => startClipDrag(e, clip, "trimEnd")}
                 style={{ position: "absolute", right: -1, top: 0, bottom: 0, width: 8, cursor: "ew-resize",
                   borderRight: sel ? "2px solid var(--amber)" : "2px solid transparent" }} />
+              {/* Clip-volume line (cut-only). Grab and drag DOWN to lower this clip's volume;
+                  top = 0 dB (unity), bottom = mute. Static clip.gain baked into the buffer —
+                  separate from track volume (output) and track automation. Shown on the selected
+                  clip and on any already-reduced clip; inset past the trim handles. */}
+              {width >= 24 && (() => {
+                const gainDragging = dr && dr.mode === "gain";
+                const gv = gainDragging ? dr.ghostGain : (clip.gain == null ? 1 : clip.gain);
+                if (!(sel || gainDragging || gv < 0.999)) return null;
+                const topPct = Math.max(0, Math.min(1, 1 - gv)) * 100;
+                const active = sel || gainDragging;
+                const dbLabel = gv <= 1e-4 ? "−∞ dB" : `${(20 * Math.log10(gv)).toFixed(1)} dB`;
+                return (
+                  <React.Fragment>
+                    <div title="Drag down to lower this clip's volume (cut-only, 0 dB at top)"
+                      onMouseDown={(e) => startClipDrag(e, clip, "gain")}
+                      style={{ position: "absolute", left: 8, right: 8, top: `${topPct}%`,
+                        height: 8, transform: "translateY(-4px)", cursor: "ns-resize", zIndex: 7 }}>
+                      <div style={{ position: "absolute", left: 0, right: 0, top: 3, height: 2, borderRadius: 2,
+                        background: active ? "var(--amber)" : "rgba(232,176,75,.45)",
+                        boxShadow: active ? "0 0 4px rgba(232,176,75,.55)" : "none", pointerEvents: "none" }} />
+                    </div>
+                    {gainDragging && (
+                      <span className="mono" style={{ position: "absolute", right: 4, top: `${topPct}%`,
+                        transform: "translateY(-50%)", fontSize: 9.5, fontWeight: 700, color: "var(--amber)",
+                        background: "rgba(0,0,0,.55)", padding: "0 3px", borderRadius: 3, pointerEvents: "none", zIndex: 8 }}>
+                        {dbLabel}
+                      </span>
+                    )}
+                  </React.Fragment>
+                );
+              })()}
               {/* Selected clip: start time top-left, end time bottom-right. Reads the ghost
                   position, so the numbers track a drag/nudge live. */}
               {sel && (

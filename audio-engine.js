@@ -3436,6 +3436,23 @@
       return true;
     },
 
+    // Static per-clip volume (the clip-gain line the user drags, cut-only 0..1 where 1 = 0 dB).
+    // Any non-unity gain makes the layout non-trivial (see _isTrivialLayout), so _ensureBaked
+    // bakes it into t.buffer — playback, Export, peaks and the native WAV all pick it up. This
+    // is DISTINCT from track volume (output) and from clip.params.volume/track automation (a
+    // dynamic curve); the two are combined without double-applying by design.
+    setClipGain(trackId, clipId, gain) {
+      const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
+      const c = t.clips.find(x => x.id === clipId); if (!c) return false;
+      const g = Math.max(0, Math.min(1, Number(gain)));
+      if (!Number.isFinite(g)) return false;
+      if (Math.abs((c.gain == null ? 1 : c.gain) - g) < 1e-4) return false; // no effective change
+      c.gain = g;
+      t.clips = [...t.clips];
+      this._ensureBaked(t);
+      return true;
+    },
+
     // Move the selected clip by a small time delta (arrow-key precise nudge), butting
     // against neighbors. Returns true only if the clip actually moved.
     nudgeClip(trackId, clipId, deltaSec) {
@@ -4965,6 +4982,7 @@
   Engine.setClipParam = Engine.setClipParam.bind(Engine);
   // Phase 5 clip editing (전략 B)
   Engine.moveClip = Engine.moveClip.bind(Engine);
+  Engine.setClipGain = Engine.setClipGain.bind(Engine);
   Engine._resolveMovePosition = Engine._resolveMovePosition.bind(Engine);
   Engine.nudgeClip = Engine.nudgeClip.bind(Engine);
   // v1.22.0 multi-clip selection (rigid group move)

@@ -49,9 +49,19 @@
   // from being re-applied on the next launch, where it could block the whole
   // device-list enumeration (symptom: no devices in any mode).
   function resetSavedAudioDeviceOnLaunchFailure(err) {
+    // Capture the device name BEFORE clearing so the UI warning can name it.
+    const saved = loadSavedAudioDevice();
+    const missingName = (saved && saved.name) || "";
     try { localStorage.removeItem(AUDIO_DEVICE_KEY); } catch (e) {}
     try { localStorage.removeItem(AUDIO_INPUT_KEY); } catch (e) {}
     console.warn("[AudioBridge] Saved audio device could not open on launch — reset to system default.", err || "");
+    // Current-session fallback: actively (re)open the SYSTEM DEFAULT output NOW so the app
+    // isn't left silent until the next restart (the saved device may be disconnected, or
+    // unable to open in the requested mode). Empty type+name = the platform default output.
+    try { LocalDAW.setOutputDevice(""); } catch (e) {}
+    if (Bridge.isNative) { try { sendToNative({ command: "setAudioDevice", type: "", name: "" }); } catch (e) {} }
+    // Tell the UI so it can show a themed warning (mirrors the audioInputLost pattern).
+    try { window.dispatchEvent(new CustomEvent("focusdaw-output-device-fallback", { detail: { name: missingName } })); } catch (e) {}
   }
 
   // Web → native output handover. On connect the native engine still has to
@@ -796,6 +806,11 @@
     // so it falls through the proxy to LocalDAW unchanged (no native sync needed).
     moveClip(trackId, clipId, newStart) {
       const ok = LocalDAW.moveClip(trackId, clipId, newStart);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return ok;
+    },
+    setClipGain(trackId, clipId, gain) {
+      const ok = LocalDAW.setClipGain(trackId, clipId, gain);
       if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return ok;
     },

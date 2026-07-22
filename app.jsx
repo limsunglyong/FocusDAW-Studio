@@ -2816,6 +2816,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const handleTrimStart = useCallback((trackId, clipId, newStart) => {
     lockTimelineZoom(); pushUndo(); DAW.trimClipStart(trackId, clipId, newStart); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
+  // Clip-volume line (cut-only). One undo per drag; the drag itself only moves a ghost, so
+  // this commits the final gain once on mouse-up (mirrors handleMoveClip's granularity).
+  const handleSetClipGain = useCallback((trackId, clipId, gain) => {
+    const savedRedo = pushUndo();
+    if (DAW.setClipGain(trackId, clipId, gain)) force((n) => n + 1);
+    else cancelUndo(savedRedo); // no effective change → drop the empty snapshot
+  }, [pushUndo, cancelUndo]);
   const handleTrimEnd = useCallback((trackId, clipId, newEnd) => {
     lockTimelineZoom(); pushUndo(); DAW.trimClipEnd(trackId, clipId, newEnd); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
@@ -3782,6 +3789,24 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     return () => window.removeEventListener("focusdaw-audio-input-lost", onInputLost);
   });
 
+  // The saved output device couldn't be opened on launch (disconnected, or can't open in the
+  // requested mode). The bridge already fell back to the system default output for this session;
+  // surface a THEMED warning (not a native OS dialog) so the user knows why the device changed.
+  useEffect(() => {
+    const onOutputFallback = (e) => {
+      const name = (e && e.detail && e.detail.name) || "";
+      showAppNotice(
+        "Audio output device unavailable",
+        (name
+          ? `The saved output device “${name}” could not be opened, so playback switched to the system default output.`
+          : "The saved output device could not be opened, so playback switched to the system default output.")
+        + " You can pick another device in Settings ▸ Device Setup.",
+        "info");
+    };
+    window.addEventListener("focusdaw-output-device-fallback", onOutputFallback);
+    return () => window.removeEventListener("focusdaw-output-device-fallback", onOutputFallback);
+  });
+
   useEffect(() => {
     const onRecordToggle = () => transportRef.current.transportRecordToggle && transportRef.current.transportRecordToggle();
     const onTransport = (e) => {
@@ -4181,7 +4206,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   selectedClipIds={clipSel && clipSel.trackId === t.id ? clipSel.clipIds : EMPTY_CLIP_IDS}
                   nudge={nudgeGhost && nudgeGhost.trackId === t.id ? nudgeGhost : null}
                   onSelectClip={handleSelectClip} onMoveClip={handleMoveClip} onMoveClips={handleMoveClips}
-                  onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
+                  onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd} onSetClipGain={handleSetClipGain}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
@@ -4218,7 +4243,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   selectedClipIds={clipSel && clipSel.trackId === t.id ? clipSel.clipIds : EMPTY_CLIP_IDS}
                   nudge={nudgeGhost && nudgeGhost.trackId === t.id ? nudgeGhost : null}
                   onSelectClip={handleSelectClip} onMoveClip={handleMoveClip} onMoveClips={handleMoveClips}
-                  onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd}
+                  onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd} onSetClipGain={handleSetClipGain}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
