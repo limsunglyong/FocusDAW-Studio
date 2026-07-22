@@ -47,6 +47,14 @@ function resolveSourcePath(filePath, projectPath) {
   return dir ? dir + "/" + filePath : filePath;
 }
 
+function fmtBytes(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 function releaseVersionLabel(version) {
   const v = String(version || "").trim();
   if (!v) return "unknown";
@@ -259,7 +267,7 @@ function recentDateLabel(ms) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onSaveAs, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onHelpManual, onHelpReleaseNotes, onCheckUpdates, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onSaveAs, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onCleanUpUnused, onHelpManual, onHelpReleaseNotes, onCheckUpdates, onHelpAbout }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -308,6 +316,8 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Import Stem Folder\u2026", icon: "folder", onClick: onImportFolder },
     { label: "Import Audio Files\u2026", icon: "wave", onClick: onImport },
     { label: "Load Demo Session", icon: "disc", onClick: onLoadDemo },
+    { sep: true },
+    { label: "Clean Up Unused Recordings\u2026", icon: "trash", onClick: onCleanUpUnused },
     { sep: true },
     { label: "Export\u2026", icon: "download", hint: "\u2318E", onClick: onExport },
   ];
@@ -1614,6 +1624,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // Set when a project load (boot restore / File>Open / drop) can't find one or more source
   // files. Shown as a themed modal (MissingAudioDialog) instead of a bare console warning.
   const [missingAudio, setMissingAudio] = useState(null);
+  // Clean Up Unused Recordings: { items:[{path,name,category,size}], total } while the
+  // confirmation modal is open; null when closed.
+  const [unusedCleanup, setUnusedCleanup] = useState(null);
   const [appNotice, setAppNotice] = useState(null);
   const showAppNotice = useCallback((title, message, tone = "info") => {
     setAppNotice({ title, message, tone });
@@ -2655,6 +2668,62 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }, [projectName, projectNameRef, projectPath, onProjectPathChange, onRenameProject, collectProjectAudioForSave]);
 
   const saveProjectAs = useCallback(() => saveProject(true), [saveProject]);
+
+  // Every absolute source path the project could still need: current tracks PLUS every
+  // live undo/redo snapshot's sources. A file referenced only by an undo snapshot must
+  // NOT be cleaned up — an undo would bring the reference back and leave a broken source.
+  const collectReferencedPaths = useCallback(() => {
+    const refs = new Set();
+    const add = (fp) => { if (fp) refs.add(resolveSourcePath(fp, projectPath)); };
+    const scanTracks = (tracks) => {
+      for (const t of (tracks || [])) {
+        add(t.filePath);
+        if (t._nativePath) refs.add(t._nativePath); // stamped absolute path (reconnect)
+        for (const s of (t.sources || [])) add(s.filePath);
+      }
+    };
+    scanTracks(DAW.tracks);
+    for (const snap of undoStack.current) scanTracks(snap && snap.tracks);
+    for (const snap of redoStack.current) scanTracks(snap && snap.tracks);
+    return [...refs];
+  }, [projectPath]);
+
+  const cleanUpUnusedRecordings = useCallback(async () => {
+    if (!window.electronAPI || !window.electronAPI.scanUnusedRecordings) return;
+    if (!projectPath) {
+      showAppNotice("Save the project first",
+        "Unused recordings live in the project's Audio folder. Save the project, then run Clean Up Unused Recordings.", "info");
+      return;
+    }
+    let res;
+    try { res = await window.electronAPI.scanUnusedRecordings(projectPath, collectReferencedPaths()); }
+    catch (err) { showAppNotice("Clean Up failed", String((err && err.message) || err), "error"); return; }
+    const items = (res && res.items) || [];
+    if (!items.length) {
+      showAppNotice("No unused recordings",
+        "Every recording, bounce, and consolidated file in this project is still in use.", "info");
+      return;
+    }
+    setUnusedCleanup({ items, total: items.reduce((a, b) => a + (b.size || 0), 0) });
+  }, [projectPath, collectReferencedPaths, showAppNotice]);
+
+  const confirmCleanUpUnused = useCallback(async () => {
+    const items = (unusedCleanup && unusedCleanup.items) || [];
+    setUnusedCleanup(null);
+    if (!items.length || !window.electronAPI || !window.electronAPI.trashFiles) return;
+    try {
+      const r = await window.electronAPI.trashFiles(items.map((it) => it.path));
+      const n = (r && r.trashed && r.trashed.length) || 0;
+      const failed = (r && r.failed) || [];
+      if (failed.length) {
+        showAppNotice("Some files could not be removed",
+          `Moved ${n} file(s) to the Recycle Bin. ${failed.length} could not be removed.`, "error");
+      } else {
+        showAppNotice("Unused recordings cleaned up",
+          `Moved ${n} file(s) to the Recycle Bin. You can restore them from there if needed.`, "info");
+      }
+    } catch (err) { showAppNotice("Clean Up failed", String((err && err.message) || err), "error"); }
+  }, [unusedCleanup, showAppNotice]);
 
   const playPause = useCallback(() => { DAW.isPlaying ? DAW.pause() : DAW.play(); }, []);
 
@@ -3799,8 +3868,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onUndo: undo,
       onRedo: redo,
       onDeleteAllTracks: requestDeleteAllTracks,
+      onCleanUpUnused: cleanUpUnusedRecordings,
     });
-  }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks]);
+  }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks, cleanUpUnusedRecordings]);
 
   const param = (id) => (k, v) => {
     const targetTrack = DAW.tracks.find((track) => track.id === id);
@@ -4404,6 +4474,46 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           </div>
         </div>
       )}
+      {unusedCleanup && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => setUnusedCleanup(null)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 520, maxWidth: "90vw", background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="trash" size={18} style={{ color: "var(--amber)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Clean Up Unused Recordings</span>
+            </div>
+            <div style={{ padding: "16px 20px", fontSize: 13, lineHeight: 1.5, color: "var(--cream-2)" }}>
+              <div style={{ marginBottom: 12 }}>
+                {unusedCleanup.items.length} file{unusedCleanup.items.length === 1 ? "" : "s"} ({fmtBytes(unusedCleanup.total)}) in this project's
+                Audio folder {unusedCleanup.items.length === 1 ? "is" : "are"} no longer used by any track or undo step.
+                Move {unusedCleanup.items.length === 1 ? "it" : "them"} to the Recycle Bin? You can restore from there if needed.
+              </div>
+              <div style={{ maxHeight: 210, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface2)" }}>
+                {unusedCleanup.items.map((it, i) => (
+                  <div key={i} style={{ padding: "8px 12px", borderBottom: i < unusedCleanup.items.length - 1 ? "1px solid var(--line)" : "none", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 12.5, wordBreak: "break-all" }}>{it.name}</div>
+                      <div className="mono" style={{ fontSize: 10.5, color: "var(--cream-2)", opacity: 0.85, marginTop: 2 }}>{it.category}</div>
+                    </div>
+                    <div className="mono" style={{ fontSize: 11, color: "var(--cream-2)", opacity: 0.85, whiteSpace: "nowrap" }}>{fmtBytes(it.size)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button className="btn" onClick={() => setUnusedCleanup(null)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button className="btn" onClick={confirmCleanUpUnused}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--amber)", background: "var(--amber)", color: "#1a1408", fontSize: 12.5, fontWeight: 700 }}>
+                Move to Recycle Bin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <LoadingOverlay state={loading} />
     </div>
   );
@@ -4554,6 +4664,7 @@ function App() {
         onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
         canUndo={undoState.canUndo} canRedo={undoState.canRedo}
         onDeleteAllTracks={() => H.onDeleteAllTracks && H.onDeleteAllTracks()}
+        onCleanUpUnused={() => H.onCleanUpUnused && H.onCleanUpUnused()}
         onHelpManual={openHelpManual}
         onHelpReleaseNotes={() => setShowReleaseNotes(true)}
         onCheckUpdates={() => checkForUpdates(true)}

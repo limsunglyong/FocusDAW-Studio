@@ -68,23 +68,71 @@ function assertDirectoryPath(dirPath) {
   return resolved;
 }
 
+// True when `child` resolves to a path strictly inside `parent`.
+function isInside(parent, child) {
+  try {
+    const rel = path.relative(path.resolve(parent), path.resolve(String(child || '')));
+    return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+  } catch (e) { return false; }
+}
+
 function assertTempWavPath(filePath) {
   const resolved = assertFilePath(filePath, /\.wav$/i, 'temporary audio');
-  const relative = path.relative(path.resolve(os.tmpdir()), resolved);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('Temporary audio path is outside the system temp directory.');
+  // Accept the app's own temp folder (Documents\FocusDAW\Temp) AND the OS temp dir — the
+  // native engine may render an export straight into os.tmpdir(), while renderer-staged
+  // scratch lives under appTempDir().
+  if (!isInside(appTempDir(), resolved) && !isInside(os.tmpdir(), resolved)) {
+    throw new Error('Temporary audio path is outside the app temp directory.');
   }
   return resolved;
 }
 
+// All of the app's scratch files (recordings/bounces/consolidations before the first save,
+// plus per-op export/decode intermediates) live under one discoverable folder in the user's
+// Documents — "Documents\FocusDAW\Temp" — instead of buried in the OS temp dir, so the user
+// can find and identify them. isUnderTempDir / assertTempWavPath were updated to treat this
+// as an app temp root.
+function appTempDir() {
+  const dir = path.join(app.getPath('documents'), 'FocusDAW', 'Temp');
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  return dir;
+}
+
 function tempFilePath(prefix, extension) {
-  return path.join(os.tmpdir(), `${prefix}_${crypto.randomUUID()}.${extension}`);
+  return path.join(appTempDir(), `${prefix}_${crypto.randomUUID()}.${extension}`);
 }
 
 function removeFileQuietly(filePath) {
   if (!filePath) return;
   try { fs.unlinkSync(filePath); } catch (e) {
     if (!e || e.code !== 'ENOENT') console.warn(`[FocusDAW] Failed to remove temp file: ${filePath}`, e);
+  }
+}
+
+// True when `p` lives inside an app temp root (Documents\FocusDAW\Temp or the OS temp dir).
+// Used to tell an unsaved-project temp recording/consolidation (safe to delete after it's
+// collected into the project folder) from a real file elsewhere (an imported stem's Bounces,
+// a prior project's Audio folder on Save As) that must never be removed.
+function isUnderTempDir(p) {
+  return isInside(appTempDir(), p) || isInside(os.tmpdir(), p);
+}
+
+// Delete leftover scratch FILES sitting directly in the app temp folder (Documents\FocusDAW
+// \Temp) — baked native WAVs (write-temp-audio) and per-op decode/export/mp3 intermediates.
+// These are runtime
+// only and never referenced by a saved OR autosaved project (their paths are non-persisted
+// _nativePath / immediately-deleted temps), so any that survive are dead weight from a
+// previous run. The FocusDAW category SUBFOLDERS (Recordings/Bounces/Consolidated) are
+// left intact — an unsaved project's autosave restore may still need that staged audio.
+// Run at startup (clears previous sessions) and at quit (clears this session, after the
+// native engine has released its file handles).
+function cleanupTempScratch() {
+  let names;
+  try { names = fs.readdirSync(appTempDir()); } catch (e) { return; }
+  for (const name of names) {
+    const p = path.join(appTempDir(), name);
+    let stat; try { stat = fs.statSync(p); } catch (e) { continue; }
+    if (stat.isFile()) removeFileQuietly(p); // open files (a live engine's baked WAV) fail to unlink and are skipped
   }
 }
 
@@ -400,6 +448,7 @@ app.whenReady().then(() => {
   // bar, this strips the built-in View ▸ Toggle Developer Tools item and the
   // Alt-key menu, so a release build has no menu path to the debug console.
   Menu.setApplicationMenu(null);
+  cleanupTempScratch(); // clear dead scratch from previous runs before this session writes any
   setupAutoUpdater();
   startAudioEngine();
   createWindow();
@@ -413,7 +462,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
-  stopAudioEngine();
+  stopAudioEngine();       // release native file handles first…
+  cleanupTempScratch();    // …then remove this session's scratch WAVs
 });
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
@@ -464,20 +514,21 @@ ipcMain.handle('write-temp-audio', async (event, wavBuffer, fileName) => {
 });
 
 // Save a rendered bounce without prompting:
-//   D:\Audio\stem.wav -> D:\Audio\Bounces\Bounce ....wav
-// Project path is only a fallback for rare in-memory tracks without sourcePath.
+//   saved   -> <Project> Audio/Bounces/Bounce ....wav
+//   unsaved -> %TEMP%/temporary/FocusDAW Bounces/ (collected into the project on Save As)
+// sourcePath is no longer used to pick the folder: writing next to imported stems
+// littered the user's stem folder with Bounces/Recordings/Consolidated and left them
+// behind after save (not under temp, so not cleaned up). Everything now stages in temp
+// until the project is saved.
 ipcMain.handle('save-bounce-audio', async (event, wavBuffer, projectPath, fileName, sourcePath) => {
   assertTrustedIpc(event);
   let bounceDir = null;
-  if (sourcePath) {
-    const safeSourcePath = assertFilePath(sourcePath, AUDIO_EXT, 'source audio');
-    bounceDir = path.join(path.dirname(safeSourcePath), 'Bounces');
-  } else if (projectPath) {
+  if (projectPath) {
     const safeProjectPath = assertFilePath(projectPath, PROJECT_EXT, 'project');
     const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
     bounceDir = path.join(path.dirname(safeProjectPath), `${projectBase} Audio`, 'Bounces');
   } else {
-    throw new Error('No project or source audio path available for bounce save.');
+    bounceDir = path.join(appTempDir(), 'FocusDAW Bounces');
   }
   fs.mkdirSync(bounceDir, { recursive: true });
   const rawName = String(fileName || 'Bounce.wav');
@@ -493,11 +544,11 @@ ipcMain.handle('save-bounce-audio', async (event, wavBuffer, projectPath, fileNa
 });
 
 // Save a consolidated clip render (Phase 7 "Consolidate Clips"):
-//   <Project> Audio/Consolidated/<name>.wav
-// Unlike a bounce, this MUST succeed even before the first save — a consolidated
-// source with no filePath cannot be reloaded on reopen (the clip would fall back to
-// the primary audio), so an unsaved project falls back to the temp recordings dir
-// rather than failing. Save As copy rules move it into the project folder later.
+//   saved   -> <Project> Audio/Consolidated/<name>.wav
+//   unsaved -> %TEMP%/temporary/FocusDAW Consolidated/ (collected on Save As)
+// This MUST succeed even before the first save — a consolidated source with no filePath
+// cannot be reloaded on reopen — so unsaved projects stage in temp (not next to imported
+// stems, which littered the stem folder and left files behind after save).
 ipcMain.handle('save-consolidated-audio', async (event, wavBuffer, projectPath, fileName, sourcePath) => {
   assertTrustedIpc(event);
   let outDir = null;
@@ -505,11 +556,8 @@ ipcMain.handle('save-consolidated-audio', async (event, wavBuffer, projectPath, 
     const safeProjectPath = assertFilePath(projectPath, PROJECT_EXT, 'project');
     const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
     outDir = path.join(path.dirname(safeProjectPath), `${projectBase} Audio`, 'Consolidated');
-  } else if (sourcePath) {
-    const safeSourcePath = assertFilePath(sourcePath, AUDIO_EXT, 'source audio');
-    outDir = path.join(path.dirname(safeSourcePath), 'Consolidated');
   } else {
-    outDir = path.join(app.getPath('temp'), 'FocusDAW Consolidated');
+    outDir = path.join(appTempDir(), 'FocusDAW Consolidated');
   }
   fs.mkdirSync(outDir, { recursive: true });
   const rawName = String(fileName || 'Consolidated.wav');
@@ -521,7 +569,7 @@ ipcMain.handle('save-consolidated-audio', async (event, wavBuffer, projectPath, 
     path: outPath,
     fileName: path.basename(outPath),
     dir: outDir,
-    temp: !projectPath && !sourcePath,
+    temp: !projectPath,
   };
 });
 
@@ -555,17 +603,40 @@ ipcMain.handle('collect-project-audio', async (event, targetPath, items) => {
   const audioRoot = path.join(projectDir, `${projectBase} Audio`);
   const CATEGORIES = new Set(['Recordings', 'Bounces', 'Consolidated']);
   const asRel = (abs) => path.relative(projectDir, abs).split(path.sep).join('/');
+  const norm = (p) => { try { const r = path.resolve(String(p || '')); return process.platform === 'win32' ? r.toLowerCase() : r; } catch (e) { return ''; } };
+  // Several sources can reference the SAME physical file (an Audio In track's primary
+  // source + a Take source both point at one recording WAV). Collect each unique file
+  // ONCE and map every source that shares it to the same destination — otherwise the
+  // first copy deletes the temp original and the second source is left pointing at a
+  // now-missing temp path (the "sources[1] keeps a temp filePath" reopen bug).
+  const done = new Map(); // normalized srcAbs -> { relPath, absPath }
   const out = [];
   for (const item of (Array.isArray(items) ? items : [])) {
     const key = item && item.key;
     try {
       const srcAbs = assertFilePath(item && item.filePath, AUDIO_EXT, 'source audio');
-      if (!fs.existsSync(srcAbs)) { out.push({ key, error: 'missing' }); continue; }
+      const nk = norm(srcAbs);
+      if (done.has(nk)) { out.push({ key, ...done.get(nk) }); continue; } // shared file already collected this run
       const category = CATEGORIES.has(item.category) ? item.category : 'Recordings';
+      if (!fs.existsSync(srcAbs)) {
+        // Source file is gone. It may already have been collected under this project by an
+        // older build that left a shared Take source pointing at the now-deleted temp path
+        // — if a same-named file sits in the target category folder, adopt it so the stale
+        // reference heals on this re-save instead of staying broken.
+        const healAbs = path.join(audioRoot, category, path.basename(srcAbs));
+        if (fs.existsSync(healAbs)) {
+          const d = { relPath: asRel(healAbs), absPath: healAbs };
+          done.set(nk, d); out.push({ key, ...d });
+          continue;
+        }
+        out.push({ key, error: 'missing' });
+        continue;
+      }
       // Already inside this project's Audio folder → keep in place, just report relative.
       const rel = path.relative(audioRoot, srcAbs);
       if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-        out.push({ key, relPath: asRel(srcAbs), absPath: srcAbs });
+        const d = { relPath: asRel(srcAbs), absPath: srcAbs };
+        done.set(nk, d); out.push({ key, ...d });
         continue;
       }
       const destDir = path.join(audioRoot, category);
@@ -574,13 +645,75 @@ ipcMain.handle('collect-project-audio', async (event, targetPath, items) => {
       const base = safeFileBase(path.basename(srcAbs, path.extname(srcAbs)));
       const destAbs = uniqueFilePath(destDir, base, ext);
       fs.copyFileSync(srcAbs, destAbs);
-      out.push({ key, relPath: asRel(destAbs), absPath: destAbs });
+      // The temp original (an unsaved-project recording/consolidation under the OS
+      // temp dir) is now safely inside the project folder — remove it so temp files
+      // don't accumulate. Real files elsewhere are left untouched.
+      if (isUnderTempDir(srcAbs)) removeFileQuietly(srcAbs);
+      const d = { relPath: asRel(destAbs), absPath: destAbs };
+      done.set(nk, d); out.push({ key, ...d });
     } catch (err) {
       console.warn('[collect] failed to collect source', key, err);
       out.push({ key, error: String(err && err.message || err) });
     }
   }
   return { items: out, dir: audioRoot };
+});
+
+// Clean Up Unused Recordings (Phase 7): list app-generated WAVs in the project's
+// "<Project> Audio/{Recordings,Bounces,Consolidated}/" that no source references.
+// The renderer passes the FULL referenced set — current project sources PLUS every
+// live undo/redo snapshot's sources — so a file that an undo could bring back is
+// treated as still in use and never listed. Nothing is deleted here (scan only).
+//   referenced: string[] of absolute source paths
+//   returns: { items: [{ path, name, category, size }], audioRoot }
+ipcMain.handle('scan-unused-recordings', async (event, projectPath, referenced) => {
+  assertTrustedIpc(event);
+  const safeProjectPath = assertFilePath(projectPath, PROJECT_EXT, 'project');
+  const projectDir = path.dirname(safeProjectPath);
+  const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
+  const audioRoot = path.join(projectDir, `${projectBase} Audio`);
+  // Windows paths are case-insensitive; normalise both sides so a case/separator
+  // difference doesn't make a referenced file look unused (which would trash it).
+  const norm = (p) => {
+    try { const r = path.resolve(String(p || '')); return process.platform === 'win32' ? r.toLowerCase() : r; }
+    catch (e) { return ''; }
+  };
+  const refSet = new Set((Array.isArray(referenced) ? referenced : []).map(norm).filter(Boolean));
+  const items = [];
+  for (const category of ['Recordings', 'Bounces', 'Consolidated']) {
+    const dir = path.join(audioRoot, category);
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (e) { continue; } // folder may not exist
+    for (const name of names) {
+      if (!/\.wav(\.part)?$/i.test(name)) continue; // stray .wav / orphaned .wav.part
+      const abs = path.join(dir, name);
+      let stat; try { stat = fs.statSync(abs); } catch (e) { continue; }
+      if (!stat.isFile()) continue;
+      if (refSet.has(norm(abs))) continue; // still referenced somewhere → keep
+      items.push({ path: abs, name, category, size: stat.size });
+    }
+  }
+  return { items, audioRoot };
+});
+
+// Move the given files to the OS recycle bin (recoverable). Called after the user
+// confirms in the Clean Up Unused Recordings dialog. shell.trashItem keeps the files
+// restorable, matching the "safe cleanup" policy.
+ipcMain.handle('trash-files', async (event, paths) => {
+  assertTrustedIpc(event);
+  const trashed = [], failed = [];
+  for (const p of (Array.isArray(paths) ? paths : [])) {
+    try {
+      const abs = path.resolve(String(p || ''));
+      if (!/\.wav(\.part)?$/i.test(abs)) throw new Error('Refusing to trash a non-audio file.');
+      if (!fs.existsSync(abs)) { trashed.push(abs); continue; } // already gone → treat as done
+      await shell.trashItem(abs);
+      trashed.push(abs);
+    } catch (err) {
+      failed.push({ path: String(p), error: String(err && err.message || err) });
+    }
+  }
+  return { trashed, failed };
 });
 
 ipcMain.handle('prepare-recording-path', async (event, projectPath, fileName, sourcePath) => {
@@ -590,11 +723,9 @@ ipcMain.handle('prepare-recording-path', async (event, projectPath, fileName, so
     const safeProjectPath = assertFilePath(projectPath, PROJECT_EXT, 'project');
     const projectBase = safeFileBase(path.basename(safeProjectPath, path.extname(safeProjectPath)));
     recordingDir = path.join(path.dirname(safeProjectPath), `${projectBase} Audio`, 'Recordings');
-  } else if (sourcePath) {
-    const safeSourcePath = assertFilePath(sourcePath, AUDIO_EXT, 'source audio');
-    recordingDir = path.join(path.dirname(safeSourcePath), 'Recordings');
   } else {
-    recordingDir = path.join(app.getPath('temp'), 'FocusDAW Recordings');
+    // Unsaved: stage in temp (not next to imported stems). Collected on Save As.
+    recordingDir = path.join(appTempDir(), 'FocusDAW Recordings');
   }
   fs.mkdirSync(recordingDir, { recursive: true });
   const base = safeFileBase(path.basename(String(fileName || 'Recording'), path.extname(String(fileName || 'Recording'))));
@@ -677,8 +808,8 @@ ipcMain.handle('encode-mp3', async (event, wavBuffer, options) => {
   if (!fs.existsSync(resolvedFfmpegPath)) throw new Error(`ffmpeg executable not found: ${resolvedFfmpegPath}`);
   const { bitrate = 320, sampleRate = 44100, meta = {}, cover = null } = options || {};
   const base   = `focusdaw_${crypto.randomUUID()}`;
-  const tmpWav = path.join(os.tmpdir(), base + '.wav');
-  const tmpMp3 = path.join(os.tmpdir(), base + '.mp3');
+  const tmpWav = path.join(appTempDir(), base + '.wav');
+  const tmpMp3 = path.join(appTempDir(), base + '.mp3');
 
   let tmpCover = null;
   try {
@@ -690,7 +821,7 @@ ipcMain.handle('encode-mp3', async (event, wavBuffer, options) => {
         : cover.mime === 'image/webp' ? 'webp'
         : cover.mime === 'image/gif' ? 'gif'
         : 'jpg';
-      tmpCover = path.join(os.tmpdir(), base + '_cover.' + ext);
+      tmpCover = path.join(appTempDir(), base + '_cover.' + ext);
       fs.writeFileSync(tmpCover, Buffer.from(cover.data, 'base64'));
     }
 
@@ -739,11 +870,11 @@ async function processAudioFfmpeg(wavBuffer, options) {
   if (Math.abs(Number(rate) - 1) > 0.001 && !tempoFilter) throw new Error(`Invalid tempo rate: ${rate}`);
 
   const base = `focusdaw_audio_${Date.now()}`;
-  const tmpIn = path.join(os.tmpdir(), base + '_in.wav');
-  const tmpOut = path.join(os.tmpdir(), base + '_out.wav');
+  const tmpIn = path.join(appTempDir(), base + '_in.wav');
+  const tmpOut = path.join(appTempDir(), base + '_out.wav');
   fs.writeFileSync(tmpIn, Buffer.from(wavBuffer));
 
-  const stage1 = path.join(os.tmpdir(), base + '_s1.wav');
+  const stage1 = path.join(appTempDir(), base + '_s1.wav');
   try {
     let measured = null;
     if (loudnorm) {
@@ -949,7 +1080,7 @@ ipcMain.handle('save-native-audio', async (event, tempFilePath, format, options,
           : cover.mime === 'image/webp' ? 'webp'
           : cover.mime === 'image/gif' ? 'gif'
           : 'jpg';
-        tmpCover = path.join(os.tmpdir(), base + '.' + extCover);
+        tmpCover = path.join(appTempDir(), base + '.' + extCover);
         fs.writeFileSync(tmpCover, Buffer.from(cover.data, 'base64'));
       }
 

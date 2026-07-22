@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),
   chooseProjectPath: (name)       => ipcRenderer.invoke('choose-project-path', name),
   collectProjectAudio: (targetPath, items) => ipcRenderer.invoke('collect-project-audio', targetPath, items),
+  scanUnusedRecordings: (projectPath, referenced) => ipcRenderer.invoke('scan-unused-recordings', projectPath, referenced),
+  trashFiles: (paths) => ipcRenderer.invoke('trash-files', paths),
   openProject:    ()              => ipcRenderer.invoke('open-project'),
   readProjectFile:(filePath)      => ipcRenderer.invoke('read-project-file', filePath),
 
