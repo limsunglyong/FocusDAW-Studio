@@ -2,5 +2,12 @@
     "cmake.sourceDirectory": "E:/programmings/FocusDAW-Studio/juce_skeleton",
     "cmake.configureSettings": {
         "JUCE_PATH": "E:/programmings/FocusDAW-Studio/third_party/JUCE"
+    },
+    "//": "Keep the file watcher / search out of build output so electron-builder can overwrite dist/ (VS Code file handles on dist/win-unpacked/*.asar caused EBUSY during --win packaging).",
+    "files.watcherExclude": {
+        "**/dist/**": true
+    },
+    "search.exclude": {
+        "**/dist/**": true
     }
 }

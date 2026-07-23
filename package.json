@@ -32,6 +32,7 @@
   "build": {
     "appId": "com.focusdaw.studio",
     "productName": "FocusDAW Studio",
+    "artifactName": "FocusDAW-Studio-Setup-${version}.${ext}",
     "files": [
       "electron/**/*",
       "assets/**/*",
