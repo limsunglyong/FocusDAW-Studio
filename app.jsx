@@ -2596,6 +2596,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (!window.electronAPI || !window.electronAPI.collectProjectAudio || !targetPath) return;
     const items = [];
     const back = new Map();
+    // Resolve relative (already-collected) source paths against the project we're saving TO.
+    // A re-save in place has projectPath === targetPath, so this is equivalent; but if the
+    // projectPath STATE was lost (null) while the loaded project still holds relative source
+    // paths, projectPath would resolve them to a bare relative string and collect-project-audio
+    // rejects it with "Invalid source audio path". targetPath is always the folder those
+    // relative sources live in on a re-save, so it's the correct base in both cases.
+    const base = projectPath || targetPath;
     for (const t of DAW.tracks) {
       const trackCat = t.kind === "bounce" ? "Bounces" : t.kind === "audioIn" ? "Recordings" : null;
       for (const s of (t.sources || [])) {
@@ -2604,7 +2611,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         const cat = consolidated ? "Consolidated" : trackCat;
         if (!cat) continue; // imported file-track stem → not collected
         const key = t.id + "::" + s.id;
-        items.push({ key, filePath: resolveSourcePath(s.filePath, projectPath), category: cat });
+        items.push({ key, filePath: resolveSourcePath(s.filePath, base), category: cat });
         back.set(key, { trackId: t.id, sourceId: s.id, fileName: s.fileName });
       }
     }
@@ -4671,25 +4678,33 @@ function App() {
     });
   }, [updateDialog]);
 
-  const H = handlersRef.current;
+  // Read handlersRef.current at CALL time (H.current.onXxx), not render time. Studio
+  // registers its handlers in a useEffect that runs AFTER this render commits, and
+  // updating the ref does not trigger a re-render — so a value captured here as
+  // `handlersRef.current` during render lags one generation behind whenever the
+  // handlers change (e.g. saveProject after a project load closes over the new
+  // projectPath). The keyboard shortcuts already read the live callbacks via their
+  // own effect deps; the menu must do the same, or File ▸ Open → menu Save fires a
+  // STALE saveProject (projectPath=null) and pops a Save As dialog on a saved project.
+  const H = handlersRef;
   return (
     <div className="app">
       <MenuBar projectName={projectName} onRename={renameProject}
-        onNew={() => H.onNew && H.onNew()} onImport={() => H.onImport && H.onImport()}
-        onImportFolder={() => H.onImportFolder && H.onImportFolder()} onLoadDemo={() => H.onLoadDemo && H.onLoadDemo()}
-        onExport={() => H.onExport && H.onExport()}
-        onSave={() => H.onSave && H.onSave()}
-        onSaveAs={() => H.onSaveAs && H.onSaveAs()}
-        onOpenProject={() => H.onOpenProject && H.onOpenProject()}
-        onOpenRecentProject={(json, path) => H.onOpenRecentProject && H.onOpenRecentProject(json, path)}
+        onNew={() => H.current.onNew && H.current.onNew()} onImport={() => H.current.onImport && H.current.onImport()}
+        onImportFolder={() => H.current.onImportFolder && H.current.onImportFolder()} onLoadDemo={() => H.current.onLoadDemo && H.current.onLoadDemo()}
+        onExport={() => H.current.onExport && H.current.onExport()}
+        onSave={() => H.current.onSave && H.current.onSave()}
+        onSaveAs={() => H.current.onSaveAs && H.current.onSaveAs()}
+        onOpenProject={() => H.current.onOpenProject && H.current.onOpenProject()}
+        onOpenRecentProject={(json, path) => H.current.onOpenRecentProject && H.current.onOpenRecentProject(json, path)}
         onSettings={() => setShowSettings(true)}
-        onAdvancedAmbience={() => H.onOpenAdvancedAmbience && H.onOpenAdvancedAmbience()}
-        onAdvancedPan={() => H.onOpenAdvancedPan && H.onOpenAdvancedPan()}
-        onAdvancedEq={() => H.onOpenAdvancedEq && H.onOpenAdvancedEq()}
-        onUndo={() => H.onUndo && H.onUndo()} onRedo={() => H.onRedo && H.onRedo()}
+        onAdvancedAmbience={() => H.current.onOpenAdvancedAmbience && H.current.onOpenAdvancedAmbience()}
+        onAdvancedPan={() => H.current.onOpenAdvancedPan && H.current.onOpenAdvancedPan()}
+        onAdvancedEq={() => H.current.onOpenAdvancedEq && H.current.onOpenAdvancedEq()}
+        onUndo={() => H.current.onUndo && H.current.onUndo()} onRedo={() => H.current.onRedo && H.current.onRedo()}
         canUndo={undoState.canUndo} canRedo={undoState.canRedo}
-        onDeleteAllTracks={() => H.onDeleteAllTracks && H.onDeleteAllTracks()}
-        onCleanUpUnused={() => H.onCleanUpUnused && H.onCleanUpUnused()}
+        onDeleteAllTracks={() => H.current.onDeleteAllTracks && H.current.onDeleteAllTracks()}
+        onCleanUpUnused={() => H.current.onCleanUpUnused && H.current.onCleanUpUnused()}
         onHelpManual={openHelpManual}
         onHelpReleaseNotes={() => setShowReleaseNotes(true)}
         onCheckUpdates={() => checkForUpdates(true)}
