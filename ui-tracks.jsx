@@ -1215,7 +1215,13 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             at the current horizontal scroll offset: viewport-x = HEADER_W + 6, independent of
             scroll (lane-x scrollLeft maps to just past the header). Keeps it visible zoomed in. */}
         {takeLanes.length > 0 && (
-          <button type="button" onClick={(e) => { e.stopPropagation(); setTakesOpen(o => !o); }}
+          <button type="button"
+            // Stop mousedown from bubbling to the lane div, whose onMouseDown seeks (laneClick →
+            // onSeek) + selects the track. The button's own toggle is on onClick, and click fires
+            // AFTER mousedown, so stopPropagation on onClick can't cancel the already-bubbled seek
+            // — the guard must be on mousedown. Without it, tapping the take badge jumped the play bar.
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setTakesOpen(o => !o); }}
             title={takesOpen ? "Hide take lanes" : "Show take lanes"}
             style={{ position: "absolute", left: viewScrollLeft + 6, top: 6, zIndex: 7,
               display: "inline-flex", alignItems: "center", gap: 4, height: 18, padding: "0 7px",

@@ -1859,7 +1859,7 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.43.22",
+  range: "v1.40.0 - v1.43.23",
   date: "2026-07-23",
   features: [
     "Clip volume lines: on Audio In and Bounce tracks, select a clip and drag the amber line on top to lower that clip's volume (cut-only, with a live dB label). The waveform shrinks to match, and it is saved, undoable, and reflected in Export.",
@@ -1883,6 +1883,7 @@ const RELEASE_NOTES = {
     "Fixed reopen/restart issues where tracks were duplicated, came back as \"NO AUDIO,\" or a saved project's audio could not be found.",
     "Fixed moving a normal clip also dragging inactive takes along with it.",
     "Fixed the menu Save Project opening a Save As dialog on an already-saved project (menu actions could call a stale handler); the menu now behaves the same as the Ctrl+S shortcut.",
+    "Fixed clicking the take-count badge on an Audio In track jumping the play bar to the click point; the badge now only toggles the take lanes.",
   ],
 };
 
