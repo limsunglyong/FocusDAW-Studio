@@ -773,6 +773,12 @@ void WebSocketServer::clientLoop(void* socketHandle)
             std::string tempPath = tempDir + "\\" + exportId + ".wav";
 
             std::thread([this, exportId, tempPath, sampleRate, duration, normalize, lufsTarget, preservePitch, fadeIn, fadeOut]() {
+              // An exception escaping a std::thread's entry point calls std::terminate ->
+              // abort(), killing the whole engine with 0xC0000409 (FAST_FAIL_FATAL_APP_EXIT).
+              // That is exactly what the 2026-07-26 crash dump shows: throw -> unwind ->
+              // ucrtbase abort, with the render already at 100% so exportDone never went out
+              // and the UI hung. Catch here: report the failure and keep the engine alive.
+              try {
                 audioEngine.exportMix(
                     exportId,
                     tempPath,
@@ -804,6 +810,17 @@ void WebSocketServer::clientLoop(void* socketHandle)
                         broadcast(json.str());
                     }
                 );
+              }
+              catch (const std::exception& e) {
+                std::cerr << "[AudioEngine] Export threw: " << e.what() << std::endl;
+                broadcast("{\"event\":\"exportError\",\"exportId\":\"" + exportId
+                          + "\",\"error\":\"engine exception: " + std::string(e.what()) + "\"}");
+              }
+              catch (...) {
+                std::cerr << "[AudioEngine] Export threw an unknown exception" << std::endl;
+                broadcast("{\"event\":\"exportError\",\"exportId\":\"" + exportId
+                          + "\",\"error\":\"engine exception (unknown)\"}");
+              }
             }).detach();
         }
 

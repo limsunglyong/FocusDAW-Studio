@@ -1859,9 +1859,10 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.43.23",
-  date: "2026-07-23",
+  range: "v1.40.0 - v1.44.1",
+  date: "2026-07-25",
   features: [
+    "Vocal channel strip: Audio In and Bounce tracks now have an FX button that opens a dedicated Vocal Channel Strip window with a 9-band graphic EQ and a compressor, plus vocal presets (Clean Lead / Warm Pop / Bright Air / Podcast) and an A/B bypass. The strip is applied before the track fader and is reflected in playback, Export, and saved projects.",
     "Clip volume lines: on Audio In and Bounce tracks, select a clip and drag the amber line on top to lower that clip's volume (cut-only, with a live dB label). The waveform shrinks to match, and it is saved, undoable, and reflected in Export.",
     "Clean Up Unused Recordings: a Project menu command that scans your saved project's audio folder for recordings, bounces, and consolidated files that nothing references — including your undo history — and moves them to the Recycle Bin (restorable).",
     "Portable projects: Save As now gathers the project's own recordings, bounces, and consolidated audio into a \"<Project> Audio\" folder next to the .focus and stores relative paths, so a saved project is self-contained and can be moved or copied.",
@@ -1878,6 +1879,7 @@ const RELEASE_NOTES = {
     "Output device safety: if the saved output device is unavailable at launch, the app falls back to the system default and shows a themed warning instead of playing silently.",
   ],
   fixes: [
+    "Fixed renaming a project breaking its audio on the next launch (recordings/bounces showed as missing). Renaming now changes only the display name and keeps the saved folder, so collected audio still resolves.",
     "Fixed the Export loudness chain — harmonic distortion and added noise at loud targets — and improved the limiter's lookahead/release along with export speed.",
     "Fixed re-recording, loop-take, and single-punch takes overlapping or replacing more of the track than intended.",
     "Fixed reopen/restart issues where tracks were duplicated, came back as \"NO AUDIO,\" or a saved project's audio could not be found.",

@@ -1206,6 +1206,14 @@
     connectionState = "failed";
     Bridge.isNative = false;
     socket = null;
+    // An export in flight can never complete now — the engine that owned it is gone.
+    // Without this the progress modal sits at its last percentage forever (user report
+    // 2026-07-26: engine died at 100%, exit code 3221226505, dialog never closed).
+    if (window._activeExport) {
+      const reject = window._activeExport.reject;
+      window._activeExport = null;
+      try { reject(new Error("네이티브 오디오 엔진이 Export 중 종료되었습니다. 다시 시도해 주세요.")); } catch (e) {}
+    }
     nativeOutputActive = false;
     pendingNativeLoads.clear();
     clearTimeout(handoverFallbackTimer);
@@ -1556,6 +1564,7 @@
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "solo", value: track.params.solo });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "reverb", value: track.params.reverb || 0 });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "echo", value: track.params.echo || 0 });
+    sendVocalFxToNative(track);
     sendTrackAutomationToNative(track);
 
     // If this edit grew (or shrank) the project, the OTHER tracks now hold a stale
@@ -1580,6 +1589,29 @@
       curved: !!p.autoCurve,
       points: flat,
     });
+  }
+
+  // Re-push a vocal track's channel-strip FX to native as flattened scalar setTrackParam
+  // commands. Needed on native (re)connect: the native engine has no importProject, so its
+  // TrackInfo starts with default vocalFx — without this the strip resets on restart/reconnect
+  // (same trap as reverb/echo; memory native-has-no-importproject-sync-via-commands).
+  function sendVocalFxToNative(track) {
+    if (!track) return;
+    if (track.kind !== "audioIn" && track.kind !== "bounce") return; // stems have no strip
+    const v = (track.params && track.params.vocalFx) || null;
+    if (!v) return;
+    const send = (key, value) => sendToNative({ command: "setTrackParam", trackId: track.id, key, value });
+    send("vocalEnabled", v.enabled ? 1 : 0);
+    send("vocalEqOn", (v.eq && v.eq.on) ? 1 : 0);
+    const geq = (v.eq && Array.isArray(v.eq.geq)) ? v.eq.geq : [];
+    for (let i = 0; i < 9; i++) send("vocalEq" + i, Number(geq[i]) || 0);
+    const c = v.comp || {};
+    send("vocalCompOn", c.on ? 1 : 0);
+    send("vocalCompThreshold", Number(c.threshold) || 0);
+    send("vocalCompRatio", Number(c.ratio) || 1);
+    send("vocalCompAttack", Number(c.attack) || 0);
+    send("vocalCompRelease", Number(c.release) || 0);
+    send("vocalCompMakeup", Number(c.makeup) || 0);
   }
 
   // Convert AudioBuffer to WAV ArrayBuffer

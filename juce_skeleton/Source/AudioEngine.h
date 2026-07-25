@@ -142,6 +142,17 @@ struct TrackInfo
     bool autoOn = false;
     bool autoCurved = false;
     std::vector<float> autoPoints; // interleaved [t0,v0,t1,v1,...], t normalized 0..1
+    // Vocal channel-strip insert (audioIn/bounce tracks). Held here so async loads apply
+    // them on install and reconnects re-push them (native has no importProject).
+    bool  vocalEnabled = false;                 // whole-strip bypass (A/B)
+    bool  vocalEqOn = false;
+    float vocalEq[9] = { 0,0,0,0,0,0,0,0,0 };   // dB per band, aligned to EQ_FREQS
+    bool  vocalCompOn = false;
+    float vocalCompThreshold = -18.0f;
+    float vocalCompRatio = 3.0f;
+    float vocalCompAttack = 8.0f;               // ms
+    float vocalCompRelease = 120.0f;            // ms
+    float vocalCompMakeup = 0.0f;               // dB
 };
 
 // Ambience (Sound Environment / room type) spec — mirrors the web engine's
@@ -458,15 +469,40 @@ public:
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
     {
+        // The rate handed in here is NOT usable as-is. This source sits BETWEEN the in-memory
+        // file source and JUCE's ResamplingAudioSource, so the audio it sees is always in the
+        // FILE's sample-rate domain — but ResamplingAudioSource forwards `sampleRate * ratio`,
+        // and AudioTransportSource updates that ratio only AFTER preparing its child chain. The
+        // first prepare after any rate change therefore carries a stale-ratio transient:
+        // restoring a 96 kHz device after a 44.1 kHz export gives 96000*96000/44100 = 208980 Hz,
+        // which SoundTouch rejects by THROWING ("Error: Excessive samplerate") — that killed the
+        // engine at 100% on 2026-07-26. So don't trust it: TrackAudioSource tells us the file
+        // rate directly, which is the correct value on every call, transient or not.
+        double sr = sourceRateOverride;
+        if (!(std::isfinite(sr) && sr >= 4000.0 && sr <= 192000.0))
+        {
+            sr = (std::isfinite(sampleRate) && sampleRate > 0.0) ? sampleRate : 44100.0;
+            sr = juce::jlimit(4000.0, 192000.0, sr); // last-resort guard, never throw
+        }
         source->prepareToPlay(samplesPerBlockExpected, sampleRate);
-        soundTouch.setSampleRate((uint)sampleRate);
+        soundTouch.setSampleRate((uint)sr);
         soundTouch.setChannels(2);
         soundTouch.clear();
 
-        int maxSamples = samplesPerBlockExpected * 4;
+        // Same story for the block size (ResamplingAudioSource scales it by the same ratio):
+        // a wild value here would size the scratch buffers absurdly or negatively.
+        int maxSamples = juce::jlimit(64, 1 << 19, samplesPerBlockExpected) * 4;
         tempPlanarBuffer.setSize(2, maxSamples);
         interleavedInput.resize(maxSamples * 2);
         interleavedOutput.resize(maxSamples * 2);
+    }
+
+    // The rate of the audio this source actually receives (the decoded file's own rate). Set by
+    // the owner right after construction — see prepareToPlay for why the prepared rate can't be
+    // used. Ignored unless it is a sane audio rate.
+    void setSourceSampleRate(double rate)
+    {
+        sourceRateOverride = (std::isfinite(rate) && rate >= 4000.0 && rate <= 192000.0) ? rate : 0.0;
     }
 
     void releaseResources() override
@@ -613,6 +649,7 @@ private:
     std::atomic<float> targetTempo { 1.0f };
     std::atomic<float> targetPitch { 0.0f };
     std::atomic<bool> preservePitch { true };
+    double sourceRateOverride = 0.0; // the file's own rate; see prepareToPlay
 };
 
 // Immutable volume-automation snapshot for a track. Built on the command thread
@@ -698,6 +735,10 @@ public:
         fileSampleRate = sourceSampleRate;
 #if USE_JUCE
         soundTouchSource = std::make_unique<SoundTouchAudioSource>(readerSource.get(), false);
+        // SoundTouch processes pre-resampling audio, i.e. in the file's own rate domain. Tell it
+        // so explicitly — the rate JUCE forwards through the resampler is briefly wrong after
+        // every rate change (see SoundTouchAudioSource::prepareToPlay).
+        soundTouchSource->setSourceSampleRate(fileSampleRate);
         transportSource = std::make_unique<juce::AudioTransportSource>();
         transportSource->setSource(soundTouchSource.get(), 0, nullptr, fileSampleRate);
 #else
@@ -706,6 +747,7 @@ public:
 #endif
         reverbSend.store(0.0f);
         echoSend.store(0.0f);
+        for (int i = 0; i < 9; ++i) vocalEq[i].store(0.0f);
     }
 
     ~TrackAudioSource() override
@@ -717,9 +759,32 @@ public:
     }
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override {
-        transportSource->prepareToPlay(samplesPerBlockExpected, sampleRate);
-        preparedSampleRate.store(sampleRate > 0.0 ? sampleRate : 44100.0);
-        echoDelay.prepare(sampleRate, 2);
+        // Never let a bogus rate reach the transport: AudioTransportSource turns it into the
+        // resampling ratio (sourceSampleRate / rate), so a single prepare at 0 Hz poisons every
+        // later prepare with an infinite ratio (see SoundTouchAudioSource::prepareToPlay).
+        const double sr = (std::isfinite(sampleRate) && sampleRate > 0.0) ? sampleRate : 44100.0;
+        const int spb = juce::jlimit(1, 1 << 19, samplesPerBlockExpected);
+        // Prepare TWICE on purpose. AudioTransportSource prepares its child chain BEFORE it
+        // updates the resampling ratio for the new rate, so the first call pushes the stale
+        // ratio down as `sr * (fileRate / previousRate)` — 208980 Hz for a 96 kHz source when
+        // an export at 44.1 kHz restores a 96 kHz device, which SoundTouch rejects by throwing.
+        // The first call here exists only to set the ratio; the second then propagates the true
+        // rate. prepareToPlay is cheap and idempotent, and the graph already prepares each track
+        // several times per export.
+        transportSource->prepareToPlay(spb, sr);
+        transportSource->prepareToPlay(spb, sr);
+        preparedSampleRate.store(sr);
+        echoDelay.prepare(sr, 2);
+
+        // Vocal channel-strip insert chain (EQ + compressor). Prepared for up to 2 channels.
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate = sr;
+        spec.maximumBlockSize = (juce::uint32) spb;
+        spec.numChannels = 2;
+        for (int i = 0; i < 9; ++i) vocalEqFilters[i].prepare(spec);
+        vocalCompressor.prepare(spec);
+        vocalChainPrepared = true;
+        updateVocalEqCoefficients();
     }
 
     void releaseResources() override {
@@ -729,6 +794,8 @@ public:
     void reset()
     {
         echoDelay.reset();
+        for (auto& f : vocalEqFilters) f.reset();
+        vocalCompressor.reset();
         if (soundTouchSource) soundTouchSource->setNextReadPosition(0);
     }
 
@@ -766,6 +833,32 @@ public:
             }
             return;
         }
+
+        // ── Vocal channel-strip insert (pre-fader, pre-send): 9-band EQ → compressor →
+        // makeup. Mirrors the web insert (audio-engine.js _applyVocalFx). Runs before the
+        // echo/reverb sends and the meter magnitude so both reflect the processed vocal.
+        // Same offline path → Export == playback for free (design §4-4).
+        if (vocalChainPrepared && vocalEnabled.load())
+        {
+            if (vocalEqDirty.exchange(false)) updateVocalEqCoefficients();
+            juce::dsp::AudioBlock<float> vBlock(*bufferToFill.buffer, (size_t)bufferToFill.startSample);
+            auto vSub = vBlock.getSubBlock((size_t)0, (size_t)bufferToFill.numSamples);
+            juce::dsp::ProcessContextReplacing<float> vCtx(vSub);
+            if (vocalEqOn.load())
+                for (int i = 0; i < 9; ++i) vocalEqFilters[i].process(vCtx);
+            if (vocalCompOn.load())
+            {
+                vocalCompressor.setThreshold(vocalCompThreshold.load());
+                vocalCompressor.setRatio(std::max(1.0f, vocalCompRatio.load()));
+                vocalCompressor.setAttack(std::max(0.0f, vocalCompAttack.load()));
+                vocalCompressor.setRelease(std::max(0.0f, vocalCompRelease.load()));
+                vocalCompressor.process(vCtx);
+                float mk = juce::Decibels::decibelsToGain(vocalCompMakeup.load());
+                if (std::abs(mk - 1.0f) > 1.0e-4f)
+                    bufferToFill.buffer->applyGain(bufferToFill.startSample, bufferToFill.numSamples, mk);
+            }
+        }
+
         float sourceMagnitude = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
 
         // Apply track individual echo/delay
@@ -1065,6 +1158,43 @@ public:
     mutable std::mutex autoMutex;
     double offlineAutoPhaseStart = 0.0;
     double offlineAutoPhaseEnd = 0.0;
+
+    // ── Vocal channel-strip insert (pre-fader): 9-band EQ + compressor + makeup ──
+    // Written from the message thread, read every block on the audio thread. EQ
+    // coefficients are (re)built on the audio thread when vocalEqDirty flips, mirroring
+    // MasterEffectsAudioSource so the ref-counted coefficient state is never reassigned
+    // concurrently with a process() read.
+    std::atomic<bool>  vocalEnabled { false };
+    std::atomic<bool>  vocalEqOn { false };
+    std::atomic<float> vocalEq[9];              // initialised in the constructor (atomic arrays don't brace-init)
+    std::atomic<bool>  vocalEqDirty { false };
+    std::atomic<bool>  vocalCompOn { false };
+    std::atomic<float> vocalCompThreshold { -18.0f };
+    std::atomic<float> vocalCompRatio { 3.0f };
+    std::atomic<float> vocalCompAttack { 8.0f };
+    std::atomic<float> vocalCompRelease { 120.0f };
+    std::atomic<float> vocalCompMakeup { 0.0f };
+
+    void updateVocalEqCoefficients()
+    {
+        double sr = preparedSampleRate.load();
+        if (sr <= 0) sr = 44100.0;
+        static const float EQ_FREQS[9] = {60.0f, 150.0f, 320.0f, 640.0f, 1200.0f, 2400.0f, 4800.0f, 9000.0f, 15000.0f};
+        const bool active = vocalEnabled.load() && vocalEqOn.load();
+        for (int i = 0; i < 9; ++i)
+        {
+            float db = active ? vocalEq[i].load() : 0.0f;
+            float freq = std::min(EQ_FREQS[i], (float)(sr * 0.45));
+            auto newCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter(sr, freq, 1.1f, juce::Decibels::decibelsToGain(db));
+            *vocalEqFilters[i].state = *newCoeffs; // mutate in place (see MasterEffectsAudioSource)
+        }
+    }
+
+    using VocalFilterType = juce::dsp::IIR::Filter<float>;
+    using VocalFilterDuplicator = juce::dsp::ProcessorDuplicator<VocalFilterType, juce::dsp::IIR::Coefficients<float>>;
+    std::array<VocalFilterDuplicator, 9> vocalEqFilters;
+    juce::dsp::Compressor<float> vocalCompressor;
+    bool vocalChainPrepared = false;
 };
 
 // Master effects pipeline: EQ, Reverb, Delay, Stereo Widener, Saturation, Exciter, Soft Clipper

@@ -15,6 +15,7 @@ const jsxFiles = [
   "advanced-pan-app.jsx",
   "advanced-ambience-app.jsx",
   "advanced-eq-app.jsx",
+  "vocal-strip-app.jsx",
   "app.jsx",
   "mixer-app.jsx",
 ];

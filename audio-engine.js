@@ -781,7 +781,26 @@
       const fb = ctx.createGain(); fb.gain.value = 0.34;
       const echoReturn = ctx.createGain(); echoReturn.gain.value = 0.45;
 
-      // graph: (source) -> fader -> autoGain -> panner -> meter & bus
+      // Vocal channel-strip insert chain (pre-fader). Every track carries the nodes so the
+      // graph stays uniform; they are neutral (EQ flat, comp 1:1, makeup 0 dB) unless the
+      // track is vocal AND the strip is enabled — see _applyVocalFx. Sources connect to
+      // fxIn (not fader) so the insert sits ahead of the track fader (보컬-채널-스트립-설계.md §2).
+      const fxIn = ctx.createGain();
+      const vocalEq = EQ_FREQS.map((f) => {
+        const b = ctx.createBiquadFilter();
+        b.type = "peaking"; b.frequency.value = f; b.Q.value = 1.1; b.gain.value = 0;
+        return b;
+      });
+      const vocalComp = ctx.createDynamicsCompressor();
+      vocalComp.threshold.value = 0; vocalComp.knee.value = 6; vocalComp.ratio.value = 1;
+      vocalComp.attack.value = 0.008; vocalComp.release.value = 0.12;
+      const vocalMakeup = ctx.createGain(); vocalMakeup.gain.value = 1;
+      // fxIn -> eq0..eq8 -> comp -> makeup -> fader
+      let vNode = fxIn;
+      vocalEq.forEach((b) => { vNode.connect(b); vNode = b; });
+      vNode.connect(vocalComp); vocalComp.connect(vocalMakeup); vocalMakeup.connect(fader);
+
+      // graph: (source) -> fxIn -> [insert] -> fader -> autoGain -> panner -> meter & bus
       fader.connect(autoGain); autoGain.connect(panner);
       panner.connect(meter);
       panner.connect(masterBus);             // dry
@@ -800,7 +819,7 @@
         kind: trackKind,
         lockedToZero: lockedToZero !== undefined ? !!lockedToZero : trackKind === "file",
         peaks: fine, peaksMedium: medium, peaksCoarse: coarse, peakAmp: maxAbsPeak(coarse),
-        nodes: { fader, autoGain, panner, meter, reverbSend, echoSend, delay, fb },
+        nodes: { fader, autoGain, panner, meter, reverbSend, echoSend, delay, fb, fxIn, vocalEq, vocalComp, vocalMakeup },
         params: {
           volume: 1.0, pan: 0, mute: false, solo: false,
           reverb: 0, echo: 0,
@@ -810,6 +829,7 @@
           autoOn: false,
           autoCurve: false,
           automation: defaultAutomation(type),
+          vocalFx: defaultVocalFx(),
         },
         sources: sources ? sources.map(s => ({ ...s })) : [{
           id: sourceId,
@@ -840,7 +860,57 @@
         else this.tracks.splice(firstInputIdx, 0, track);
       }
       this._applyMix();
+      this._applyVocalFx(track);
       return track;
+    },
+
+    // Push track.params.vocalFx onto the web insert nodes. The strip is neutral (EQ flat,
+    // comp 1:1, makeup unity) unless the track is vocal (audioIn/bounce) AND vocalFx.enabled.
+    // Individual eq.on/comp.on gate each stage. Native mirrors this via flattened commands.
+    _applyVocalFx(track) {
+      if (!track || !track.nodes || !track.nodes.vocalEq) return;
+      const vfx = track.params.vocalFx || (track.params.vocalFx = defaultVocalFx());
+      const isVocal = track.kind === "audioIn" || track.kind === "bounce";
+      const strip = isVocal && !!vfx.enabled;
+      const eqActive = strip && vfx.eq.on;
+      for (let i = 0; i < track.nodes.vocalEq.length; i++) {
+        ramp(track.nodes.vocalEq[i].gain, eqActive ? (Number(vfx.eq.geq[i]) || 0) : 0);
+      }
+      const c = track.nodes.vocalComp;
+      const compActive = strip && vfx.comp.on;
+      if (compActive) {
+        ramp(c.threshold, vfx.comp.threshold);
+        try { c.ratio.value = Math.max(1, vfx.comp.ratio); } catch (e) {}
+        try { c.attack.value = Math.max(0, (vfx.comp.attack || 0) / 1000); } catch (e) {}
+        try { c.release.value = Math.max(0, (vfx.comp.release || 0) / 1000); } catch (e) {}
+        ramp(track.nodes.vocalMakeup.gain, Math.pow(10, (vfx.comp.makeup || 0) / 20));
+      } else {
+        ramp(c.threshold, 0);
+        try { c.ratio.value = 1; } catch (e) {}
+        ramp(track.nodes.vocalMakeup.gain, 1);
+      }
+    },
+
+    // Flattened vocal-FX setter (keys shared with the bridge/native). val is numeric;
+    // on/enabled flags are 0/1. Updates the canonical nested track.params.vocalFx (so
+    // wholesale save/restore just works) then re-applies the web nodes.
+    _setVocalFxParam(track, key, val) {
+      const vfx = track.params.vocalFx || (track.params.vocalFx = defaultVocalFx());
+      switch (key) {
+        case "vocalEnabled": vfx.enabled = val > 0.5; break;
+        case "vocalEqOn": vfx.eq.on = val > 0.5; break;
+        case "vocalCompOn": vfx.comp.on = val > 0.5; break;
+        case "vocalCompThreshold": vfx.comp.threshold = val; break;
+        case "vocalCompRatio": vfx.comp.ratio = val; break;
+        case "vocalCompAttack": vfx.comp.attack = val; break;
+        case "vocalCompRelease": vfx.comp.release = val; break;
+        case "vocalCompMakeup": vfx.comp.makeup = val; break;
+        default: {
+          const m = /^vocalEq([0-8])$/.exec(key);
+          if (m) vfx.eq.geq[+m[1]] = val;
+        }
+      }
+      this._applyVocalFx(track);
     },
 
     addAudioInTrack(name = "Audio In") {
@@ -1629,6 +1699,10 @@
     setTrackParam(id, key, val) {
       const t = this.tracks.find((x) => x.id === id);
       if (!t) return;
+      if (typeof key === "string" && key.startsWith("vocal")) {
+        this._setVocalFxParam(t, key, val);
+        return;
+      }
       if ((key === "solo" || key === "mute" || key === "bpmSource") && t.needsAudio) {
         t.params[key] = false;
         this._applyMix();
@@ -1975,7 +2049,7 @@
       const usingStretchPreview = sourceBuffer !== track.buffer && this._shouldUseRealtimeStretch(rate);
       try { src.playbackRate.value = usingStretchPreview ? 1 : rate; } catch (e) {}
       src.connect(joinGain);
-      joinGain.connect(track.nodes.fader);
+      joinGain.connect(track.nodes.fxIn);
       joinGain.gain.setValueAtTime(0, startAt);
       joinGain.gain.linearRampToValueAtTime(1, startAt + 0.008);
 
@@ -2319,7 +2393,11 @@
           // Needed so non-primary Takes' audio survives undo/redo, not just the primary's.
           rawBuffers: t._rawBuffers ? { ...t._rawBuffers } : null,
           sources: this._serializedSources(t),
-          params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })) },
+          // vocalFx is a NESTED object mutated in place by _setVocalFxParam; a shallow
+          // {...params} would share its reference so an edit corrupts this snapshot →
+          // undo could not revert vocal FX. Deep-copy it (small plain object).
+          params: { ...t.params, automation: t.params.automation.map(p => ({ ...p })),
+            vocalFx: t.params.vocalFx ? JSON.parse(JSON.stringify(t.params.vocalFx)) : undefined },
           clips: this._serializedClips(t),
           takes: Array.isArray(t.takes) ? t.takes.map(take => ({ ...take })) : [],
           activeTakeId: t.activeTakeId || null,
@@ -2405,6 +2483,8 @@
         const { automation, ...rest } = st.params || {};
         Object.assign(t.params, rest);
         t.params.automation = Array.isArray(automation) ? automation.map(p => ({ ...p })) : defaultAutomation(t.type);
+        t.params.vocalFx = normalizeVocalFx(t.params.vocalFx);
+        this._applyVocalFx(t);
         if (st.kind) t.kind = st.kind;
         if (st.lockedToZero !== undefined) t.lockedToZero = !!st.lockedToZero;
         if (Array.isArray(st.sources)) t.sources = st.sources.map(s => ({ ...s }));
@@ -2513,6 +2593,8 @@
           Object.assign(track.params, td.params);
           if (td.params.automation) track.params.automation = td.params.automation.map(p => ({ ...p }));
         }
+        track.params.vocalFx = normalizeVocalFx(track.params.vocalFx); // hydrate old/partial saves
+        this._applyVocalFx(track);
         if (track.needsAudio) {
           track.params.solo = false;
           track.params.mute = false;
@@ -3815,7 +3897,7 @@
         // Repeat is controlled by the engine at the song boundary so toggling
         // the button during playback does not require rebuilding live sources.
         src.loop = false;
-        src.connect(t.nodes.fader);
+        src.connect(t.nodes.fxIn);
         src.start(now, this._sourceOffsetForTrack(t, sourceBuffer, rate));
         t._liveSource = src; // so removeTrack() can stop just this track mid-playback
         this._sources.push(src);
@@ -4184,7 +4266,35 @@
         const dl = off.createDelay(1.0); dl.delayTime.setValueAtTime(0.3, 0);
         const fb = off.createGain(); fb.gain.setValueAtTime(0.34, 0);
         const er = off.createGain(); er.gain.setValueAtTime(0.45, 0);
-        src.connect(fd); fd.connect(ag); ag.connect(pn);
+        // Vocal channel-strip insert (pre-fader) — replicate the realtime chain so
+        // Export == playback. Only for vocal tracks with the strip enabled; else src→fd.
+        const vfx = normalizeVocalFx(t.params.vocalFx);
+        const vocalOn = (t.kind === "audioIn" || t.kind === "bounce") && vfx.enabled && (vfx.eq.on || vfx.comp.on);
+        let vHead = fd; // node the source feeds into (insert input, or fd if bypassed)
+        if (vocalOn) {
+          const oEq = EQ_FREQS.map((f, i) => {
+            const b = off.createBiquadFilter();
+            b.type = "peaking"; b.frequency.value = f; b.Q.value = 1.1;
+            b.gain.setValueAtTime(vfx.eq.on ? (Number(vfx.eq.geq[i]) || 0) : 0, 0);
+            return b;
+          });
+          const oComp = off.createDynamicsCompressor();
+          if (vfx.comp.on) {
+            oComp.threshold.setValueAtTime(vfx.comp.threshold, 0);
+            oComp.knee.setValueAtTime(6, 0);
+            oComp.ratio.setValueAtTime(Math.max(1, vfx.comp.ratio), 0);
+            oComp.attack.setValueAtTime(Math.max(0, (vfx.comp.attack || 0) / 1000), 0);
+            oComp.release.setValueAtTime(Math.max(0, (vfx.comp.release || 0) / 1000), 0);
+          } else {
+            oComp.threshold.setValueAtTime(0, 0); oComp.ratio.setValueAtTime(1, 0);
+          }
+          const oMk = off.createGain();
+          oMk.gain.setValueAtTime(vfx.comp.on ? Math.pow(10, (vfx.comp.makeup || 0) / 20) : 1, 0);
+          let vn = oEq[0]; for (let i = 1; i < oEq.length; i++) { vn.connect(oEq[i]); vn = oEq[i]; }
+          vn.connect(oComp); oComp.connect(oMk); oMk.connect(fd);
+          vHead = oEq[0];
+        }
+        src.connect(vHead); fd.connect(ag); ag.connect(pn);
         pn.connect(mBus); pn.connect(rs); rs.connect(conv);
         pn.connect(es); es.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(er); er.connect(mBus);
         const rHasGaps = t.clips && (t.clips.length > 1 || (t.clips[0] && (t.clips[0].start > 0.01 || t.clips[0].end < this.duration - 0.01)));
@@ -4432,6 +4542,39 @@
     if (type === "lead") return [{ t: 0, v: 0.3 }, { t: 0.25, v: 1 }, { t: 0.6, v: 1 }, { t: 1, v: 0.5 }];
     if (type === "keys") return [{ t: 0, v: 0.85 }, { t: 0.5, v: 1 }, { t: 1, v: 0.7 }];
     return [{ t: 0, v: 1 }, { t: 1, v: 1 }];
+  }
+
+  // Vocal channel-strip FX state (per-track insert chain). Only surfaced/applied on
+  // audioIn/bounce tracks (kind gating in the UI), but the model lives on every track
+  // so save/restore is uniform. See 보컬-채널-스트립-설계.md §3. Stage B wires EQ + Comp;
+  // hpf/gate/deEss fields exist now so later stages add engine code without a model change.
+  function defaultVocalFx() {
+    return {
+      enabled: false,                                            // whole-strip bypass (A/B)
+      hpf:   { on: false, freq: 90, slope: 24 },                 // slope 12|24 dB/oct (Stage D)
+      gate:  { on: false, threshold: -42, ratio: 4, attack: 2, release: 120 }, // (Stage D)
+      eq:    { on: false, geq: [0, 0, 0, 0, 0, 0, 0, 0, 0] },    // 9 bands, dB, aligned to EQ_FREQS
+      comp:  { on: false, threshold: -18, ratio: 3, attack: 8, release: 120, makeup: 0 },
+      deEss: { on: false, freq: 6800, threshold: -24, amount: 0.5 }, // (Stage E)
+    };
+  }
+
+  // Deep-fill a (possibly partial or legacy-missing) vocalFx object over the defaults so
+  // hydrate is safe for old projects and forward-compatible with partial saves.
+  function normalizeVocalFx(v) {
+    const d = defaultVocalFx();
+    if (!v || typeof v !== "object") return d;
+    const geq = (v.eq && Array.isArray(v.eq.geq))
+      ? d.eq.geq.map((_, i) => (Number.isFinite(+v.eq.geq[i]) ? +v.eq.geq[i] : 0))
+      : d.eq.geq.slice();
+    return {
+      enabled: !!v.enabled,
+      hpf:   { ...d.hpf, ...(v.hpf || {}), on: !!(v.hpf && v.hpf.on) },
+      gate:  { ...d.gate, ...(v.gate || {}), on: !!(v.gate && v.gate.on) },
+      eq:    { on: !!(v.eq && v.eq.on), geq },
+      comp:  { ...d.comp, ...(v.comp || {}), on: !!(v.comp && v.comp.on) },
+      deEss: { ...d.deEss, ...(v.deEss || {}), on: !!(v.deEss && v.deEss.on) },
+    };
   }
 
   // Meyda 라이브러리가 로드되지 않으면 BPM·Key 감지가 모두 무력화된다(조용히 null/false 반환).

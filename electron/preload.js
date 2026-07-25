@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   finalizeRecording: (partPath, finalPath) => ipcRenderer.invoke('finalize-recording', partPath, finalPath),
 
   // Project persistence
-  saveProject:    (json, name, targetPath) => ipcRenderer.invoke('save-project', json, name, targetPath),
+  saveProject:    (json, name, targetPath, opts) => ipcRenderer.invoke('save-project', json, name, targetPath, opts),
   chooseProjectPath: (name)       => ipcRenderer.invoke('choose-project-path', name),
   collectProjectAudio: (targetPath, items) => ipcRenderer.invoke('collect-project-audio', targetPath, items),
   scanUnusedRecordings: (projectPath, referenced) => ipcRenderer.invoke('scan-unused-recordings', projectPath, referenced),
@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   openAdvancedPan: (target)       => ipcRenderer.invoke('open-advanced-pan', target),
   navigateAdvanced: (target)      => ipcRenderer.invoke('navigate-advanced', target),
+  openVocalStrip: (trackId)       => ipcRenderer.invoke('open-vocal-strip', trackId),
 
   // Mixer window controls
   openMixer:      (tracksCount)   => ipcRenderer.invoke('open-mixer', tracksCount),

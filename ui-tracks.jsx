@@ -743,6 +743,15 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
             border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)") }}>
           <Icon name="auto" size={13} /> AUTO
         </button>
+        {/* Vocal channel strip (EQ · Compressor) — audioIn/bounce only, opens in a window. */}
+        {(track.kind === "audioIn" || track.kind === "bounce") &&
+          <button title="Vocal channel strip — EQ · Compressor (opens in a window)"
+            onClick={() => { if (window.electronAPI && window.electronAPI.openVocalStrip) window.electronAPI.openVocalStrip(track.id); }}
+            style={{ height: 22, padding: "0 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, letterSpacing: ".04em",
+              cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto",
+              background: (p.vocalFx && p.vocalFx.enabled) ? "var(--amber)" : "transparent",
+              color: (p.vocalFx && p.vocalFx.enabled) ? "var(--on-amber, var(--mixer-bar-fg, #241a0a))" : "var(--muted)",
+              border: "1px solid " + ((p.vocalFx && p.vocalFx.enabled) ? "var(--amber-deep)" : "var(--line-strong)") }}>FX</button>}
         {/* fixed-position VRB / ECHO / BPM indicators (colors match the mixer VRB/ECHO knobs).
             Grouped so the row spends one gap, not two, on this tight (244px) header.
             BPM lights up (no animation) when Vari BPM playback tempo applies to this track. */}

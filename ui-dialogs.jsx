@@ -738,7 +738,7 @@ const THEMES = [
     name: "Antique Olive",
     desc: "deep teal · aged olive · warm sand",
     bg: "#1f3130", bg2: "#2a3f3e", surface: "#374F4E",
-    accent: "#694d00", text: "#DACCC4", text2: "#EDBD95",
+    accent: "#d6a63a", text: "#DACCC4", text2: "#EDBD95",
     green: "#AA8552", red: "#d86d54", blue: "#EDBD95",
   },
   {

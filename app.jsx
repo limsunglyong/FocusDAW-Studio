@@ -1343,6 +1343,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   }), [DAW.tracks.length, audioInTrackCount]);
   const mixerChannelRef = useRef(null);
   const advancedChannelRef = useRef(null);
+  // Filled by the advanced-effects channel effect below; undo()/redo() call through it so the
+  // Vocal Strip / Advanced windows follow an undo no matter which window triggered it.
+  const advancedSyncRef = useRef({ preview: null, sendInit: null });
   // Pending "focus this knob" request while the mixer window is still opening; flushed on MIXER_READY.
   const pendingMixerFocusRef = useRef(null);
 
@@ -1456,6 +1459,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           name: t.name,
           fileName: t.fileName,
           color: t.color,
+          kind: t.kind,
           params: { ...t.params },
           peak: t.peakAmp || 0,
         })),
@@ -2102,21 +2106,29 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (snapshotSig(current) === snapshotSig(restore)) {
       console.warn("[undo] no-op entry — a snapshot was pushed for something that changed nothing");
     }
+    // Push the restored params to the advanced windows BEFORE applySnapshot: its tail (clip
+    // re-bake + full native resync) can run ~1s on a loaded project, and until it returns the
+    // Vocal Strip's faders sit at the pre-undo values — the keystroke looks a beat late.
+    if (advancedSyncRef.current.preview) advancedSyncRef.current.preview(restore);
     DAW.applySnapshot(restore);
     lastUndoKey.current = null;
     if (onUndoStateChange) onUndoStateChange({ canUndo: undoStack.current.length > 0, canRedo: true });
     saveRecentProject(projectName, projectPath);
     force(n => n + 1);
+    if (advancedSyncRef.current.sendInit) advancedSyncRef.current.sendInit();
   }, [onUndoStateChange, projectName, projectPath]);
 
   const redo = useCallback(() => {
     if (!redoStack.current.length) return;
     undoStack.current.push(DAW.getSnapshot());
-    DAW.applySnapshot(redoStack.current.pop());
+    const restore = redoStack.current.pop();
+    if (advancedSyncRef.current.preview) advancedSyncRef.current.preview(restore);
+    DAW.applySnapshot(restore);
     lastUndoKey.current = null;
     if (onUndoStateChange) onUndoStateChange({ canUndo: true, canRedo: redoStack.current.length > 0 });
     saveRecentProject(projectName, projectPath);
     force(n => n + 1);
+    if (advancedSyncRef.current.sendInit) advancedSyncRef.current.sendInit();
   }, [onUndoStateChange, projectName, projectPath]);
 
   // BroadcastChannel for Mixer Window sync
@@ -2317,6 +2329,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           name: t.name,
           fileName: t.fileName,
           color: t.color,
+          kind: t.kind,
           params: { ...t.params },
           peak: t.peakAmp || 0,
         })),
@@ -2328,6 +2341,28 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         eqFreqs: [...DAW.EQ_FREQS],
         eqPresets: DAW.EQ_PRESETS,
         fftData: DAW.computeSpectrum ? DAW.computeSpectrum() : null,
+        isPlaying: DAW.isPlaying,
+        projectName,
+      });
+    };
+
+    // Undo/redo restores the model synchronously, but applySnapshot's tail (clip re-bake +
+    // full native resync) runs first and can take ~1s on a loaded project — so a sendInit()
+    // placed after undo() reaches the strip window a beat late and its faders visibly lag the
+    // keystroke. The snapshot ABOUT to be restored already holds the exact post-undo params,
+    // so push those first: the window moves on the keypress, and the sendInit() that follows
+    // confirms it with the authoritative state (same values, no flicker).
+    advancedSyncRef.current.sendInit = sendInit;
+    advancedSyncRef.current.preview = (snap) => {
+      if (!snap || !Array.isArray(snap.tracks)) return;
+      channel.postMessage({
+        type: "SYNC_STATE",
+        tracks: snap.tracks.map((t) => ({
+          id: t.id, name: t.name, fileName: t.fileName, color: t.color, kind: t.kind,
+          params: { ...t.params }, peak: 0,
+        })),
+        theme: localStorage.getItem("focusdaw-theme") || "default",
+        projectName,
         isPlaying: DAW.isPlaying,
       });
     };
@@ -2346,13 +2381,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         case "REQUEST_PLAY_PAUSE":
           transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
           break;
+        // undo()/redo() broadcast to the advanced windows themselves (preview + authoritative
+        // refresh), so every entry point — this window, the mixer, the main keyboard — syncs.
         case "REQUEST_UNDO":
           undo();
-          sendInit(); // re-broadcast restored state so advanced windows reflect the undo
           break;
         case "REQUEST_REDO":
           redo();
-          sendInit();
           break;
         case "SET_TRACK_PARAM":
           DAW.setTrackParam(msg.id, msg.k, msg.v);
@@ -2413,9 +2448,26 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       channel.removeEventListener("message", handleMessage);
       channel.close();
       advancedChannelRef.current = null;
+      advancedSyncRef.current = { preview: null, sendInit: null };
       if (unsubAdvancedPanState) unsubAdvancedPanState();
     };
   }, [projectName, projectPath, pushUndo, undo, redo]);
+
+  // Re-broadcast track info to the advanced-effects windows (e.g. the Vocal Strip) when a
+  // track's name/kind changes, so a rename in the main header reflects there live. Keyed on a
+  // cheap signature so it only fires on actual name/kind edits, not every render.
+  const trackNameSig = DAW.tracks.map((t) => t.id + "" + t.name + "" + t.kind).join("");
+  useEffect(() => {
+    const ch = advancedChannelRef.current;
+    if (!ch) return;
+    ch.postMessage({
+      type: "SYNC_STATE",
+      tracks: DAW.tracks.map((t) => ({ id: t.id, name: t.name, fileName: t.fileName, color: t.color, kind: t.kind, params: { ...t.params }, peak: t.peakAmp || 0 })),
+      theme: localStorage.getItem("focusdaw-theme") || "default",
+      projectName,
+      isPlaying: DAW.isPlaying,
+    });
+  }, [trackNameSig, projectName]);
 
   // Scroll the arrange area AND update timelineView in the same React render — no rAF lag.
   const scrollArrangeTo = useCallback((sl) => {
@@ -2633,10 +2685,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       // collected into the project folder and the sources re-pathed BEFORE the .focus is
       // written — otherwise the JSON would carry stale temp/absolute source paths.
       let targetPath = (!forceDialog && projectPath) ? projectPath : null;
+      // reusedPath = saving over the EXISTING .focus with no new file chosen (in-place). In that
+      // case the project keeps its (possibly renamed) DISPLAY name — it must not snap back to the
+      // filename. Save As / first save pick a new file, so the name follows that file.
+      let reusedPath = !!targetPath;
       if (!targetPath && window.electronAPI.chooseProjectPath) {
         const chosen = await window.electronAPI.chooseProjectPath(currentName);
         if (!chosen || chosen.canceled || !chosen.path) return;
         targetPath = chosen.path;
+        reusedPath = !!projectPath && targetPath === projectPath; // Save As back onto the same file
       }
       if (targetPath) {
         try { await collectProjectAudioForSave(targetPath); }
@@ -2644,19 +2701,14 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       }
       // Export AFTER collecting so the JSON carries the new relative source paths.
       const json = DAW.exportProject(currentName);
-      const result = await window.electronAPI.saveProject(json, currentName, targetPath);
+      // In-place save keeps the display name (stampName:false → main process won't overwrite
+      // json.projectName with the filename). Save As stamps name-from-file.
+      const result = await window.electronAPI.saveProject(json, currentName, targetPath, { stampName: !reusedPath });
       if (!result || result.saved === false) return;
       if (result.path) savedPath = result.path;
-      // The project name follows the file name: a Save As to "untitled123.focus"
-      // renames the project to "untitled123". Without this the Recent Saved list
-      // and the title kept showing the pre-dialog name. The file itself is
-      // stamped with the same name by the main process before writing.
-      // ⚠️ ORDER MATTERS: renameProject() resets projectPath to null (a rename normally
-      // means "now an unsaved project"), so it MUST run BEFORE we publish the saved path —
-      // otherwise it clobbers projectPath, the 1.5s autosave then persists projectPath=null,
-      // and on reboot the collected (relative) source paths can't be resolved
-      // ("Invalid audio file path" → NO AUDIO). loadProjectJson already orders it this way.
-      if (result.path) {
+      // Save As / first save: the project name follows the chosen file name (Recent list + title).
+      // In-place save keeps the current (possibly renamed) display name — no snap-back to filename.
+      if (result.path && !reusedPath) {
         savedName = projectNameFromPath(result.path);
         if (savedName !== currentName && onRenameProject) onRenameProject(savedName);
       }
@@ -4574,7 +4626,13 @@ function App() {
     const nextName = name || DEFAULT_PROJECT_NAME;
     projectNameRef.current = nextName;
     setProjectName(nextName);
-    setProjectPath(null);
+    // Renaming changes only the DISPLAY name — the saved .focus/folder identity (projectPath)
+    // stays put. Previously this nulled projectPath ("rename ⇒ unsaved"), but that stranded the
+    // project's collected RELATIVE audio paths (`<Project> Audio/...`) with no base: the 1.5s
+    // autosave then persisted projectPath=null and on the next launch every collected recording/
+    // bounce/consolidated file failed to resolve ("File not found: … Audio/Bounces/….wav").
+    // Keeping projectPath decouples the label from the folder (user request): the next in-place
+    // Save writes the same .focus with the new name inside; Save As still forks a new folder.
   }, []);
 
   useEffect(() => {

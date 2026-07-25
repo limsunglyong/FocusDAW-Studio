@@ -11,8 +11,30 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <exception>
+#include <cstdlib>
 #include "AudioEngine.h"
 #include "WebSocketServer.h"
+
+// An exception escaping any thread's entry point ends in std::terminate -> abort(), which on
+// Windows is exit code 0xC0000409 (3221226505) and says nothing about what threw. The 2026-07-26
+// export crash was exactly this. Log the in-flight exception first so the next occurrence names
+// itself in the engine log (stderr is piped to the Electron console).
+static void logAndAbortOnTerminate()
+{
+    if (std::current_exception())
+    {
+        try { std::rethrow_exception(std::current_exception()); }
+        catch (const std::exception& e) { std::cerr << "[AudioEngine] FATAL unhandled exception: " << e.what() << std::endl; }
+        catch (...)                     { std::cerr << "[AudioEngine] FATAL unhandled exception (non-std type)" << std::endl; }
+    }
+    else
+    {
+        std::cerr << "[AudioEngine] FATAL std::terminate with no active exception" << std::endl;
+    }
+    std::cerr.flush();
+    std::abort();
+}
 
 #if USE_JUCE
 
@@ -27,6 +49,7 @@ public:
 
     void initialise(const juce::String& commandLine) override
     {
+        std::set_terminate(&logAndAbortOnTerminate);
         int port = 8082;
         juce::StringArray args;
         args.addTokens(commandLine, " ", "");
@@ -76,6 +99,7 @@ START_JUCE_APPLICATION (AudioEngineApplication)
 // Standalone standard C++ fallback main for testing without JUCE
 int main(int argc, char* argv[])
 {
+    std::set_terminate(&logAndAbortOnTerminate);
     int port = 8082;
     for (int i = 1; i < argc - 1; ++i)
     {

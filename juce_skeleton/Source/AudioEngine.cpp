@@ -829,6 +829,17 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
             trackSource->solo = t.solo;
             trackSource->reverbSend.store(t.reverbSend);
             trackSource->echoSend.store(t.echoSend);
+            // Vocal channel-strip insert — apply params that may have arrived while decoding.
+            trackSource->vocalEnabled.store(t.vocalEnabled);
+            trackSource->vocalEqOn.store(t.vocalEqOn);
+            for (int i = 0; i < 9; ++i) trackSource->vocalEq[i].store(t.vocalEq[i]);
+            trackSource->vocalCompOn.store(t.vocalCompOn);
+            trackSource->vocalCompThreshold.store(t.vocalCompThreshold);
+            trackSource->vocalCompRatio.store(t.vocalCompRatio);
+            trackSource->vocalCompAttack.store(t.vocalCompAttack);
+            trackSource->vocalCompRelease.store(t.vocalCompRelease);
+            trackSource->vocalCompMakeup.store(t.vocalCompMakeup);
+            trackSource->vocalEqDirty.store(true);
             if (t.autoOn || !t.autoPoints.empty())
                 trackSource->setAutomation(t.autoOn, t.autoCurved, t.autoPoints);
             stillRegistered = true;
@@ -910,6 +921,19 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "solo") { t.solo = (value > 0.5f); if (t.solo) t.mute = false; }
             else if (key == "reverb") t.reverbSend = value;
             else if (key == "echo") t.echoSend = value;
+            else if (key == "vocalEnabled") t.vocalEnabled = (value > 0.5f);
+            else if (key == "vocalEqOn") t.vocalEqOn = (value > 0.5f);
+            else if (key == "vocalCompOn") t.vocalCompOn = (value > 0.5f);
+            else if (key == "vocalCompThreshold") t.vocalCompThreshold = value;
+            else if (key == "vocalCompRatio") t.vocalCompRatio = value;
+            else if (key == "vocalCompAttack") t.vocalCompAttack = value;
+            else if (key == "vocalCompRelease") t.vocalCompRelease = value;
+            else if (key == "vocalCompMakeup") t.vocalCompMakeup = value;
+            else if (key.rfind("vocalEq", 0) == 0 && key.size() == 8)
+            {
+                int idx = key[7] - '0';
+                if (idx >= 0 && idx < 9) t.vocalEq[idx] = value;
+            }
             break;
         }
     }
@@ -946,6 +970,19 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "echo")
             {
                 track->echoSend.store(value);
+            }
+            else if (key == "vocalEnabled") { track->vocalEnabled.store(value > 0.5f); track->vocalEqDirty.store(true); }
+            else if (key == "vocalEqOn")    { track->vocalEqOn.store(value > 0.5f); track->vocalEqDirty.store(true); }
+            else if (key == "vocalCompOn")  { track->vocalCompOn.store(value > 0.5f); }
+            else if (key == "vocalCompThreshold") track->vocalCompThreshold.store(value);
+            else if (key == "vocalCompRatio")     track->vocalCompRatio.store(value);
+            else if (key == "vocalCompAttack")    track->vocalCompAttack.store(value);
+            else if (key == "vocalCompRelease")   track->vocalCompRelease.store(value);
+            else if (key == "vocalCompMakeup")    track->vocalCompMakeup.store(value);
+            else if (key.rfind("vocalEq", 0) == 0 && key.size() == 8)
+            {
+                int idx = key[7] - '0';
+                if (idx >= 0 && idx < 9) { track->vocalEq[idx].store(value); track->vocalEqDirty.store(true); }
             }
             break;
         }
@@ -1479,6 +1516,15 @@ void AudioEngine::exportMix(const std::string& exportId,
               << ", duration=" << durationSeconds << ", normalize=" << normalize
               << ", target=" << lufsTarget << ", preservePitch=" << preservePitch << std::endl;
 
+    // A 0/NaN/absurd rate from the client would write a broken file and — because the whole
+    // graph is prepared at this rate — poison the transports' resampling ratio for every later
+    // export. Clamp to a sane audio range up front.
+    if (!std::isfinite(targetSampleRate) || targetSampleRate < 8000.0 || targetSampleRate > 192000.0) {
+        std::cerr << "[AudioEngine] Export got an out-of-range sampleRate (" << targetSampleRate
+                  << ") — using 44100." << std::endl;
+        targetSampleRate = 44100.0;
+    }
+
     // Tracks may still be decoding in the background (async loadTrack); rendering
     // now would silently miss them. This runs on the detached export thread, so
     // blocking here is fine.
@@ -1958,8 +2004,17 @@ void AudioEngine::exportMix(const std::string& exportId,
     double originalSampleRate = 44100.0;
     int originalBlockSize = 512;
     if (auto* currentDevice = deviceManager.getCurrentAudioDevice()) {
-        originalSampleRate = currentDevice->getCurrentSampleRate();
-        originalBlockSize = currentDevice->getCurrentBufferSizeSamples();
+        // A device that is closed or mid-switch reports 0 here. Preparing the transports with
+        // 0 Hz sets an infinite resampling ratio that only blows up on the NEXT export
+        // ("Error: Excessive samplerate" from SoundTouch) — keep the safe defaults instead.
+        const double sr = currentDevice->getCurrentSampleRate();
+        const int bs = currentDevice->getCurrentBufferSizeSamples();
+        if (sr > 0.0) originalSampleRate = sr;
+        if (bs > 0) originalBlockSize = bs;
+        if (sr <= 0.0 || bs <= 0)
+            std::cerr << "[AudioEngine] Device reported rate=" << sr << " blockSize=" << bs
+                      << " after export — falling back to " << originalSampleRate << "/"
+                      << originalBlockSize << std::endl;
     }
     
     if (masterEffectsSource) {

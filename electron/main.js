@@ -247,9 +247,12 @@ function buildLoudnormFilter(ln, measured, printFormat) {
 let mainWindow = null;
 let mixerWindow = null;
 let advancedPanWindow = null;
+let vocalStripWindow = null;
+let vocalStripWinBounds = null;
 let helpWindow = null;
 let forceCloseMixerWindow = false;
 let forceCloseAdvancedPanWindow = false;
+let forceCloseVocalStripWindow = false;
 let updaterReady = false;
 let updaterBusy = false;
 let updaterDownloaded = false;
@@ -367,6 +370,10 @@ function createWindow() {
     if (advancedPanWindow && !advancedPanWindow.isDestroyed()) {
       forceCloseAdvancedPanWindow = true;
       advancedPanWindow.close();
+    }
+    if (vocalStripWindow && !vocalStripWindow.isDestroyed()) {
+      forceCloseVocalStripWindow = true;
+      vocalStripWindow.close();
     }
     if (helpWindow && !helpWindow.isDestroyed()) {
       helpWindow.close();
@@ -754,11 +761,15 @@ function stampProjectNameFromPath(json, filePath) {
   return json;
 }
 
-ipcMain.handle('save-project', async (event, json, defaultName, targetPath) => {
+ipcMain.handle('save-project', async (event, json, defaultName, targetPath, opts) => {
   assertTrustedIpc(event);
   if (targetPath) {
     const safeTargetPath = assertFilePath(targetPath, PROJECT_EXT, 'project');
-    stampProjectNameFromPath(json, safeTargetPath);
+    // In-place save of a RENAMED project keeps the display name (json.projectName) instead of
+    // re-deriving it from the (unchanged) filename — the app allows the project's display name
+    // to differ from its .focus/folder identity. Save As still stamps name-from-file (stampName
+    // not false) so a new file adopts the chosen filename.
+    if (!opts || opts.stampName !== false) stampProjectNameFromPath(json, safeTargetPath);
     fs.writeFileSync(safeTargetPath, JSON.stringify(json, null, 2), 'utf8');
     return { saved: true, path: safeTargetPath, dir: path.dirname(safeTargetPath) };
   }
@@ -1223,6 +1234,8 @@ let initialContentWidth = 0;
 let initialContentHeight = 0;
 
 const MIXER_HEIGHT = 515;
+const VOCAL_STRIP_WIDTH = 680;
+const VOCAL_STRIP_HEIGHT = 860;
 const ADVANCED_PAN_WIDTH = 1162;
 const ADVANCED_PAN_HEIGHT = 770;
 
@@ -1466,6 +1479,63 @@ ipcMain.handle('navigate-advanced', (_, target) => {
   if (!advancedPanWindow || advancedPanWindow.isDestroyed()) return;
   const file = advancedFiles[target] || advancedFiles.pan;
   advancedPanWindow.loadFile(path.join(__dirname, '..', file));
+});
+
+// Vocal channel-strip window (per audioIn/bounce track). Its own BrowserWindow so it can
+// coexist with the shared Advanced Effect window. The target track id is passed as a query
+// param; the renderer syncs FX params over the existing "focusdaw-advanced-effects-sync"
+// channel (SET_TRACK_PARAM), so the engine + native + save path is reused unchanged.
+ipcMain.handle('open-vocal-strip', async (_, trackId = '') => {
+  const query = { track: String(trackId || '') };
+  if (vocalStripWindow && !vocalStripWindow.isDestroyed()) {
+    vocalStripWindow.loadFile(path.join(__dirname, '..', 'vocal-strip.html'), { query });
+    vocalStripWindow.show();
+    vocalStripWindow.focus();
+    return;
+  }
+
+  const isMac = process.platform === 'darwin';
+  const bounds = vocalStripWinBounds ? clampMixerBounds(vocalStripWinBounds) : null;
+
+  vocalStripWindow = new BrowserWindow({
+    width: bounds ? bounds.width : VOCAL_STRIP_WIDTH,
+    height: bounds ? bounds.height : VOCAL_STRIP_HEIGHT,
+    useContentSize: true,
+    minWidth: 560,
+    minHeight: 560,
+    parent: mainWindow || undefined,
+    icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
+    webPreferences: buildWebPreferences(),
+    backgroundColor: '#1b1712',
+    title: 'FocusDAW Vocal Channel Strip',
+  });
+
+  vocalStripWindow.loadFile(path.join(__dirname, '..', 'vocal-strip.html'), { query });
+  if (bounds) vocalStripWindow.setContentBounds(bounds);
+
+  const captureBounds = () => {
+    if (vocalStripWindow && !vocalStripWindow.isDestroyed()) {
+      const cb = vocalStripWindow.getContentBounds();
+      vocalStripWinBounds = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+    }
+  };
+  vocalStripWindow.on('moved', captureBounds);
+  vocalStripWindow.on('resized', captureBounds);
+
+  vocalStripWindow.on('close', (event) => {
+    if (!forceCloseVocalStripWindow) {
+      event.preventDefault();
+      captureBounds();
+      vocalStripWindow.hide();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
+    }
+  });
+
+  vocalStripWindow.on('closed', () => {
+    forceCloseVocalStripWindow = false;
+    vocalStripWindow = null;
+  });
 });
 
 ipcMain.handle('close-mixer', async () => {
