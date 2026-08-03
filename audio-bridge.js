@@ -1334,9 +1334,22 @@
       // command was processed — the engine's ack (ack:true) that follows the
       // command supersedes it. Without this the playhead flashes back to 0 for
       // a frame right after pressing play. Also drop stale frames shortly after seek.
+      //
+      // The seek clause drops ALL frames within the window, including ack:true.
+      // The engine echoes an ack playbackPosition for every seek command
+      // (WebSocketServer.cpp), and that ack lags by a round-trip. When an arrow
+      // key is HELD, seek() fires every ~50ms and already set nativeState.offset
+      // authoritatively; a late ack carrying an EARLIER seek's position would
+      // then clobber offset back to a stale value, so getPlayhead() returns a
+      // rewound position and the next nudge is computed from it — the playbar
+      // jitters non-monotonically forward and makes no progress backward. Since
+      // seek() is the authority for offset, no incoming frame (ack or not) may
+      // override it during the seek window. Each held press refreshes
+      // lastSeekSentAt so the window persists for the whole hold; on release a
+      // normal broadcast settles offset to the final seek target after 500ms.
       const stale = (!msg.ack && msg.isPlaying === false && nativeState.isPlaying &&
         (Date.now() - nativeState.lastPlaySentAt) < 500) ||
-        (!msg.ack && (Date.now() - nativeState.lastSeekSentAt) < 500);
+        ((Date.now() - nativeState.lastSeekSentAt) < 500);
       if (!stale) {
         nativeState.offset = msg.positionSeconds;
         nativeState.startTime = Date.now();

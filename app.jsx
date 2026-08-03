@@ -3159,6 +3159,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     } catch (err) { console.error("Failed to open project:", err); }
   }, [loadProjectJson, electronFilePath]);
 
+  // Held ←/→ playhead nudge chains off its last commanded target ({at, target})
+  // instead of re-reading the async native playhead each repeat — see the seek
+  // block below for why (backward used to stall on the native engine).
+  const seekNudgeRef = useRef(null);
+
   useEffect(() => {
     const isTextInput = (el) => {
       if (!el) return false;
@@ -3203,14 +3208,24 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         const T = transportRef.current;
         if ((T.isRecordingActive && T.isRecordingActive()) || (T.isCountingIn && T.isCountingIn())) return; // no seeking mid-record
         const back = (e.code === "Comma" || e.code === "ArrowLeft");
-        // Snap the nudge onto the whole-second grid so a fractional mouse-seek
-        // position (e.g. 10.66s) does not ride along forever as 01:66, 02:66…
-        // (the original code did cur±1, preserving the sub-second offset). A tiny
-        // epsilon keeps a value already sitting exactly on the grid from being a
-        // no-op / double-step. seek() clamps the <0 result to 0.
-        const cur = DAW.getPlayhead();
+        // Whole-second grid nudge. Do NOT recompute from DAW.getPlayhead() on every
+        // key repeat: with the native engine that value is asynchronous. A held key
+        // fires a seek every ~50ms while getPlayhead lags/creeps forward between
+        // presses (when isPlaying, it is offset + elapsed). That drift made BACKWARD
+        // stall — ceil(cur)-1 kept resolving to the same integer as the reported
+        // position crept back up — even though FORWARD (floor(cur)+1) still advanced.
+        // Instead chain each held step off the LAST commanded target so the sequence
+        // is deterministic and symmetric in both directions. A fresh press (>400ms
+        // gap) re-reads the real playhead to pick up mouse seeks / playback.
+        // A tiny epsilon keeps a value already on the grid from being a no-op /
+        // double-step; the result is clamped to [0, duration].
+        const now = Date.now();
+        const chain = seekNudgeRef.current && (now - seekNudgeRef.current.at) < 400;
+        const base = chain ? seekNudgeRef.current.target : DAW.getPlayhead();
         const EPS = 1e-6;
-        const next = back ? Math.ceil(cur - EPS) - 1 : Math.floor(cur + EPS) + 1;
+        const stepped = back ? Math.ceil(base - EPS) - 1 : Math.floor(base + EPS) + 1;
+        const next = Math.max(0, Math.min(stepped, DAW.duration || Infinity));
+        seekNudgeRef.current = { at: now, target: next };
         DAW.seek(next);
         force((n) => n + 1);
         return;
