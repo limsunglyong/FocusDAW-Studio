@@ -786,6 +786,10 @@
       // track is vocal AND the strip is enabled — see _applyVocalFx. Sources connect to
       // fxIn (not fader) so the insert sits ahead of the track fader (보컬-채널-스트립-설계.md §2).
       const fxIn = ctx.createGain();
+      // Stage D HPF (12 dB/oct). Off = 10 Hz corner (≈ transparent) so the node stays in the
+      // graph; _applyVocalFx moves the corner to vfx.hpf.freq when enabled.
+      const vocalHpf = ctx.createBiquadFilter();
+      vocalHpf.type = "highpass"; vocalHpf.frequency.value = 10; vocalHpf.Q.value = 0.707;
       const vocalEq = EQ_FREQS.map((f) => {
         const b = ctx.createBiquadFilter();
         b.type = "peaking"; b.frequency.value = f; b.Q.value = 1.1; b.gain.value = 0;
@@ -795,8 +799,10 @@
       vocalComp.threshold.value = 0; vocalComp.knee.value = 6; vocalComp.ratio.value = 1;
       vocalComp.attack.value = 0.008; vocalComp.release.value = 0.12;
       const vocalMakeup = ctx.createGain(); vocalMakeup.gain.value = 1;
-      // fxIn -> eq0..eq8 -> comp -> makeup -> fader
+      // fxIn -> hpf -> eq0..eq8 -> comp -> makeup -> fader
+      // (Noise Gate is native-authoritative; the web fallback does not gate — design §4-1.)
       let vNode = fxIn;
+      vNode.connect(vocalHpf); vNode = vocalHpf;
       vocalEq.forEach((b) => { vNode.connect(b); vNode = b; });
       vNode.connect(vocalComp); vocalComp.connect(vocalMakeup); vocalMakeup.connect(fader);
 
@@ -819,7 +825,7 @@
         kind: trackKind,
         lockedToZero: lockedToZero !== undefined ? !!lockedToZero : trackKind === "file",
         peaks: fine, peaksMedium: medium, peaksCoarse: coarse, peakAmp: maxAbsPeak(coarse),
-        nodes: { fader, autoGain, panner, meter, reverbSend, echoSend, delay, fb, fxIn, vocalEq, vocalComp, vocalMakeup },
+        nodes: { fader, autoGain, panner, meter, reverbSend, echoSend, delay, fb, fxIn, vocalHpf, vocalEq, vocalComp, vocalMakeup },
         params: {
           volume: 1.0, pan: 0, mute: false, solo: false,
           reverb: 0, echo: 0,
@@ -872,6 +878,12 @@
       const vfx = track.params.vocalFx || (track.params.vocalFx = defaultVocalFx());
       const isVocal = track.kind === "audioIn" || track.kind === "bounce";
       const strip = isVocal && !!vfx.enabled;
+      // HPF (12 dB/oct): off parks the corner at 10 Hz (≈ transparent). Native mirrors this
+      // and additionally applies the Noise Gate, which the web fallback does not (design §4-1).
+      if (track.nodes.vocalHpf) {
+        const hpfActive = strip && vfx.hpf && vfx.hpf.on;
+        ramp(track.nodes.vocalHpf.frequency, hpfActive ? Math.max(20, Math.min(Number(vfx.hpf.freq) || 90, 400)) : 10);
+      }
       const eqActive = strip && vfx.eq.on;
       for (let i = 0; i < track.nodes.vocalEq.length; i++) {
         ramp(track.nodes.vocalEq[i].gain, eqActive ? (Number(vfx.eq.geq[i]) || 0) : 0);
@@ -905,6 +917,13 @@
         case "vocalCompAttack": vfx.comp.attack = val; break;
         case "vocalCompRelease": vfx.comp.release = val; break;
         case "vocalCompMakeup": vfx.comp.makeup = val; break;
+        case "vocalHpfOn": vfx.hpf.on = val > 0.5; break;
+        case "vocalHpfFreq": vfx.hpf.freq = val; break;
+        case "vocalGateOn": vfx.gate.on = val > 0.5; break;
+        case "vocalGateThreshold": vfx.gate.threshold = val; break;
+        case "vocalGateRatio": vfx.gate.ratio = val; break;
+        case "vocalGateAttack": vfx.gate.attack = val; break;
+        case "vocalGateRelease": vfx.gate.release = val; break;
         default: {
           const m = /^vocalEq([0-8])$/.exec(key);
           if (m) vfx.eq.geq[+m[1]] = val;
@@ -4316,9 +4335,13 @@
         // Vocal channel-strip insert (pre-fader) — replicate the realtime chain so
         // Export == playback. Only for vocal tracks with the strip enabled; else src→fd.
         const vfx = normalizeVocalFx(t.params.vocalFx);
-        const vocalOn = (t.kind === "audioIn" || t.kind === "bounce") && vfx.enabled && (vfx.eq.on || vfx.comp.on);
+        const vocalOn = (t.kind === "audioIn" || t.kind === "bounce") && vfx.enabled && (vfx.eq.on || vfx.comp.on || vfx.hpf.on);
         let vHead = fd; // node the source feeds into (insert input, or fd if bypassed)
         if (vocalOn) {
+          // HPF first (Noise Gate is native-only in Export too — the native engine renders it).
+          const oHpf = off.createBiquadFilter();
+          oHpf.type = "highpass"; oHpf.Q.value = 0.707;
+          oHpf.frequency.setValueAtTime(vfx.hpf.on ? Math.max(20, Math.min(Number(vfx.hpf.freq) || 90, 400)) : 10, 0);
           const oEq = EQ_FREQS.map((f, i) => {
             const b = off.createBiquadFilter();
             b.type = "peaking"; b.frequency.value = f; b.Q.value = 1.1;
@@ -4339,7 +4362,8 @@
           oMk.gain.setValueAtTime(vfx.comp.on ? Math.pow(10, (vfx.comp.makeup || 0) / 20) : 1, 0);
           let vn = oEq[0]; for (let i = 1; i < oEq.length; i++) { vn.connect(oEq[i]); vn = oEq[i]; }
           vn.connect(oComp); oComp.connect(oMk); oMk.connect(fd);
-          vHead = oEq[0];
+          oHpf.connect(oEq[0]); // src -> hpf -> eq -> comp -> makeup -> fd
+          vHead = oHpf;
         }
         src.connect(vHead); fd.connect(ag); ag.connect(pn);
         pn.connect(mBus); pn.connect(rs); rs.connect(conv);

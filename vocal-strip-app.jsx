@@ -268,10 +268,25 @@ function eqResponseDb(freq, geq) {
   return db;
 }
 
-// PRE = measured vocal spectrum (from the engine). POST = PRE + EQ response (+ makeup),
-// gated by whether the strip / EQ / comp are on. Both curves are normalized together so the
-// EQ's reshaping is visible against the source. X is log-frequency, aligned to the EQ bands.
-function SpectrumChart({ pre, showPost, geq, makeupDb }) {
+// 12 dB/oct high-pass magnitude response (dB) at `freq` for corner `cutoff`. RBJ high-pass,
+// Q=0.707 / sr=48k — matches the web BiquadFilter and native makeHighPass. Shown on POST so the
+// low-end rolloff is visible. (The Noise Gate is level-dependent, not a fixed frequency curve,
+// so it is intentionally NOT drawn — same reason the compressor's dynamic action is not.)
+function hpfResponseDb(freq, cutoff) {
+  const sr = 48000, Q = 0.707;
+  const w0 = (2 * Math.PI * cutoff) / sr, cw0 = Math.cos(w0), sw0 = Math.sin(w0), alpha = sw0 / (2 * Q);
+  const b0 = (1 + cw0) / 2, b1 = -(1 + cw0), b2 = (1 + cw0) / 2;
+  const a0 = 1 + alpha, a1 = -2 * cw0, a2 = 1 - alpha;
+  const w = (2 * Math.PI * freq) / sr, cosw = Math.cos(w), sinw = Math.sin(w), cos2w = Math.cos(2 * w), sin2w = Math.sin(2 * w);
+  const numRe = b0 + b1 * cosw + b2 * cos2w, numIm = -(b1 * sinw + b2 * sin2w);
+  const denRe = a0 + a1 * cosw + a2 * cos2w, denIm = -(a1 * sinw + a2 * sin2w);
+  return 20 * Math.log10(Math.hypot(numRe, numIm) / Math.hypot(denRe, denIm));
+}
+
+// PRE = measured vocal spectrum (from the engine). POST = PRE + EQ response + HPF rolloff
+// (+ makeup), gated by whether the strip / modules are on. Both curves normalize together so the
+// reshaping is visible against the source. X is log-frequency, aligned to the EQ bands.
+function SpectrumChart({ pre, showPost, geq, makeupDb, hpfOn, hpfFreq }) {
   const W = 880, H = 116, FMIN = 30, FMAX = 20000;
   const xFor = (f) => (Math.log(f / FMIN) / Math.log(FMAX / FMIN)) * W;
   if (!pre || pre.length === 0) {
@@ -281,7 +296,7 @@ function SpectrumChart({ pre, showPost, geq, makeupDb }) {
       </div>
     );
   }
-  const postDb = pre.map((p) => p.db + (showPost ? eqResponseDb(p.f, geq) + (makeupDb || 0) : 0));
+  const postDb = pre.map((p) => p.db + (showPost ? eqResponseDb(p.f, geq) + (hpfOn ? hpfResponseDb(p.f, hpfFreq) : 0) + (makeupDb || 0) : 0));
   let mn = Infinity, mx = -Infinity;
   for (let i = 0; i < pre.length; i++) {
     mn = Math.min(mn, pre[i].db, postDb[i]); mx = Math.max(mx, pre[i].db, postDb[i]);
@@ -338,7 +353,7 @@ function VocalStripApp() {
   // ref (state closed over at mousedown would stay stale for the whole drag).
   const vfxRef = useRef(vfx); vfxRef.current = vfx;
   // "User switched this module off on purpose" — gates auto-arm (see setBand / setComp).
-  const userOffRef = useRef({ eq: false, comp: false });
+  const userOffRef = useRef({ eq: false, comp: false, hpf: false, gate: false });
   const targetIdRef = useRef(getQueryTrack());
   useEffect(() => { targetIdRef.current = targetId; }, [targetId]);
   // Fetch the PRE spectrum whenever the selected track changes (INIT/SYNC also re-requests).
@@ -438,10 +453,27 @@ function VocalStripApp() {
     if (arm) keys.push(["vocalCompOn", 1]);
     apply((n) => { n.comp[field] = v; if (arm) n.comp.on = true; }, keys);
   };
+  // Stage D — HPF + Noise Gate. Same auto-arm pattern as EQ/Comp: touching a knob enables the
+  // module unless the user turned it off on purpose. Gate is applied by the native engine
+  // (the web fallback does not gate); params still save/restore and drive native either way.
+  const setHpfOn = (on) => { userOffRef.current.hpf = !on; grab(); apply((n) => { n.hpf.on = on; }, [["vocalHpfOn", on ? 1 : 0]]); };
+  const setHpf = (field, key, v) => {
+    const arm = !vfxRef.current.hpf.on && !userOffRef.current.hpf;
+    const keys = [[key, v]];
+    if (arm) keys.push(["vocalHpfOn", 1]);
+    apply((n) => { n.hpf[field] = v; if (arm) n.hpf.on = true; }, keys);
+  };
+  const setGateOn = (on) => { userOffRef.current.gate = !on; grab(); apply((n) => { n.gate.on = on; }, [["vocalGateOn", on ? 1 : 0]]); };
+  const setGate = (field, key, v) => {
+    const arm = !vfxRef.current.gate.on && !userOffRef.current.gate;
+    const keys = [[key, v]];
+    if (arm) keys.push(["vocalGateOn", 1]);
+    apply((n) => { n.gate[field] = v; if (arm) n.gate.on = true; }, keys);
+  };
   const applyPreset = (name) => {
     const p = VOCAL_PRESETS[name];
     if (!p) return;
-    userOffRef.current = { eq: false, comp: false }; // preset turns both modules on
+    userOffRef.current = { ...userOffRef.current, eq: false, comp: false }; // preset turns both modules on
     grab();
     const keys = [["vocalEnabled", 1], ["vocalEqOn", 1], ["vocalCompOn", 1],
       ["vocalCompThreshold", p.comp.threshold], ["vocalCompRatio", p.comp.ratio],
@@ -455,12 +487,16 @@ function VocalStripApp() {
   // grabbable and auto-arm the module.
   const eqLocked = !strip, compLocked = !strip;
   const eqDim = strip && !vfx.eq.on, compDim = strip && !vfx.comp.on;
+  const hpfLocked = !strip, gateLocked = !strip;
+  const hpfDim = strip && !vfx.hpf.on, gateDim = strip && !vfx.gate.on;
   // Spectrum POST curve inputs: EQ shape only when the EQ module is on, makeup only when the
   // comp module is on; the amber POST line shows only when it actually differs from PRE.
   const FLAT9 = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const specEqGeq = strip && vfx.eq.on ? vfx.eq.geq : FLAT9;
   const specMakeup = strip && vfx.comp.on ? vfx.comp.makeup : 0;
-  const showPost = strip && (vfx.eq.on || (vfx.comp.on && vfx.comp.makeup > 0.01));
+  const specHpfOn = strip && vfx.hpf.on;
+  const specHpfFreq = Number(vfx.hpf.freq) || 90;
+  const showPost = strip && (vfx.eq.on || vfx.hpf.on || (vfx.comp.on && vfx.comp.makeup > 0.01));
 
   const bar = (
     <div style={{ position: "relative", height: 38, flex: "0 0 38px", display: "flex", alignItems: "center", gap: 14, padding: "0 6px 0 14px",
@@ -548,29 +584,35 @@ function VocalStripApp() {
               </span>
             </div>
             <div style={{ padding: "14px 16px 16px" }}>
-              <SpectrumChart pre={specPts} showPost={showPost} geq={specEqGeq} makeupDb={specMakeup} />
+              <SpectrumChart pre={specPts} showPost={showPost} geq={specEqGeq} makeupDb={specMakeup} hpfOn={specHpfOn} hpfFreq={specHpfFreq} />
             </div>
           </div>
 
-          {/* HPF | Noise Gate (Stage D placeholder) */}
+          {/* 01 HPF | 02 Noise Gate — side by side in one row */}
           <div style={CARD}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
               <div style={{ minWidth: 0 }}>
-                <CardHead dotOn={false} disabled idx="01" title="High-Pass Filter" soon />
-                <PlaceholderBody note="럼블 / 플로시브 제거 — Stage D">
-                  {krow([
-                    <Knob key="f" value={vfx.hpf.freq} min={40} max={300} label="Freq" color="var(--blue)" size={48} disabled fmt={(v) => v.toFixed(0) + " Hz"} onChange={() => {}} />,
-                  ])}
-                </PlaceholderBody>
+                <CardHead dotOn={vfx.hpf.on} disabled={!strip} onToggle={() => setHpfOn(!vfx.hpf.on)} idx="01" title="High-Pass Filter" sub="럼블/플로시브 컷 · 12 dB/oct" />
+                <div style={{ padding: "15px 16px 17px" }}>
+                  <div style={{ opacity: hpfLocked ? 0.4 : hpfDim ? 0.72 : 1, transition: "opacity .2s" }}>
+                    {krow([
+                      <Knob key="f" value={vfx.hpf.freq} min={40} max={300} step={1} label="Freq" color="var(--blue)" size={48} disabled={hpfLocked} onGrab={grab} onChange={(v) => setHpf("freq", "vocalHpfFreq", v)} fmt={(v) => v.toFixed(0) + " Hz"} />,
+                    ])}
+                  </div>
+                </div>
               </div>
               <div style={{ minWidth: 0, borderLeft: "1px solid var(--line)" }}>
-                <CardHead dotOn={false} disabled idx="02" title="Noise Gate" soon />
-                <PlaceholderBody note="구간 무음(숨소리/룸톤) — Stage D">
-                  {krow([
-                    <Knob key="t" value={vfx.gate.threshold} min={-70} max={-10} label="Thresh" disabled fmt={(v) => v.toFixed(0) + " dB"} onChange={() => {}} />,
-                    <Knob key="r" value={vfx.gate.ratio} min={1} max={10} label="Ratio" disabled fmt={(v) => v.toFixed(0) + ":1"} onChange={() => {}} />,
-                  ])}
-                </PlaceholderBody>
+                <CardHead dotOn={vfx.gate.on} disabled={!strip} onToggle={() => setGateOn(!vfx.gate.on)} idx="02" title="Noise Gate" sub="임계값 아래 감쇠" />
+                <div style={{ padding: "15px 16px 17px" }}>
+                  <div style={{ opacity: gateLocked ? 0.4 : gateDim ? 0.72 : 1, transition: "opacity .2s" }}>
+                    {krow([
+                      <Knob key="t" value={vfx.gate.threshold} min={-70} max={-10} step={1} label="Thresh" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("threshold", "vocalGateThreshold", v)} fmt={(v) => v.toFixed(0) + " dB"} />,
+                      <Knob key="r" value={vfx.gate.ratio} min={1} max={10} step={0.5} label="Ratio" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("ratio", "vocalGateRatio", v)} fmt={(v) => v.toFixed(1) + ":1"} />,
+                      <Knob key="a" value={vfx.gate.attack} min={0.5} max={50} step={0.5} label="Attack" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("attack", "vocalGateAttack", v)} fmt={(v) => v.toFixed(1) + " ms"} />,
+                      <Knob key="rl" value={vfx.gate.release} min={30} max={400} step={5} label="Release" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("release", "vocalGateRelease", v)} fmt={(v) => v.toFixed(0) + " ms"} />,
+                    ])}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -623,7 +665,7 @@ function VocalStripApp() {
 
       <div style={{ height: 30, flex: "0 0 30px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", background: "var(--bg)", borderTop: "1px solid rgba(0,0,0,.4)", fontSize: 10.5, color: "var(--faint)" }}>
         <span>{strip ? "채널 스트립 활성 — 인서트 pre-fader" : "스트립 우회중 (A/B 비교)"}</span>
-        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · Spectrum · EQ + Comp</span>
+        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · Spectrum · HPF · Gate · EQ · Comp</span>
       </div>
     </div>
   );

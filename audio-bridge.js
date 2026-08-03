@@ -1625,6 +1625,15 @@
     send("vocalCompAttack", Number(c.attack) || 0);
     send("vocalCompRelease", Number(c.release) || 0);
     send("vocalCompMakeup", Number(c.makeup) || 0);
+    const h = v.hpf || {};
+    send("vocalHpfOn", h.on ? 1 : 0);
+    send("vocalHpfFreq", Number(h.freq) || 90);
+    const g = v.gate || {};
+    send("vocalGateOn", g.on ? 1 : 0);
+    send("vocalGateThreshold", Number(g.threshold) || -42);
+    send("vocalGateRatio", Number(g.ratio) || 4);
+    send("vocalGateAttack", Number(g.attack) || 2);
+    send("vocalGateRelease", Number(g.release) || 120);
   }
 
   // Convert AudioBuffer to WAV ArrayBuffer

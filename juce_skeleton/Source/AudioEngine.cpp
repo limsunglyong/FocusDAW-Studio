@@ -839,7 +839,15 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
             trackSource->vocalCompAttack.store(t.vocalCompAttack);
             trackSource->vocalCompRelease.store(t.vocalCompRelease);
             trackSource->vocalCompMakeup.store(t.vocalCompMakeup);
+            trackSource->vocalHpfOn.store(t.vocalHpfOn);
+            trackSource->vocalHpfFreq.store(t.vocalHpfFreq);
+            trackSource->vocalGateOn.store(t.vocalGateOn);
+            trackSource->vocalGateThreshold.store(t.vocalGateThreshold);
+            trackSource->vocalGateRatio.store(t.vocalGateRatio);
+            trackSource->vocalGateAttack.store(t.vocalGateAttack);
+            trackSource->vocalGateRelease.store(t.vocalGateRelease);
             trackSource->vocalEqDirty.store(true);
+            trackSource->vocalHpfDirty.store(true);
             if (t.autoOn || !t.autoPoints.empty())
                 trackSource->setAutomation(t.autoOn, t.autoCurved, t.autoPoints);
             stillRegistered = true;
@@ -929,6 +937,13 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "vocalCompAttack") t.vocalCompAttack = value;
             else if (key == "vocalCompRelease") t.vocalCompRelease = value;
             else if (key == "vocalCompMakeup") t.vocalCompMakeup = value;
+            else if (key == "vocalHpfOn") t.vocalHpfOn = (value > 0.5f);
+            else if (key == "vocalHpfFreq") t.vocalHpfFreq = value;
+            else if (key == "vocalGateOn") t.vocalGateOn = (value > 0.5f);
+            else if (key == "vocalGateThreshold") t.vocalGateThreshold = value;
+            else if (key == "vocalGateRatio") t.vocalGateRatio = value;
+            else if (key == "vocalGateAttack") t.vocalGateAttack = value;
+            else if (key == "vocalGateRelease") t.vocalGateRelease = value;
             else if (key.rfind("vocalEq", 0) == 0 && key.size() == 8)
             {
                 int idx = key[7] - '0';
@@ -979,6 +994,13 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "vocalCompAttack")    track->vocalCompAttack.store(value);
             else if (key == "vocalCompRelease")   track->vocalCompRelease.store(value);
             else if (key == "vocalCompMakeup")    track->vocalCompMakeup.store(value);
+            else if (key == "vocalHpfOn")         track->vocalHpfOn.store(value > 0.5f);
+            else if (key == "vocalHpfFreq")       { track->vocalHpfFreq.store(value); track->vocalHpfDirty.store(true); }
+            else if (key == "vocalGateOn")        track->vocalGateOn.store(value > 0.5f);
+            else if (key == "vocalGateThreshold") track->vocalGateThreshold.store(value);
+            else if (key == "vocalGateRatio")     track->vocalGateRatio.store(value);
+            else if (key == "vocalGateAttack")    track->vocalGateAttack.store(value);
+            else if (key == "vocalGateRelease")   track->vocalGateRelease.store(value);
             else if (key.rfind("vocalEq", 0) == 0 && key.size() == 8)
             {
                 int idx = key[7] - '0';

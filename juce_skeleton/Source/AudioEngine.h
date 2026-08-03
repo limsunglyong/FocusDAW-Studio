@@ -153,6 +153,14 @@ struct TrackInfo
     float vocalCompAttack = 8.0f;               // ms
     float vocalCompRelease = 120.0f;            // ms
     float vocalCompMakeup = 0.0f;               // dB
+    // Stage D: HPF + Noise Gate (front of the insert chain).
+    bool  vocalHpfOn = false;
+    float vocalHpfFreq = 90.0f;                 // Hz
+    bool  vocalGateOn = false;
+    float vocalGateThreshold = -42.0f;          // dB
+    float vocalGateRatio = 4.0f;                // downward-expander ratio
+    float vocalGateAttack = 2.0f;               // ms (open)
+    float vocalGateRelease = 120.0f;            // ms (close)
 };
 
 // Ambience (Sound Environment / room type) spec — mirrors the web engine's
@@ -782,9 +790,12 @@ public:
         spec.maximumBlockSize = (juce::uint32) spb;
         spec.numChannels = 2;
         for (int i = 0; i < 9; ++i) vocalEqFilters[i].prepare(spec);
+        vocalHpfFilter.prepare(spec);
         vocalCompressor.prepare(spec);
+        gateGain = 1.0f;
         vocalChainPrepared = true;
         updateVocalEqCoefficients();
+        updateVocalHpfCoefficients();
     }
 
     void releaseResources() override {
@@ -795,7 +806,9 @@ public:
     {
         echoDelay.reset();
         for (auto& f : vocalEqFilters) f.reset();
+        vocalHpfFilter.reset();
         vocalCompressor.reset();
+        gateGain = 1.0f;
         if (soundTouchSource) soundTouchSource->setNextReadPosition(0);
     }
 
@@ -844,6 +857,47 @@ public:
             juce::dsp::AudioBlock<float> vBlock(*bufferToFill.buffer, (size_t)bufferToFill.startSample);
             auto vSub = vBlock.getSubBlock((size_t)0, (size_t)bufferToFill.numSamples);
             juce::dsp::ProcessContextReplacing<float> vCtx(vSub);
+            // 1) HPF (12 dB/oct) — rumble/plosive cut, front of the chain.
+            if (vocalHpfOn.load())
+            {
+                if (vocalHpfDirty.exchange(false)) updateVocalHpfCoefficients();
+                vocalHpfFilter.process(vCtx);
+            }
+            // 2) Noise Gate — downward expander below threshold, stereo-linked, click-free via
+            // attack/release-smoothed gain. gateGain persists across blocks (see reset()).
+            if (vocalGateOn.load())
+            {
+                double sr = preparedSampleRate.load(); if (sr <= 0) sr = 44100.0;
+                const float threshDb = vocalGateThreshold.load();
+                const float threshLin = juce::Decibels::decibelsToGain(threshDb);
+                const float ratio = std::max(1.0f, vocalGateRatio.load());
+                const float atkMs = std::max(0.1f, vocalGateAttack.load());
+                const float relMs = std::max(1.0f, vocalGateRelease.load());
+                const float aCoef = std::exp(-1.0f / (float)(atkMs * 0.001 * sr));
+                const float rCoef = std::exp(-1.0f / (float)(relMs * 0.001 * sr));
+                const int nch = bufferToFill.buffer->getNumChannels();
+                float* chL = bufferToFill.buffer->getWritePointer(0, bufferToFill.startSample);
+                float* chR = (nch > 1) ? bufferToFill.buffer->getWritePointer(1, bufferToFill.startSample) : nullptr;
+                for (int s = 0; s < bufferToFill.numSamples; ++s)
+                {
+                    const float l = chL[s];
+                    const float r = chR ? chR[s] : l;
+                    const float lvl = std::max(std::abs(l), std::abs(r));
+                    float desired = 1.0f;
+                    if (lvl < threshLin)
+                    {
+                        const float lvlDb = juce::Decibels::gainToDecibels(lvl + 1.0e-9f);
+                        float gainDb = (lvlDb - threshDb) * (ratio - 1.0f); // below thresh -> negative
+                        gainDb = std::max(gainDb, -80.0f);
+                        desired = juce::Decibels::decibelsToGain(gainDb);
+                    }
+                    const float coef = (desired > gateGain) ? aCoef : rCoef; // open fast, close on release
+                    gateGain = coef * gateGain + (1.0f - coef) * desired;
+                    chL[s] = l * gateGain;
+                    if (chR) chR[s] = r * gateGain;
+                }
+            }
+            // 3) EQ
             if (vocalEqOn.load())
                 for (int i = 0; i < 9; ++i) vocalEqFilters[i].process(vCtx);
             if (vocalCompOn.load())
@@ -1174,6 +1228,25 @@ public:
     std::atomic<float> vocalCompAttack { 8.0f };
     std::atomic<float> vocalCompRelease { 120.0f };
     std::atomic<float> vocalCompMakeup { 0.0f };
+    // Stage D — HPF (12 dB/oct) + Noise Gate (downward expander), front of the insert chain.
+    std::atomic<bool>  vocalHpfOn { false };
+    std::atomic<float> vocalHpfFreq { 90.0f };
+    std::atomic<bool>  vocalHpfDirty { false };
+    std::atomic<bool>  vocalGateOn { false };
+    std::atomic<float> vocalGateThreshold { -42.0f };
+    std::atomic<float> vocalGateRatio { 4.0f };
+    std::atomic<float> vocalGateAttack { 2.0f };
+    std::atomic<float> vocalGateRelease { 120.0f };
+    float gateGain = 1.0f; // audio-thread only: current smoothed gate gain (persists across blocks)
+
+    void updateVocalHpfCoefficients()
+    {
+        double sr = preparedSampleRate.load();
+        if (sr <= 0) sr = 44100.0;
+        float freq = std::min(std::max(20.0f, vocalHpfFreq.load()), (float)(sr * 0.45));
+        auto c = juce::dsp::IIR::Coefficients<float>::makeHighPass(sr, freq, 0.707f);
+        *vocalHpfFilter.state = *c;
+    }
 
     void updateVocalEqCoefficients()
     {
@@ -1193,6 +1266,7 @@ public:
     using VocalFilterType = juce::dsp::IIR::Filter<float>;
     using VocalFilterDuplicator = juce::dsp::ProcessorDuplicator<VocalFilterType, juce::dsp::IIR::Coefficients<float>>;
     std::array<VocalFilterDuplicator, 9> vocalEqFilters;
+    VocalFilterDuplicator vocalHpfFilter;
     juce::dsp::Compressor<float> vocalCompressor;
     bool vocalChainPrepared = false;
 };
