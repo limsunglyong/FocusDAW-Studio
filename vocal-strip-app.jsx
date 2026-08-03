@@ -244,6 +244,77 @@ function WindowControls() {
   );
 }
 
+/* ---------- Stage C: pre/post FFT spectrum ---------- */
+// Combined 9-band peaking-EQ magnitude response (dB) at `freq`, summed across bands.
+// Uses the RBJ peaking biquad at Q=1.1 / sr=48k — the exact design the web engine
+// (BiquadFilter peaking, Q=1.1) and native (makePeakFilter(sr,f,1.1,gain)) both use, so
+// the drawn POST curve matches what is audible. Bands at 0 dB are skipped (identity).
+function eqResponseDb(freq, geq) {
+  const sr = 48000, Q = 1.1;
+  const w = (2 * Math.PI * freq) / sr, cosw = Math.cos(w), sinw = Math.sin(w);
+  const cos2w = Math.cos(2 * w), sin2w = Math.sin(2 * w);
+  let db = 0;
+  for (let i = 0; i < EQ_FREQS.length; i++) {
+    const g = geq[i] || 0;
+    if (Math.abs(g) < 0.01) continue;
+    const A = Math.pow(10, g / 40);
+    const w0 = (2 * Math.PI * EQ_FREQS[i]) / sr, alpha = Math.sin(w0) / (2 * Q), cw0 = Math.cos(w0);
+    const b0 = 1 + alpha * A, b1 = -2 * cw0, b2 = 1 - alpha * A;
+    const a0 = 1 + alpha / A, a1 = -2 * cw0, a2 = 1 - alpha / A;
+    const numRe = b0 + b1 * cosw + b2 * cos2w, numIm = -(b1 * sinw + b2 * sin2w);
+    const denRe = a0 + a1 * cosw + a2 * cos2w, denIm = -(a1 * sinw + a2 * sin2w);
+    db += 20 * Math.log10(Math.hypot(numRe, numIm) / Math.hypot(denRe, denIm));
+  }
+  return db;
+}
+
+// PRE = measured vocal spectrum (from the engine). POST = PRE + EQ response (+ makeup),
+// gated by whether the strip / EQ / comp are on. Both curves are normalized together so the
+// EQ's reshaping is visible against the source. X is log-frequency, aligned to the EQ bands.
+function SpectrumChart({ pre, showPost, geq, makeupDb }) {
+  const W = 880, H = 116, FMIN = 30, FMAX = 20000;
+  const xFor = (f) => (Math.log(f / FMIN) / Math.log(FMAX / FMIN)) * W;
+  if (!pre || pre.length === 0) {
+    return (
+      <div style={{ height: H, borderRadius: 12, border: "1px solid var(--line-strong)", background: "radial-gradient(130% 130% at 50% 0%,var(--surface2) 0%,var(--bg) 78%)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--faint)", fontSize: 11, textAlign: "center", padding: "0 16px" }}>
+        이 트랙에 오디오가 없습니다 — 보컬을 녹음하면 적용 전/후 스펙트럼이 표시됩니다.
+      </div>
+    );
+  }
+  const postDb = pre.map((p) => p.db + (showPost ? eqResponseDb(p.f, geq) + (makeupDb || 0) : 0));
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < pre.length; i++) {
+    mn = Math.min(mn, pre[i].db, postDb[i]); mx = Math.max(mx, pre[i].db, postDb[i]);
+  }
+  const range = Math.max(1e-6, mx - mn);
+  const yFor = (db) => H * 0.07 + (1 - (db - mn) / range) * H * 0.86;
+  const linePath = (getDb) => pre.map((p, i) => (i ? "L" : "M") + xFor(p.f).toFixed(1) + " " + yFor(getDb(p, i)).toFixed(1)).join(" ");
+  const prePath = linePath((p) => p.db);
+  const postPath = linePath((p, i) => postDb[i]);
+  const preArea = prePath + ` L${W} ${H} L0 ${H} Z`;
+  return (
+    <div style={{ position: "relative", borderRadius: 12, border: "1px solid var(--line-strong)", background: "radial-gradient(130% 130% at 50% 0%,var(--surface2) 0%,var(--bg) 78%)", overflow: "hidden" }}>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: "block" }}>
+        {/* band gridlines */}
+        {EQ_FREQS.map((f, i) => (
+          <line key={i} x1={xFor(f)} y1={0} x2={xFor(f)} y2={H} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" opacity="0.5" />
+        ))}
+        {/* PRE: measured source */}
+        <path d={preArea} fill="color-mix(in srgb,var(--cream-2) 8%,transparent)" />
+        <path d={prePath} fill="none" stroke="var(--muted)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        {/* POST: after EQ (only when it differs from PRE) */}
+        {showPost && <path d={postPath} fill="none" stroke="var(--amber)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" style={{ filter: "drop-shadow(0 0 3px var(--amber-soft))" }} />}
+      </svg>
+      {/* band labels */}
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 3, height: 10, pointerEvents: "none" }}>
+        {EQ_FREQS.map((f, i) => (
+          <span key={i} className="mono" style={{ position: "absolute", left: (xFor(f) / W) * 100 + "%", transform: "translateX(-50%)", fontSize: 8, color: "var(--faint)" }}>{BAND_LABELS[i]}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- placeholder body for not-yet-wired sections ---------- */
 function PlaceholderBody({ note, children }) {
   return (
@@ -262,6 +333,7 @@ function VocalStripApp() {
   const [vfx, setVfx] = useState(defaultVocalFx());
   const [isPlaying, setIsPlaying] = useState(false);
   const [preset, setPreset] = useState(null);
+  const [specPts, setSpecPts] = useState([]); // measured PRE spectrum of the target track (Stage C)
   // Drag handlers capture their callbacks at mousedown, so module on/off must be read through a
   // ref (state closed over at mousedown would stay stale for the whole drag).
   const vfxRef = useRef(vfx); vfxRef.current = vfx;
@@ -269,6 +341,8 @@ function VocalStripApp() {
   const userOffRef = useRef({ eq: false, comp: false });
   const targetIdRef = useRef(getQueryTrack());
   useEffect(() => { targetIdRef.current = targetId; }, [targetId]);
+  // Fetch the PRE spectrum whenever the selected track changes (INIT/SYNC also re-requests).
+  useEffect(() => { setSpecPts([]); if (targetId) vsChannel.postMessage({ type: "REQUEST_TRACK_SPECTRUM", id: targetId }); }, [targetId]);
 
   useEffect(() => {
     vsChannel.postMessage({ type: "ADVANCED_READY" });
@@ -290,7 +364,12 @@ function VocalStripApp() {
           // undo/redo (the whole reason the window must sync) without clobbering live edits.
           const tk = vocal.find((t) => t.id === next);
           if (tk) setVfx(normalizeVocalFx(tk.params && tk.params.vocalFx));
+          // Ask for the target's PRE spectrum. Re-requested on every INIT/SYNC so a new
+          // recording, an edit, or undo/redo that changes the buffer refreshes the curve.
+          if (next) vsChannel.postMessage({ type: "REQUEST_TRACK_SPECTRUM", id: next });
         }
+      } else if (msg.type === "TRACK_SPECTRUM") {
+        if (msg.id === targetIdRef.current) setSpecPts(Array.isArray(msg.pts) ? msg.pts : []);
       } else if (msg.type === "LEVEL_METERS") {
         if (typeof msg.isPlaying === "boolean") setIsPlaying(msg.isPlaying);
       }
@@ -376,6 +455,12 @@ function VocalStripApp() {
   // grabbable and auto-arm the module.
   const eqLocked = !strip, compLocked = !strip;
   const eqDim = strip && !vfx.eq.on, compDim = strip && !vfx.comp.on;
+  // Spectrum POST curve inputs: EQ shape only when the EQ module is on, makeup only when the
+  // comp module is on; the amber POST line shows only when it actually differs from PRE.
+  const FLAT9 = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const specEqGeq = strip && vfx.eq.on ? vfx.eq.geq : FLAT9;
+  const specMakeup = strip && vfx.comp.on ? vfx.comp.makeup : 0;
+  const showPost = strip && (vfx.eq.on || (vfx.comp.on && vfx.comp.makeup > 0.01));
 
   const bar = (
     <div style={{ position: "relative", height: 38, flex: "0 0 38px", display: "flex", alignItems: "center", gap: 14, padding: "0 6px 0 14px",
@@ -447,19 +532,23 @@ function VocalStripApp() {
             </button>
           </div>
 
-          {/* Spectrum (Stage C placeholder) */}
+          {/* Spectrum — PRE (measured) vs POST (EQ applied), Stage C */}
           <div style={CARD}>
             <div style={CARD_HEAD}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 20V10M8 20V4M13 20v-7M18 20V8M22 20H2" /></svg>
               <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".02em", color: "var(--cream)" }}>Spectrum</span>
               <span style={{ fontSize: 10.5, color: "var(--muted)" }}>이펙트 적용 전 / 후 비교</span>
               <span style={{ flex: 1 }} />
-              <span style={soonTag}>SOON</span>
+              {/* legend replaces the old SOON tag */}
+              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9.5, color: "var(--muted)" }}>
+                <span style={{ width: 12, height: 2, background: "var(--muted)", borderRadius: 2 }} />PRE
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9.5, color: showPost ? "var(--amber)" : "var(--faint)", marginLeft: 4 }}>
+                <span style={{ width: 12, height: 2, background: showPost ? "var(--amber)" : "var(--faint)", borderRadius: 2 }} />POST
+              </span>
             </div>
             <div style={{ padding: "14px 16px 16px" }}>
-              <div style={{ height: 120, borderRadius: 12, border: "1px solid var(--line-strong)", background: "radial-gradient(130% 130% at 50% 0%,var(--surface2) 0%,var(--bg) 78%)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--faint)", fontSize: 11 }}>
-                적용 전/후 실측 FFT 스펙트럼 — 다음 단계(Stage C)에서 제공
-              </div>
+              <SpectrumChart pre={specPts} showPost={showPost} geq={specEqGeq} makeupDb={specMakeup} />
             </div>
           </div>
 
@@ -534,7 +623,7 @@ function VocalStripApp() {
 
       <div style={{ height: 30, flex: "0 0 30px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", background: "var(--bg)", borderTop: "1px solid rgba(0,0,0,.4)", fontSize: 10.5, color: "var(--faint)" }}>
         <span>{strip ? "채널 스트립 활성 — 인서트 pre-fader" : "스트립 우회중 (A/B 비교)"}</span>
-        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · EQ + Comp</span>
+        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · Spectrum · EQ + Comp</span>
       </div>
     </div>
   );

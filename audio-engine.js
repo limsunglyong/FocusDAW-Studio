@@ -3746,6 +3746,53 @@
       return pts;
     },
 
+    // Static per-track FFT spectrum for the Vocal Channel Strip (Stage C). Same machinery
+    // as computeSpectrum() but for ONE track's buffer, so the strip can show that vocal's
+    // own PRE curve (the strip window derives the POST curve by applying the 9-band EQ
+    // response on top). Mode-independent: reads the buffer, not a live analyser, so it works
+    // whether native or web output is authoritative. Returns [{ f, db, n }] (db raw so the
+    // strip can add EQ dB before normalizing); [] when the track has no audio yet.
+    computeTrackSpectrum(trackId) {
+      this.init();
+      const t = this.tracks.find((x) => x.id === trackId);
+      if (!t || !t.buffer || t.needsAudio) return [];
+      const ch = t.buffer.getChannelData(0);
+      // N=4096 (vs the master EQ's 2048) — finer low-end resolution (~11.7 Hz/bin @48k) so the
+      // 60/150 Hz vocal bands read clearly. Static one-shot compute, so the extra cost is negligible.
+      const total = ch.length, N = 4096;
+      if (total < N) return [];
+      const sr = t.buffer.sampleRate || ctx.sampleRate;
+      const key = trackId + ":" + total + ":" + sr;
+      this._trackSpec = this._trackSpec || {};
+      if (this._trackSpec[trackId] && this._trackSpec[trackId].key === key) return this._trackSpec[trackId].pts;
+      const win = new Float32Array(N);
+      for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
+      const mag = new Float32Array(N / 2);
+      const totalFrames = Math.max(1, Math.floor((total - N) / N));
+      const stride = Math.max(1, Math.floor(totalFrames / 200));
+      let count = 0;
+      for (let f = 0; f + N <= total; f += N * stride) {
+        const re = new Float32Array(N), im = new Float32Array(N);
+        for (let i = 0; i < N; i++) re[i] = ch[f + i] * win[i];
+        fft(re, im);
+        for (let i = 0; i < N / 2; i++) mag[i] += Math.hypot(re[i], im[i]);
+        count++;
+      }
+      for (let i = 0; i < N / 2; i++) mag[i] /= Math.max(1, count);
+      const fmin = 30, fmax = Math.min(20000, sr / 2), P = 150, pts = [];
+      let mn = Infinity, mx = -Infinity;
+      for (let p = 0; p < P; p++) {
+        const fr = fmin * Math.pow(fmax / fmin, p / (P - 1));
+        const bin = Math.min(N / 2 - 1, Math.max(1, Math.round(fr / (sr / N))));
+        const db = 20 * Math.log10(mag[bin] + 1e-6);
+        pts.push({ f: fr, db });
+        mn = Math.min(mn, db); mx = Math.max(mx, db);
+      }
+      pts.forEach((p) => (p.n = (p.db - mn) / Math.max(1e-6, mx - mn)));
+      this._trackSpec[trackId] = { key, pts };
+      return pts;
+    },
+
     // debounced reschedule for high-frequency edits (drag); ~50ms coalescing window
     _scheduleAutomationSoon() {
       clearTimeout(this._autoSchedTimer);

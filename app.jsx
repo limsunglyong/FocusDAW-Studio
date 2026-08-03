@@ -2375,6 +2375,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         case "ADVANCED_READY":
           sendInit();
           break;
+        // Vocal Channel Strip Stage C: the strip asks for the selected vocal track's static
+        // FFT spectrum (PRE). It derives the POST curve itself from the EQ. Reply targeted so
+        // the strip renders as soon as a track is picked or its buffer changes (re-requested).
+        case "REQUEST_TRACK_SPECTRUM":
+          channel.postMessage({
+            type: "TRACK_SPECTRUM",
+            id: msg.id,
+            pts: (DAW.computeTrackSpectrum ? DAW.computeTrackSpectrum(msg.id) : []) || [],
+          });
+          break;
         case "BEFORE_CHANGE":
           pushUndo();
           break;
