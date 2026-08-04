@@ -588,9 +588,11 @@ function VocalStripApp() {
             </div>
           </div>
 
-          {/* 01 HPF | 02 Noise Gate — side by side in one row */}
+          {/* 01 HPF | 02 Noise Gate — side by side in one row. Gate gets the wider column and its
+              four knobs stay on ONE row (nowrap; scrolls horizontally only if the window is very
+              narrow) so a window resize never reflows them to two rows. */}
           <div style={CARD}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,0.8fr) minmax(0,1.2fr)" }}>
               <div style={{ minWidth: 0 }}>
                 <CardHead dotOn={vfx.hpf.on} disabled={!strip} onToggle={() => setHpfOn(!vfx.hpf.on)} idx="01" title="High-Pass Filter" sub="럼블/플로시브 컷 · 12 dB/oct" />
                 <div style={{ padding: "15px 16px 17px" }}>
@@ -604,13 +606,11 @@ function VocalStripApp() {
               <div style={{ minWidth: 0, borderLeft: "1px solid var(--line)" }}>
                 <CardHead dotOn={vfx.gate.on} disabled={!strip} onToggle={() => setGateOn(!vfx.gate.on)} idx="02" title="Noise Gate" sub="임계값 아래 감쇠" />
                 <div style={{ padding: "15px 16px 17px" }}>
-                  <div style={{ opacity: gateLocked ? 0.4 : gateDim ? 0.72 : 1, transition: "opacity .2s" }}>
-                    {krow([
-                      <Knob key="t" value={vfx.gate.threshold} min={-70} max={-10} step={1} label="Thresh" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("threshold", "vocalGateThreshold", v)} fmt={(v) => v.toFixed(0) + " dB"} />,
-                      <Knob key="r" value={vfx.gate.ratio} min={1} max={10} step={0.5} label="Ratio" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("ratio", "vocalGateRatio", v)} fmt={(v) => v.toFixed(1) + ":1"} />,
-                      <Knob key="a" value={vfx.gate.attack} min={0.5} max={50} step={0.5} label="Attack" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("attack", "vocalGateAttack", v)} fmt={(v) => v.toFixed(1) + " ms"} />,
-                      <Knob key="rl" value={vfx.gate.release} min={30} max={400} step={5} label="Release" disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("release", "vocalGateRelease", v)} fmt={(v) => v.toFixed(0) + " ms"} />,
-                    ])}
+                  <div style={{ display: "flex", flexWrap: "nowrap", gap: 6, alignItems: "flex-start", overflowX: "auto", opacity: gateLocked ? 0.4 : gateDim ? 0.72 : 1, transition: "opacity .2s" }}>
+                    <Knob value={vfx.gate.threshold} min={-70} max={-10} step={1} label="Thresh" size={42} disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("threshold", "vocalGateThreshold", v)} fmt={(v) => v.toFixed(0) + " dB"} />
+                    <Knob value={vfx.gate.ratio} min={1} max={10} step={0.5} label="Ratio" size={42} disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("ratio", "vocalGateRatio", v)} fmt={(v) => v.toFixed(1) + ":1"} />
+                    <Knob value={vfx.gate.attack} min={0.5} max={50} step={0.5} label="Attack" size={42} disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("attack", "vocalGateAttack", v)} fmt={(v) => v.toFixed(1) + " ms"} />
+                    <Knob value={vfx.gate.release} min={30} max={400} step={5} label="Release" size={42} disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("release", "vocalGateRelease", v)} fmt={(v) => v.toFixed(0) + " ms"} />
                   </div>
                 </div>
               </div>

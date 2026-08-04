@@ -1859,7 +1859,7 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.44.15",
+  range: "v1.40.0 - v1.44.16",
   date: "2026-08-03",
   features: [
     "Vocal channel strip: Audio In and Bounce tracks now have an FX button that opens a dedicated Vocal Channel Strip window with a 9-band graphic EQ and a compressor, plus vocal presets (Clean Lead / Warm Pop / Bright Air / Podcast) and an A/B bypass. The strip is applied before the track fader and is reflected in playback, Export, and saved projects.",
