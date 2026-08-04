@@ -576,6 +576,32 @@ function VocalStripApp() {
     }, keys);
     setPreset(name);
   };
+  // Reset every module to defaults in ONE undo step. `enabled` (the master A/B) is deliberately
+  // preserved — bypass is how the user is listening, not a value being edited, so resetting the
+  // strip must not silently switch the audio path. Values are read from defaultVocalFx() rather
+  // than hardcoded here, so adding a parameter there keeps Reset complete automatically.
+  const resetAll = () => {
+    const d = defaultVocalFx();
+    userOffRef.current = { eq: false, comp: false, hpf: false, gate: false, deess: false };
+    grab();
+    const keys = [
+      ["vocalHpfOn", 0], ["vocalHpfFreq", d.hpf.freq],
+      ["vocalGateOn", 0], ["vocalGateThreshold", d.gate.threshold], ["vocalGateRatio", d.gate.ratio],
+      ["vocalGateAttack", d.gate.attack], ["vocalGateRelease", d.gate.release],
+      ["vocalEqOn", 0],
+      ["vocalCompOn", 0], ["vocalCompThreshold", d.comp.threshold], ["vocalCompRatio", d.comp.ratio],
+      ["vocalCompAttack", d.comp.attack], ["vocalCompRelease", d.comp.release], ["vocalCompMakeup", d.comp.makeup],
+      ["vocalDeEssOn", 0], ["vocalDeEssFreq", d.deEss.freq], ["vocalDeEssThreshold", d.deEss.threshold],
+      ["vocalDeEssAmount", d.deEss.amount],
+    ];
+    d.eq.geq.forEach((v, i) => keys.push(["vocalEq" + i, v]));
+    apply((n) => {
+      const dd = defaultVocalFx();
+      n.hpf = dd.hpf; n.gate = dd.gate; n.eq = dd.eq; n.comp = dd.comp; n.deEss = dd.deEss;
+      // n.enabled intentionally untouched
+    }, keys);
+    setPreset(null);
+  };
 
   // Locked = master strip bypassed (nothing to adjust). Module off only dims — its controls stay
   // grabbable and auto-arm the module.
@@ -603,6 +629,23 @@ function VocalStripApp() {
       <div style={{ flex: 1, textAlign: "center", fontSize: 12.5, color: "var(--dim)", letterSpacing: ".02em" }}>
         FocusDAW Studio — <b style={{ color: "var(--cream-2)", fontWeight: 600 }}>{target ? target.name : "—"}</b>
       </div>
+      {/* Master A/B lives in the title bar, not the PRESET row: it governs the WHOLE strip, so it
+          should read as a window-level switch rather than one more preset-row control. Needs
+          no-drag or the title bar's drag region would swallow the click. */}
+      {target &&
+        <button onClick={() => setEnabled(!strip)}
+          title={strip ? "Bypass the whole strip (A/B compare)" : "Activate the channel strip"}
+          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 7, height: 24, padding: "0 12px",
+            borderRadius: 7, cursor: "pointer", fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em",
+            WebkitAppRegion: "no-drag",
+            border: "1px solid " + (strip ? "var(--amber)" : "var(--line)"),
+            background: strip ? "color-mix(in srgb,var(--amber) 20%,transparent)" : "var(--bg)",
+            color: strip ? "var(--amber)" : "var(--faint)",
+            boxShadow: strip ? "0 0 10px var(--amber-soft)" : "none",
+            opacity: strip ? 1 : 0.75 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 4v8M6.5 7a8 8 0 1 0 11 0" /></svg>
+          {strip ? "STRIP ACTIVE" : "Bypassed"}
+        </button>}
       <WindowControls />
     </div>
   );
@@ -636,7 +679,7 @@ function VocalStripApp() {
             </div>
           </div>
 
-          {/* PRESET row + master A/B */}
+          {/* PRESET row (master A/B now lives in the title bar) */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "12px 14px", ...CARD, boxShadow: "none" }}>
             <span title="Sets HPF, EQ, Compressor and De-esser. The Noise Gate is left as you set it."
               style={{ flex: "0 0 auto", fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: "var(--muted)" }}>PRESET</span>
@@ -651,16 +694,17 @@ function VocalStripApp() {
                 );
               })}
             </div>
-            {/* Active = the theme's highlight colour (--amber follows the colour scheme), not a
-                fixed green. Bypassed reads as disabled: neutral fill, faint text, no glow. */}
-            <button onClick={() => setEnabled(!strip)} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8, padding: "8px 15px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700, letterSpacing: ".06em",
-              border: "1px solid " + (strip ? "var(--amber)" : "var(--line)"),
-              background: strip ? "color-mix(in srgb,var(--amber) 20%,transparent)" : "var(--bg)",
-              color: strip ? "var(--amber)" : "var(--faint)",
-              boxShadow: strip ? "0 0 12px var(--amber-soft)" : "none",
-              opacity: strip ? 1 : 0.65 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 4v8M6.5 7a8 8 0 1 0 11 0" /></svg>
-              {strip ? "STRIP ACTIVE" : "Bypassed"}
+            {/* Reset — every module back to its default, one undo step. Deliberately does NOT
+                touch the master A/B: the user's bypass state is a listening mode, not a value. */}
+            <button onClick={resetAll}
+              title="Reset HPF, Noise Gate, EQ, Compressor and De-esser to their defaults (does not change Bypass / Strip Active)"
+              style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8,
+                cursor: "pointer", fontSize: 11, fontWeight: 600,
+                border: "1px solid var(--line)", background: "var(--bg)", color: "var(--dim)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--line-strong)"; e.currentTarget.style.color = "var(--cream-2)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--dim)"; }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9a6 6 0 0 1 6-6h7l-2.2-2.2M20 15a6 6 0 0 1-6 6H7l2.2 2.2" /></svg>
+              Reset
             </button>
           </div>
 
