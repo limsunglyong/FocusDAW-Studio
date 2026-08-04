@@ -82,7 +82,7 @@ const soonTag = {
 };
 
 function CardHead({ dotOn, onToggle, disabled, idx, title, sub, soon }) {
-  const tip = disabled ? "STRIP ACTIVE를 먼저 켜세요" : dotOn ? "이 이펙트 끄기" : "이 이펙트 켜기";
+  const tip = disabled ? "Turn on STRIP ACTIVE first" : dotOn ? "Turn this effect off" : "Turn this effect on";
   return (
     <div style={CARD_HEAD}>
       <button title={tip} disabled={disabled} onClick={disabled ? undefined : onToggle} style={dotStyle(dotOn, disabled)} />
@@ -137,7 +137,7 @@ function Knob({ value, min, max, label, fmt, color, size, step, disabled, onGrab
   const dbl = () => { if (disabled) return; if (onGrab) onGrab(); onChange((min + max) / 2); };
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, userSelect: "none", width: size + 22 }}>
-      <div ref={knobRef} onMouseDown={down} onDoubleClick={dbl} title="드래그 · 더블클릭=중앙값 · 휠=미세 조절"
+      <div ref={knobRef} onMouseDown={down} onDoubleClick={dbl} title="Drag · double-click = center · wheel = fine adjust"
         style={{ width: size, height: size, cursor: disabled ? "default" : "ns-resize" }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={r} cy={r} r={R} fill="var(--bg)" stroke="rgba(0,0,0,.5)" strokeWidth="1.5" />
@@ -203,7 +203,7 @@ function GraphicEq({ geq, disabled, dim, onGrab, onSetBand }) {
       <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, width: colW }}>
         <div style={{ fontFamily: "var(--mono)", fontSize: 9.5, fontWeight: 700, height: 13, color: val > 0.05 ? "var(--green)" : val < -0.05 ? "var(--red)" : "var(--faint)" }}>{(val >= 0 ? "+" : "") + val.toFixed(1)}</div>
         <div data-band={i} onMouseDown={down(i)} onDoubleClick={dbl(i)}
-          title="드래그 · 더블클릭=0dB · 휠=0.1dB"
+          title="Drag · double-click = 0 dB · wheel = 0.1 dB"
           style={{ position: "relative", width: railW, height: railH, borderRadius: railW / 2, cursor: disabled ? "default" : "ns-resize",
             background: "linear-gradient(180deg,var(--surface),var(--bg))", border: "1px solid var(--line-strong)", boxShadow: "inset 0 2px 7px rgba(0,0,0,.4)" }}>
           <div style={{ position: "absolute", left: 5, right: 5, top: center, height: 1.5, background: "var(--line-strong)", transform: "translateY(-50%)" }} />
@@ -292,7 +292,7 @@ function SpectrumChart({ pre, showPost, geq, makeupDb, hpfOn, hpfFreq }) {
   if (!pre || pre.length === 0) {
     return (
       <div style={{ height: H, borderRadius: 12, border: "1px solid var(--line-strong)", background: "radial-gradient(130% 130% at 50% 0%,var(--surface2) 0%,var(--bg) 78%)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--faint)", fontSize: 11, textAlign: "center", padding: "0 16px" }}>
-        이 트랙에 오디오가 없습니다 — 보컬을 녹음하면 적용 전/후 스펙트럼이 표시됩니다.
+        No audio on this track — record a vocal to see the before / after spectrum.
       </div>
     );
   }
@@ -575,7 +575,7 @@ function VocalStripApp() {
       <div style={{ height: "100vh", width: "100vw", display: "flex", flexDirection: "column", background: "var(--bg2)", color: "var(--cream)", fontFamily: "var(--ui)", overflow: "hidden" }}>
         {bar}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.7, padding: 24 }}>
-          보컬(Audio In / Bounce) 트랙이 없습니다.<br />먼저 보컬을 녹음하거나 트랙을 추가하세요.
+          No vocal (Audio In / Bounce) track.<br />Record a vocal or add a track first.
         </div>
       </div>
     );
@@ -631,7 +631,7 @@ function VocalStripApp() {
             <div style={CARD_HEAD}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 20V10M8 20V4M13 20v-7M18 20V8M22 20H2" /></svg>
               <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".02em", color: "var(--cream)" }}>Spectrum</span>
-              <span style={{ fontSize: 10.5, color: "var(--muted)" }}>이펙트 적용 전 / 후 비교</span>
+              <span style={{ fontSize: 10.5, color: "var(--muted)" }}>Before / after the insert chain</span>
               <span style={{ flex: 1 }} />
               {/* legend replaces the old SOON tag */}
               <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9.5, color: "var(--muted)" }}>
@@ -652,7 +652,7 @@ function VocalStripApp() {
           <div style={CARD}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,0.8fr) minmax(0,1.2fr)" }}>
               <div style={{ minWidth: 0 }}>
-                <CardHead dotOn={vfx.hpf.on} disabled={!strip} onToggle={() => setHpfOn(!vfx.hpf.on)} idx="01" title="High-Pass Filter" sub="럼블/플로시브 컷 · 12 dB/oct" />
+                <CardHead dotOn={vfx.hpf.on} disabled={!strip} onToggle={() => setHpfOn(!vfx.hpf.on)} idx="01" title="High-Pass Filter" sub="Rumble / plosive cut · 12 dB/oct" />
                 <div style={{ padding: "15px 16px 17px" }}>
                   <div style={{ opacity: hpfLocked ? 0.4 : hpfDim ? 0.72 : 1, transition: "opacity .2s" }}>
                     {krow([
@@ -662,7 +662,7 @@ function VocalStripApp() {
                 </div>
               </div>
               <div style={{ minWidth: 0, borderLeft: "1px solid var(--line)" }}>
-                <CardHead dotOn={vfx.gate.on} disabled={!strip} onToggle={() => setGateOn(!vfx.gate.on)} idx="02" title="Noise Gate" sub="임계값 아래 감쇠" />
+                <CardHead dotOn={vfx.gate.on} disabled={!strip} onToggle={() => setGateOn(!vfx.gate.on)} idx="02" title="Noise Gate" sub="Attenuates below the threshold" />
                 <div style={{ padding: "15px 16px 17px" }}>
                   <div style={{ display: "flex", flexWrap: "nowrap", gap: 6, alignItems: "flex-start", overflowX: "auto", opacity: gateLocked ? 0.4 : gateDim ? 0.72 : 1, transition: "opacity .2s" }}>
                     <Knob value={vfx.gate.threshold} min={-70} max={-10} step={1} label="Thresh" size={42} disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("threshold", "vocalGateThreshold", v)} fmt={(v) => v.toFixed(0) + " dB"} />
@@ -680,7 +680,7 @@ function VocalStripApp() {
 
           {/* 03 — 9-band EQ (functional) */}
           <div style={CARD}>
-            <CardHead dotOn={vfx.eq.on} disabled={!strip} onToggle={() => setEqOn(!vfx.eq.on)} idx="03" title="Equalizer" sub="9밴드 그래픽 EQ — 페이더 드래그로 조절 (더블클릭=0dB)" />
+            <CardHead dotOn={vfx.eq.on} disabled={!strip} onToggle={() => setEqOn(!vfx.eq.on)} idx="03" title="Equalizer" sub="9-band graphic EQ — drag the faders (double-click = 0 dB)" />
             <div style={{ padding: "15px 16px 17px" }}>
               <GraphicEq geq={vfx.eq.geq} disabled={eqLocked} dim={eqDim} onGrab={grab} onSetBand={setBand} />
             </div>
@@ -688,7 +688,7 @@ function VocalStripApp() {
 
           {/* 04 — Compressor (functional) */}
           <div style={CARD}>
-            <CardHead dotOn={vfx.comp.on} disabled={!strip} onToggle={() => setCompOn(!vfx.comp.on)} idx="04" title="Compressor" sub="다이나믹 제어 — 노브 드래그 · 휠 미세 조절 (더블클릭=중앙값)" />
+            <CardHead dotOn={vfx.comp.on} disabled={!strip} onToggle={() => setCompOn(!vfx.comp.on)} idx="04" title="Compressor" sub="Dynamics control — drag the knobs · wheel to fine-tune (double-click = center)" />
             <div style={{ padding: "15px 16px 17px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap", opacity: compLocked ? 0.4 : compDim ? 0.72 : 1, transition: "opacity .2s" }}>
                 {krow([
@@ -705,7 +705,7 @@ function VocalStripApp() {
 
           {/* 05 — De-esser (functional; audio applied by the native engine) */}
           <div style={CARD}>
-            <CardHead dotOn={vfx.deEss.on} disabled={!strip} onToggle={() => setDeEssOn(!vfx.deEss.on)} idx="05" title="De-Esser" sub="치찰음(sibilance) 대역 감쇠 — 컴프 뒤" />
+            <CardHead dotOn={vfx.deEss.on} disabled={!strip} onToggle={() => setDeEssOn(!vfx.deEss.on)} idx="05" title="De-Esser" sub="Attenuates the sibilance band — after the compressor" />
             <div style={{ padding: "15px 16px 17px" }}>
               <div style={{ opacity: deEssLocked ? 0.4 : deEssDim ? 0.72 : 1, transition: "opacity .2s" }}>
                 {krow([
@@ -725,13 +725,13 @@ function VocalStripApp() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14s2-6 4-6 2 12 4 12 2-9 4-9 2 3 4 3" /></svg>
               <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)" }}>06</span>
               <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".02em", color: "var(--cream)" }}>Broadband De-noise</span>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 10.5, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>룸톤/히스 제거 — 오프라인 프린트(비파괴)</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 10.5, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Removes room tone / hiss — offline print (non-destructive)</span>
               <span style={{ ...soonTag, color: "var(--muted)", background: "var(--bg)", border: "1px solid var(--line)" }}>OFFLINE</span>
             </div>
             <div style={{ padding: "15px 16px 17px", display: "flex", flexDirection: "column", gap: 12 }}>
               <ol style={{ margin: 0, paddingLeft: 18, fontSize: 10.5, lineHeight: 1.7, color: "var(--muted)" }}>
-                <li>이 트랙에서 목소리가 없는 <b style={{ color: "var(--cream-2)" }}>무음 구간(숨소리·룸톤만)을 Repeat 구간</b>으로 지정하고 <b style={{ color: "var(--cream-2)" }}>노이즈 학습</b>을 누릅니다. <span style={{ color: "var(--faint)" }}>— 그 구간이 있는 클립이 대상이 됩니다.</span></li>
-                <li>Amount를 정하고 <b style={{ color: "var(--cream-2)" }}>De-noise 적용</b> — 새 오디오로 프린트됩니다(원본 WAV 보존, Undo 가능).</li>
+                <li>Mark a silent stretch of this track (breaths / room tone only) as the Repeat region, then press Learn Noise.</li>
+                <li>Set Amount and press Apply De-noise — the cleaned audio is printed as a new file (original WAV kept, undoable).</li>
               </ol>
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                 <Knob value={dnAmount} min={0} max={1} step={0.05} label="Amount" color="var(--violet)" size={46}
@@ -741,17 +741,17 @@ function VocalStripApp() {
                     border: "1px solid " + (dnLearned ? "var(--amber)" : "var(--line)"),
                     background: dnLearned ? "color-mix(in srgb,var(--amber) 20%,transparent)" : "var(--bg)",
                     color: dnLearned ? "var(--amber)" : "var(--dim)", opacity: dnBusy ? 0.6 : 1 }}>
-                  {dnLearned ? "✓ 노이즈 학습됨" : "노이즈 학습"}
+                  {dnLearned ? "✓ Noise learned" : "Learn Noise"}
                 </button>
                 <button disabled={dnBusy || !dnLearned}
                   onClick={() => { setDnBusy(true); setDnMsg(null); vsChannel.postMessage({ type: "REQUEST_DENOISE_APPLY", id: targetId, amount: dnAmount }); }}
-                  title={dnLearned ? "" : "먼저 노이즈를 학습하세요"}
+                  title={dnLearned ? "" : "Learn the noise first"}
                   style={{ padding: "9px 15px", borderRadius: 8, cursor: (dnBusy || !dnLearned) ? "default" : "pointer", fontSize: 11, fontWeight: 700, letterSpacing: ".04em",
                     border: "1px solid " + (dnLearned ? "var(--amber)" : "var(--line)"),
                     background: dnLearned && !dnBusy ? "var(--amber)" : "var(--bg)",
                     color: dnLearned && !dnBusy ? "var(--on-amber, var(--mixer-bar-fg))" : "var(--faint)",
                     opacity: (dnBusy || !dnLearned) ? 0.6 : 1 }}>
-                  {dnBusy ? "처리 중…" : "De-noise 적용"}
+                  {dnBusy ? "Processing…" : "Apply De-noise"}
                 </button>
               </div>
               {dnMsg && (
@@ -768,7 +768,7 @@ function VocalStripApp() {
       </div>
 
       <div style={{ height: 30, flex: "0 0 30px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", background: "var(--bg)", borderTop: "1px solid rgba(0,0,0,.4)", fontSize: 10.5, color: "var(--faint)" }}>
-        <span>{strip ? "채널 스트립 활성 — 인서트 pre-fader" : "스트립 우회중 (A/B 비교)"}</span>
+        <span>{strip ? "Channel strip active — insert, pre-fader" : "Strip bypassed (A/B compare)"}</span>
         <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · HPF · Gate · EQ · Comp · De-ess · De-noise</span>
       </div>
     </div>

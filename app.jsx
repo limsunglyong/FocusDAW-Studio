@@ -2404,34 +2404,34 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           const reply = (ok, message, extra) => channel.postMessage(
             { type: "DENOISE_RESULT", id: msg.id, apply: applying, ok, message, ...(extra || {}) });
           const track = DAW.tracks.find((t) => t.id === msg.id);
-          if (!track) { reply(false, "트랙을 찾을 수 없습니다."); break; }
+          if (!track) { reply(false, "Track not found."); break; }
           const clips = track.clips || [];
-          if (!clips.length) { reply(false, "이 트랙에 오디오 클립이 없습니다."); break; }
+          if (!clips.length) { reply(false, "This track has no audio clip."); break; }
           const clipEnd = (c) => c.start + (c.duration || 0);
           if (!applying) {
             const r = DAW.loopRange;
-            if (!r || !(r.end > r.start)) { reply(false, "먼저 무음 구간(숨소리·룸톤)을 Repeat 구간으로 지정하세요."); break; }
+            if (!r || !(r.end > r.start)) { reply(false, "Mark a silent stretch (breaths / room tone) as the Repeat region first."); break; }
             const mid = (r.start + r.end) / 2;
             const clip = clips.find((c) => mid >= c.start && mid < clipEnd(c))          // region sits in this clip
               || clips.find((c) => r.start < clipEnd(c) && r.end > c.start)             // else: first overlap
               || (clips.length === 1 ? clips[0] : null);
-            if (!clip) { reply(false, "Repeat 구간이 이 트랙의 클립과 겹치지 않습니다."); break; }
+            if (!clip) { reply(false, "The Repeat region does not overlap any clip on this track."); break; }
             const info = DAW.learnDenoiseProfile && DAW.learnDenoiseProfile(track.id, clip.id, r.start, r.end);
-            if (!info) { reply(false, "구간이 너무 짧습니다 (최소 ~0.05초)."); break; }
-            reply(true, `노이즈 프로파일 학습 완료 — ${info.seconds.toFixed(2)}초`, { learned: true });
+            if (!info) { reply(false, "The region is too short (about 0.05 s minimum)."); break; }
+            reply(true, `Noise profile learned — ${info.seconds.toFixed(2)} s`, { learned: true });
             break;
           }
           const prof = DAW.denoiseProfileInfo && DAW.denoiseProfileInfo(track.id);
-          if (!prof) { reply(false, "먼저 [노이즈 학습]을 실행하세요."); break; }
+          if (!prof) { reply(false, "Run [Learn Noise] first."); break; }
           const target = clips.find((c) => c.id === prof.clipId);
-          if (!target) { reply(false, "학습한 클립을 찾을 수 없습니다 — 다시 학습해 주세요."); break; }
+          if (!target) { reply(false, "The learned clip is gone — please learn the noise again."); break; }
           const savedRedo = pushUndo();
           const newSourceId = DAW.denoiseClip(track.id, target.id, { amount: msg.amount });
-          if (!newSourceId) { cancelUndo(savedRedo); reply(false, "De-noise 처리에 실패했습니다."); break; }
+          if (!newSourceId) { cancelUndo(savedRedo); reply(false, "De-noise failed."); break; }
           persistConsolidated();          // print the new WAV into <Project> Audio/Consolidated/
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
-          reply(true, "De-noise 적용 완료 — 원본은 그대로 두고 새 오디오로 프린트했습니다 (Undo 가능).", { printed: true });
+          reply(true, "De-noise applied — printed as new audio, original kept (undoable).", { printed: true });
           break;
         }
         case "BEFORE_CHANGE":
