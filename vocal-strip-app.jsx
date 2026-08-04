@@ -330,6 +330,23 @@ function SpectrumChart({ pre, showPost, geq, makeupDb, hpfOn, hpfFreq }) {
   );
 }
 
+/* ---------- live gain-reduction meter (dB, fills right→left) ---------- */
+function GrMeter({ db, max, label }) {
+  const m = max || 12;
+  const pct = Math.max(0, Math.min(1, (db || 0) / m)) * 100;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 130, flex: 1 }}>
+      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", color: "var(--muted)" }}>{label || "GAIN REDUCTION"}</span>
+      <div style={{ position: "relative", height: 14, borderRadius: 7, background: "var(--bg)", border: "1px solid var(--line)", overflow: "hidden" }}>
+        <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: pct + "%", background: "linear-gradient(90deg,var(--amber),var(--red))", borderRadius: "0 6px 6px 0", transition: "width .05s linear" }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 9, color: "var(--faint)" }}>
+        <span>-{m}</span><span>{(db || 0).toFixed(1)} dB</span>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- placeholder body for not-yet-wired sections ---------- */
 function PlaceholderBody({ note, children }) {
   return (
@@ -349,15 +366,26 @@ function VocalStripApp() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [preset, setPreset] = useState(null);
   const [specPts, setSpecPts] = useState([]); // measured PRE spectrum of the target track (Stage C)
+  const [meters, setMeters] = useState({ gate: 0, comp: 0, deEss: 0 }); // live GR (dB) from native
   // Drag handlers capture their callbacks at mousedown, so module on/off must be read through a
   // ref (state closed over at mousedown would stay stale for the whole drag).
   const vfxRef = useRef(vfx); vfxRef.current = vfx;
   // "User switched this module off on purpose" — gates auto-arm (see setBand / setComp).
-  const userOffRef = useRef({ eq: false, comp: false, hpf: false, gate: false });
+  const userOffRef = useRef({ eq: false, comp: false, hpf: false, gate: false, deess: false });
   const targetIdRef = useRef(getQueryTrack());
   useEffect(() => { targetIdRef.current = targetId; }, [targetId]);
   // Fetch the PRE spectrum whenever the selected track changes (INIT/SYNC also re-requests).
   useEffect(() => { setSpecPts([]); if (targetId) vsChannel.postMessage({ type: "REQUEST_TRACK_SPECTRUM", id: targetId }); }, [targetId]);
+  // Poll the target track's live gain-reduction meters while playing (~25 fps). Native-only
+  // values; cleared to zero when stopped so the bars fall instead of freezing.
+  useEffect(() => {
+    if (!isPlaying) { setMeters({ gate: 0, comp: 0, deEss: 0 }); return; }
+    const iv = setInterval(() => {
+      const id = targetIdRef.current;
+      if (id) vsChannel.postMessage({ type: "REQUEST_VOCAL_METERS", id });
+    }, 40);
+    return () => clearInterval(iv);
+  }, [isPlaying]);
 
   useEffect(() => {
     vsChannel.postMessage({ type: "ADVANCED_READY" });
@@ -385,6 +413,8 @@ function VocalStripApp() {
         }
       } else if (msg.type === "TRACK_SPECTRUM") {
         if (msg.id === targetIdRef.current) setSpecPts(Array.isArray(msg.pts) ? msg.pts : []);
+      } else if (msg.type === "VOCAL_METERS") {
+        if (msg.id === targetIdRef.current) setMeters({ gate: msg.gate || 0, comp: msg.comp || 0, deEss: msg.deEss || 0 });
       } else if (msg.type === "LEVEL_METERS") {
         if (typeof msg.isPlaying === "boolean") setIsPlaying(msg.isPlaying);
       }
@@ -470,6 +500,13 @@ function VocalStripApp() {
     if (arm) keys.push(["vocalGateOn", 1]);
     apply((n) => { n.gate[field] = v; if (arm) n.gate.on = true; }, keys);
   };
+  const setDeEssOn = (on) => { userOffRef.current.deess = !on; grab(); apply((n) => { n.deEss.on = on; }, [["vocalDeEssOn", on ? 1 : 0]]); };
+  const setDeEss = (field, key, v) => {
+    const arm = !vfxRef.current.deEss.on && !userOffRef.current.deess;
+    const keys = [[key, v]];
+    if (arm) keys.push(["vocalDeEssOn", 1]);
+    apply((n) => { n.deEss[field] = v; if (arm) n.deEss.on = true; }, keys);
+  };
   const applyPreset = (name) => {
     const p = VOCAL_PRESETS[name];
     if (!p) return;
@@ -489,6 +526,7 @@ function VocalStripApp() {
   const eqDim = strip && !vfx.eq.on, compDim = strip && !vfx.comp.on;
   const hpfLocked = !strip, gateLocked = !strip;
   const hpfDim = strip && !vfx.hpf.on, gateDim = strip && !vfx.gate.on;
+  const deEssLocked = !strip, deEssDim = strip && !vfx.deEss.on;
   // Spectrum POST curve inputs: EQ shape only when the EQ module is on, makeup only when the
   // comp module is on; the amber POST line shows only when it actually differs from PRE.
   const FLAT9 = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -612,6 +650,9 @@ function VocalStripApp() {
                     <Knob value={vfx.gate.attack} min={0.5} max={50} step={0.5} label="Attack" size={42} disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("attack", "vocalGateAttack", v)} fmt={(v) => v.toFixed(1) + " ms"} />
                     <Knob value={vfx.gate.release} min={30} max={400} step={5} label="Release" size={42} disabled={gateLocked} onGrab={grab} onChange={(v) => setGate("release", "vocalGateRelease", v)} fmt={(v) => v.toFixed(0) + " ms"} />
                   </div>
+                  <div style={{ marginTop: 12 }}>
+                    <GrMeter db={vfx.gate.on ? meters.gate : 0} max={24} label="ATTENUATION" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -637,27 +678,24 @@ function VocalStripApp() {
                   <Knob key="rl" value={vfx.comp.release} min={30} max={400} step={5} label="Release" disabled={compLocked} onGrab={grab} onChange={(v) => setComp("release", "vocalCompRelease", v)} fmt={(v) => v.toFixed(0) + " ms"} />,
                   <Knob key="m" value={vfx.comp.makeup} min={0} max={12} step={0.1} label="Makeup" color="var(--green)" disabled={compLocked} onGrab={grab} onChange={(v) => setComp("makeup", "vocalCompMakeup", v)} fmt={(v) => "+" + v.toFixed(1)} />,
                 ])}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 150, flex: 1 }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", color: "var(--muted)" }}>GAIN REDUCTION</span>
-                  <div style={{ position: "relative", height: 14, borderRadius: 7, background: "var(--bg)", border: "1px solid var(--line)", overflow: "hidden" }}>
-                    <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: vfx.comp.on ? "38%" : "0%", background: "linear-gradient(90deg,var(--amber),var(--red))", borderRadius: "0 6px 6px 0" }} />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 9, color: "var(--faint)" }}><span>-12</span><span>-6</span><span>0 dB</span></div>
-                </div>
+                <GrMeter db={vfx.comp.on ? meters.comp : 0} max={12} />
               </div>
             </div>
           </div>
 
-          {/* 05 — De-esser (Stage E placeholder) */}
+          {/* 05 — De-esser (functional; audio applied by the native engine) */}
           <div style={CARD}>
-            <CardHead dotOn={false} disabled idx="05" title="De-Esser" soon />
-            <PlaceholderBody note="치찰음(sibilance) 제어 — Stage E">
-              {krow([
-                <Knob key="f" value={vfx.deEss.freq} min={2000} max={12000} label="Freq" color="var(--violet)" disabled fmt={(v) => (v / 1000).toFixed(1) + "k"} onChange={() => {}} />,
-                <Knob key="t" value={vfx.deEss.threshold} min={-48} max={0} label="Thresh" disabled fmt={(v) => v.toFixed(0) + " dB"} onChange={() => {}} />,
-                <Knob key="a" value={vfx.deEss.amount} min={0} max={1} label="Amount" color="var(--red)" disabled fmt={(v) => Math.round(v * 100) + "%"} onChange={() => {}} />,
-              ])}
-            </PlaceholderBody>
+            <CardHead dotOn={vfx.deEss.on} disabled={!strip} onToggle={() => setDeEssOn(!vfx.deEss.on)} idx="05" title="De-Esser" sub="치찰음(sibilance) 대역 감쇠 — 컴프 뒤" />
+            <div style={{ padding: "15px 16px 17px" }}>
+              <div style={{ opacity: deEssLocked ? 0.4 : deEssDim ? 0.72 : 1, transition: "opacity .2s" }}>
+                {krow([
+                  <Knob key="f" value={vfx.deEss.freq} min={2000} max={12000} step={100} label="Freq" color="var(--violet)" disabled={deEssLocked} onGrab={grab} onChange={(v) => setDeEss("freq", "vocalDeEssFreq", v)} fmt={(v) => (v / 1000).toFixed(1) + "k"} />,
+                  <Knob key="t" value={vfx.deEss.threshold} min={-48} max={0} step={1} label="Thresh" disabled={deEssLocked} onGrab={grab} onChange={(v) => setDeEss("threshold", "vocalDeEssThreshold", v)} fmt={(v) => v.toFixed(0) + " dB"} />,
+                  <Knob key="a" value={vfx.deEss.amount} min={0} max={1} step={0.05} label="Amount" color="var(--red)" disabled={deEssLocked} onGrab={grab} onChange={(v) => setDeEss("amount", "vocalDeEssAmount", v)} fmt={(v) => Math.round(v * 100) + "%"} />,
+                  <GrMeter key="gr" db={vfx.deEss.on ? meters.deEss : 0} max={12} label="DE-ESS GR" />,
+                ])}
+              </div>
+            </div>
           </div>
 
         </div>
@@ -665,7 +703,7 @@ function VocalStripApp() {
 
       <div style={{ height: 30, flex: "0 0 30px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", background: "var(--bg)", borderTop: "1px solid rgba(0,0,0,.4)", fontSize: 10.5, color: "var(--faint)" }}>
         <span>{strip ? "채널 스트립 활성 — 인서트 pre-fader" : "스트립 우회중 (A/B 비교)"}</span>
-        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · Spectrum · HPF · Gate · EQ · Comp</span>
+        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · HPF · Gate · EQ · Comp · De-ess</span>
       </div>
     </div>
   );

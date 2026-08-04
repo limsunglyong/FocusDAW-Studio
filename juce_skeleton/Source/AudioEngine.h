@@ -161,6 +161,11 @@ struct TrackInfo
     float vocalGateRatio = 4.0f;                // downward-expander ratio
     float vocalGateAttack = 2.0f;               // ms (open)
     float vocalGateRelease = 120.0f;            // ms (close)
+    // Stage E: De-esser (split-band sibilance control, after the compressor).
+    bool  vocalDeEssOn = false;
+    float vocalDeEssFreq = 6800.0f;             // Hz — sibilance band corner
+    float vocalDeEssThreshold = -24.0f;         // dB
+    float vocalDeEssAmount = 0.5f;              // 0..1 reduction depth
 };
 
 // Ambience (Sound Environment / room type) spec — mirrors the web engine's
@@ -791,11 +796,15 @@ public:
         spec.numChannels = 2;
         for (int i = 0; i < 9; ++i) vocalEqFilters[i].prepare(spec);
         vocalHpfFilter.prepare(spec);
+        vocalDeEssHpf.prepare(spec);
+        deEssBuffer.setSize(2, spb, false, false, true);
         vocalCompressor.prepare(spec);
         gateGain = 1.0f;
+        deEssEnv = 0.0f;
         vocalChainPrepared = true;
         updateVocalEqCoefficients();
         updateVocalHpfCoefficients();
+        updateVocalDeEssCoefficients();
     }
 
     void releaseResources() override {
@@ -807,8 +816,10 @@ public:
         echoDelay.reset();
         for (auto& f : vocalEqFilters) f.reset();
         vocalHpfFilter.reset();
+        vocalDeEssHpf.reset();
         vocalCompressor.reset();
         gateGain = 1.0f;
+        deEssEnv = 0.0f;
         if (soundTouchSource) soundTouchSource->setNextReadPosition(0);
     }
 
@@ -878,6 +889,7 @@ public:
                 const int nch = bufferToFill.buffer->getNumChannels();
                 float* chL = bufferToFill.buffer->getWritePointer(0, bufferToFill.startSample);
                 float* chR = (nch > 1) ? bufferToFill.buffer->getWritePointer(1, bufferToFill.startSample) : nullptr;
+                float minGate = 1.0f;
                 for (int s = 0; s < bufferToFill.numSamples; ++s)
                 {
                     const float l = chL[s];
@@ -893,10 +905,13 @@ public:
                     }
                     const float coef = (desired > gateGain) ? aCoef : rCoef; // open fast, close on release
                     gateGain = coef * gateGain + (1.0f - coef) * desired;
+                    minGate = std::min(minGate, gateGain);
                     chL[s] = l * gateGain;
                     if (chR) chR[s] = r * gateGain;
                 }
+                gateGrDb.store(std::max(0.0f, -juce::Decibels::gainToDecibels(std::max(minGate, 1.0e-4f))));
             }
+            else gateGrDb.store(0.0f);
             // 3) EQ
             if (vocalEqOn.load())
                 for (int i = 0; i < 9; ++i) vocalEqFilters[i].process(vCtx);
@@ -906,12 +921,65 @@ public:
                 vocalCompressor.setRatio(std::max(1.0f, vocalCompRatio.load()));
                 vocalCompressor.setAttack(std::max(0.0f, vocalCompAttack.load()));
                 vocalCompressor.setRelease(std::max(0.0f, vocalCompRelease.load()));
+                // GR meter: peak magnitude before vs after compression (pre-makeup).
+                const float compPre = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
                 vocalCompressor.process(vCtx);
+                const float compPost = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
+                compGrDb.store((compPre > 1.0e-4f && compPost > 1.0e-5f && compPost < compPre)
+                               ? 20.0f * std::log10(compPre / compPost) : 0.0f);
                 float mk = juce::Decibels::decibelsToGain(vocalCompMakeup.load());
                 if (std::abs(mk - 1.0f) > 1.0e-4f)
                     bufferToFill.buffer->applyGain(bufferToFill.startSample, bufferToFill.numSamples, mk);
             }
+            else compGrDb.store(0.0f);
+            // 5) De-esser (after comp) — split-band. Copy the block, high-pass it to isolate the
+            // sibilance band, follow its envelope, and when it exceeds threshold subtract that band
+            // scaled by (overshoot × amount) from the mix. output = signal - hf*(1-g), exact for any
+            // phase since hf is a real filtered copy: g=1 -> unchanged, g<1 -> sibilance pulled down.
+            if (vocalDeEssOn.load() && deEssBuffer.getNumSamples() >= bufferToFill.numSamples)
+            {
+                if (vocalDeEssDirty.exchange(false)) updateVocalDeEssCoefficients();
+                double sr = preparedSampleRate.load(); if (sr <= 0) sr = 44100.0;
+                const int nch = std::min(2, bufferToFill.buffer->getNumChannels());
+                const int n = bufferToFill.numSamples;
+                for (int ch = 0; ch < nch; ++ch)
+                    deEssBuffer.copyFrom(ch, 0, *bufferToFill.buffer, ch, bufferToFill.startSample, n);
+                juce::dsp::AudioBlock<float> dBlock(deEssBuffer);
+                auto dSub = dBlock.getSubBlock(0, (size_t)n).getSubsetChannelBlock(0, (size_t)nch);
+                juce::dsp::ProcessContextReplacing<float> dCtx(dSub);
+                vocalDeEssHpf.process(dCtx); // deEssBuffer now holds the sibilance band
+                const float threshDb = vocalDeEssThreshold.load();
+                const float threshLin = juce::Decibels::decibelsToGain(threshDb);
+                const float amount = std::max(0.0f, std::min(1.0f, vocalDeEssAmount.load()));
+                const float aCoef = std::exp(-1.0f / (float)(0.0005 * sr)); // 0.5 ms attack
+                const float rCoef = std::exp(-1.0f / (float)(0.040 * sr));  // 40 ms release
+                float* mL = bufferToFill.buffer->getWritePointer(0, bufferToFill.startSample);
+                float* mR = (nch > 1) ? bufferToFill.buffer->getWritePointer(1, bufferToFill.startSample) : nullptr;
+                const float* bL = deEssBuffer.getReadPointer(0);
+                const float* bR = (nch > 1) ? deEssBuffer.getReadPointer(1) : nullptr;
+                float minG = 1.0f;
+                for (int s = 0; s < n; ++s)
+                {
+                    const float band = std::max(std::abs(bL[s]), bR ? std::abs(bR[s]) : 0.0f);
+                    const float coef = (band > deEssEnv) ? aCoef : rCoef;
+                    deEssEnv = coef * deEssEnv + (1.0f - coef) * band;
+                    float g = 1.0f;
+                    if (deEssEnv > threshLin)
+                    {
+                        const float overDb = juce::Decibels::gainToDecibels(deEssEnv + 1.0e-9f) - threshDb;
+                        const float redDb = std::min(overDb, 24.0f) * amount;
+                        g = juce::Decibels::decibelsToGain(-redDb);
+                    }
+                    minG = std::min(minG, g);
+                    const float oneMinusG = 1.0f - g;
+                    mL[s] -= bL[s] * oneMinusG;
+                    if (mR) mR[s] -= bR[s] * oneMinusG;
+                }
+                deEssGrDb.store(std::max(0.0f, -juce::Decibels::gainToDecibels(std::max(minG, 1.0e-4f))));
+            }
+            else deEssGrDb.store(0.0f);
         }
+        else { gateGrDb.store(0.0f); compGrDb.store(0.0f); deEssGrDb.store(0.0f); }
 
         float sourceMagnitude = bufferToFill.buffer->getMagnitude(bufferToFill.startSample, bufferToFill.numSamples);
 
@@ -1238,6 +1306,27 @@ public:
     std::atomic<float> vocalGateAttack { 2.0f };
     std::atomic<float> vocalGateRelease { 120.0f };
     float gateGain = 1.0f; // audio-thread only: current smoothed gate gain (persists across blocks)
+    // Stage E — De-esser (split-band). A high-pass sidechain isolates the sibilance band; when it
+    // exceeds threshold that band is attenuated by (overshoot × amount) and subtracted from the mix.
+    std::atomic<bool>  vocalDeEssOn { false };
+    std::atomic<float> vocalDeEssFreq { 6800.0f };
+    std::atomic<float> vocalDeEssThreshold { -24.0f };
+    std::atomic<float> vocalDeEssAmount { 0.5f };
+    std::atomic<bool>  vocalDeEssDirty { false };
+    float deEssEnv = 0.0f; // audio-thread only: sibilance-band envelope
+    // Live gain-reduction meters (dB of reduction, >=0), updated per block for the strip UI.
+    std::atomic<float> gateGrDb { 0.0f };
+    std::atomic<float> compGrDb { 0.0f };
+    std::atomic<float> deEssGrDb { 0.0f };
+
+    void updateVocalDeEssCoefficients()
+    {
+        double sr = preparedSampleRate.load();
+        if (sr <= 0) sr = 44100.0;
+        float freq = std::min(std::max(2000.0f, vocalDeEssFreq.load()), (float)(sr * 0.45));
+        auto c = juce::dsp::IIR::Coefficients<float>::makeHighPass(sr, freq, 0.707f);
+        *vocalDeEssHpf.state = *c;
+    }
 
     void updateVocalHpfCoefficients()
     {
@@ -1267,6 +1356,8 @@ public:
     using VocalFilterDuplicator = juce::dsp::ProcessorDuplicator<VocalFilterType, juce::dsp::IIR::Coefficients<float>>;
     std::array<VocalFilterDuplicator, 9> vocalEqFilters;
     VocalFilterDuplicator vocalHpfFilter;
+    VocalFilterDuplicator vocalDeEssHpf;         // sibilance-band sidechain filter
+    juce::AudioBuffer<float> deEssBuffer;        // preallocated scratch for the split band
     juce::dsp::Compressor<float> vocalCompressor;
     bool vocalChainPrepared = false;
 };
@@ -1998,6 +2089,8 @@ public:
     double getPlayhead() const;
     void updatePlayhead();
     float getTrackMagnitude(const std::string& trackId);
+    // Vocal-strip gain-reduction meters (dB): fills gate/comp/deEss; all 0 when stopped/paused.
+    void getTrackVocalGr(const std::string& trackId, float& gate, float& comp, float& deEss);
     std::pair<float, float> getMasterMagnitude();
     std::vector<float> getMasterBandLevels();
 

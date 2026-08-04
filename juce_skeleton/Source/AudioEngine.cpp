@@ -846,8 +846,13 @@ bool AudioEngine::decodeAndInstallTrack(const LoadJob& job)
             trackSource->vocalGateRatio.store(t.vocalGateRatio);
             trackSource->vocalGateAttack.store(t.vocalGateAttack);
             trackSource->vocalGateRelease.store(t.vocalGateRelease);
+            trackSource->vocalDeEssOn.store(t.vocalDeEssOn);
+            trackSource->vocalDeEssFreq.store(t.vocalDeEssFreq);
+            trackSource->vocalDeEssThreshold.store(t.vocalDeEssThreshold);
+            trackSource->vocalDeEssAmount.store(t.vocalDeEssAmount);
             trackSource->vocalEqDirty.store(true);
             trackSource->vocalHpfDirty.store(true);
+            trackSource->vocalDeEssDirty.store(true);
             if (t.autoOn || !t.autoPoints.empty())
                 trackSource->setAutomation(t.autoOn, t.autoCurved, t.autoPoints);
             stillRegistered = true;
@@ -944,6 +949,10 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "vocalGateRatio") t.vocalGateRatio = value;
             else if (key == "vocalGateAttack") t.vocalGateAttack = value;
             else if (key == "vocalGateRelease") t.vocalGateRelease = value;
+            else if (key == "vocalDeEssOn") t.vocalDeEssOn = (value > 0.5f);
+            else if (key == "vocalDeEssFreq") t.vocalDeEssFreq = value;
+            else if (key == "vocalDeEssThreshold") t.vocalDeEssThreshold = value;
+            else if (key == "vocalDeEssAmount") t.vocalDeEssAmount = value;
             else if (key.rfind("vocalEq", 0) == 0 && key.size() == 8)
             {
                 int idx = key[7] - '0';
@@ -1001,6 +1010,10 @@ void AudioEngine::setTrackParam(const std::string& trackId, const std::string& k
             else if (key == "vocalGateRatio")     track->vocalGateRatio.store(value);
             else if (key == "vocalGateAttack")    track->vocalGateAttack.store(value);
             else if (key == "vocalGateRelease")   track->vocalGateRelease.store(value);
+            else if (key == "vocalDeEssOn")        track->vocalDeEssOn.store(value > 0.5f);
+            else if (key == "vocalDeEssFreq")      { track->vocalDeEssFreq.store(value); track->vocalDeEssDirty.store(true); }
+            else if (key == "vocalDeEssThreshold") track->vocalDeEssThreshold.store(value);
+            else if (key == "vocalDeEssAmount")    track->vocalDeEssAmount.store(value);
             else if (key.rfind("vocalEq", 0) == 0 && key.size() == 8)
             {
                 int idx = key[7] - '0';
@@ -2101,6 +2114,27 @@ float AudioEngine::getTrackMagnitude(const std::string& trackId)
     }
 #endif
     return 0.0f;
+}
+
+void AudioEngine::getTrackVocalGr(const std::string& trackId, float& gate, float& comp, float& deEss)
+{
+    gate = comp = deEss = 0.0f;
+#if USE_JUCE
+    std::lock_guard<std::mutex> lock(engineMutex);
+    if (!playing) return; // meters fall to zero when stopped (mirror getTrackMagnitude)
+    for (auto& track : juceTracks)
+    {
+        if (track->id == trackId)
+        {
+            gate = track->gateGrDb.load();
+            comp = track->compGrDb.load();
+            deEss = track->deEssGrDb.load();
+            return;
+        }
+    }
+#else
+    juce::ignoreUnused(trackId);
+#endif
 }
 
 std::pair<float, float> AudioEngine::getMasterMagnitude()

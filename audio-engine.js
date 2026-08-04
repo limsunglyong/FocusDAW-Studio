@@ -924,6 +924,10 @@
         case "vocalGateRatio": vfx.gate.ratio = val; break;
         case "vocalGateAttack": vfx.gate.attack = val; break;
         case "vocalGateRelease": vfx.gate.release = val; break;
+        case "vocalDeEssOn": vfx.deEss.on = val > 0.5; break;
+        case "vocalDeEssFreq": vfx.deEss.freq = val; break;
+        case "vocalDeEssThreshold": vfx.deEss.threshold = val; break;
+        case "vocalDeEssAmount": vfx.deEss.amount = val; break;
         default: {
           const m = /^vocalEq([0-8])$/.exec(key);
           if (m) vfx.eq.geq[+m[1]] = val;

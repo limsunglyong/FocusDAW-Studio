@@ -2385,6 +2385,13 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             pts: (DAW.computeTrackSpectrum ? DAW.computeTrackSpectrum(msg.id) : []) || [],
           });
           break;
+        // Vocal strip GR meters: the strip polls (~25fps while playing) for its target track's
+        // gate/comp/de-esser gain reduction. Native-only values (0 in web fallback / when stopped).
+        case "REQUEST_VOCAL_METERS": {
+          const gr = DAW.getTrackVocalGr ? DAW.getTrackVocalGr(msg.id) : { gate: 0, comp: 0, deEss: 0 };
+          channel.postMessage({ type: "VOCAL_METERS", id: msg.id, gate: gr.gate, comp: gr.comp, deEss: gr.deEss });
+          break;
+        }
         case "BEFORE_CHANGE":
           pushUndo();
           break;

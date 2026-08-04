@@ -919,6 +919,17 @@ void WebSocketServer::timerLoop()
                     if (i < tracks.size() - 1) lvJson << ",";
                 }
                 lvJson << "}";
+
+                // Vocal-strip gain-reduction meters per track: [gate, comp, de-esser] dB.
+                lvJson << ",\"vocalGr\":{";
+                for (size_t i = 0; i < tracks.size(); ++i)
+                {
+                    float gg = 0.0f, cg = 0.0f, dg = 0.0f;
+                    audioEngine.getTrackVocalGr(tracks[i].id, gg, cg, dg);
+                    lvJson << "\"" << tracks[i].id << "\":[" << gg << "," << cg << "," << dg << "]";
+                    if (i < tracks.size() - 1) lvJson << ",";
+                }
+                lvJson << "}";
             }
             lvJson << "}";
             broadcast(lvJson.str());

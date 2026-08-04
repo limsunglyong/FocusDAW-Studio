@@ -19,6 +19,7 @@
     lastPlaySentAt: 0,
     lastSeekSentAt: 0,
     trackLevels: {},
+    trackVocalGr: {},          // {id: [gate, comp, deEss] dB} from the native levels event
     masterStereo: { l: 0, r: 0 },
     masterBandLevels: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     hasNativeBandData: false, // true once the native engine broadcasts masterBands
@@ -207,6 +208,13 @@
     getTrackLevel(id) {
       if (!this.isNative || !nativeOutputActive) return LocalDAW.getTrackLevel(id);
       return nativeState.trackLevels[id] || 0;
+    },
+
+    // Vocal-strip gain-reduction meters for a track: { gate, comp, deEss } in dB (0 when the
+    // web engine is authoritative — those FX are native-only, so there is nothing to meter).
+    getTrackVocalGr(id) {
+      const a = (this.isNative && nativeOutputActive && nativeState.trackVocalGr[id]) || null;
+      return a ? { gate: a[0] || 0, comp: a[1] || 0, deEss: a[2] || 0 } : { gate: 0, comp: 0, deEss: 0 };
     },
 
     getMasterLevel() {
@@ -1369,6 +1377,7 @@
       LocalDAW._emit();
     } else if (msg.event === "levels") {
       if (msg.tracks) nativeState.trackLevels = msg.tracks;
+      if (msg.vocalGr) nativeState.trackVocalGr = msg.vocalGr; // {id: [gate, comp, deEss] dB}
       if (msg.master) nativeState.masterStereo = msg.master;
       if (msg.masterBands) {
         nativeState.masterBandLevels = msg.masterBands;
@@ -1634,6 +1643,11 @@
     send("vocalGateRatio", Number(g.ratio) || 4);
     send("vocalGateAttack", Number(g.attack) || 2);
     send("vocalGateRelease", Number(g.release) || 120);
+    const d = v.deEss || {};
+    send("vocalDeEssOn", d.on ? 1 : 0);
+    send("vocalDeEssFreq", Number(d.freq) || 6800);
+    send("vocalDeEssThreshold", Number(d.threshold) || -24);
+    send("vocalDeEssAmount", Number.isFinite(+d.amount) ? +d.amount : 0.5);
   }
 
   // Convert AudioBuffer to WAV ArrayBuffer
