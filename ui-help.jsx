@@ -1859,10 +1859,11 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.44.22",
+  range: "v1.40.0 - v1.44.23",
   date: "2026-08-03",
   features: [
     "Vocal channel strip: Audio In and Bounce tracks now have an FX button that opens a dedicated Vocal Channel Strip window with a 9-band graphic EQ and a compressor, plus vocal presets (Clean Lead / Warm Pop / Bright Air / Podcast) and an A/B bypass. The strip is applied before the track fader and is reflected in playback, Export, and saved projects.",
+    "Vocal presets now set the high-pass filter and de-esser as well as the EQ and compressor. The Noise Gate is deliberately left alone, because a usable gate threshold depends on how noisy your own recording is.",
     "Vocal strip spectrum: the strip's Spectrum panel now shows the vocal's measured frequency curve (PRE) with the EQ's effect drawn on top (POST) in real time as you move the EQ, so you can see how the EQ reshapes the voice.",
     "Vocal strip High-Pass Filter and Noise Gate: the strip's HPF (rumble/plosive cut, 12 dB/oct) and Noise Gate (attenuates below a threshold to clean up breaths and room tone) are now active, applied before the EQ in playback and Export.",
     "Vocal strip De-esser: tames harsh sibilance (\"s\"/\"sh\" sounds) by attenuating just the sibilance band when it gets loud — set the frequency, threshold, and amount. Applied after the compressor in playback and Export.",

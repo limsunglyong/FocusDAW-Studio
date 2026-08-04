@@ -10,12 +10,36 @@ const vsChannel = new BroadcastChannel("focusdaw-advanced-effects-sync");
 const EQ_FREQS = [60, 150, 320, 640, 1200, 2400, 4800, 9000, 15000];
 const BAND_LABELS = ["60", "150", "320", "640", "1.2k", "2.4k", "4.8k", "9k", "15k"];
 
-// Presets (mockup values; only EQ + Comp are wired, so hpf/deess are left at defaults).
+// Presets set HPF + EQ + Compressor + De-esser. The Noise Gate is deliberately NOT part of a
+// preset (user decision 2026-08-04): a workable gate threshold depends on the noise floor of the
+// individual recording, so a canned value would either do nothing or chop word tails. The gate is
+// left exactly as the user had it — presets never turn it on or off.
 const VOCAL_PRESETS = {
-  "Clean Lead": { geq: [-2, -1, 0, 0, 1, 2, 2, 1, 1], comp: { threshold: -16, ratio: 2.5, attack: 8, release: 120, makeup: 1.5 } },
-  "Warm Pop":   { geq: [-3, -2, -1, 0, 1, 3, 2, 1, 0], comp: { threshold: -18, ratio: 3, attack: 8, release: 120, makeup: 2 } },
-  "Bright Air": { geq: [-2, -1, -1, 0, 2, 4, 4, 3, 3], comp: { threshold: -20, ratio: 3.5, attack: 8, release: 120, makeup: 3 } },
-  "Podcast":    { geq: [-4, -2, -1, 0, 1, 3, 2, 1, 0], comp: { threshold: -22, ratio: 4, attack: 8, release: 120, makeup: 3.5 } },
+  "Clean Lead": {
+    hpf: { freq: 80 },
+    geq: [-2, -1, 0, 0, 1, 2, 2, 1, 1],
+    comp: { threshold: -16, ratio: 2.5, attack: 8, release: 120, makeup: 1.5 },
+    deEss: { freq: 7000, threshold: -24, amount: 0.4 },
+  },
+  "Warm Pop": {
+    hpf: { freq: 75 },
+    geq: [-3, -2, -1, 0, 1, 3, 2, 1, 0],
+    comp: { threshold: -18, ratio: 3, attack: 8, release: 120, makeup: 2 },
+    deEss: { freq: 6800, threshold: -24, amount: 0.5 },
+  },
+  "Bright Air": {
+    hpf: { freq: 85 },
+    geq: [-2, -1, -1, 0, 2, 4, 4, 3, 3],
+    comp: { threshold: -20, ratio: 3.5, attack: 8, release: 120, makeup: 3 },
+    // Lifts 4.8k/9k/15k, so sibilance needs a firmer hand than the other presets.
+    deEss: { freq: 7200, threshold: -26, amount: 0.65 },
+  },
+  "Podcast": {
+    hpf: { freq: 100 },   // strongest rumble cut — desks, chairs, handling noise
+    geq: [-4, -2, -1, 0, 1, 3, 2, 1, 0],
+    comp: { threshold: -22, ratio: 4, attack: 8, release: 120, makeup: 3.5 },
+    deEss: { freq: 6500, threshold: -25, amount: 0.55 },
+  },
 };
 
 function defaultVocalFx() {
@@ -530,13 +554,26 @@ function VocalStripApp() {
   const applyPreset = (name) => {
     const p = VOCAL_PRESETS[name];
     if (!p) return;
-    userOffRef.current = { ...userOffRef.current, eq: false, comp: false }; // preset turns both modules on
+    // The preset switches these four modules on, so clear any "user turned it off" flags for
+    // them. `gate` is untouched on purpose (see VOCAL_PRESETS) — its flag must survive.
+    userOffRef.current = { ...userOffRef.current, hpf: false, eq: false, comp: false, deess: false };
     grab();
-    const keys = [["vocalEnabled", 1], ["vocalEqOn", 1], ["vocalCompOn", 1],
+    const keys = [["vocalEnabled", 1],
+      ["vocalHpfOn", 1], ["vocalHpfFreq", p.hpf.freq],
+      ["vocalEqOn", 1],
+      ["vocalCompOn", 1],
       ["vocalCompThreshold", p.comp.threshold], ["vocalCompRatio", p.comp.ratio],
-      ["vocalCompAttack", p.comp.attack], ["vocalCompRelease", p.comp.release], ["vocalCompMakeup", p.comp.makeup]];
+      ["vocalCompAttack", p.comp.attack], ["vocalCompRelease", p.comp.release], ["vocalCompMakeup", p.comp.makeup],
+      ["vocalDeEssOn", 1], ["vocalDeEssFreq", p.deEss.freq],
+      ["vocalDeEssThreshold", p.deEss.threshold], ["vocalDeEssAmount", p.deEss.amount]];
     p.geq.forEach((v, i) => keys.push(["vocalEq" + i, v]));
-    apply((n) => { n.enabled = true; n.eq.on = true; n.comp.on = true; n.eq.geq = p.geq.slice(); n.comp = { ...n.comp, ...p.comp, on: true }; }, keys);
+    apply((n) => {
+      n.enabled = true;
+      n.hpf = { ...n.hpf, ...p.hpf, on: true };
+      n.eq.on = true; n.eq.geq = p.geq.slice();
+      n.comp = { ...n.comp, ...p.comp, on: true };
+      n.deEss = { ...n.deEss, ...p.deEss, on: true };
+    }, keys);
     setPreset(name);
   };
 
@@ -601,7 +638,8 @@ function VocalStripApp() {
 
           {/* PRESET row + master A/B */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "12px 14px", ...CARD, boxShadow: "none" }}>
-            <span style={{ flex: "0 0 auto", fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: "var(--muted)" }}>PRESET</span>
+            <span title="Sets HPF, EQ, Compressor and De-esser. The Noise Gate is left as you set it."
+              style={{ flex: "0 0 auto", fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: "var(--muted)" }}>PRESET</span>
             <div style={{ flex: 1, minWidth: 220, display: "flex", gap: 7, flexWrap: "wrap" }}>
               {Object.keys(VOCAL_PRESETS).map((name) => {
                 const act = preset === name;
