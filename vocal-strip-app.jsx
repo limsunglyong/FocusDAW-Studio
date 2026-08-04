@@ -367,6 +367,11 @@ function VocalStripApp() {
   const [preset, setPreset] = useState(null);
   const [specPts, setSpecPts] = useState([]); // measured PRE spectrum of the target track (Stage C)
   const [meters, setMeters] = useState({ gate: 0, comp: 0, deEss: 0 }); // live GR (dB) from native
+  // Stage F — de-noise print state (offline, not part of the realtime insert chain).
+  const [dnAmount, setDnAmount] = useState(0.6);
+  const [dnLearned, setDnLearned] = useState(false);
+  const [dnBusy, setDnBusy] = useState(false);
+  const [dnMsg, setDnMsg] = useState(null); // { ok, text }
   // Drag handlers capture their callbacks at mousedown, so module on/off must be read through a
   // ref (state closed over at mousedown would stay stale for the whole drag).
   const vfxRef = useRef(vfx); vfxRef.current = vfx;
@@ -375,7 +380,11 @@ function VocalStripApp() {
   const targetIdRef = useRef(getQueryTrack());
   useEffect(() => { targetIdRef.current = targetId; }, [targetId]);
   // Fetch the PRE spectrum whenever the selected track changes (INIT/SYNC also re-requests).
-  useEffect(() => { setSpecPts([]); if (targetId) vsChannel.postMessage({ type: "REQUEST_TRACK_SPECTRUM", id: targetId }); }, [targetId]);
+  useEffect(() => {
+    setSpecPts([]);
+    setDnLearned(false); setDnMsg(null); setDnBusy(false); // profile is per-track
+    if (targetId) vsChannel.postMessage({ type: "REQUEST_TRACK_SPECTRUM", id: targetId });
+  }, [targetId]);
   // Poll the target track's live gain-reduction meters (~25 fps). Runs ALWAYS, not gated on the
   // strip's isPlaying flag: when only the strip window is open there is no LEVEL_METERS feed to
   // update isPlaying, so gating here left the meters frozen at zero during playback. The native
@@ -414,6 +423,15 @@ function VocalStripApp() {
         }
       } else if (msg.type === "TRACK_SPECTRUM") {
         if (msg.id === targetIdRef.current) setSpecPts(Array.isArray(msg.pts) ? msg.pts : []);
+      } else if (msg.type === "DENOISE_RESULT") {
+        if (msg.id === targetIdRef.current) {
+          setDnBusy(false);
+          setDnMsg({ ok: !!msg.ok, text: msg.message || "" });
+          if (msg.learned) setDnLearned(true);
+          // A print consumes the profile's usefulness: the clip now points at de-noised
+          // audio, so re-learning on the NEW audio is the honest next step.
+          if (msg.printed) setDnLearned(false);
+        }
       } else if (msg.type === "VOCAL_METERS") {
         if (msg.id === targetIdRef.current) setMeters({ gate: msg.gate || 0, comp: msg.comp || 0, deEss: msg.deEss || 0 });
         if (typeof msg.isPlaying === "boolean") setIsPlaying(msg.isPlaying); // keep strip play-state fresh even without a mixer feed
@@ -700,12 +718,58 @@ function VocalStripApp() {
             </div>
           </div>
 
+          {/* 06 — Broadband De-noise (Stage F). NOT part of the realtime insert chain: this
+              prints a cleaned copy of the clip's audio to a new WAV (original untouched). */}
+          <div style={CARD}>
+            <div style={CARD_HEAD}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14s2-6 4-6 2 12 4 12 2-9 4-9 2 3 4 3" /></svg>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)" }}>06</span>
+              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".02em", color: "var(--cream)" }}>Broadband De-noise</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 10.5, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>룸톤/히스 제거 — 오프라인 프린트(비파괴)</span>
+              <span style={{ ...soonTag, color: "var(--muted)", background: "var(--bg)", border: "1px solid var(--line)" }}>OFFLINE</span>
+            </div>
+            <div style={{ padding: "15px 16px 17px", display: "flex", flexDirection: "column", gap: 12 }}>
+              <ol style={{ margin: 0, paddingLeft: 18, fontSize: 10.5, lineHeight: 1.7, color: "var(--muted)" }}>
+                <li>이 트랙에서 목소리가 없는 <b style={{ color: "var(--cream-2)" }}>무음 구간(숨소리·룸톤만)을 Repeat 구간</b>으로 지정하고 <b style={{ color: "var(--cream-2)" }}>노이즈 학습</b>을 누릅니다. <span style={{ color: "var(--faint)" }}>— 그 구간이 있는 클립이 대상이 됩니다.</span></li>
+                <li>Amount를 정하고 <b style={{ color: "var(--cream-2)" }}>De-noise 적용</b> — 새 오디오로 프린트됩니다(원본 WAV 보존, Undo 가능).</li>
+              </ol>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <Knob value={dnAmount} min={0} max={1} step={0.05} label="Amount" color="var(--violet)" size={46}
+                  disabled={dnBusy} onChange={(v) => setDnAmount(v)} fmt={(v) => Math.round(v * 100) + "%"} />
+                <button disabled={dnBusy} onClick={() => { setDnBusy(true); setDnMsg(null); vsChannel.postMessage({ type: "REQUEST_DENOISE_LEARN", id: targetId }); }}
+                  style={{ padding: "9px 15px", borderRadius: 8, cursor: dnBusy ? "default" : "pointer", fontSize: 11, fontWeight: 700, letterSpacing: ".04em",
+                    border: "1px solid " + (dnLearned ? "var(--amber)" : "var(--line)"),
+                    background: dnLearned ? "color-mix(in srgb,var(--amber) 20%,transparent)" : "var(--bg)",
+                    color: dnLearned ? "var(--amber)" : "var(--dim)", opacity: dnBusy ? 0.6 : 1 }}>
+                  {dnLearned ? "✓ 노이즈 학습됨" : "노이즈 학습"}
+                </button>
+                <button disabled={dnBusy || !dnLearned}
+                  onClick={() => { setDnBusy(true); setDnMsg(null); vsChannel.postMessage({ type: "REQUEST_DENOISE_APPLY", id: targetId, amount: dnAmount }); }}
+                  title={dnLearned ? "" : "먼저 노이즈를 학습하세요"}
+                  style={{ padding: "9px 15px", borderRadius: 8, cursor: (dnBusy || !dnLearned) ? "default" : "pointer", fontSize: 11, fontWeight: 700, letterSpacing: ".04em",
+                    border: "1px solid " + (dnLearned ? "var(--amber)" : "var(--line)"),
+                    background: dnLearned && !dnBusy ? "var(--amber)" : "var(--bg)",
+                    color: dnLearned && !dnBusy ? "var(--on-amber, var(--mixer-bar-fg))" : "var(--faint)",
+                    opacity: (dnBusy || !dnLearned) ? 0.6 : 1 }}>
+                  {dnBusy ? "처리 중…" : "De-noise 적용"}
+                </button>
+              </div>
+              {dnMsg && (
+                <div style={{ fontSize: 10.5, lineHeight: 1.5, padding: "8px 11px", borderRadius: 7,
+                  color: dnMsg.ok ? "var(--green)" : "var(--red)",
+                  background: "var(--bg)", border: "1px solid " + (dnMsg.ok ? "var(--green)" : "var(--red)") }}>
+                  {dnMsg.text}
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
 
       <div style={{ height: 30, flex: "0 0 30px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", background: "var(--bg)", borderTop: "1px solid rgba(0,0,0,.4)", fontSize: 10.5, color: "var(--faint)" }}>
         <span>{strip ? "채널 스트립 활성 — 인서트 pre-fader" : "스트립 우회중 (A/B 비교)"}</span>
-        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · HPF · Gate · EQ · Comp · De-ess</span>
+        <span style={{ fontFamily: "var(--mono)" }}>{isPlaying ? "playing" : "stopped"} · HPF · Gate · EQ · Comp · De-ess · De-noise</span>
       </div>
     </div>
   );

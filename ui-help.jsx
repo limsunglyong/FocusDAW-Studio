@@ -1859,7 +1859,7 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.44.19",
+  range: "v1.40.0 - v1.44.20",
   date: "2026-08-03",
   features: [
     "Vocal channel strip: Audio In and Bounce tracks now have an FX button that opens a dedicated Vocal Channel Strip window with a 9-band graphic EQ and a compressor, plus vocal presets (Clean Lead / Warm Pop / Bright Air / Podcast) and an A/B bypass. The strip is applied before the track fader and is reflected in playback, Export, and saved projects.",
@@ -1867,6 +1867,7 @@ const RELEASE_NOTES = {
     "Vocal strip High-Pass Filter and Noise Gate: the strip's HPF (rumble/plosive cut, 12 dB/oct) and Noise Gate (attenuates below a threshold to clean up breaths and room tone) are now active, applied before the EQ in playback and Export.",
     "Vocal strip De-esser: tames harsh sibilance (\"s\"/\"sh\" sounds) by attenuating just the sibilance band when it gets loud — set the frequency, threshold, and amount. Applied after the compressor in playback and Export.",
     "Vocal strip gain-reduction meters: the Noise Gate, Compressor, and De-esser now show a live meter of how much they are working during playback, so you can see the effect even when it is subtle.",
+    "Broadband de-noise: remove steady room tone or hiss from a vocal clip. Mark a silent stretch as the Repeat region, click Learn Noise, then apply — the cleaned audio is printed to a new file next to your project, leaving the original recording untouched and the whole thing undoable.",
     "Clip volume lines: on Audio In and Bounce tracks, select a clip and drag the amber line on top to lower that clip's volume (cut-only, with a live dB label). The waveform shrinks to match, and it is saved, undoable, and reflected in Export.",
     "Clean Up Unused Recordings: a Project menu command that scans your saved project's audio folder for recordings, bounces, and consolidated files that nothing references — including your undo history — and moves them to the Recycle Bin (restorable).",
     "Portable projects: Save As now gathers the project's own recordings, bounces, and consolidated audio into a \"<Project> Audio\" folder next to the .focus and stores relative paths, so a saved project is self-contained and can be moved or copied.",

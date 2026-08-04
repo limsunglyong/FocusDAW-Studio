@@ -559,7 +559,11 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
   const compact = effectiveSizeLaneH <= 76;
   const medium = effectiveSizeLaneH <= 104 && !compact;
   const audioInInlineControls = track.kind === "audioIn" && !compact;
-  const pad = compact ? "7px 10px" : medium ? "8px 11px" : "10px 11px";
+  // Horizontal padding is a flat 8px at every size: the 274px header (−15px indent inside the
+  // File Tracks group) has very little slack once the AUTO row carries AUTO + FX + the
+  // VRB/ECHO/BPM slots + AUDIO + remove, and the old 10~11px sides pushed the right-hand
+  // buttons out of line with a plain file track. Vertical padding is unchanged per size.
+  const pad = compact ? "7px 8px" : medium ? "8px 8px" : "10px 8px";
   const gap = compact ? 5 : 6;
   const buttonSize = compact ? 22 : 24;
   const knobSize = compact ? 24 : 28;
@@ -618,7 +622,9 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
       borderBottom: "1px solid var(--line)", padding: pad, height: laneH, minHeight: laneH,
       overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: compact ? "space-between" : "flex-start", gap,
       boxShadow: selected ? "inset 4px 0 0 var(--amber)" : "none" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 8, minHeight: compact ? 22 : 24 }}>
+      {/* Name / B / S / M — 4px gap at every size (was 6 compact / 8 otherwise) so the row
+          leaves the track title as much room as possible in a 274px header. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, minHeight: compact ? 22 : 24 }}>
         <div style={{ width: 4, alignSelf: "stretch", borderRadius: 3, background: track.color, boxShadow: `0 0 8px ${track.color}66` }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{String(idx + 1).padStart(2, "0")}</span>
         <ScrollingTrackTitle name={track.name} compact={compact} onRename={onRename ? (newName) => onRename(track.id, newName) : undefined} />
@@ -731,7 +737,10 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
           </span>
         </span>
       </div>}
-      {!compact && <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: medium ? 20 : 22,
+      {/* AUTO / FX / indicators / AUDIO / remove — 4px gap (was 6). This row is the tightest in
+          the header, so every px here goes to keeping AUDIO + remove aligned with a plain file
+          track. (Not rendered at compact size.) */}
+      {!compact && <div style={{ display: "flex", alignItems: "center", gap: 4, minHeight: medium ? 20 : 22,
         marginTop: 0 }}>
         {/* VOL AUTO — rounded toggle (replaces the old icon button) */}
         <button title="Volume automation on/off" onClick={() => onParam("autoOn", !p.autoOn)}
@@ -743,15 +752,21 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
             border: "1px solid " + (p.autoOn ? "var(--amber-deep)" : "var(--line-strong)") }}>
           <Icon name="auto" size={13} /> AUTO
         </button>
-        {/* Vocal channel strip (EQ · Compressor) — audioIn/bounce only, opens in a window. */}
+        {/* Vocal channel strip — audioIn/bounce only, opens in a window. Square icon button
+            (not an "FX" label) so this row keeps the same right-hand alignment as a plain file
+            track: the 244px header has almost no slack left once AUTO + the VRB/ECHO/BPM slots
+            are reserved, and the wider text button pushed AUDIO / − out of place. The wave icon
+            matches the strip window's own title icon. */}
         {(track.kind === "audioIn" || track.kind === "bounce") &&
-          <button title="Vocal channel strip — EQ · Compressor (opens in a window)"
+          <button title="Vocal channel strip — HPF · Gate · EQ · Compressor · De-esser (opens in a window)"
             onClick={() => { if (window.electronAPI && window.electronAPI.openVocalStrip) window.electronAPI.openVocalStrip(track.id); }}
-            style={{ height: 22, padding: "0 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, letterSpacing: ".04em",
-              cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto",
+            style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center",
+              padding: 0, cursor: "pointer", flex: "0 0 auto",
               background: (p.vocalFx && p.vocalFx.enabled) ? "var(--amber)" : "transparent",
               color: (p.vocalFx && p.vocalFx.enabled) ? "var(--on-amber, var(--mixer-bar-fg, #241a0a))" : "var(--muted)",
-              border: "1px solid " + ((p.vocalFx && p.vocalFx.enabled) ? "var(--amber-deep)" : "var(--line-strong)") }}>FX</button>}
+              border: "1px solid " + ((p.vocalFx && p.vocalFx.enabled) ? "var(--amber-deep)" : "var(--line-strong)") }}>
+            <Icon name="wave" size={13} />
+          </button>}
         {/* fixed-position VRB / ECHO / BPM indicators (colors match the mixer VRB/ECHO knobs).
             Grouped so the row spends one gap, not two, on this tight (244px) header.
             BPM lights up (no animation) when Vari BPM playback tempo applies to this track. */}
@@ -764,12 +779,18 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
             on={!!(DAW.tempo && DAW.tempo.variBpm && !p.mute && !(DAW._anySolo() && !p.solo))}
             title="Vari BPM active — playback tempo applied to this track" />
         </div>
-        <div style={{ flex: 1 }} />
+        {/* Source chip — pushed to the right edge by marginLeft:auto rather than a <div flex:1>
+            spacer. The spacer dates from the original 2-part row (AUTO … | chip · remove) and
+            still worked, but being a flex item it burned the row gap TWICE (once on each side),
+            so when the row filled up BPM sat 8px from the chip instead of 4. Same alignment,
+            one gap. Every real track carries type "audio" — shown as SOURCE, since what this
+            chip reports is whether the track's SOURCE audio is linked; demo tracks keep their
+            own type (drums / bass / …). `.chip` upper-cases the text. */}
         {track.needsAudio
-          ? <span title="Drop the audio file here to re-link" style={{ fontSize: 9, padding: "2px 4px", borderRadius: 4,
+          ? <span title="Drop the audio file here to re-link" style={{ marginLeft: "auto", fontSize: 9, padding: "2px 4px", borderRadius: 4,
               fontWeight: 400, letterSpacing: ".04em", background: "rgba(217,106,78,.18)",
-              color: "var(--red)", border: "1px solid rgba(217,106,78,.28)" }}>NO AUDIO</span>
-          : <span className="chip" style={{ fontSize: 9, padding: "2px 4px", fontWeight: 400 }}>{track.type}</span>
+              color: "var(--red)", border: "1px solid rgba(217,106,78,.28)" }}>NO SRC</span>
+          : <span className="chip" style={{ marginLeft: "auto", fontSize: 9, padding: "2px 4px", fontWeight: 400 }}>{track.type === "audio" ? "source" : track.type}</span>
         }
         {onRemove && <button title="Remove track" onClick={() => setConfirmRemove(true)}
           style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center",

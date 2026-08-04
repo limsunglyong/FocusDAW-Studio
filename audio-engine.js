@@ -2816,7 +2816,7 @@
         if (src.filePath) { saved++; continue; }
         try {
           const base = this._displayName(src.fileName || track.name || "Consolidated");
-          const res = await saveFn(raw, `${base} (Consolidated).wav`);
+          const res = await saveFn(raw, `${base} (${item.suffix || "Consolidated"}).wav`);
           if (res && res.path) {
             // RE-RESOLVE the source after the await. _normalizeTrackLayout rebuilds
             // track.sources as fresh COPIES ([primary, ...slice(1).map(s => ({...s}))]) and
@@ -2836,6 +2836,158 @@
         }
       }
       return { saved, failed };
+    },
+
+    // ── Stage F — broadband de-noise, offline "print" ─────────────────────────────
+    // STFT spectral subtraction driven by a noise fingerprint learned from a silent
+    // region the user picks (breaths / room tone only). Non-destructive by construction:
+    // the result becomes a NEW source of exactly the same length as the raw, so the clip's
+    // sourceOffset/duration stay valid and we only repoint clip.sourceId — the original
+    // recording WAV is never touched and undo restores the previous mapping. The printed
+    // WAV rides the consolidate plumbing (_pendingConsolidations →
+    // persistConsolidatedSources) into <Project> Audio/Consolidated/.
+    DENOISE_FFT: 2048,
+
+    // Periodic Hann (÷N, not N-1) — used for BOTH analysis and synthesis, so the
+    // overlap-add below divides by Σw² to undo the double windowing.
+    _hann(N) {
+      const w = new Float32Array(N);
+      for (let i = 0; i < N; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N);
+      return w;
+    },
+
+    // In-place inverse FFT via the conjugate trick: ifft(X) = conj(fft(conj(X)))/N.
+    // (audio-engine only ships a forward fft(); this avoids a second implementation.)
+    _ifft(re, im) {
+      const N = re.length;
+      for (let i = 0; i < N; i++) im[i] = -im[i];
+      fft(re, im);
+      const inv = 1 / N;
+      for (let i = 0; i < N; i++) { re[i] *= inv; im[i] = -im[i] * inv; }
+    },
+
+    // Mean magnitude per bin across the noise region = the fingerprint.
+    _learnProfileFromChannel(ch, from, to, N) {
+      const hop = N >> 2, win = this._hann(N), bins = (N >> 1) + 1;
+      const prof = new Float32Array(bins);
+      const re = new Float32Array(N), im = new Float32Array(N);
+      let frames = 0;
+      for (let p = from; p + N <= to; p += hop) {
+        for (let i = 0; i < N; i++) { re[i] = ch[p + i] * win[i]; im[i] = 0; }
+        fft(re, im);
+        for (let b = 0; b < bins; b++) prof[b] += Math.hypot(re[b], im[b]);
+        frames++;
+      }
+      if (!frames) return null;
+      for (let b = 0; b < bins; b++) prof[b] /= frames;
+      return prof;
+    },
+
+    // Spectral subtraction with 75%-overlap STFT. Per bin the magnitude drops by
+    // `over × profile` but never below `floorGain × magnitude` — that spectral floor is
+    // what keeps the result from turning into "musical noise" (isolated surviving bins
+    // warbling in silence). Phase is untouched; the gain is mirrored onto the conjugate
+    // bin so the inverse transform stays real.
+    _denoiseChannel(src, dst, prof, N, over, floorGain) {
+      const hop = N >> 2, win = this._hann(N), bins = (N >> 1) + 1, len = src.length;
+      const acc = new Float32Array(len), wsum = new Float32Array(len);
+      const re = new Float32Array(N), im = new Float32Array(N);
+      for (let p = 0; p < len; p += hop) {
+        for (let i = 0; i < N; i++) {
+          const s = p + i;
+          re[i] = (s < len ? src[s] : 0) * win[i];   // zero-pad the tail frame
+          im[i] = 0;
+        }
+        fft(re, im);
+        for (let b = 0; b < bins; b++) {
+          const mag = Math.hypot(re[b], im[b]);
+          if (mag < 1e-12) continue;
+          const g = Math.max(mag - over * prof[b], floorGain * mag) / mag;
+          if (g >= 0.999) continue;
+          re[b] *= g; im[b] *= g;
+          const m = N - b;
+          if (m > b && m < N) { re[m] *= g; im[m] *= g; } // keep conjugate symmetry
+        }
+        this._ifft(re, im);
+        for (let i = 0; i < N; i++) {
+          const s = p + i;
+          if (s >= len) break;
+          acc[s] += re[i] * win[i];
+          wsum[s] += win[i] * win[i];
+        }
+      }
+      // Edges see almost no window energy; fall back to the source there rather than
+      // dividing by ~0 (which would punch a click into the first/last few samples).
+      for (let i = 0; i < len; i++) dst[i] = wsum[i] > 1e-6 ? acc[i] / wsum[i] : src[i];
+    },
+
+    // Learn the fingerprint from a TIMELINE range over `clipId`. Channels are averaged so
+    // one profile covers the whole source. Returns null when the region is too short to
+    // hold a single FFT frame (~43 ms @48k) — the caller surfaces that to the user.
+    learnDenoiseProfile(trackId, clipId, fromSec, toSec) {
+      const track = this.tracks.find(t => t.id === trackId);
+      const clip = track && (track.clips || []).find(c => c.id === clipId);
+      if (!track || !clip) return null;
+      const raw = this._rawBufferForSource(track, clip.sourceId);
+      if (!raw) return null;
+      const sr = raw.sampleRate, N = this.DENOISE_FFT;
+      const off = clip.sourceOffset != null ? clip.sourceOffset : (clip.offset || 0);
+      const lo = Math.max(0, Math.round((off + (Math.min(fromSec, toSec) - clip.start)) * sr));
+      const hi = Math.min(raw.length, Math.round((off + (Math.max(fromSec, toSec) - clip.start)) * sr));
+      if (hi - lo < N) return null;
+      const bins = (N >> 1) + 1, prof = new Float32Array(bins);
+      let n = 0;
+      for (let c = 0; c < raw.numberOfChannels; c++) {
+        const p = this._learnProfileFromChannel(raw.getChannelData(c), lo, hi, N);
+        if (!p) continue;
+        for (let b = 0; b < bins; b++) prof[b] += p[b];
+        n++;
+      }
+      if (!n) return null;
+      for (let b = 0; b < bins; b++) prof[b] /= n;
+      this._denoiseProfiles = this._denoiseProfiles || {};
+      // Remember WHICH clip the fingerprint came from: the print then targets that same clip,
+      // so applying needs neither a live clip selection nor the Repeat region to still be set.
+      this._denoiseProfiles[trackId] = { prof, sampleRate: sr, fftSize: N, seconds: (hi - lo) / sr, clipId };
+      return { seconds: (hi - lo) / sr, sampleRate: sr, clipId };
+    },
+
+    denoiseProfileInfo(trackId) {
+      const p = this._denoiseProfiles && this._denoiseProfiles[trackId];
+      return p ? { seconds: p.seconds, sampleRate: p.sampleRate, clipId: p.clipId } : null;
+    },
+
+    // Print a de-noised copy of the clip's source and repoint the clip at it.
+    // `amount` (0..1) drives both the over-subtraction factor and the spectral floor:
+    // gentle removes a little and stays clean, strong removes more and risks artefacts.
+    denoiseClip(trackId, clipId, opts) {
+      const track = this.tracks.find(t => t.id === trackId);
+      const clip = track && (track.clips || []).find(c => c.id === clipId);
+      if (!track || !clip) return null;
+      const store = this._denoiseProfiles && this._denoiseProfiles[trackId];
+      if (!store) return null;
+      const raw = this._rawBufferForSource(track, clip.sourceId);
+      if (!raw) return null;
+      if (raw.sampleRate !== store.sampleRate) return null; // profile came from another rate
+      const N = store.fftSize;
+      const amount = Math.max(0, Math.min(1, (opts && opts.amount != null) ? +opts.amount : 0.6));
+      const over = 1 + amount * 2;                              // 1× .. 3× over-subtraction
+      const floorGain = Math.pow(10, -(6 + amount * 18) / 20);  // −6 dB (gentle) .. −24 dB
+      const out = ctx.createBuffer(raw.numberOfChannels, raw.length, raw.sampleRate);
+      for (let c = 0; c < raw.numberOfChannels; c++) {
+        this._denoiseChannel(raw.getChannelData(c), out.getChannelData(c), store.prof, N, over, floorGain);
+      }
+      const prev = (track.sources || []).find(s => s.id === clip.sourceId);
+      const sourceId = this._registerSource(track, {
+        id: this._sourceId(), duration: raw.length / raw.sampleRate,
+        sampleRate: raw.sampleRate, channels: raw.numberOfChannels,
+        fileName: (prev && prev.fileName) || track.name || null,
+        filePath: null, needsAudio: false,
+      }, out);
+      clip.sourceId = sourceId;
+      this._pendingConsolidations.push({ trackId: track.id, sourceId, suffix: "De-noised" });
+      this._ensureBaked(track);
+      return sourceId;
     },
 
     // Are these clips a plain re-join of split-adjacent pieces? Same source, no timeline
@@ -3179,6 +3331,12 @@
       if (clips.length !== 1) return false;
       const c = clips[0];
       const src = track.sources && track.sources[0];
+      // Same reasoning as the take guard above: the fast-path returns the PRIMARY source's
+      // raw buffer, so it is only valid when this clip actually reads the primary. A clip
+      // repointed at another source of identical length/offset — the Stage F de-noise print
+      // is exactly that — would otherwise slip through and play the ORIGINAL audio.
+      // (A legacy clip with no sourceId is by definition on the primary: keep it trivial.)
+      if (c.sourceId && src && src.id && c.sourceId !== src.id) return false;
       const dur = (src && src.duration) || (track.buffer && track.buffer.duration) || 0;
       const off = (c.sourceOffset != null ? c.sourceOffset : (c.offset || 0));
       return Math.abs(c.start || 0) < 1e-3

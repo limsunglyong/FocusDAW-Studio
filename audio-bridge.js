@@ -890,6 +890,13 @@
       if (ids && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return ids;
     },
+    // Stage F — de-noise print. Repoints the clip at a freshly rendered source, so native
+    // needs the re-baked audio pushed just like any other clip edit.
+    denoiseClip(trackId, clipId, opts) {
+      const id = LocalDAW.denoiseClip(trackId, clipId, opts);
+      if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
+      return id;
+    },
 
     addDemoTracks() {
       LocalDAW.addDemoTracks();
