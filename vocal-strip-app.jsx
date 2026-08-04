@@ -629,23 +629,6 @@ function VocalStripApp() {
       <div style={{ flex: 1, textAlign: "center", fontSize: 12.5, color: "var(--dim)", letterSpacing: ".02em" }}>
         FocusDAW Studio — <b style={{ color: "var(--cream-2)", fontWeight: 600 }}>{target ? target.name : "—"}</b>
       </div>
-      {/* Master A/B lives in the title bar, not the PRESET row: it governs the WHOLE strip, so it
-          should read as a window-level switch rather than one more preset-row control. Needs
-          no-drag or the title bar's drag region would swallow the click. */}
-      {target &&
-        <button onClick={() => setEnabled(!strip)}
-          title={strip ? "Bypass the whole strip (A/B compare)" : "Activate the channel strip"}
-          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 7, height: 24, padding: "0 12px",
-            borderRadius: 7, cursor: "pointer", fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em",
-            WebkitAppRegion: "no-drag",
-            border: "1px solid " + (strip ? "var(--amber)" : "var(--line)"),
-            background: strip ? "color-mix(in srgb,var(--amber) 20%,transparent)" : "var(--bg)",
-            color: strip ? "var(--amber)" : "var(--faint)",
-            boxShadow: strip ? "0 0 10px var(--amber-soft)" : "none",
-            opacity: strip ? 1 : 0.75 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 4v8M6.5 7a8 8 0 1 0 11 0" /></svg>
-          {strip ? "STRIP ACTIVE" : "Bypassed"}
-        </button>}
       <WindowControls />
     </div>
   );
@@ -677,9 +660,25 @@ function VocalStripApp() {
               </div>
               <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--faint)" }}>{projectName ? "Project: " + projectName : "Insert chain · pre-fader"}</div>
             </div>
+            {/* Master A/B — right-aligned opposite the track name (the row is space-between), so it
+                reads as "this track's strip is on/off" rather than one more control in the PRESET
+                row. Kept out of the title bar: that is a drag region, and a window chrome slot
+                suggests a window setting instead of a per-track one. */}
+            <button onClick={() => setEnabled(!strip)}
+              title={strip ? "Bypass the whole strip (A/B compare)" : "Activate the channel strip"}
+              style={{ flex: "0 0 auto", alignSelf: "center", display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 15px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700, letterSpacing: ".06em",
+                border: "1px solid " + (strip ? "var(--amber)" : "var(--line)"),
+                background: strip ? "color-mix(in srgb,var(--amber) 20%,transparent)" : "var(--bg)",
+                color: strip ? "var(--amber)" : "var(--faint)",
+                boxShadow: strip ? "0 0 12px var(--amber-soft)" : "none",
+                opacity: strip ? 1 : 0.65 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 4v8M6.5 7a8 8 0 1 0 11 0" /></svg>
+              {strip ? "STRIP ACTIVE" : "Bypassed"}
+            </button>
           </div>
 
-          {/* PRESET row (master A/B now lives in the title bar) */}
+          {/* PRESET row (master A/B sits in the track header row above) */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "12px 14px", ...CARD, boxShadow: "none" }}>
             <span title="Sets HPF, EQ, Compressor and De-esser. The Noise Gate is left as you set it."
               style={{ flex: "0 0 auto", fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: "var(--muted)" }}>PRESET</span>
