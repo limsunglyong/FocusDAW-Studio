@@ -92,7 +92,7 @@ let _fxPulseStyleInjected = false;
 function focusFxKnob(trackId, param) {
   if (!_fxPulseStyleInjected) {
     const st = document.createElement("style");
-    st.textContent = "@keyframes fxKnobPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,176,75,0)}25%{box-shadow:0 0 0 3px var(--amber),0 0 16px 3px var(--amber)}}"
+    st.textContent = "@keyframes fxKnobPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--amber) 0%,transparent)}25%{box-shadow:0 0 0 3px var(--amber),0 0 16px 3px var(--amber)}}"
       + ".fx-knob-pulse{animation:fxKnobPulse .6s ease-in-out 2}";
     document.head.appendChild(st);
     _fxPulseStyleInjected = true;

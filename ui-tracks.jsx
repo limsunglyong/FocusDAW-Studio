@@ -354,7 +354,7 @@ function AutomationOverlay({ track, pxPerSec, height, onBeforeChange }) {
   return (
     <svg id={"auto-" + track.id} width={laneW} height={height} onMouseDown={onLineDown}
       style={{ position: "absolute", inset: 0, cursor: "crosshair" }}>
-      <path d={areaD} fill="rgba(232,176,75,.10)" />
+      <path d={areaD} fill="color-mix(in srgb,var(--amber) 10%,transparent)" />
       {/* edit graph (control-point polyline): faint dashed when curve fitting is on */}
       {curveFit && <path d={pathD} fill="none" stroke="var(--amber)" strokeWidth="1.4" strokeLinejoin="round" opacity="0.35" strokeDasharray="4 3" />}
       {/* applied graph (what the audio actually uses) */}
@@ -581,7 +581,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
     background: p.bpmSource ? "var(--amber)" : "var(--surface2)",
     color: p.bpmSource ? "var(--accent-fg)" : "var(--cream-2)",
     border: "1px solid " + (p.bpmSource ? "var(--amber)" : "var(--line-strong)"),
-    boxShadow: p.bpmSource ? "0 0 10px rgba(232,176,75,.5)" : "none",
+    boxShadow: p.bpmSource ? "0 0 10px color-mix(in srgb,var(--amber) 50%,transparent)" : "none",
     opacity: noAudio ? .38 : 1,
     cursor: noAudio ? "not-allowed" : "pointer",
   };
@@ -617,7 +617,7 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
         : selected
         ? "linear-gradient(180deg, color-mix(in srgb, var(--surface3) 84%, var(--amber) 16%), color-mix(in srgb, var(--bg2) 88%, var(--amber) 12%))"
         : p.solo
-          ? "linear-gradient(rgba(232,176,75,.05),rgba(232,176,75,.05)), linear-gradient(180deg,var(--surface),var(--bg2))"
+          ? "linear-gradient(color-mix(in srgb,var(--amber) 5%,transparent),color-mix(in srgb,var(--amber) 5%,transparent)), linear-gradient(180deg,var(--surface),var(--bg2))"
           : "linear-gradient(180deg,var(--surface),var(--bg2))", borderRight: "1px solid var(--line-strong)",
       borderBottom: "1px solid var(--line)", padding: pad, height: laneH, minHeight: laneH,
       overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: compact ? "space-between" : "flex-start", gap,
@@ -1229,7 +1229,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
           background: track.kind === "audioIn"
             ? "linear-gradient(90deg,color-mix(in srgb,var(--blue) 8%,transparent),transparent 42%)"
             : selected
-            ? "linear-gradient(90deg, rgba(232,176,75,.08), transparent 38%)"
+            ? "linear-gradient(90deg, color-mix(in srgb,var(--amber) 8%,transparent), transparent 38%)"
             : idx % 2 ? "rgba(255,255,255,.012)" : "transparent",
           // isolate: make the lane its own stacking context so the absolutely-positioned playhead
           // (and any overlay) can never paint above the sibling sticky TrackHeader when it scrolls
@@ -1255,7 +1255,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
             title={takesOpen ? "Hide take lanes" : "Show take lanes"}
             style={{ position: "absolute", left: viewScrollLeft + 6, top: 6, zIndex: 7,
               display: "inline-flex", alignItems: "center", gap: 4, height: 18, padding: "0 7px",
-              borderRadius: 9, border: "1px solid rgba(232,176,75,.35)", cursor: "pointer",
+              borderRadius: 9, border: "1px solid color-mix(in srgb,var(--amber) 35%,transparent)", cursor: "pointer",
               background: "color-mix(in srgb, var(--surface2) 82%, var(--amber) 18%)",
               color: "var(--amber)", fontSize: 9.5, fontWeight: 700, whiteSpace: "nowrap" }}>
             <span style={{ transition: "transform .16s", transform: takesOpen ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
@@ -1268,7 +1268,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
           if (!clip) return null;
           return <div style={{ position: "absolute", top: 0, bottom: 0,
             left: clip.start * pxPerSec, width: (clip.end - clip.start) * pxPerSec,
-            background: "rgba(232,176,75,.07)", border: "1px solid rgba(232,176,75,.3)",
+            background: "color-mix(in srgb,var(--amber) 7%,transparent)", border: "1px solid color-mix(in srgb,var(--amber) 30%,transparent)",
             pointerEvents: "none" }} />;
         })()}
         {/* join hover highlight */}
@@ -1323,8 +1323,8 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
               style={{ position: "absolute", top: 2, bottom: 2, left, width,
                 boxSizing: "border-box", borderRadius: 4, cursor: "grab", zIndex: 6,
                 border: sel ? "1.5px solid var(--amber)" : "1px solid rgba(255,255,255,.16)",
-                background: moving ? "rgba(232,176,75,.14)" : sel ? "rgba(232,176,75,.06)" : "transparent",
-                boxShadow: sel ? "0 0 0 1px rgba(232,176,75,.25) inset" : "none" }}>
+                background: moving ? "color-mix(in srgb,var(--amber) 14%,transparent)" : sel ? "color-mix(in srgb,var(--amber) 6%,transparent)" : "transparent",
+                boxShadow: sel ? "0 0 0 1px color-mix(in srgb,var(--amber) 25%,transparent) inset" : "none" }}>
               <div onMouseDown={(e) => startClipDrag(e, clip, "trimStart")}
                 style={{ position: "absolute", left: -1, top: 0, bottom: 0, width: 8, cursor: "ew-resize",
                   borderLeft: sel ? "2px solid var(--amber)" : "2px solid transparent" }} />
@@ -1349,8 +1349,8 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
                       style={{ position: "absolute", left: 8, right: 8, top: `${topPct}%`,
                         height: 8, transform: "translateY(-4px)", cursor: "ns-resize", zIndex: 7 }}>
                       <div style={{ position: "absolute", left: 0, right: 0, top: 3, height: 2, borderRadius: 2,
-                        background: active ? "var(--amber)" : "rgba(232,176,75,.45)",
-                        boxShadow: active ? "0 0 4px rgba(232,176,75,.55)" : "none", pointerEvents: "none" }} />
+                        background: active ? "var(--amber)" : "color-mix(in srgb,var(--amber) 45%,transparent)",
+                        boxShadow: active ? "0 0 4px color-mix(in srgb,var(--amber) 55%,transparent)" : "none", pointerEvents: "none" }} />
                     </div>
                     {gainDragging && (
                       <span className="mono" style={{ position: "absolute", right: 4, top: `${topPct}%`,
@@ -1596,7 +1596,7 @@ function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead,
       <div ref={laneRef} style={{ position: "relative", width: laneW, height: laneH, overflow: "hidden",
         isolation: "isolate", borderBottom: "1px solid var(--line)",
         cursor: onCompRegion ? "ew-resize" : "pointer",
-        background: active ? "rgba(232,176,75,.05)" : "rgba(255,255,255,.008)" }}
+        background: active ? "color-mix(in srgb,var(--amber) 5%,transparent)" : "rgba(255,255,255,.008)" }}
         onMouseDown={onDown}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
         {take.render && <Waveform track={take.render} clips={take.clips} pxPerSec={pxPerSec}
@@ -1608,13 +1608,13 @@ function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead,
               <div style={{ position: "absolute", inset: 0, background: "rgba(10,14,22,.52)", pointerEvents: "none" }} />
               {mineSegs && mineSegs.map((s, i) => (
                 <div key={i} style={{ position: "absolute", top: 0, bottom: 0, left: s.l, width: s.w,
-                  background: "rgba(232,176,75,.14)", boxShadow: "inset 0 0 0 1px rgba(232,176,75,.55)",
+                  background: "color-mix(in srgb,var(--amber) 14%,transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb,var(--amber) 55%,transparent)",
                   pointerEvents: "none", zIndex: 4 }} />
               ))}
             </>
           : (!active && <div style={{ position: "absolute", inset: 0, background: "rgba(10,14,22,.34)", pointerEvents: "none" }} />)}
         {swipe && <div style={{ position: "absolute", top: 0, bottom: 0, left: swipe.a, width: Math.max(1, swipe.b - swipe.a),
-          background: "rgba(232,176,75,.28)", boxShadow: "inset 0 0 0 1px var(--amber)", pointerEvents: "none", zIndex: 6 }} />}
+          background: "color-mix(in srgb,var(--amber) 28%,transparent)", boxShadow: "inset 0 0 0 1px var(--amber)", pointerEvents: "none", zIndex: 6 }} />}
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5,
           background: "var(--cream)", opacity: .5, pointerEvents: "none", zIndex: 10 }} />
       </div>

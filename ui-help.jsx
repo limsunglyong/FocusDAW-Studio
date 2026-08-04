@@ -1859,7 +1859,7 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.44.20",
+  range: "v1.40.0 - v1.44.21",
   date: "2026-08-03",
   features: [
     "Vocal channel strip: Audio In and Bounce tracks now have an FX button that opens a dedicated Vocal Channel Strip window with a 9-band graphic EQ and a compressor, plus vocal presets (Clean Lead / Warm Pop / Bright Air / Podcast) and an A/B bypass. The strip is applied before the track fader and is reflected in playback, Export, and saved projects.",
@@ -1877,7 +1877,7 @@ const RELEASE_NOTES = {
   ],
   improvements: [
     "Punch recording now keeps the original as a take instead of discarding it, and the Punch button is enabled only when a Repeat region exists — preventing accidental destructive re-records.",
-    "The Repeat / Punch region highlight now follows the active color theme.",
+    "Color themes now apply everywhere: the remaining accent highlights that stayed amber on a blue, purple, or green theme — track headers, the mixer's EQ and knobs, slider glows, dialogs, and the vocal strip — now follow the theme you picked.",
     "Missing-audio alerts, the Flatten confirmation, and other prompts now use the app's themed modal instead of the plain browser dialog.",
     "Track names and recording file names are handled separately, so renaming a track no longer changes its recorded file names.",
     "Recording and session scratch files now live under Documents\\FocusDAW\\Temp and are cleaned up automatically; temp originals are removed once collected into a saved project.",

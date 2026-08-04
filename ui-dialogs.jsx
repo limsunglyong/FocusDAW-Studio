@@ -36,7 +36,7 @@ function LoaderScreen({ onOpen }) {
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", overflow: "hidden", background: "radial-gradient(120% 80% at 80% -10%,rgba(232,176,75,.10),transparent 60%),var(--bg)" }}>
+    <div style={{ flex: 1, display: "flex", overflow: "hidden", background: "radial-gradient(120% 80% at 80% -10%,color-mix(in srgb,var(--amber) 10%,transparent),transparent 60%),var(--bg)" }}>
       {/* brand panel */}
       <div style={{ width: 320, flex: "0 0 320px", borderRight: "1px solid var(--line)", padding: "44px 36px",
         display: "flex", flexDirection: "column", background: "linear-gradient(180deg,rgba(255,255,255,.015),transparent)" }}>
@@ -522,7 +522,7 @@ function ExportDialog({ projectName, onClose }) {
                   </div>
                 </Row>
                 <Row label="Keep pitch"><button onClick={() => setPreservePitch(!preservePitch)} disabled={!variBpmEnabled} title={variBpmEnabled ? "Export tempo changes without changing pitch" : "Enable Vari BPM first"} style={{ width: 40, height: 22, borderRadius: 12, background: preservePitch && variBpmEnabled ? "var(--amber)" : "var(--surface3)", position: "relative", transition: ".15s", opacity: variBpmEnabled ? 1 : 0.45 }}><span style={{ position: "absolute", top: 2, left: preservePitch && variBpmEnabled ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#241a0a", transition: ".15s" }} /></button></Row>
-                <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(232,176,75,.06)", borderRadius: 9, fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
+                <div style={{ marginTop: 12, padding: "10px 12px", background: "color-mix(in srgb,var(--amber) 6%,transparent)", borderRadius: 9, fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
                   All unmuted tracks with FX, automation, master EQ &amp; fades. Length {fmtTime(exportDuration)}.
                   {normalize && window.electronAPI && window.electronAPI.processAudio ? ` Loudness normalized to ${lufsTarget} LUFS.` : ""}
                   {preservePitch && variBpmEnabled && tempoChanged ? " Keep pitch uses the stable desktop time-stretch path after mix render." : ""}
@@ -602,8 +602,8 @@ function ExportDialog({ projectName, onClose }) {
                 margin: "0 auto 16px",
                 maxWidth: 420,
                 padding: "9px 11px",
-                border: "1px solid rgba(232,176,75,.45)",
-                background: "rgba(232,176,75,.10)",
+                border: "1px solid color-mix(in srgb,var(--amber) 45%,transparent)",
+                background: "color-mix(in srgb,var(--amber) 10%,transparent)",
                 borderRadius: 7,
                 color: "var(--cream)",
                 fontSize: 12,

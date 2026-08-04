@@ -377,7 +377,7 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
     <div style={{ width: isAudioIn ? MIXER_AUDIO_IN_CHANNEL_W : MIXER_CHANNEL_W, flex: `0 0 ${isAudioIn ? MIXER_AUDIO_IN_CHANNEL_W : MIXER_CHANNEL_W}px`, height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center",
       padding: "10px 6px", borderRight: "1px solid var(--line)", gap: 8,
       position: "relative", overflow: "hidden", isolation: isAudioIn ? "isolate" : undefined,
-      background: isAudioIn ? "var(--bg)" : p.solo ? "rgba(232,176,75,.05)" : "transparent",
+      background: isAudioIn ? "var(--bg)" : p.solo ? "color-mix(in srgb,var(--amber) 5%,transparent)" : "transparent",
       backgroundImage: isAudioIn ? audioInputBg : undefined,
       backgroundSize: isAudioIn ? audioInputBgSize : undefined,
       backgroundPosition: isAudioIn ? audioInputBgPosition : undefined,
@@ -501,7 +501,7 @@ function MasterEQ({ width = 320, height = 156, onBeforeChange }) {
       <svg ref={ref} width={width} height={height} style={{ display: "block", borderRadius: 8, background: "#15110b", cursor: "ns-resize" }}>
         {/* zone tints */}
         <rect x="0" y="0" width={b1} height={height} fill="rgba(217,106,78,.05)" />
-        <rect x={b1} y="0" width={b2 - b1} height={height} fill="rgba(232,176,75,.05)" />
+        <rect x={b1} y="0" width={b2 - b1} height={height} fill="color-mix(in srgb,var(--amber) 5%,transparent)" />
         <rect x={b2} y="0" width={width - b2} height={height} fill="rgba(127,176,196,.05)" />
         {/* gridlines (dB) */}
         {[-12, -6, 0, 6, 12].map((g) => (
@@ -513,7 +513,7 @@ function MasterEQ({ width = 320, height = 156, onBeforeChange }) {
         {/* whole-song FFT spectrum */}
         <path d={specD} fill="rgba(216,205,182,.12)" stroke="rgba(216,205,182,.28)" strokeWidth="1" />
         {/* EQ response */}
-        <path d={eqArea} fill="rgba(232,176,75,.12)" />
+        <path d={eqArea} fill="color-mix(in srgb,var(--amber) 12%,transparent)" />
         <path d={eqLine} fill="none" stroke="var(--amber)" strokeWidth="2" />
         {/* band handles */}
         {pts.map((p, i) => (
@@ -539,8 +539,8 @@ function MasterEQ({ width = 320, height = 156, onBeforeChange }) {
 function MasterViewTab({ active, children, onClick }) {
   return (
     <button onClick={onClick} className="chip" style={{
-      fontSize: 9, textTransform: "uppercase", border: "1px solid " + (active ? "rgba(232,176,75,.5)" : "transparent"),
-      color: active ? "var(--amber)" : "var(--dim)", background: active ? "rgba(232,176,75,.12)" : "rgba(255,255,255,.05)",
+      fontSize: 9, textTransform: "uppercase", border: "1px solid " + (active ? "color-mix(in srgb,var(--amber) 50%,transparent)" : "transparent"),
+      color: active ? "var(--amber)" : "var(--dim)", background: active ? "color-mix(in srgb,var(--amber) 12%,transparent)" : "rgba(255,255,255,.05)",
       cursor: "pointer",
     }}>
       {children}
@@ -594,7 +594,7 @@ function MasterEQOverlay({ width = 300, height = 156, onBeforeChange }) {
         <line key={g} x1="0" y1={gainToY(g)} x2={width} y2={gainToY(g)}
           stroke={g === 0 ? "rgba(232,212,170,.24)" : "rgba(232,212,170,.07)"} strokeWidth={g === 0 ? 1 : 0.75} />
       ))}
-      <path d={`${eqLine} L${width} ${gainToY(0)} L0 ${gainToY(0)} Z`} fill="rgba(232,176,75,.08)" />
+      <path d={`${eqLine} L${width} ${gainToY(0)} L0 ${gainToY(0)} Z`} fill="color-mix(in srgb,var(--amber) 8%,transparent)" />
       <path d={eqLine} fill="none" stroke="var(--amber)" strokeWidth="2.2" />
       {pts.map((p, i) => (
         <g key={i}>
@@ -657,9 +657,9 @@ function MiniEQGraph({ width = 116, height = 30, gray = false }) {
   const zeroY = gainToY(0);
   const isFlat = bands.every(b => Math.abs(b) < 0.1);
   const fill = gray ? (isFlat ? "rgba(160,160,160,.04)" : "rgba(160,160,160,.12)")
-                    : (isFlat ? "rgba(232,176,75,.04)" : "rgba(232,176,75,.14)");
+                    : (isFlat ? "color-mix(in srgb,var(--amber) 4%,transparent)" : "color-mix(in srgb,var(--amber) 14%,transparent)");
   const stroke = gray ? (isFlat ? "rgba(160,160,160,.28)" : "rgba(160,160,160,.75)")
-                      : (isFlat ? "rgba(232,176,75,.28)" : "var(--amber)");
+                      : (isFlat ? "color-mix(in srgb,var(--amber) 28%,transparent)" : "var(--amber)");
   return (
     <svg width={width} height={height} style={{ display: "block", flexShrink: 0, borderRadius: 5,
       background: "var(--eq-graph-bg, rgba(0,0,0,.32))", overflow: "hidden" }}>
@@ -749,7 +749,7 @@ function MasterPanel({ level, master, onMaster, onBeforeChange, onOpenAdvancedPa
   const applyPreset = (name) => { onBeforeChange && onBeforeChange(); DAW.applyEQPreset(name); force((n) => n + 1); };
   return (
     <div style={{ width: 400, flex: "0 0 400px", display: "flex", flexDirection: "column", padding: "12px 14px", gap: 11,
-      background: "linear-gradient(180deg,rgba(232,176,75,.06),transparent 40%)", borderLeft: "1px solid var(--line-strong)" }}>
+      background: "linear-gradient(180deg,color-mix(in srgb,var(--amber) 6%,transparent),transparent 40%)", borderLeft: "1px solid var(--line-strong)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: "var(--amber)" }}>MASTER</span>
         <MasterViewTab active={view === "eq"} onClick={() => setView("eq")}>Graphic EQ · FFT</MasterViewTab>

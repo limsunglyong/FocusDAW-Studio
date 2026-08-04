@@ -236,7 +236,7 @@ function Meter({ level, height = 120, width = 8, stereo = false }) {
 function SoloBtn({ on, onClick, size = 24, disabled = false }) {
   return <button onClick={disabled ? undefined : onClick} disabled={disabled} title={disabled ? "Solo unavailable until audio is re-linked" : "Solo"} style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
     background: on ? "var(--amber)" : "var(--surface2)", color: on ? "#241a0a" : "var(--dim)",
-    border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"), boxShadow: on ? "0 0 10px rgba(232,176,75,.5)" : "none",
+    border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"), boxShadow: on ? "0 0 10px color-mix(in srgb,var(--amber) 50%,transparent)" : "none",
     opacity: disabled ? .38 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>S</button>;
 }
 function MuteBtn({ on, auto, onClick, size = 24, disabled = false }) {

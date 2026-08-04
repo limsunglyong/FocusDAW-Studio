@@ -599,7 +599,7 @@ function Transport({ playing, onPlay, onStop, onToStart, loop, onLoop, playhead 
         <button className="iconbtn" onClick={onToStart} title="Return to start"><Icon name="toStart" size={17} /></button>
         <button className="iconbtn" onClick={onStop} title="Stop"><Icon name="stop" size={15} fill /></button>
         <button onClick={onPlay} title="Play / Pause" style={{ width: 42, height: 36, borderRadius: 9, display: "grid", placeItems: "center",
-          background: playing ? "var(--transport-active-bg,var(--amber))" : "var(--surface2)", color: playing ? "var(--transport-active-fg,#241a0a)" : "var(--cream)", border: "1px solid " + (playing ? "var(--transport-active-border,var(--amber))" : "var(--line-strong)"), boxShadow: playing ? "var(--transport-active-shadow,0 0 12px rgba(232,176,75,.45))" : "none" }}>
+          background: playing ? "var(--transport-active-bg,var(--amber))" : "var(--surface2)", color: playing ? "var(--transport-active-fg,#241a0a)" : "var(--cream)", border: "1px solid " + (playing ? "var(--transport-active-border,var(--amber))" : "var(--line-strong)"), boxShadow: playing ? "var(--transport-active-shadow,0 0 12px color-mix(in srgb,var(--amber) 45%,transparent))" : "none" }}>
           <Icon name={playing ? "pause" : "play"} size={18} fill />
         </button>
         <button className={"iconbtn" + (loop ? " on" : "")} onClick={onLoop} title="Loop"><Icon name="repeat" size={16} /></button>
@@ -899,7 +899,7 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
           border: "1px solid var(--line-strong)", borderBottom: open ? "none" : "1px solid var(--line-strong)",
           borderRadius: open ? "10px 10px 0 0" : 10,
           background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))",
-          boxShadow: open ? "inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px rgba(232,176,75,.12)",
+          boxShadow: open ? "inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px color-mix(in srgb,var(--amber) 12%,transparent)",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
         <KeyReadout keyValue={key} shift={pitchShift} />
       </button>
@@ -1034,7 +1034,7 @@ function BpmIndicator({
       <div style={{ position: "absolute", right: 0, top: 0, width: 150, maxHeight: open ? 410 : TOOLBAR_PANEL_H,
         overflow: "hidden", borderRadius: 10, border: "1px solid var(--line-strong)",
         background: "var(--bpm-bg, linear-gradient(180deg,var(--bg2),var(--bg)))",
-        boxShadow: open ? "var(--shadow), inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px rgba(232,176,75,.12)",
+        boxShadow: open ? "var(--shadow), inset 0 1px 0 rgba(255,255,255,.045)" : "inset 0 1px 0 rgba(255,255,255,.045), 0 0 10px color-mix(in srgb,var(--amber) 12%,transparent)",
         transition: "max-height .18s ease, box-shadow .16s ease" }}>
       <button title="Project BPM" onClick={onToggle} onWheel={onWheel}
         style={{ height: TOOLBAR_PANEL_H, width: "100%", padding: "0 10px 0 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
@@ -1097,7 +1097,7 @@ function BpmIndicator({
           <button onClick={onTap}
             style={{ marginTop: 9, width: "100%", height: 50, borderRadius: 8, border: "1px solid var(--amber)",
               background: "var(--amber)", color: "var(--accent-fg)", fontWeight: 800, letterSpacing: ".08em", cursor: "pointer",
-              boxShadow: "0 0 12px rgba(232,176,75,.4)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.05, gap: 1 }}>
+              boxShadow: "0 0 12px color-mix(in srgb,var(--amber) 40%,transparent)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.05, gap: 1 }}>
             {tapInfo && tapInfo.count > 0 ? (
               <React.Fragment>
                 <span className="mono" style={{ fontSize: 20, fontWeight: 800 }}>{tapInfo.bpm != null ? tapInfo.bpm : "·"}</span>
@@ -1205,13 +1205,13 @@ function TimelineMinimap({ arrangeRef, pxPerSec, playhead, viewState, setPx, tim
         )}
 
         <div style={{ position: "absolute", left: `${viewLeft * 100}%`, top: 0, width: `${viewWidth * 100}%`, minWidth: 18, height: "100%",
-          borderRadius: 7, border: "1px solid rgba(232,176,75,.65)", background: "rgba(232,176,75,.08)",
-          boxShadow: "0 0 12px rgba(232,176,75,.16)" }}>
-          <span style={{ position: "absolute", left: "50%", top: 4, bottom: 4, width: 1, background: "rgba(232,176,75,.55)", transform: "translateX(-50%)" }} />
-          <span style={{ position: "absolute", left: 5, right: 5, top: "50%", height: 1, background: "rgba(232,176,75,.45)", transform: "translateY(-50%)" }} />
+          borderRadius: 7, border: "1px solid color-mix(in srgb,var(--amber) 65%,transparent)", background: "color-mix(in srgb,var(--amber) 8%,transparent)",
+          boxShadow: "0 0 12px color-mix(in srgb,var(--amber) 16%,transparent)" }}>
+          <span style={{ position: "absolute", left: "50%", top: 4, bottom: 4, width: 1, background: "color-mix(in srgb,var(--amber) 55%,transparent)", transform: "translateX(-50%)" }} />
+          <span style={{ position: "absolute", left: 5, right: 5, top: "50%", height: 1, background: "color-mix(in srgb,var(--amber) 45%,transparent)", transform: "translateY(-50%)" }} />
         </div>
         <span style={{ position: "absolute", left: `${playPct * 100}%`, top: -2, bottom: -2, width: 2,
-          borderRadius: 2, background: "var(--amber)", boxShadow: "0 0 10px rgba(232,176,75,.65)", transform: "translateX(-1px)",
+          borderRadius: 2, background: "var(--amber)", boxShadow: "0 0 10px color-mix(in srgb,var(--amber) 65%,transparent)", transform: "translateX(-1px)",
           pointerEvents: "none" }} />
       </div>
     </div>
