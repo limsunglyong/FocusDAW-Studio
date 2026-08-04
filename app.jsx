@@ -2389,7 +2389,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         // gate/comp/de-esser gain reduction. Native-only values (0 in web fallback / when stopped).
         case "REQUEST_VOCAL_METERS": {
           const gr = DAW.getTrackVocalGr ? DAW.getTrackVocalGr(msg.id) : { gate: 0, comp: 0, deEss: 0 };
-          channel.postMessage({ type: "VOCAL_METERS", id: msg.id, gate: gr.gate, comp: gr.comp, deEss: gr.deEss });
+          channel.postMessage({ type: "VOCAL_METERS", id: msg.id, gate: gr.gate, comp: gr.comp, deEss: gr.deEss, isPlaying: DAW.isPlaying });
           break;
         }
         case "BEFORE_CHANGE":

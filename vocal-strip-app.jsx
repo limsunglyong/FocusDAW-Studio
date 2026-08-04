@@ -376,16 +376,17 @@ function VocalStripApp() {
   useEffect(() => { targetIdRef.current = targetId; }, [targetId]);
   // Fetch the PRE spectrum whenever the selected track changes (INIT/SYNC also re-requests).
   useEffect(() => { setSpecPts([]); if (targetId) vsChannel.postMessage({ type: "REQUEST_TRACK_SPECTRUM", id: targetId }); }, [targetId]);
-  // Poll the target track's live gain-reduction meters while playing (~25 fps). Native-only
-  // values; cleared to zero when stopped so the bars fall instead of freezing.
+  // Poll the target track's live gain-reduction meters (~25 fps). Runs ALWAYS, not gated on the
+  // strip's isPlaying flag: when only the strip window is open there is no LEVEL_METERS feed to
+  // update isPlaying, so gating here left the meters frozen at zero during playback. The native
+  // side already returns 0 while stopped/paused, so unconditional polling is safe and correct.
   useEffect(() => {
-    if (!isPlaying) { setMeters({ gate: 0, comp: 0, deEss: 0 }); return; }
     const iv = setInterval(() => {
       const id = targetIdRef.current;
       if (id) vsChannel.postMessage({ type: "REQUEST_VOCAL_METERS", id });
     }, 40);
     return () => clearInterval(iv);
-  }, [isPlaying]);
+  }, []);
 
   useEffect(() => {
     vsChannel.postMessage({ type: "ADVANCED_READY" });
@@ -415,6 +416,7 @@ function VocalStripApp() {
         if (msg.id === targetIdRef.current) setSpecPts(Array.isArray(msg.pts) ? msg.pts : []);
       } else if (msg.type === "VOCAL_METERS") {
         if (msg.id === targetIdRef.current) setMeters({ gate: msg.gate || 0, comp: msg.comp || 0, deEss: msg.deEss || 0 });
+        if (typeof msg.isPlaying === "boolean") setIsPlaying(msg.isPlaying); // keep strip play-state fresh even without a mixer feed
       } else if (msg.type === "LEVEL_METERS") {
         if (typeof msg.isPlaying === "boolean") setIsPlaying(msg.isPlaying);
       }
