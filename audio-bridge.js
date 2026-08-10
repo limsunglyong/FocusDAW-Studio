@@ -1380,7 +1380,13 @@
         LocalDAW._emit();
       }
     } else if (msg.event === "trackLoaded") {
-      if (msg.trackId) onNativeTrackLoaded(msg.trackId);
+      if (msg.trackId) {
+        // The track now definitely exists in the native graph. Re-push params
+        // before allowing the handover to native output; otherwise a first play
+        // can jump from web's current gain to native's freshly installed defaults.
+        sendTrackRuntimeStateToNative(LocalDAW.tracks.find(t => t.id === msg.trackId));
+        onNativeTrackLoaded(msg.trackId);
+      }
       LocalDAW._emit();
     } else if (msg.event === "levels") {
       if (msg.tracks) nativeState.trackLevels = msg.tracks;
@@ -1546,7 +1552,7 @@
     if (!track) return;
     const place = trackTimelinePlacement(track);
     const baked = trackIsBakedLayout(track);
-    if (track.filePath && !baked) {
+    if (track.filePath && !baked && !track._forceNativeTemp) {
       sendLoadTrack({
         command: "loadTrack",
         trackId: track.id,
@@ -1585,8 +1591,19 @@
       }
     }
 
-    // Sync current params (incl. per-track reverb/echo sends — the native engine
-    // stores them in TrackInfo and applies them when the async decode installs).
+    // Sync current params (incl. per-track reverb/echo sends). They are sent now
+    // and again on trackLoaded because async native install can otherwise expose
+    // defaults during the first output handover.
+    sendTrackRuntimeStateToNative(track);
+
+    // If this edit grew (or shrank) the project, the OTHER tracks now hold a stale
+    // songLength and would loop at the wrong point. Re-push them all to the new length.
+    // Guarded so a bulk push does not recurse per track.
+    ensureSongLengthConsistent();
+  }
+
+  function sendTrackRuntimeStateToNative(track) {
+    if (!track || !track.params) return;
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "volume", value: track.params.volume });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "pan", value: track.params.pan });
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "mute", value: track.params.mute });
@@ -1595,11 +1612,6 @@
     sendToNative({ command: "setTrackParam", trackId: track.id, key: "echo", value: track.params.echo || 0 });
     sendVocalFxToNative(track);
     sendTrackAutomationToNative(track);
-
-    // If this edit grew (or shrank) the project, the OTHER tracks now hold a stale
-    // songLength and would loop at the wrong point. Re-push them all to the new length.
-    // Guarded so a bulk push does not recurse per track.
-    ensureSongLengthConsistent();
   }
 
   // Forward a track's volume automation to the native engine as an interleaved

@@ -8,9 +8,9 @@
   "use strict";
 
   const DEMO_STEP = 0.5;
-  const DEMO_SECTION = 2;
+  const DEMO_SECTION = 4;
   const DEMO_SECTIONS = 4;
-  const DURATION = DEMO_SECTIONS * DEMO_SECTION; // 8s loop
+  const DURATION = DEMO_SECTIONS * DEMO_SECTION; // 16s demo loop
   const PROJECT_SCHEMA_VERSION = 2;
 
   function makeCtx() {
@@ -80,12 +80,10 @@
     const step = DEMO_STEP;
     for (let section = 0; section < DEMO_SECTIONS; section++) {
       const b0 = section * DEMO_SECTION;
-      // kick on first and third pulses
-      [0, 2].forEach((bt) => kick(ch, sr, b0 + bt * step));
-      // snare on second and fourth pulses
-      [1, 3].forEach((bt) => snare(ch, sr, b0 + bt * step));
-      // hats on half-step pulses
-      for (let h = 0; h < 8; h++) hat(ch, sr, b0 + h * (step / 2));
+      [0, 2, 3.5].forEach((bt) => kick(ch, sr, b0 + bt));
+      [1, 3].forEach((bt) => snare(ch, sr, b0 + bt));
+      for (let h = 0; h < 8; h++) hat(ch, sr, b0 + h * step);
+      hat(ch, sr, b0 + 3.75, 0.18);
     }
   }
   function kick(ch, sr, at) {
@@ -109,56 +107,72 @@
       ch[idx] += (n[i] * 0.7 + tone) * env * 0.6;
     }
   }
-  function hat(ch, sr, at) {
+  function hat(ch, sr, at, amp = 0.12) {
     const len = Math.floor(0.05 * sr), s0 = Math.floor(at * sr);
     const n = noise(len);
     for (let i = 0; i < len; i++) {
       const idx = s0 + i; if (idx >= ch.length) break;
       const t = i / sr;
       const env = Math.exp(-t * 90);
-      ch[idx] += n[i] * env * 0.22;
+      ch[idx] += n[i] * env * amp;
     }
   }
 
-  // chord progression Am - F - C - G
+  const N = {
+    C2: 65.41, D2: 73.42, E2: 82.41, F2: 87.31, G2: 98.0, A2: 110.0,
+    C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.0, A3: 220.0, B3: 246.94,
+    C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.0, A4: 440.0, B4: 493.88,
+    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.0,
+  };
+
+  // chord progression C - G - Am - F
   const PROG = [
-    { bass: 110.0, chord: [220.0, 261.63, 329.63] }, // Am
-    { bass: 87.31, chord: [174.61, 220.0, 261.63] }, // F
-    { bass: 130.81, chord: [261.63, 329.63, 392.0] }, // C
-    { bass: 98.0, chord: [196.0, 246.94, 293.66] }, // G
+    { bass: N.C2, fifth: N.G2, chord: [N.C4, N.E4, N.G4], guitar: [N.C4, N.E4, N.G4, N.C5] },
+    { bass: N.G2, fifth: N.D3, chord: [N.B3, N.D4, N.G4], guitar: [N.G3, N.B3, N.D4, N.G4] },
+    { bass: N.A2, fifth: N.E3, chord: [N.A3, N.C4, N.E4], guitar: [N.A3, N.C4, N.E4, N.A4] },
+    { bass: N.F2, fifth: N.C3, chord: [N.A3, N.C4, N.F4], guitar: [N.F3, N.A3, N.C4, N.F4] },
   ];
 
   function synthBass(ch, sr) {
+    PROG.forEach((p, section) => {
+      const b0 = section * DEMO_SECTION;
+      [0, 1.5, 2, 3].forEach((beat, i) => {
+        const f = i === 1 ? p.fifth : p.bass;
+        addNote(ch, sr, b0 + beat, 0.75, f, "saw", 0.36);
+      });
+    });
+  }
+  function synthPiano(ch, sr) {
+    PROG.forEach((p, section) => {
+      const b0 = section * DEMO_SECTION;
+      [0, 1.5, 2.5].forEach((beat, hit) => {
+        p.chord.forEach((f) => addNote(ch, sr, b0 + beat, hit === 0 ? 1.25 : 0.9, f, "tri", 0.18));
+        addNote(ch, sr, b0 + beat, 1.0, p.bass * 2, "sine", 0.1);
+      });
+    });
+  }
+  function synthGuitar(ch, sr) {
     const step = DEMO_STEP;
     PROG.forEach((p, section) => {
       const b0 = section * DEMO_SECTION;
-      // root note pulses on every step
-      for (let bt = 0; bt < 4; bt++) {
-        addNote(ch, sr, b0 + bt * step, step * 0.9, p.bass, "saw", 0.5);
+      for (let i = 0; i < 8; i++) {
+        const f = p.guitar[i % p.guitar.length];
+        addNote(ch, sr, b0 + i * step, 0.34, f, "tri", i % 2 ? 0.12 : 0.16);
       }
-    });
-  }
-  function synthKeys(ch, sr) {
-    PROG.forEach((p, section) => {
-      const b0 = section * DEMO_SECTION;
-      p.chord.forEach((f) =>
-        addNote(ch, sr, b0, DEMO_SECTION * 0.98, f, "tri", 0.22)
-      );
     });
   }
   function synthLead(ch, sr) {
     const step = DEMO_STEP;
-    // simple melodic line per section
     const mel = [
-      [659.25, 587.33, 523.25, 587.33],
-      [523.25, 440.0, 349.23, 440.0],
-      [523.25, 587.33, 659.25, 783.99],
-      [587.33, 493.88, 392.0, 493.88],
+      [N.E5, N.D5, N.C5, N.G4, N.C5, N.D5, N.E5, N.G5],
+      [N.D5, N.B4, N.G4, N.D5, N.E5, N.D5, N.B4, N.G4],
+      [N.C5, N.E5, N.A5, N.G5, N.E5, N.C5, N.D5, N.E5],
+      [N.A4, N.C5, N.F5, N.E5, N.C5, N.A4, N.G4, N.C5],
     ];
     mel.forEach((section, si) => {
       const b0 = si * DEMO_SECTION;
       section.forEach((f, ni) =>
-        addNote(ch, sr, b0 + ni * step, step * 0.85, f, "square", 0.16)
+        addNote(ch, sr, b0 + ni * step, step * 0.78, f, "square", 0.11)
       );
     });
   }
@@ -281,10 +295,11 @@
   //  ENGINE
   // ============================================================
   const TRACK_DEFS = [
+    { name: "Piano", type: "keys", color: "#9bbf7a", synth: synthPiano },
+    { name: "Guitar", type: "guitar", color: "#d98a55", synth: synthGuitar },
+    { name: "Bass", type: "bass", color: "#7fb0c9", synth: synthBass },
     { name: "Drums", type: "drums", color: "#e8b04b", synth: synthDrums },
-    { name: "Bass", type: "bass", color: "#d98a55", synth: synthBass },
-    { name: "Keys", type: "keys", color: "#9bbf7a", synth: synthKeys },
-    { name: "Lead", type: "lead", color: "#c98fb0", synth: synthLead },
+    { name: "Synth", type: "lead", color: "#c98fb0", synth: synthLead },
   ];
 
   let ctx = null;
@@ -762,11 +777,12 @@
         const buffer = renderMono(ctx, (ch, sr) => def.synth(ch, sr));
         this._addTrack({
           name: def.name, type: def.type, color: def.color, buffer, isDemo: true,
+          params: { volume: 0.5 },
         });
       });
     },
 
-    _addTrack({ name, type, color, buffer, peaks = null, isDemo = false, fileName = null, filePath = null, needsAudio = false, kind = null, lockedToZero = undefined, sources = null, clips = null, takes = null, activeTakeId = null, comp = null }) {
+    _addTrack({ name, type, color, buffer, peaks = null, isDemo = false, fileName = null, filePath = null, needsAudio = false, kind = null, lockedToZero = undefined, sources = null, clips = null, takes = null, activeTakeId = null, comp = null, params = null }) {
       const id = "t" + (this.tracks.length + 1) + "_" + Math.random().toString(36).slice(2, 6);
       // persistent nodes
       const fader = ctx.createGain();
@@ -853,6 +869,14 @@
         isDemo, fileName, filePath, needsAudio, audioRev: 0,
         _meterBuf: new Float32Array(meter.fftSize),
       };
+      if (params && typeof params === "object") {
+        track.params = {
+          ...track.params,
+          ...params,
+          automation: params.automation || track.params.automation,
+          vocalFx: params.vocalFx || track.params.vocalFx,
+        };
+      }
       this._normalizeTrackLayout(track);
       // Keep file/demo tracks grouped ahead of Audio In tracks: a new file track
       // is inserted before the first Audio In track (not appended after it), so the
@@ -1511,6 +1535,7 @@
         // resolve the relative filePath a collected/reopened project stores). Not serialized
         // — exportProject whitelists fields, so the saved filePath stays relative/portable.
         if (options.absPath) ph._nativePath = options.absPath;
+        ph._forceNativeTemp = !!options.forceNativeTemp;
         this._assignDecodedToTrack(ph, decoded);
         this._applyMix();
         this._startHotAddedTrack(ph);
@@ -1524,7 +1549,8 @@
       if (reconnectTrackId) return null;
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
-      const t = this._addTrack({ name: displayName, type: "audio", color, buffer, peaks: decoded.peaks, fileName: name, filePath });
+      const t = this._addTrack({ name: displayName, type: "audio", color, buffer, peaks: decoded.peaks, fileName: name, filePath, params: options.params });
+      t._forceNativeTemp = !!options.forceNativeTemp;
       this.duration = Math.max(this.duration, this._projectClipDuration());
       this._startHotAddedTrack(t);
       return t;
@@ -1640,7 +1666,7 @@
       this.init();
       TRACK_DEFS.forEach((def) => {
         const buffer = renderMono(ctx, (ch, sr) => def.synth(ch, sr));
-        this._addTrack({ name: def.name, type: def.type, color: def.color, buffer, isDemo: true });
+        this._addTrack({ name: def.name, type: def.type, color: def.color, buffer, isDemo: true, params: { volume: 0.5 } });
       });
       this._spectrum = null;
     },

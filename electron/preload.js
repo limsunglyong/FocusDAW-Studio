@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File system
   openFolder:     ()              => ipcRenderer.invoke('open-folder'),
   scanAudioFolder:(folderPath)    => ipcRenderer.invoke('scan-audio-folder', folderPath),
+  getDemoSession: ()              => ipcRenderer.invoke('get-demo-session'),
   selectFiles:    ()              => ipcRenderer.invoke('select-files'),
   getPathForFile: (file)          => webUtils && webUtils.getPathForFile ? webUtils.getPathForFile(file) : (file && file.path) || '',
   readAudioFile:  (filePath)      => ipcRenderer.invoke('read-audio-file', filePath),

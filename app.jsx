@@ -47,6 +47,10 @@ function resolveSourcePath(filePath, projectPath) {
   return dir ? dir + "/" + filePath : filePath;
 }
 
+function isBuiltInDemoAudioPath(filePath) {
+  return /[\\/]Demos[\\/]그 여름의 우리 - focustone[\\/]/.test(String(filePath || ""));
+}
+
 function fmtBytes(n) {
   const b = Number(n) || 0;
   if (b < 1024) return `${b} B`;
@@ -3121,7 +3125,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     const superseded = () => reconnectSeqRef.current !== seq;
     const base = pathForOpen || projectPath || null;
     setMissingAudio(null); // clear any modal from a previous load before this one reports
-    const missing = DAW.tracks.filter((t) => t.needsAudio && t.filePath);
+    let builtInDemoByName = null;
+    if (window.electronAPI.getDemoSession) {
+      try {
+        const demo = await window.electronAPI.getDemoSession();
+        builtInDemoByName = new Map(((demo && demo.items) || []).map((item) => [item.name, item]));
+      } catch (e) {
+        builtInDemoByName = null;
+      }
+    }
+    const demoItemForTrack = (track) => builtInDemoByName && builtInDemoByName.get(track.fileName || track.name);
+    const missing = DAW.tracks.filter((t) => t.needsAudio && (t.filePath || demoItemForTrack(t)));
     if (!missing.length) return;
     // Sources we couldn't read, surfaced to the user in a themed modal when the run finishes.
     const failures = [];
@@ -3129,18 +3143,25 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     for (let i = 0; i < missing.length; i++) {
       if (superseded()) return;
       const track = missing[i];
-      setLoading({ active: true, total: missing.length, done: i, label: basenameFromPath(track.filePath) || track.name });
+      const demoItem = demoItemForTrack(track);
+      const sourcePath = track.filePath || (demoItem && demoItem.path) || null;
+      setLoading({ active: true, total: missing.length, done: i, label: basenameFromPath(sourcePath) || track.name });
       try {
-        const abs = resolveSourcePath(track.filePath, base);
+        const abs = resolveSourcePath(sourcePath, base);
         const ab = await window.electronAPI.readAudioFile(abs);
         if (superseded()) return;
         // Pass the RESOLVED absolute path too: the native engine loads file tracks by path
         // and its cwd is the app root, so it can't open the relative `filePath` a collected
         // project stores. addFileBuffer stamps it on the track for the bridge to use.
-        await DAW.addFileBuffer(track.fileName || track.name, ab, { filePath: track.filePath, absPath: abs, reconnectTrackId: track.id });
+        await DAW.addFileBuffer(track.fileName || track.name, ab, {
+          filePath: sourcePath,
+          absPath: abs,
+          reconnectTrackId: track.id,
+          forceNativeTemp: !!demoItem || isBuiltInDemoAudioPath(sourcePath),
+        });
       } catch (err) {
-        console.warn("Failed to reconnect audio:", track.filePath, err);
-        failures.push({ name: track.name || track.fileName || basenameFromPath(track.filePath), filePath: track.filePath });
+        console.warn("Failed to reconnect audio:", sourcePath, err);
+        failures.push({ name: track.name || track.fileName || basenameFromPath(sourcePath), filePath: sourcePath });
       }
     }
     // Phase 6 Stage 3: an Audio In track can hold several Takes, each a separate source
@@ -3993,9 +4014,39 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     setConfirmDeleteAll(false);
     force((n) => n + 1);
   }, [onUndoStateChange, projectName, projectPath]);
-  const loadDemo = () => {
-    const nextName = projectName || "Demo Session";
-    DAW.addDemoTracks();
+  const loadDemo = async () => {
+    const nextName = "그 여름의 우리 - focustone";
+    let loadedMp3Demo = false;
+    if (window.electronAPI && window.electronAPI.getDemoSession) {
+      try {
+        const demo = await window.electronAPI.getDemoSession();
+        const items = (demo && demo.items) || [];
+        if (items.length) {
+          DAW.clearTracks();
+          setLoading({ active: true, total: items.length, done: 0, label: "Loading demo session..." });
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            setLoading({ active: true, total: items.length, done: i, label: item.displayName || item.name });
+            const ab = await window.electronAPI.readAudioFile(item.path);
+            await DAW.addFileBuffer(item.name, ab, {
+              filePath: item.path,
+              displayName: item.displayName,
+              fileSize: item.size,
+              fileMtimeMs: item.mtimeMs,
+              params: { volume: 0.5 },
+              forceNativeTemp: true,
+            });
+          }
+          loadedMp3Demo = true;
+        }
+      } catch (e) {
+        console.warn("Failed to load built-in demo session; falling back to synth demo.", e);
+      }
+    }
+    if (!loadedMp3Demo) {
+      DAW.clearTracks();
+      DAW.addDemoTracks();
+    }
     if (onRenameProject) onRenameProject(nextName);
     if (onProjectPathChange) onProjectPathChange(null);
     setAmp(1);
@@ -4004,6 +4055,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (onUndoStateChange) onUndoStateChange({ canUndo: false, canRedo: false });
     fitTimelineToProject();
     saveRecentProject(nextName, null);
+    setLoading(null);
     force((n) => n + 1);
   };
   // expose menu actions to parent

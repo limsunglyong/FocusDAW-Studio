@@ -168,6 +168,18 @@ function scanAudioFolderRoot(dirPath) {
   return { folderName: path.basename(dir), items };
 }
 
+function builtInDemoSession() {
+  const demoDir = path.join(app.getAppPath(), 'Demos', '그 여름의 우리 - focustone');
+  const preferred = ['2 Drums.mp3', '3 Bass.mp3', '4 Guitar.mp3', '5 Keyboard.mp3', '7 Synth.mp3'];
+  const items = preferred
+    .map(name => path.join(demoDir, name))
+    .filter(p => {
+      try { return fs.statSync(p).isFile(); } catch (e) { return false; }
+    })
+    .map(p => audioItem(p));
+  return { folderName: '그 여름의 우리 - focustone', items };
+}
+
 function safeFileBase(name) {
   const cleaned = String(name || 'untitled')
     .trim()
@@ -489,6 +501,11 @@ ipcMain.handle('open-folder', async (event) => {
 ipcMain.handle('scan-audio-folder', async (event, folderPath) => {
   assertTrustedIpc(event);
   return scanAudioFolderRoot(folderPath);
+});
+
+ipcMain.handle('get-demo-session', async (event) => {
+  assertTrustedIpc(event);
+  return builtInDemoSession();
 });
 
 // Select individual audio files
