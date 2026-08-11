@@ -1,6 +1,6 @@
 {
   "name": "focusdaw-studio",
-  "version": "1.44.29",
+  "version": "1.45.0",
   "description": "Stem mixing DAW 🇥🇷Electron desktop app",
   "main": "electron/main.js",
   "repository": {
@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build:renderers": "node scripts/build-renderers.js",
+    "build:manual": "node scripts/build-manual-html.js",
     "start": "npm run build:renderers && electron .",
     "benchmark:stretch": "node tools/time-stretch-benchmark/benchmark.js",
     "dist:mac": "npm run build:renderers && electron-builder --mac",
@@ -40,12 +41,14 @@
       "build/*.js",
       "build/vendor/**/*",
       "manual/live-screens/**/*",
+      "manual/screens-v2/**/*",
       "studio.html",
       "mixer.html",
       "advanced-pan.html",
       "advanced-ambience.html",
       "advanced-eq.html",
       "help.html",
+      "vocal-strip.html",
       "version.js",
       "meyda.min.js",
       "audio-engine.js",
@@ -60,6 +63,7 @@
       "advanced-eq-app.jsx",
       "app.jsx",
       "mixer-app.jsx",
+      "vocal-strip-app.jsx",
       "bin/**/*"
     ],
     "directories": {

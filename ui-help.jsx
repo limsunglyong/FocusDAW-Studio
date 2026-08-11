@@ -42,7 +42,7 @@ function HelpDialog({ onClose, standalone = false }) {
     { id: "overview", label: "1. 앱 개요" },
     { id: "start", label: "2. 시작과 프로젝트" },
     { id: "import", label: "3. 오디오 가져오기" },
-    { id: "record", label: "4. 오디오 녹음(Audio In)" },
+    { id: "record", label: "4. 오디오 녹음 · 클립 편집" },
     { id: "arrange", label: "5. 타임라인과 트랙" },
     { id: "bpm", label: "6. BPM 표시 및 설정" },
     { id: "key", label: "7. Key 표시 및 설정" },
@@ -57,7 +57,7 @@ function HelpDialog({ onClose, standalone = false }) {
     { id: "overview", label: "1. App Overview" },
     { id: "start", label: "2. Start & Projects" },
     { id: "import", label: "3. Importing Audio" },
-    { id: "record", label: "4. Recording (Audio In)" },
+    { id: "record", label: "4. Recording & Clip Editing" },
     { id: "arrange", label: "5. Timeline & Tracks" },
     { id: "bpm", label: "6. BPM Display & Settings" },
     { id: "key", label: "7. Key Display & Settings" },
@@ -425,23 +425,99 @@ function HelpDialog({ onClose, standalone = false }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">1. 앱 개요</h2>
-                  <p className="manual-p">FocusDAW Studio는 여러 개의 스템 파일을 한 세션에 등록한 뒤, 각 트랙의 볼륨, 팬, 솔로, 뮤트, 리버브, 에코를 조정하고 최종 마스터를 출력하는 앱입니다. 전체 믹스에는 9밴드 그래픽 EQ, 마스터 볼륨, 출력 리버브/에코, 페이드 인/아웃을 적용할 수 있습니다.</p>
+                  <p className="manual-p">FocusDAW Studio는 <strong>여러 개의 스템(분리 음원) 파일을 한 세션에 올려 믹스하고, 그 위에 보컬을 덧녹음(오버더빙)해 한 곡으로 완성</strong>하는 데스크톱 앱입니다. 각 트랙의 볼륨·팬·솔로·뮤트·리버브·에코를 조정하고, 마이크 입력을 Audio In 트랙에 실시간으로 녹음한 뒤, 9밴드 그래픽 EQ와 출력 이펙트로 마스터를 다듬어 MP3 또는 WAV로 내보냅니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/02-arrange-demo.png" alt="FocusDAW Studio arrange 화면" className="manual-img" />
-                    <div className="manual-figcaption">실제 앱을 실행해 캡처한 메인 Arrange 화면입니다. 상단 메뉴와 전송 컨트롤, 줌/트랙 크기 도구, 트랙 파형, OUTPUT FX 트랙이 함께 표시됩니다.</div>
+                    <img src="manual/screens-v2/01-01-main-screen.png" alt="FocusDAW Studio 기본 화면" className="manual-img" />
+                    <div className="manual-figcaption">스템을 불러온 기본 작업 화면입니다. 상단 메뉴 막대와 트랜스포트, 줌·트랙 크기 도구, 트랙 헤더와 파형, 맨 아래 OUTPUT FX 트랙으로 구성됩니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">화면 구성</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-06-screen-layout.png" alt="화면 구성 — 각 기능별 번호" className="manual-img" />
+                    <div className="manual-figcaption">빈 세션 화면에 각 영역의 번호를 표시한 그림입니다. 아래 표의 번호와 대응합니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">① 타임라인(Arrange)</th><td className="manual-td">트랙과 파형, 클립, 오토메이션이 놓이는 주 작업 영역입니다.</td></tr>
+                      <tr><th className="manual-th">② 시작 안내 패널</th><td className="manual-td">트랙이 없을 때만 보입니다. 여기에 파일을 끌어다 놓거나 <strong>Import Folder</strong> · <strong>Import Files</strong> · <strong>Load demo session</strong>으로 시작합니다.</td></tr>
+                      <tr><th className="manual-th">③ Undo / Redo</th><td className="manual-td">실행 취소와 다시 실행입니다(<kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> / <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Y</kbd>).</td></tr>
+                      <tr><th className="manual-th">④ TIME 줌</th><td className="manual-td">타임라인의 가로(시간축) 확대·축소입니다.</td></tr>
+                      <tr><th className="manual-th">⑤ AMP 줌</th><td className="manual-td">파형의 표시 높이(보기 배율)입니다. 실제 볼륨은 바뀌지 않습니다.</td></tr>
+                      <tr><th className="manual-th">⑥ TRACK SIZE</th><td className="manual-td">트랙 행 높이를 <strong>S · M · L</strong> 중에서 고릅니다. 크기에 따라 헤더에 보이는 컨트롤 수가 달라집니다.</td></tr>
+                      <tr><th className="manual-th">⑦ 타임라인 미니맵</th><td className="manual-td">곡 전체에서 현재 보고 있는 구간을 보여 줍니다. 클릭·드래그로 빠르게 이동합니다.</td></tr>
+                      <tr><th className="manual-th">⑧ BPM 표시기</th><td className="manual-td">앞은 프로젝트 BPM, 뒤는 재생 BPM입니다. 클릭하면 BPM 설정 패널이 열립니다(<strong>6장</strong>).</td></tr>
+                      <tr><th className="manual-th">⑨ Vari BPM 스위치</th><td className="manual-td">켜야 재생 BPM으로 실제 재생 속도가 바뀝니다(기본 꺼짐).</td></tr>
+                      <tr><th className="manual-th">⑩ Key 표시기</th><td className="manual-td">감지·지정된 원곡 키와 이조된 재생 키를 표시합니다. 클릭하면 Key 패널이 열립니다(<strong>7장</strong>).</td></tr>
+                      <tr><th className="manual-th">⑪ Vari Key 스위치</th><td className="manual-td">켜야 지정한 반음 오프셋이 실시간 재생에 적용됩니다(기본 꺼짐).</td></tr>
+                      <tr><th className="manual-th">⑫ Mixer</th><td className="manual-td">별도 창의 믹서 콘솔을 엽니다(<kbd className="manual-kbd">F3</kbd>).</td></tr>
+                      <tr><th className="manual-th">⑬ Export</th><td className="manual-td">믹스다운 내보내기 창을 엽니다(<strong>11장</strong>).</td></tr>
+                      <tr><th className="manual-th">⑭ 트랜스포트</th><td className="manual-td">처음으로 · 정지 · 재생/일시정지 · <strong>Repeat</strong> · <strong>메트로놈</strong> · <strong>프리롤</strong> · <strong>Punch</strong> · <strong>Record</strong> 버튼입니다(<strong>4장 · 5장</strong>).</td></tr>
+                      <tr><th className="manual-th">⑮ 시간 표시</th><td className="manual-td">현재 재생 위치와 프로젝트 전체 길이입니다.</td></tr>
+                      <tr><th className="manual-th">⑯ 프로젝트 이름</th><td className="manual-td">클릭하면 그 자리에서 이름을 고칠 수 있습니다. 창 아래 상태 표시줄에도 같은 이름이 나옵니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">상단 메뉴 한눈에 보기</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-02-project-menu.png" alt="Project 메뉴" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Project</strong> — 새 프로젝트, 열기(최근 목록 포함), 저장, 다른 이름으로 저장, 스템 폴더·오디오 파일 가져오기, 데모 세션, 미사용 녹음 정리, 내보내기.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-03-edit-menu.png" alt="Edit 메뉴" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Edit</strong> — Undo · Redo와 <strong>Delete all tracks</strong>(트랙만 비우고 마스터 이펙트는 유지).</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-04-advfx-menu.png" alt="Advanced Effects 메뉴" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Advanced Effects</strong> — Ambience(공간감), Auto Panning(스테레오 배치), Equalizer Setup(정밀 EQ) 전용 창을 엽니다(<strong>10장</strong>).</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-05-help-menu.png" alt="Help 메뉴" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong>(이 문서), <strong>Release Notes</strong>(버전별 변경 사항), <strong>Check for Updates</strong>(새 버전 확인·설치), <strong>About</strong>.</div>
+                  </div>
+                  <p className="manual-p"><strong>Settings</strong> 메뉴는 색상 테마, 믹서 창 초기화, 오디오 장치 설정을 담고 있습니다(<strong>12장</strong>).</p>
+
+                  <h3 className="manual-h3">트랙 크기 — S · M · L</h3>
+                  <p className="manual-p">상단의 <strong>TRACK SIZE</strong>로 트랙 행 높이를 바꿉니다. 높이가 커질수록 헤더에 더 많은 컨트롤이 펼쳐지므로, <strong>오토메이션 Curve나 Audio In 트랙의 녹음 컨트롤을 다룰 때는 M 또는 L</strong>을 쓰는 것이 편합니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">S (작게)</th><td className="manual-td">이름·B·S·M 정도만 보입니다. 트랙 수가 많을 때 전체를 한눈에 훑기 좋습니다.</td></tr>
+                      <tr><th className="manual-th">M (기본)</th><td className="manual-td">볼륨·팬·AUTO·SOURCE까지 보입니다. 일반적인 믹스 작업에 적당합니다.</td></tr>
+                      <tr><th className="manual-th">L (크게)</th><td className="manual-td">오토메이션의 <strong>Reset · Curve</strong>와 Audio In 트랙의 입력 포트·MON·LIM·입력 게인까지 모두 보입니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-07-track-size-s.png" alt="트랙 사이즈 S" className="manual-img" />
+                    <div className="manual-figcaption">트랙 크기 <strong>S</strong> — 가장 조밀한 보기입니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-08-track-size-m.png" alt="트랙 사이즈 M" className="manual-img" />
+                    <div className="manual-figcaption">트랙 크기 <strong>M</strong> — 기본값입니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-09-track-size-l.png" alt="트랙 사이즈 L" className="manual-img" />
+                    <div className="manual-figcaption">트랙 크기 <strong>L</strong> — 오토메이션 Curve와 녹음 컨트롤까지 모두 펼쳐집니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">파일 트랙 그룹 접기</h3>
+                  <p className="manual-p">불러온 스템은 <strong>FILE TRACKS</strong> 그룹으로 묶입니다. 그룹 머리글의 <strong>HIDE / SHOW</strong>를 누르면 파일 트랙 전체가 한 줄로 접히고, 그 줄에는 합쳐진 요약 파형과 <strong>“n file tracks hidden”</strong> 표시가 나타납니다. 녹음 중인 Audio In 트랙에만 집중하고 싶을 때 유용합니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-10-tracks-collapsed.png" alt="파일 트랙을 모두 접은 모습" className="manual-img" />
+                    <div className="manual-figcaption">파일 트랙을 모두 접은 화면입니다. 접힌 줄에도 전체 스템의 요약 파형이 표시되어 곡의 진행을 확인할 수 있습니다.</div>
                   </div>
 
                   <div className="manual-grid">
                     <div className="manual-card">
                       <h3 className="manual-h3" style={{ color: "var(--amber)" }}>주요 작업</h3>
                       <ul className="manual-ul">
-                        <li className="manual-li">프로젝트 새로 만들기, 열기, 저장</li>
+                        <li className="manual-li">프로젝트 새로 만들기 · 열기 · 저장 · 다른 이름으로 저장</li>
                         <li className="manual-li">오디오 파일 또는 스템 폴더 가져오기</li>
                         <li className="manual-li">마이크·인터페이스 입력을 Audio In 트랙에 실시간 녹음(오버더빙)</li>
-                        <li className="manual-li">트랙별 볼륨, 팬, 솔로, 뮤트 조정</li>
-                        <li className="manual-li">트랙별 리버브, 에코, 볼륨 오토메이션 적용</li>
-                        <li className="manual-li">마스터 EQ, 페이드, 출력 효과 적용</li>
+                        <li className="manual-li">여러 테이크 녹음과 컴프(Comp) 조합, Punch 부분 재녹음</li>
+                        <li className="manual-li">클립 단위 편집(이동·트림·분할·병합·복제·클립 볼륨)</li>
+                        <li className="manual-li">보컬 채널 스트립(HPF · 게이트 · EQ · 컴프레서 · 디에서 · 노이즈 제거)</li>
+                        <li className="manual-li">트랙별 볼륨·팬·솔로·뮤트·리버브·에코와 볼륨 오토메이션</li>
+                        <li className="manual-li">마스터 EQ, 출력 이펙트, 마스터 페이드</li>
                         <li className="manual-li">MP3 또는 WAV로 믹스다운 저장</li>
                       </ul>
                     </div>
@@ -450,8 +526,9 @@ function HelpDialog({ onClose, standalone = false }) {
                       <ul className="manual-ul">
                         <li className="manual-li">입력 오디오: <code className="manual-code">.mp3</code>, <code className="manual-code">.wav</code>, <code className="manual-code">.aif</code>, <code className="manual-code">.aiff</code>, <code className="manual-code">.m4a</code>, <code className="manual-code">.ogg</code>, <code className="manual-code">.flac</code></li>
                         <li className="manual-li">프로젝트: <code className="manual-code">.focus</code></li>
+                        <li className="manual-li">녹음·바운스 결과: <code className="manual-code">.wav</code></li>
                         <li className="manual-li">출력 오디오: <code className="manual-code">.mp3</code>, <code className="manual-code">.wav</code></li>
-                        <li className="manual-li">MP3 출력 시 제목, 아티스트/작곡가, 앨범, 연도, 날짜, 앨범 아트 태그를 입력할 수 있습니다.</li>
+                        <li className="manual-li">MP3 출력 시 제목, 아티스트/작곡가, 앨범, 연도, 날짜, 앨범 아트 태그를 넣을 수 있습니다.</li>
                       </ul>
                     </div>
                   </div>
@@ -459,33 +536,110 @@ function HelpDialog({ onClose, standalone = false }) {
               ) : (
                 <>
                   <h2 className="manual-h2">1. App Overview</h2>
-                  <p className="manual-p">FocusDAW Studio is an application designed to import multiple stem files into a single session, adjust volume, pan, solo, mute, reverb, and echo for each track, and export a final master mixdown. The overall mix can be shaped using a 9-band graphic EQ, master volume fader, master output reverb/echo effects, and master fade-in/out automation.</p>
+                  <p className="manual-p">FocusDAW Studio is a desktop app for <strong>mixing a set of separated stems and overdubbing your own vocals on top of them</strong>. Balance each track's volume, pan, solo, mute, reverb, and echo; record a live mic input straight onto an Audio In track; then shape the master with a 9-band graphic EQ and output effects and export an MP3 or WAV mixdown.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/02-arrange-demo.png" alt="FocusDAW Studio Arrange Window" className="manual-img" />
-                    <div className="manual-figcaption">Main Arrange window. Displays the top menu, transport controls, time/amplitude zoom sliders, track waveforms, and the Master OUTPUT FX track.</div>
+                    <img src="manual/screens-v2/01-01-main-screen.png" alt="FocusDAW Studio main window" className="manual-img" />
+                    <div className="manual-figcaption">The main working window with stems loaded: menu bar and transport on top, zoom and track-size tools, track headers and waveforms, and the OUTPUT FX track at the bottom.</div>
+                  </div>
+
+                  <h3 className="manual-h3">Screen layout</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-06-screen-layout.png" alt="Screen layout with numbered areas" className="manual-img" />
+                    <div className="manual-figcaption">The empty session with each area numbered. The numbers match the table below.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">① Timeline (Arrange)</th><td className="manual-td">The main work area holding tracks, waveforms, clips, and automation.</td></tr>
+                      <tr><th className="manual-th">② Start panel</th><td className="manual-td">Shown only while the session is empty. Drop files here, or use <strong>Import Folder</strong> · <strong>Import Files</strong> · <strong>Load demo session</strong>.</td></tr>
+                      <tr><th className="manual-th">③ Undo / Redo</th><td className="manual-td">Undo and redo (<kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> / <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Y</kbd>).</td></tr>
+                      <tr><th className="manual-th">④ TIME zoom</th><td className="manual-td">Horizontal (time-axis) zoom of the timeline.</td></tr>
+                      <tr><th className="manual-th">⑤ AMP zoom</th><td className="manual-td">Waveform display height. A visual scale only — it does not change the audio level.</td></tr>
+                      <tr><th className="manual-th">⑥ TRACK SIZE</th><td className="manual-td">Track row height: <strong>S · M · L</strong>. Taller rows reveal more header controls.</td></tr>
+                      <tr><th className="manual-th">⑦ Timeline minimap</th><td className="manual-td">Shows which part of the song is in view; click or drag to jump.</td></tr>
+                      <tr><th className="manual-th">⑧ BPM indicator</th><td className="manual-td">Project BPM in front, playback BPM behind. Click to open the BPM panel (<strong>ch. 6</strong>).</td></tr>
+                      <tr><th className="manual-th">⑨ Vari BPM switch</th><td className="manual-td">Must be on for the playback BPM to actually change the speed (off by default).</td></tr>
+                      <tr><th className="manual-th">⑩ Key indicator</th><td className="manual-td">The detected/assigned original key and the transposed playback key. Click to open the Key panel (<strong>ch. 7</strong>).</td></tr>
+                      <tr><th className="manual-th">⑪ Vari Key switch</th><td className="manual-td">Must be on for the semitone offset to apply during playback (off by default).</td></tr>
+                      <tr><th className="manual-th">⑫ Mixer</th><td className="manual-td">Opens the mixer console in its own window (<kbd className="manual-kbd">F3</kbd>).</td></tr>
+                      <tr><th className="manual-th">⑬ Export</th><td className="manual-td">Opens the mixdown export dialog (<strong>ch. 11</strong>).</td></tr>
+                      <tr><th className="manual-th">⑭ Transport</th><td className="manual-td">Return to start · Stop · Play/Pause · <strong>Repeat</strong> · <strong>Metronome</strong> · <strong>Pre-roll</strong> · <strong>Punch</strong> · <strong>Record</strong> (<strong>ch. 4 &amp; 5</strong>).</td></tr>
+                      <tr><th className="manual-th">⑮ Time display</th><td className="manual-td">Current playhead position and total project length.</td></tr>
+                      <tr><th className="manual-th">⑯ Project name</th><td className="manual-td">Click to rename in place. The same name appears in the status bar at the bottom.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">The menus at a glance</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-02-project-menu.png" alt="Project menu" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Project</strong> — new, open (with a recent list), save, save as, import stem folder / audio files, demo session, clean up unused recordings, export.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-03-edit-menu.png" alt="Edit menu" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Edit</strong> — Undo · Redo and <strong>Delete all tracks</strong> (clears tracks but keeps the master effects).</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-04-advfx-menu.png" alt="Advanced Effects menu" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Advanced Effects</strong> — dedicated windows for Ambience, Auto Panning, and Equalizer Setup (<strong>ch. 10</strong>).</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-05-help-menu.png" alt="Help menu" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong> (this document), <strong>Release Notes</strong>, <strong>Check for Updates</strong> (download and install a new version), <strong>About</strong>.</div>
+                  </div>
+                  <p className="manual-p">The <strong>Settings</strong> menu holds color themes, the mixer-window reset, and audio device setup (<strong>ch. 12</strong>).</p>
+
+                  <h3 className="manual-h3">Track size — S · M · L</h3>
+                  <p className="manual-p"><strong>TRACK SIZE</strong> at the top changes the row height. Taller rows expose more header controls, so use <strong>M or L</strong> when working with automation curves or the Audio In recording controls.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">S (small)</th><td className="manual-td">Roughly name, B, S, and M only — best for scanning many tracks at once.</td></tr>
+                      <tr><th className="manual-th">M (default)</th><td className="manual-td">Adds volume, pan, AUTO, and the SOURCE chip. Suits everyday mixing.</td></tr>
+                      <tr><th className="manual-th">L (large)</th><td className="manual-td">Also shows automation <strong>Reset · Curve</strong> and, on Audio In tracks, the input port, MON, LIM, and input gain.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-07-track-size-s.png" alt="Track size S" className="manual-img" />
+                    <div className="manual-figcaption">Track size <strong>S</strong> — the most compact view.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-08-track-size-m.png" alt="Track size M" className="manual-img" />
+                    <div className="manual-figcaption">Track size <strong>M</strong> — the default.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-09-track-size-l.png" alt="Track size L" className="manual-img" />
+                    <div className="manual-figcaption">Track size <strong>L</strong> — automation curves and recording controls fully expanded.</div>
+                  </div>
+
+                  <h3 className="manual-h3">Collapsing the file-track group</h3>
+                  <p className="manual-p">Imported stems are grouped under <strong>FILE TRACKS</strong>. The <strong>HIDE / SHOW</strong> button on the group header folds every file track into a single row that still shows a combined summary waveform plus an <strong>“n file tracks hidden”</strong> chip — handy when you want to focus on the Audio In track you are recording.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/01-10-tracks-collapsed.png" alt="All file tracks collapsed" className="manual-img" />
+                    <div className="manual-figcaption">Every file track collapsed. The folded row keeps a summary waveform so you can still follow the song.</div>
                   </div>
 
                   <div className="manual-grid">
                     <div className="manual-card">
                       <h3 className="manual-h3" style={{ color: "var(--amber)" }}>Key Features</h3>
                       <ul className="manual-ul">
-                        <li className="manual-li">Create, open, and save projects (.focus)</li>
-                        <li className="manual-li">Import individual audio files or stem folders</li>
+                        <li className="manual-li">Create, open, save, and save-as projects (.focus)</li>
+                        <li className="manual-li">Import individual audio files or whole stem folders</li>
                         <li className="manual-li">Record mic/interface input live onto Audio In tracks (overdubbing)</li>
-                        <li className="manual-li">Control track volume, panning, solo, and mute</li>
-                        <li className="manual-li">Apply track reverb/echo sends and volume automation</li>
-                        <li className="manual-li">Master EQ shaping, master fades, and output effects</li>
-                        <li className="manual-li">Export final mixdown as MP3 or WAV</li>
+                        <li className="manual-li">Multiple takes with comping, and Punch re-records</li>
+                        <li className="manual-li">Clip editing — move, trim, split, merge, duplicate, per-clip volume</li>
+                        <li className="manual-li">Vocal channel strip (HPF · gate · EQ · compressor · de-esser · de-noise)</li>
+                        <li className="manual-li">Track volume, pan, solo, mute, reverb/echo sends, and volume automation</li>
+                        <li className="manual-li">Master EQ, output effects, and master fades</li>
+                        <li className="manual-li">Export the final mixdown as MP3 or WAV</li>
                       </ul>
                     </div>
                     <div className="manual-card">
                       <h3 className="manual-h3" style={{ color: "var(--amber)" }}>Supported Files</h3>
                       <ul className="manual-ul">
-                        <li className="manual-li">Input Audio: <code className="manual-code">.mp3</code>, <code className="manual-code">.wav</code>, <code className="manual-code">.aif</code>, <code className="manual-code">.aiff</code>, <code className="manual-code">.m4a</code>, <code className="manual-code">.ogg</code>, <code className="manual-code">.flac</code></li>
+                        <li className="manual-li">Input audio: <code className="manual-code">.mp3</code>, <code className="manual-code">.wav</code>, <code className="manual-code">.aif</code>, <code className="manual-code">.aiff</code>, <code className="manual-code">.m4a</code>, <code className="manual-code">.ogg</code>, <code className="manual-code">.flac</code></li>
                         <li className="manual-li">Project: <code className="manual-code">.focus</code></li>
-                        <li className="manual-li">Output Audio: <code className="manual-code">.mp3</code>, <code className="manual-code">.wav</code></li>
-                        <li className="manual-li">For MP3 exports, metadata tags (Title, Artist, Album, Year, Date, and Cover Art) can be embedded.</li>
+                        <li className="manual-li">Recordings and bounces: <code className="manual-code">.wav</code></li>
+                        <li className="manual-li">Output audio: <code className="manual-code">.mp3</code>, <code className="manual-code">.wav</code></li>
+                        <li className="manual-li">MP3 exports can embed Title, Artist/Composer, Album, Year, Date, and Cover Art tags.</li>
                       </ul>
                     </div>
                   </div>
@@ -505,33 +659,56 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">상단 Project 메뉴</h3>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/01-empty-start.png" alt="FocusDAW Studio 시작 화면" className="manual-img" />
-                    <div className="manual-figcaption">새 세션 시작 화면입니다. 파일을 끌어다 놓거나 Import Folder, Import Files, Load demo session을 선택해 작업을 시작합니다.</div>
-                  </div>
-
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/24-project-menu.png" alt="Project 메뉴" className="manual-img" />
-                    <div className="manual-figcaption">상단 메뉴 막대의 <strong>Project</strong>를 누르면 New / Open / Save, Import, Load Demo, Export 항목이 펼쳐집니다.</div>
+                    <img src="manual/screens-v2/01-02-project-menu.png" alt="Project 메뉴" className="manual-img" />
+                    <div className="manual-figcaption">상단 메뉴 막대의 <strong>Project</strong>를 누르면 아래 항목이 펼쳐집니다.</div>
                   </div>
 
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">New Project</th><td className="manual-td">현재 세션을 비우고 새 프로젝트를 시작합니다.</td></tr>
-                      <tr><th className="manual-th">Open Project...</th><td className="manual-td">저장된 <code className="manual-code">.focus</code> 프로젝트 파일을 엽니다.</td></tr>
-                      <tr><th className="manual-th">Save Project</th><td className="manual-td">현재 프로젝트 상태를 <code className="manual-code">.focus</code> 파일로 저장합니다. 트랙 설정, 마스터 설정, 오토메이션, 클립 정보가 저장됩니다.</td></tr>
-                      <tr><th className="manual-th">Import Stem Folder...</th><td className="manual-td">선택한 폴더의 루트에 있는 오디오 파일을 한 번에 등록합니다.</td></tr>
-                      <tr><th className="manual-th">Import Audio Files...</th><td className="manual-td">개별 오디오 파일을 여러 개 선택해 트랙으로 추가합니다.</td></tr>
-                      <tr><th className="manual-th">Load Demo Session</th><td className="manual-td">Drums, Bass, Keys, Lead 데모 트랙을 불러와 앱 기능을 시험합니다.</td></tr>
-                      <tr><th className="manual-th">Export...</th><td className="manual-td">믹스다운 내보내기 창을 엽니다. 실제 창에서는 MP3와 WAV를 선택할 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">New Project</th><td className="manual-td">현재 세션을 <strong>완전히</strong> 비우고 새 프로젝트를 시작합니다(트랙과 마스터 이펙트가 모두 초기화됩니다).</td></tr>
+                      <tr><th className="manual-th">Open Project…</th><td className="manual-td">저장된 <code className="manual-code">.focus</code> 프로젝트 파일을 엽니다. 항목 위에 마우스를 올리면 <strong>최근 목록</strong>이 옆으로 펼쳐집니다(아래 참고).</td></tr>
+                      <tr><th className="manual-th">Save Project</th><td className="manual-td">현재 상태를 <code className="manual-code">.focus</code> 파일로 저장합니다. 트랙 설정, 마스터 설정, 오토메이션, 클립·테이크 정보가 함께 저장됩니다. 아직 저장한 적이 없으면 저장 위치를 묻습니다.</td></tr>
+                      <tr><th className="manual-th">Save As…</th><td className="manual-td">새 위치·새 이름으로 저장합니다. 이때 <strong>프로젝트가 소유한 오디오를 함께 모아 갑니다</strong>(아래 “프로젝트 통째로 옮기기” 참고).</td></tr>
+                      <tr><th className="manual-th">Import Stem Folder…</th><td className="manual-td">선택한 폴더 루트의 오디오 파일을 한 번에 트랙으로 등록합니다.</td></tr>
+                      <tr><th className="manual-th">Import Audio Files…</th><td className="manual-td">개별 오디오 파일을 여러 개 골라 트랙으로 추가합니다.</td></tr>
+                      <tr><th className="manual-th">Load Demo Session</th><td className="manual-td">앱에 내장된 데모 스템을 불러와 기능을 시험해 봅니다.</td></tr>
+                      <tr><th className="manual-th">Clean Up Unused Recordings…</th><td className="manual-td">저장된 프로젝트의 오디오 폴더에서 <strong>어떤 트랙도, 되돌리기 기록도 참조하지 않는</strong> 녹음·바운스 파일을 찾아 휴지통으로 보냅니다(아래 참고).</td></tr>
+                      <tr><th className="manual-th">Export…</th><td className="manual-td">믹스다운 내보내기 창을 엽니다(MP3 / WAV).</td></tr>
                     </tbody>
                   </table>
 
-                  <h3 className="manual-h3">프로젝트 이름 설정</h3>
-                  <p className="manual-p">상단 오른쪽의 프로젝트 이름 칸을 클릭하면 이름을 바로 입력·수정할 수 있습니다. 여기서 정한 이름은 제목 표시줄에 나타나고, 프로젝트를 저장할 때 파일 이름의 기본값으로도 사용됩니다.</p>
+                  <h3 className="manual-h3">최근 프로젝트로 바로 열기</h3>
+                  <p className="manual-p"><strong>Open Project…</strong> 위에 마우스를 올리면 최근 목록이 옆으로 펼쳐집니다. 목록은 두 부분으로 나뉩니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">RECENT PROJECT</th><td className="manual-td">앱을 마지막으로 닫았을 때의 <strong>자동 저장 상태</strong>입니다. 저장하지 않고 종료했더라도 작업하던 세션을 그대로 이어서 열 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">RECENT SAVED</th><td className="manual-td">최근에 저장한 <code className="manual-code">.focus</code> 프로젝트들입니다. 이름 아래에 실제 파일 경로가 함께 표시되어 같은 이름의 다른 프로젝트를 구분할 수 있습니다.</td></tr>
+                    </tbody>
+                  </table>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/18-project-name.png" alt="프로젝트 이름 설정 화면" className="manual-img" />
-                    <div className="manual-figcaption">상단 오른쪽의 프로젝트 이름 칸(예: <code className="manual-code">untitled</code>)을 클릭해 원하는 이름으로 바꿉니다.</div>
+                    <img src="manual/screens-v2/02-01-open-recent.png" alt="프로젝트 불러오기 및 최근 프로젝트 메뉴" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Open Project…</strong>의 최근 목록입니다. 위쪽은 종료 시점의 자동 저장 상태, 아래쪽은 최근 저장한 프로젝트 목록입니다.</div>
                   </div>
+
+                  <h3 className="manual-h3">프로젝트 이름 설정</h3>
+                  <p className="manual-p">상단 오른쪽의 프로젝트 이름을 클릭하면 그 자리에서 이름을 고칠 수 있습니다(Enter 확정, Esc 취소). 여기서 정한 이름은 창 제목과 아래 상태 표시줄에 나타나고, 저장할 때 파일 이름의 기본값으로도 쓰입니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/02-02-project-rename.png" alt="프로젝트 이름 변경" className="manual-img" />
+                    <div className="manual-figcaption">프로젝트 이름 칸을 클릭해 원하는 이름으로 바꿉니다.</div>
+                  </div>
+                  <div className="manual-note">이름을 바꿔도 <strong>이미 저장된 폴더 위치는 그대로</strong>입니다. 표시 이름만 바뀌므로, 프로젝트가 모아 둔 녹음·바운스 파일과의 연결이 끊어지지 않습니다. 파일 자체를 다른 곳에 새로 만들고 싶다면 <strong>Save As…</strong>를 사용하세요.</div>
+
+                  <h3 className="manual-h3">프로젝트 통째로 옮기기 — Save As</h3>
+                  <p className="manual-p"><strong>Save As…</strong>로 저장하면 이 프로젝트가 만들어 낸 오디오(녹음 테이크, 바운스, 병합 파일)를 <code className="manual-code">.focus</code> 파일 옆의 <strong>“&lt;프로젝트 이름&gt; Audio” 폴더로 모아</strong> 두고, 프로젝트 안에는 <strong>상대 경로</strong>로 기록합니다. 덕분에 <code className="manual-code">.focus</code>와 그 Audio 폴더를 함께 복사하면 다른 폴더나 다른 PC에서도 그대로 열립니다.</p>
+                  <div className="manual-note">단, <strong>처음 불러온 스템 원본</strong>은 원래 자리에 그대로 두고 참조합니다. 스템까지 함께 옮기려면 스템 폴더도 같이 복사한 뒤, 열었을 때 <strong>NO SRC</strong>가 뜨면 같은 파일을 다시 가져와 재연결하세요(<strong>3장</strong>).</div>
+
+                  <h3 className="manual-h3">미사용 녹음 정리 — Clean Up Unused Recordings</h3>
+                  <p className="manual-p">여러 번 다시 녹음하다 보면 어느 트랙도 쓰지 않는 <code className="manual-code">.wav</code> 파일이 프로젝트 폴더에 쌓입니다. <strong>Project ▸ Clean Up Unused Recordings…</strong>는 저장된 프로젝트의 Audio 폴더를 훑어 <strong>지금 트랙에서도 쓰이지 않고 되돌리기(Undo) 기록에도 남아 있지 않은</strong> 파일만 골라내고, 파일 이름·종류·크기 목록과 총 용량을 보여 준 뒤 <strong>휴지통으로 이동</strong>합니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/02-03-cleanup-unused.png" alt="Clean Up Unused Recordings 대화창" className="manual-img" />
+                    <div className="manual-figcaption">정리 대상 목록입니다. 맨 위에 <strong>파일 개수와 총 용량</strong>이 요약되고, 아래에 파일 이름·분류(Recordings 등)·크기가 나열됩니다. <strong>Move to Recycle Bin</strong>으로 한 번에 정리합니다.</div>
+                  </div>
+                  <div className="manual-note">되돌리기 기록에 남아 있는 파일은 <strong>정리 대상에서 제외</strong>되므로, 방금 지운 테이크를 Undo로 되살릴 수 있습니다. 또한 삭제가 아니라 <strong>휴지통 이동</strong>이므로 실수해도 복원할 수 있습니다. 이 기능은 <strong>프로젝트를 한 번 저장한 뒤에만</strong> 쓸 수 있습니다.</div>
                 </>
               ) : (
                 <>
@@ -543,33 +720,56 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">Top "Project" Menu</h3>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/01-empty-start.png" alt="FocusDAW Studio Start Screen" className="manual-img" />
-                    <div className="manual-figcaption">Empty startup session. Drop audio files directly or choose an import option to begin working.</div>
-                  </div>
-
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/24-project-menu.png" alt="Project menu" className="manual-img" />
-                    <div className="manual-figcaption">Clicking <strong>Project</strong> in the menu bar reveals New / Open / Save, Import, Load Demo, and Export commands.</div>
+                    <img src="manual/screens-v2/01-02-project-menu.png" alt="Project menu" className="manual-img" />
+                    <div className="manual-figcaption">Clicking <strong>Project</strong> in the menu bar reveals the commands below.</div>
                   </div>
 
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">New Project</th><td className="manual-td">Clears the current session and creates a fresh project.</td></tr>
-                      <tr><th className="manual-th">Open Project...</th><td className="manual-td">Opens an existing <code className="manual-code">.focus</code> project file.</td></tr>
-                      <tr><th className="manual-th">Save Project</th><td className="manual-td">Saves the current session state to a <code className="manual-code">.focus</code> file, including track parameters, master effects, automation curves, and clip locations.</td></tr>
-                      <tr><th className="manual-th">Import Stem Folder...</th><td className="manual-td">Imports and creates tracks for all audio files located in the root of the chosen folder.</td></tr>
-                      <tr><th className="manual-th">Import Audio Files...</th><td className="manual-td">Opens a file selector to add multiple individual audio files as tracks.</td></tr>
-                      <tr><th className="manual-th">Load Demo Session</th><td className="manual-td">Loads a pre-configured multi-track demo session (Drums, Bass, Keys, Lead) to test the app features.</td></tr>
-                      <tr><th className="manual-th">Export...</th><td className="manual-td">Opens the mixdown export dialog (supports MP3 and WAV export formats).</td></tr>
+                      <tr><th className="manual-th">New Project</th><td className="manual-td">Clears the session <strong>completely</strong> and starts fresh (both tracks and master effects are reset).</td></tr>
+                      <tr><th className="manual-th">Open Project…</th><td className="manual-td">Opens an existing <code className="manual-code">.focus</code> file. Hovering the item slides out a <strong>recent list</strong> (see below).</td></tr>
+                      <tr><th className="manual-th">Save Project</th><td className="manual-td">Saves the current state to a <code className="manual-code">.focus</code> file — track parameters, master effects, automation, and clip/take information. If the project has never been saved, you are asked where to put it.</td></tr>
+                      <tr><th className="manual-th">Save As…</th><td className="manual-td">Saves to a new name/location and <strong>gathers the audio this project owns</strong> alongside it (see "Moving a whole project" below).</td></tr>
+                      <tr><th className="manual-th">Import Stem Folder…</th><td className="manual-td">Creates a track for every audio file in the root of the chosen folder.</td></tr>
+                      <tr><th className="manual-th">Import Audio Files…</th><td className="manual-td">Adds multiple individual audio files as tracks.</td></tr>
+                      <tr><th className="manual-th">Load Demo Session</th><td className="manual-td">Loads the demo stems bundled with the app so you can try the features.</td></tr>
+                      <tr><th className="manual-th">Clean Up Unused Recordings…</th><td className="manual-td">Scans the saved project's audio folder for recordings and bounces that <strong>no track and no undo step</strong> references, and moves them to the Recycle Bin (see below).</td></tr>
+                      <tr><th className="manual-th">Export…</th><td className="manual-td">Opens the mixdown export dialog (MP3 / WAV).</td></tr>
                     </tbody>
                   </table>
 
-                  <h3 className="manual-h3">Setting the Project Name</h3>
-                  <p className="manual-p">Click the project name field on the top right to rename it instantly. The name appears in the title bar and is also used as the default filename when saving the project.</p>
+                  <h3 className="manual-h3">Reopening a recent project</h3>
+                  <p className="manual-p">Hovering <strong>Open Project…</strong> slides out a recent list in two parts.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">RECENT PROJECT</th><td className="manual-td">The <strong>autosaved state</strong> from when you last closed the app — you can pick the session back up even if you never saved it.</td></tr>
+                      <tr><th className="manual-th">RECENT SAVED</th><td className="manual-td">Recently saved <code className="manual-code">.focus</code> projects. Each entry shows its full path beneath the name so identically-named projects stay distinguishable.</td></tr>
+                    </tbody>
+                  </table>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/18-project-name.png" alt="Project name field" className="manual-img" />
-                    <div className="manual-figcaption">Click the project name field on the top right (e.g. <code className="manual-code">untitled</code>) to rename it.</div>
+                    <img src="manual/screens-v2/02-01-open-recent.png" alt="Open Project and the recent list" className="manual-img" />
+                    <div className="manual-figcaption">The recent list under <strong>Open Project…</strong> — the autosaved exit state on top, recently saved projects below.</div>
                   </div>
+
+                  <h3 className="manual-h3">Setting the Project Name</h3>
+                  <p className="manual-p">Click the project name at the top right to rename it in place (Enter confirms, Esc cancels). The name shows in the window title and the status bar, and becomes the default filename when saving.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/02-02-project-rename.png" alt="Renaming the project" className="manual-img" />
+                    <div className="manual-figcaption">Click the project name field and type a new name.</div>
+                  </div>
+                  <div className="manual-note">Renaming <strong>does not move the saved folder</strong> — only the display name changes, so the project's collected recordings and bounces stay linked. Use <strong>Save As…</strong> when you actually want a new file somewhere else.</div>
+
+                  <h3 className="manual-h3">Moving a whole project — Save As</h3>
+                  <p className="manual-p"><strong>Save As…</strong> collects the audio this project produced (recorded takes, bounces, consolidated files) into a <strong>“&lt;Project&gt; Audio” folder next to the <code className="manual-code">.focus</code></strong> and stores <strong>relative paths</strong> to them. Copy the <code className="manual-code">.focus</code> together with that Audio folder and the project opens correctly on another folder or another PC.</p>
+                  <div className="manual-note">The <strong>originally imported stems</strong> are still referenced where they live. To move those too, copy the stem folder as well; if a track shows <strong>NO SRC</strong> after opening, re-import the same files to reconnect them (<strong>ch. 3</strong>).</div>
+
+                  <h3 className="manual-h3">Clean Up Unused Recordings</h3>
+                  <p className="manual-p">Re-recording repeatedly leaves <code className="manual-code">.wav</code> files in the project folder that no track uses any more. <strong>Project ▸ Clean Up Unused Recordings…</strong> scans the saved project's Audio folder for files that are <strong>neither used by a track nor held by the undo history</strong>, lists them with name, category, and size plus the total, and moves them to the <strong>Recycle Bin</strong>.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/02-03-cleanup-unused.png" alt="Clean Up Unused Recordings dialog" className="manual-img" />
+                    <div className="manual-figcaption">The cleanup list. The <strong>file count and total size</strong> are summarised at the top, with each file's name, category (Recordings, etc.), and size below. <strong>Move to Recycle Bin</strong> clears them in one go.</div>
+                  </div>
+                  <div className="manual-note">Files still referenced by the undo history are <strong>excluded</strong>, so a take you just deleted can still be brought back with Undo. And because files are moved to the Recycle Bin rather than erased, a mistake is recoverable. The command is available only <strong>after the project has been saved once</strong>.</div>
                 </>
               )}
             </section>
@@ -587,8 +787,8 @@ function HelpDialog({ onClose, standalone = false }) {
                   </ol>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/07-real-audio-tracks.png" alt="실제 오디오 트랙을 불러온 화면" className="manual-img" />
-                    <div className="manual-figcaption">실제 오디오 스템을 불러온 화면입니다. 파일명에서 가져온 트랙 이름이 왼쪽 헤더에 표시되고, 각 트랙의 파형이 타임라인에 배치됩니다.</div>
+                    <img src="manual/screens-v2/03-01-audio-loaded.png" alt="실제 오디오 파일들을 불러온 화면" className="manual-img" />
+                    <div className="manual-figcaption">실제 오디오 스템을 불러온 화면입니다. 파일 이름에서 딴 트랙 이름이 왼쪽 헤더에 표시되고, 각 트랙의 파형이 타임라인에 배치됩니다.</div>
                   </div>
 
                   <p className="manual-p">여러 스템을 가져오면 보컬, 드럼, 베이스, 기타, 스트링, 신스처럼 파일별로 독립 트랙이 생성됩니다. 각 트랙은 같은 시작점에 놓이지만, 실제 오디오가 없는 구간은 빈 파형으로 보이므로 편곡의 구간별 밀도를 한눈에 확인할 수 있습니다.</p>
@@ -596,20 +796,16 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h3 className="manual-h3">폴더 이름으로 프로젝트 이름 자동 설정 <span className="appver-since">(v1.9.4)</span></h3>
                   <p className="manual-p">아직 트랙이 없는 <strong>초기(빈) 화면</strong>에서 <strong>Import Folder</strong>로 스템 폴더를 불러오면, 그 <strong>폴더 이름이 프로젝트 이름으로 자동 설정</strong>됩니다. 스템을 폴더 단위로 정리해 둔 경우 이름을 따로 입력하지 않아도 곡 제목이 곧바로 잡혀 편리합니다.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/27-import-folder-button.png" alt="초기 화면의 Import Folder 버튼" className="manual-img" />
-                    <div className="manual-figcaption">초기 화면 가운데의 <strong>Import Folder</strong> 버튼입니다. 이 버튼(또는 <code className="manual-code">Project &gt; Import Stem Folder…</code>)으로 폴더를 선택합니다.</div>
+                    <img src="manual/screens-v2/03-02-stem-folder-drop.png" alt="스템 폴더를 끌어다 놓으면 프로젝트 이름이 자동 설정됨" className="manual-img" />
+                    <div className="manual-figcaption">빈 화면에 스템 폴더를 끌어다 놓거나 <strong>Import Folder</strong>로 불러오면, 상단의 프로젝트 이름이 <strong>그 폴더 이름으로 자동 설정</strong>됩니다(예: <code className="manual-code">Higher Than Ever Stems</code>).</div>
                   </div>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/28-folder-project-name.png" alt="폴더를 불러와 프로젝트 이름이 설정된 화면" className="manual-img" />
-                    <div className="manual-figcaption">예를 들어 <code className="manual-code">불꽃의 리듬 (Rhythm of Fire) Stems</code> 폴더를 불러오면, 상단의 프로젝트 이름이 그 폴더 이름으로 자동 설정됩니다.</div>
-                  </div>
-                  <div className="manual-note">이 자동 설정은 <strong>초기(빈) 화면에서 폴더를 불러올 때만</strong> 적용됩니다. 이미 트랙이 있거나 이름을 직접 바꿨거나 저장한 프로젝트에 폴더를 추가로 불러올 때는 기존 이름이 유지됩니다. 개별 파일(Import Files)이나 드래그 앤 드롭은 자동 이름 설정 대상이 아닙니다.</div>
+                  <div className="manual-note">이 자동 설정은 <strong>초기(빈) 화면에서 폴더를 불러올 때만</strong> 적용됩니다. 이미 트랙이 있거나 이름을 직접 바꿨거나 저장한 프로젝트에 폴더를 추가로 불러올 때는 기존 이름이 유지됩니다. 개별 파일(Import Files)은 자동 이름 설정 대상이 아닙니다.</div>
 
                   <h3 className="manual-h3">드래그 앤 드롭</h3>
                   <p className="manual-p">메인 타임라인 영역으로 오디오 파일을 끌어다 놓아도 트랙을 추가할 수 있습니다. 지원하지 않는 확장자는 자동으로 무시됩니다.</p>
 
                   <h3 className="manual-h3">프로젝트를 다시 열 때</h3>
-                  <p className="manual-p"><code className="manual-code">.focus</code> 프로젝트는 오디오 설정과 파일 경로를 저장합니다. 원본 오디오 파일이 이동되면 트랙에 <strong>NO AUDIO</strong>가 표시될 수 있습니다. 이 경우 같은 이름의 오디오 파일을 다시 가져오면 누락된 트랙이 재연결됩니다.</p>
+                  <p className="manual-p"><code className="manual-code">.focus</code> 프로젝트는 오디오 설정과 파일 경로를 저장합니다. 원본 오디오 파일이 옮겨지거나 지워지면 트랙 헤더에 붉은 <strong>NO SRC</strong> 표시가 나타납니다. 이때는 <strong>같은 파일을 그 트랙 위로 끌어다 놓거나</strong> 같은 이름의 오디오를 다시 가져오면 누락된 트랙이 재연결됩니다.</p>
                 </>
               ) : (
                 <>
@@ -622,8 +818,8 @@ function HelpDialog({ onClose, standalone = false }) {
                   </ol>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/07-real-audio-tracks.png" alt="Audio Tracks Loaded" className="manual-img" />
-                    <div className="manual-figcaption">Multi-track stem session loaded. Track names are parsed from the filenames, and waveforms are placed on the timeline.</div>
+                    <img src="manual/screens-v2/03-01-audio-loaded.png" alt="Audio tracks loaded" className="manual-img" />
+                    <div className="manual-figcaption">A multi-track stem session loaded. Track names are parsed from the filenames and waveforms are laid out on the timeline.</div>
                   </div>
 
                   <p className="manual-p">Importing multiple stems creates separate, independent tracks for Vocals, Drums, Bass, Guitar, and so on. Tracks are aligned to the same starting point. Sections where a track is silent are shown as flat line waveforms, providing a clear layout of the arrangement density.</p>
@@ -631,20 +827,16 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h3 className="manual-h3">Auto-Naming the Project from the Folder <span className="appver-since">(v1.9.4)</span></h3>
                   <p className="manual-p">When you use <strong>Import Folder</strong> on the <strong>initial (empty) screen</strong> — before any track exists — the <strong>folder's name automatically becomes the project name</strong>. If you keep your stems in per-song folders, the title is set instantly without typing.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/27-import-folder-button.png" alt="Import Folder button on the empty start screen" className="manual-img" />
-                    <div className="manual-figcaption">The <strong>Import Folder</strong> button at the center of the empty start screen (equivalent to <code className="manual-code">Project &gt; Import Stem Folder…</code>).</div>
+                    <img src="manual/screens-v2/03-02-stem-folder-drop.png" alt="Project name set automatically from the dropped stem folder" className="manual-img" />
+                    <div className="manual-figcaption">Dropping a stem folder onto the empty screen (or using <strong>Import Folder</strong>) sets the project name at the top to <strong>that folder's name</strong> — e.g. <code className="manual-code">Higher Than Ever Stems</code>.</div>
                   </div>
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/28-folder-project-name.png" alt="Project name set from the imported folder" className="manual-img" />
-                    <div className="manual-figcaption">For example, importing a folder named <code className="manual-code">불꽃의 리듬 (Rhythm of Fire) Stems</code> sets the project name at the top to that folder name.</div>
-                  </div>
-                  <div className="manual-note">This auto-naming applies <strong>only when importing a folder onto the empty start screen</strong>. If the project already has tracks, was renamed, or was saved, importing another folder keeps the existing name. Individual files (Import Files) and drag-and-drop are not auto-named.</div>
+                  <div className="manual-note">This auto-naming applies <strong>only when importing a folder onto the empty start screen</strong>. If the project already has tracks, was renamed, or was saved, importing another folder keeps the existing name. Individual files (Import Files) are not auto-named.</div>
 
                   <h3 className="manual-h3">Drag and Drop</h3>
                   <p className="manual-p">You can drag and drop audio files directly from your system file explorer onto the main timeline area to add new tracks. Unsupported formats are ignored automatically.</p>
 
                   <h3 className="manual-h3">Reconnecting Missing Audio</h3>
-                  <p className="manual-p">The <code className="manual-code">.focus</code> file references audio file paths. If the original audio files are moved, the track will display a <strong>NO AUDIO</strong> warning. Re-importing files with matching names will automatically reconnect them.</p>
+                  <p className="manual-p">The <code className="manual-code">.focus</code> file references audio file paths. If the original audio is moved or deleted, the track header shows a red <strong>NO SRC</strong> chip. <strong>Drop the same file onto that track</strong>, or re-import audio with matching names, to reconnect it.</p>
                 </>
               )}
             </section>
@@ -653,13 +845,14 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="record" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">4. 오디오 녹음(Audio In)</h2>
-                  <p className="manual-p">FocusDAW Studio는 마이크·오디오 인터페이스로 들어오는 입력 신호를 <strong>Audio In 트랙</strong>에 실시간으로 녹음할 수 있습니다. 녹음된 결과는 트랙 폴더에 <code className="manual-code">.wav</code> 파일(테이크)로 저장되고, 다른 스템 트랙과 똑같이 볼륨·팬·솔로·뮤트·오토메이션·마스터 이펙트를 적용할 수 있습니다. 기존 스템 위에 보컬이나 애드리브를 덧입히는 오버더빙에 적합합니다.</p>
+                  <h2 className="manual-h2">4. 오디오 녹음 · 클립 편집</h2>
+                  <p className="manual-p">FocusDAW Studio는 마이크·오디오 인터페이스로 들어오는 입력 신호를 <strong>Audio In 트랙</strong>에 실시간으로 녹음할 수 있습니다. 녹음 결과는 프로젝트 폴더에 <code className="manual-code">.wav</code> 파일(테이크)로 저장되고, 다른 스템 트랙과 똑같이 볼륨·팬·솔로·뮤트·오토메이션·마스터 이펙트를 적용할 수 있습니다. 기존 스템 위에 보컬이나 애드리브를 덧입히는 <strong>오버더빙</strong>이 이 앱의 핵심 작업입니다.</p>
+                  <p className="manual-p">이 장은 <strong>녹음 → 여러 테이크 중 고르기 → 클립 다듬기 → 보컬 이펙트 걸기</strong>까지의 흐름을 순서대로 다룹니다.</p>
 
-                  <div className="manual-note">녹음을 시작하기 전에 먼저 <strong>Settings &gt; Audio Devices</strong>에서 입력 장치(모드·입력/출력 장치·샘플레이트·버퍼)를 지정해야 합니다. 장치 설정 방법은 <strong>12. 설정 · 오디오 장치 · 테마</strong>를 참고하세요.</div>
+                  <div className="manual-note">녹음을 시작하기 전에 먼저 <strong>Settings ▸ Audio Devices</strong>에서 입력 장치(모드·입력/출력 장치·샘플레이트·버퍼)를 지정해야 합니다. 장치 설정 방법은 <strong>12. 설정 · 오디오 장치 · 테마</strong>를 참고하세요.</div>
 
                   <h3 className="manual-h3">① Audio In 트랙 만들기</h3>
-                  <p className="manual-p">타임라인 왼쪽 위 <strong>Track</strong> 헤더 영역에 두 개의 추가 버튼이 있습니다. <strong>+</strong>(플러스)는 오디오 파일을 불러오는 일반 파일 트랙이고, <strong>+ Audio In</strong> 버튼은 <strong>입력 녹음용 트랙</strong>을 새로 만듭니다. Audio In 트랙은 파일 트랙과 구분되도록 헤더에 파란 틴트가 적용됩니다.</p>
+                  <p className="manual-p">타임라인 왼쪽 위 <strong>TRACK</strong> 영역에 추가 버튼이 두 개 있습니다. <strong>+</strong>(플러스)는 오디오 파일을 불러오는 일반 파일 트랙을, <strong>+ Audio In</strong> 버튼은 <strong>입력 녹음용 트랙</strong>을 만듭니다. Audio In 트랙은 파일 트랙과 구분되도록 헤더에 파란 틴트가 적용되며, 파일 트랙 그룹(FILE TRACKS) <strong>바깥</strong>에 놓입니다.</p>
 
                   <h3 className="manual-h3">② Audio In 트랙 헤더 컨트롤</h3>
                   <p className="manual-p">Audio In 트랙 헤더에는 일반 트랙의 볼륨·팬·솔로·뮤트에 더해, 녹음을 위한 전용 컨트롤이 있습니다. (트랙 크기가 <strong>S</strong>일 때는 공간이 좁아 ARM만 제목 행에 인라인으로 표시되고, <strong>M/L</strong>에서 모든 컨트롤이 펼쳐집니다.)</p>
@@ -675,17 +868,24 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/47-audio-in-track.png" alt="Audio In 트랙 헤더 컨트롤" className="manual-img" />
-                    <div className="manual-figcaption">트랙 크기 <strong>L</strong>에서 펼쳐진 Audio In 트랙 헤더입니다. 제목 행의 <strong>ARM</strong>·S·M, 볼륨/팬, 그리고 아래 줄의 <strong>입력 포트(Input 1)</strong>·<strong>MON</strong>·<strong>LIM</strong>·<strong>입력 게인(IN)</strong>이 함께 보입니다.</div>
+                    <img src="manual/screens-v2/04-01-audioin-header-m.png" alt="Audio In 트랙 헤더 (트랙 크기 M)" className="manual-img" />
+                    <div className="manual-figcaption">트랙 크기 <strong>M</strong>의 Audio In 트랙 헤더입니다. 제목 행에 <strong>ARM · S · M</strong>, 그 아래 볼륨과 팬이 보입니다.</div>
                   </div>
-
-                  <h3 className="manual-h3">③ 녹음하기 — 트랜스포트 규칙</h3>
-                  <p className="manual-p">ARM한 뒤 상단 트랜스포트의 <strong>Record(빨간 점)</strong> 버튼을 누르면 녹음이 시작됩니다. 녹음 트랜스포트는 실수를 막기 위해 다음 규칙을 따릅니다.</p>
-
                   <div className="manual-figure">
-                    <img src="manual/live-screens/48-audio-in-armed.png" alt="ARM(무장)된 Audio In 트랙" className="manual-img" />
+                    <img src="manual/screens-v2/04-02-audioin-header-l.png" alt="Audio In 트랙 헤더 (트랙 크기 L)" className="manual-img" />
+                    <div className="manual-figcaption">트랙 크기 <strong>L</strong>에서 모두 펼쳐진 모습입니다. 아래 줄에 <strong>입력 포트(Input 1)</strong> · <strong>MON</strong> · <strong>LIM</strong> · <strong>입력 게인(IN)</strong>과 레벨 미터가, 맨 아래에 오토메이션 <strong>Reset · Curve</strong>가 나타납니다.</div>
+                  </div>
+                  <p className="manual-p">헤더 아래쪽 줄에는 오토메이션 <strong>AUTO</strong> 버튼 옆에 파형 모양의 <strong>FX 버튼</strong>이 있습니다. 이 버튼이 <strong>보컬 채널 스트립</strong> 창을 여는 입구입니다(⑨ 참고). 오른쪽 <strong>SOURCE</strong> 칩은 이 트랙의 원본 오디오가 정상적으로 연결돼 있음을 뜻하며, 파일을 찾지 못하면 붉은 <strong>NO SRC</strong>로 바뀝니다.</p>
+
+                  <h3 className="manual-h3">③ 녹음 준비 — ARM</h3>
+                  <p className="manual-p">녹음할 트랙의 <strong>ARM</strong> 버튼을 눌러 <strong>녹음 대기(무장)</strong> 상태로 만듭니다. ARM된 트랙이 있어야 트랜스포트의 <strong>Record</strong> 버튼이 활성화되고, 녹음은 오직 그 트랙에만 기록됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-03-arm.png" alt="녹음 준비 버튼(ARM)" className="manual-img" />
                     <div className="manual-figcaption">ARM 버튼이 <strong>빨간색</strong>으로 켜진 무장 상태입니다. 이 상태에서만 상단 트랜스포트의 Record 버튼이 활성화됩니다.</div>
                   </div>
+
+                  <h3 className="manual-h3">④ 녹음 시작 — 트랜스포트 규칙</h3>
+                  <p className="manual-p">ARM한 뒤 트랜스포트의 <strong>Record(빨간 점)</strong> 버튼을 누르면 녹음이 시작됩니다. 실수를 막기 위해 녹음 트랜스포트는 다음 규칙을 따릅니다.</p>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th">정지 상태에서 Record — <strong>프리롤</strong>(기본)</th><td className="manual-td">프리롤이 켜져 있고 <strong>앞에 들을 음악이 있으면</strong>, 재생 위치보다 <strong>설정한 초만큼 앞에서 기존 음악이 먼저 재생</strong>되고 원래 위치에 도달하면 <strong>녹음이 시작</strong>됩니다. 화면 상단에 <strong>PRE-ROLL</strong> 표시와 남은 시간이 뜨며, 타임라인은 가려지지 않습니다.</td></tr>
@@ -704,29 +904,188 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/49-record-countin.png" alt="카운트인 오버레이" className="manual-img" />
-                    <div className="manual-figcaption">정지 상태에서 Record를 누르면 화면 중앙에 <strong>카운트인</strong> 오버레이가 뜬 뒤 재생과 녹음이 함께 시작됩니다(메트로놈 On = 프로젝트 BPM 기준 <strong>4 → 3 → 2 → 1</strong> + 클릭, Off = <strong>3 → 2 → 1</strong> 무음). 상단 Record 버튼이 빨갛게 켜지고, 무장된 Audio In 트랙이 녹음 대상이 됩니다.</div>
+                    <img src="manual/screens-v2/04-04-record-countin.png" alt="정지 상태에서의 녹음 시작 — 카운트인" className="manual-img" />
+                    <div className="manual-figcaption">정지 상태에서 Record를 누르면 화면 중앙에 <strong>카운트인</strong> 숫자가 크게 뜬 뒤 재생과 녹음이 함께 시작됩니다(메트로놈 On = 프로젝트 BPM 기준 <strong>4 → 3 → 2 → 1</strong> + 클릭, Off = <strong>3 → 2 → 1</strong> 무음).</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-05-preroll.png" alt="프리롤을 이용한 녹음 시작" className="manual-img" />
+                    <div className="manual-figcaption">프리롤로 시작한 모습입니다. 트랙 위에 <strong>PRE-ROLL 7.1s</strong> 배지가 떠서 남은 시간을 알려 주고, 기존 음악이 먼저 재생되다가 원래 위치에 닿는 순간 녹음이 시작됩니다. 트랜스포트의 프리롤 버튼에는 현재 설정된 초(예: <strong>8</strong>)가 표시됩니다.</div>
                   </div>
 
                   <div className="manual-warning">녹음·카운트인 중에는 <strong>키보드 이동키(←/→/,/./0)와 타임라인·눈금자 마우스 클릭 이동(seek)이 모두 차단</strong>됩니다. 녹음 중 실수로 플레이헤드가 튀는 것을 막기 위한 것으로, 위치를 바꾸려면 먼저 녹음을 멈추세요.</div>
 
-                  <h3 className="manual-h3">④ 테이크 관리 · 이름 변경</h3>
+                  <h3 className="manual-h3">⑤ 구간 반복 녹음 — 테이크 쌓기</h3>
+                  <p className="manual-p">같은 구절을 여러 번 불러 그중 제일 좋은 것을 고르고 싶을 때 씁니다. 타임라인 아래 <strong>OUTPUT FX 눈금 레인을 드래그해 Repeat 구간</strong>을 만들고 <strong>Repeat</strong>를 켠 뒤 Record를 누르면, 구간을 한 바퀴 돌 때마다 <strong>테이크가 하나씩 쌓입니다</strong>. 녹음 중에는 <strong>REC Take A · B · C …</strong> 배지가 현재 몇 번째 테이크인지 알려 줍니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-06-loop-take.png" alt="구간 반복 녹음(Take별 녹음)" className="manual-img" />
+                    <div className="manual-figcaption">Repeat 구간을 켜고 녹음 중인 모습입니다. 구간이 파랗게 표시되고, 오른쪽 위 <strong>REC Take J</strong> 배지가 현재 녹음 중인 테이크를 나타냅니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">⑥ 테이크 고르기와 컴프(Comp)</h3>
+                  <p className="manual-p">테이크가 둘 이상 쌓이면 클립 왼쪽 위에 <strong>“▾ n takes”</strong> 배지가 생깁니다. 이 배지를 누르면 아래로 <strong>테이크 레인</strong>이 펼쳐져 Take A, B, C … 를 나란히 볼 수 있습니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">테이크 고르기</th><td className="manual-td">레인의 동그란 버튼을 <strong>클릭</strong>하면 그 테이크가 <strong>active</strong>가 되어 재생·내보내기에 쓰입니다.</td></tr>
+                      <tr><th className="manual-th">컴프 만들기 (swipe)</th><td className="manual-td">레인들 위를 <strong>가로로 쓸면(swipe)</strong> 구간마다 다른 테이크를 골라 <strong>이어 붙인 하나의 테이크</strong>를 만들 수 있습니다. “1절 앞부분은 Take B, 뒷부분은 Take D”처럼 좋은 부분만 조합하는 방식입니다.</td></tr>
+                      <tr><th className="manual-th">테이크 삭제</th><td className="manual-td">각 레인 오른쪽의 <strong>×</strong> 버튼으로 그 테이크를 지웁니다.</td></tr>
+                      <tr><th className="manual-th">Flatten Comp</th><td className="manual-td">조합한 결과를 <strong>하나의 오디오 파일로 확정</strong>합니다. 실행하면 테이크 레인이 정리되고 단일 클립이 됩니다. 모든 테이크의 파형이 완전히 로드된 뒤에 실행하세요.</td></tr>
+                      <tr><th className="manual-th">레인 접기</th><td className="manual-td">배지를 다시 누르거나 아래쪽 <strong>∨</strong> 버튼으로 레인을 접습니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-07-take-lanes.png" alt="다중 Take 녹음본을 펼친 모습" className="manual-img" />
+                    <div className="manual-figcaption">테이크 레인을 펼친 모습입니다. Take A~E가 각각의 줄에 표시되고, 지금은 <strong>Take E</strong>가 active입니다. 맨 아래 <strong>Flatten Comp</strong>로 조합 결과를 확정합니다.</div>
+                  </div>
+                  <div className="manual-note">테이크 배지를 눌러도 <strong>재생 위치는 움직이지 않습니다</strong>. 배지는 레인을 펼치고 접는 역할만 합니다.</div>
+
+                  <h3 className="manual-h3">⑦ Punch 녹음 — 일부 구간만 다시 부르기</h3>
+                  <p className="manual-p">한 소절만 틀렸을 때 전체를 다시 부르지 않고 <strong>그 구간만 덮어쓰는</strong> 방식입니다. 먼저 <strong>Repeat 구간</strong>을 만든 다음 트랜스포트의 <strong>Punch</strong> 버튼을 켜고 Record를 누르면, 프리롤로 들어가 구간 시작점에서 <strong>자동으로 녹음이 시작(punch-in)</strong>되고 끝점에서 <strong>자동으로 멈춥니다(punch-out)</strong>. 구간 바깥의 소리는 건드리지 않습니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-08-punch.png" alt="Punch 녹음 기능" className="manual-img" />
+                    <div className="manual-figcaption"><strong>PUNCH</strong>로 지정된 구간(점선)입니다. 이 구간만 새로 녹음되고, 앞뒤 클립은 그대로 유지됩니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Punch 켜기 조건</th><td className="manual-td"><strong>Repeat 구간이 있어야</strong> 버튼이 활성화됩니다. 구간을 지우면 Punch도 자동으로 꺼집니다(구간 없는 상태에서 전체가 덮어써지는 사고를 막기 위함).</td></tr>
+                      <tr><th className="manual-th">Punch 켜짐 + Repeat 꺼짐</th><td className="manual-td"><strong>단일 펀치</strong> — 구간을 한 번만 다시 녹음해 현재 테이크의 그 부분을 교체합니다.</td></tr>
+                      <tr><th className="manual-th">Punch 켜짐 + Repeat 켜짐</th><td className="manual-td"><strong>Loop-Punch Comp</strong> — 구간을 반복하며 <strong>매 회차를 구간 전용 테이크로</strong> 쌓습니다. 그중 좋은 것을 테이크 레인에서 고르면 됩니다.</td></tr>
+                      <tr><th className="manual-th">원본 보존</th><td className="manual-td">펀치 전의 소리는 버려지지 않고 <strong>테이크로 남습니다</strong>. 마음에 들지 않으면 이전 테이크로 되돌릴 수 있습니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">⑧ 클립 편집</h3>
+                  <p className="manual-p">녹음된 오디오는 <strong>클립</strong> 단위로 다룰 수 있습니다(Audio In 트랙과 병합으로 만든 Bounce 트랙에서 사용 가능). 클립을 <strong>클릭</strong>하면 테두리가 밝아지며 선택되고, 시작·끝 시각이 표시됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-09-clip-selected.png" alt="녹음 트랙의 오디오 클립 선택" className="manual-img" />
+                    <div className="manual-figcaption">클립을 선택한 모습입니다. 선택된 클립만 테두리가 강조됩니다.</div>
+                  </div>
+                  <p className="manual-p">클립 위에서 <strong>마우스 오른쪽 버튼</strong>을 누르면 편집 메뉴가 열립니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-10-clip-menu.png" alt="클립 메뉴 구성" className="manual-img" />
+                    <div className="manual-figcaption">클립 오른쪽 클릭 메뉴입니다. 메뉴 아래쪽에는 드래그 이동·가장자리 트림·다중 선택 같은 조작 요령이 함께 안내됩니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Deselect <kbd className="manual-kbd">Esc</kbd></th><td className="manual-td">선택을 해제합니다.</td></tr>
+                      <tr><th className="manual-th">Copy <kbd className="manual-kbd">Ctrl+C</kbd></th><td className="manual-td">선택한 클립을 복사합니다.</td></tr>
+                      <tr><th className="manual-th">Paste at playhead <kbd className="manual-kbd">Ctrl+V</kbd></th><td className="manual-td">복사한 클립을 <strong>현재 재생 위치</strong>에 붙여 넣습니다.</td></tr>
+                      <tr><th className="manual-th">Duplicate <kbd className="manual-kbd">Ctrl+D</kbd></th><td className="manual-td">클립을 바로 뒤에 복제합니다.</td></tr>
+                      <tr><th className="manual-th">Split <kbd className="manual-kbd">C</kbd></th><td className="manual-td">재생 위치를 기준으로 클립을 <strong>둘로 나눕니다</strong>.</td></tr>
+                      <tr><th className="manual-th">Merge Clips <kbd className="manual-kbd">J</kbd></th><td className="manual-td">이어진 클립들을 <strong>하나로 합칩니다</strong>.</td></tr>
+                      <tr><th className="manual-th">Delete <kbd className="manual-kbd">Del</kbd></th><td className="manual-td">클립을 지웁니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">이동</th><td className="manual-td">클립 가운데를 <strong>드래그</strong>해 시간축으로 옮깁니다.</td></tr>
+                      <tr><th className="manual-th">트림(길이 조절)</th><td className="manual-td">클립의 <strong>좌우 가장자리를 드래그</strong>해 앞뒤를 잘라 냅니다.</td></tr>
+                      <tr><th className="manual-th">여러 개 선택</th><td className="manual-td"><kbd className="manual-kbd">Ctrl</kbd>+클릭으로 여러 클립을 함께 선택합니다.</td></tr>
+                      <tr><th className="manual-th">미세 이동(nudge)</th><td className="manual-td">클립을 선택한 채 <kbd className="manual-kbd">←</kbd>/<kbd className="manual-kbd">→</kbd>로 밀어 줍니다. 기본 <strong>1 ms</strong>, <kbd className="manual-kbd">Ctrl</kbd>과 함께 <strong>10 ms</strong>, <kbd className="manual-kbd">Shift</kbd>와 함께 <strong>100 ms</strong>씩 이동합니다.</td></tr>
+                      <tr><th className="manual-th">선택 해제</th><td className="manual-td"><kbd className="manual-kbd">Esc</kbd>를 누르거나 빈 곳을 클릭합니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <p className="manual-p"><strong>Split — 클립 나누기</strong></p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-11-split-before.png" alt="Split 전" className="manual-img" />
+                    <div className="manual-figcaption">Split 전 — 하나로 이어진 클립입니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-12-split-after.png" alt="Split 후" className="manual-img" />
+                    <div className="manual-figcaption">Split 후 — 재생 위치를 경계로 클립이 나뉘어 각각 따로 옮기거나 지울 수 있습니다.</div>
+                  </div>
+
+                  <p className="manual-p"><strong>Merge Clips — 클립 합치기</strong></p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-13-merge-before.png" alt="클립 Merge 전" className="manual-img" />
+                    <div className="manual-figcaption">Merge 전 — 두 개의 클립으로 나뉘어 있습니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-14-merge-after.png" alt="클립 Merge 후" className="manual-img" />
+                    <div className="manual-figcaption">Merge 후 — 하나의 클립이 되어 시작·끝 시각이 한 쌍으로 표시됩니다.</div>
+                  </div>
+
+                  <p className="manual-p"><strong>클립별 볼륨</strong> — 클립을 선택하면 위쪽에 가로선이 나타납니다. 이 선을 <strong>아래로 끌면 그 클립만 소리가 작아집니다</strong>. 맨 위가 0 dB이고 <strong>줄이는 방향으로만</strong> 동작하며, 드래그하는 동안 dB 값이 표시되고 파형 높이도 함께 줄어듭니다. 한 구절만 너무 크게 불렀을 때 트랙 전체 볼륨을 건드리지 않고 그 부분만 낮출 수 있습니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-15-clip-volume.png" alt="클립별 볼륨 조정 기능" className="manual-img" />
+                    <div className="manual-figcaption">클립 위쪽의 볼륨 선입니다. 안내 문구처럼 <strong>아래로 끌어</strong> 해당 클립의 볼륨만 낮춥니다.</div>
+                  </div>
+                  <div className="manual-note">클립 편집·클립 볼륨은 모두 <strong>되돌리기(Undo)</strong>가 되고, 프로젝트에 저장되며, Export 결과에도 그대로 반영됩니다.</div>
+
+                  <h3 className="manual-h3">⑨ 보컬 채널 스트립 (FX)</h3>
+                  <p className="manual-p">Audio In 트랙과 Bounce 트랙 헤더의 <strong>FX 버튼</strong>(파형 모양)을 누르면 <strong>보컬 채널 스트립</strong> 창이 열립니다. 녹음한 목소리를 다듬는 여섯 개의 모듈이 <strong>신호가 지나가는 순서대로</strong> 세로로 놓여 있고, 이 처리는 <strong>트랙 페이더 앞(pre-fader)</strong>에서 이루어져 재생·Export·프로젝트 저장에 모두 반영됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-16a-vocal-strip.png" alt="보컬 채널 스트립 — 상단부" className="manual-img" />
+                    <div className="manual-figcaption">스트립 상단입니다. 트랙 이름과 <strong>STRIP ACTIVE</strong>(A/B) 스위치, <strong>PRESET</strong> 줄, <strong>Spectrum</strong>, 그리고 <strong>01 High-Pass Filter</strong>와 <strong>02 Noise Gate</strong>가 보입니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-16b-vocal-strip.png" alt="보컬 채널 스트립 — 하단부" className="manual-img" />
+                    <div className="manual-figcaption">스트립 하단입니다. <strong>04 Compressor</strong>, <strong>05 De-Esser</strong>, <strong>06 Broadband De-noise</strong>가 이어집니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-16c-strip-eq.png" alt="보컬 스트립 03 Equalizer" className="manual-img" />
+                    <div className="manual-figcaption">Noise Gate와 Compressor 사이에 있는 <strong>03 Equalizer</strong>입니다. 60Hz부터 15kHz까지 9개의 세로 페이더를 끌어 대역별로 조절하며, 각 페이더 위에 현재 값(dB)이 표시됩니다(올린 대역은 초록, 내린 대역은 붉은색). <strong>더블클릭하면 0 dB</strong>로 돌아갑니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">STRIP ACTIVE (A/B)</th><td className="manual-td">스트립 <strong>전체</strong>를 켜고 끕니다. 껐다 켜며 <strong>처리 전/후를 즉석에서 비교</strong>할 때 씁니다.</td></tr>
+                      <tr><th className="manual-th">PRESET</th><td className="manual-td"><strong>Clean Lead · Warm Pop · Bright Air · Podcast</strong> 네 가지 보컬 프리셋입니다. HPF · EQ · 컴프레서 · 디에서를 한 번에 잡아 줍니다.</td></tr>
+                      <tr><th className="manual-th">Reset</th><td className="manual-td">모든 모듈을 기본값으로 되돌리고 끕니다. <strong>A/B(Bypass) 상태는 건드리지 않습니다</strong> — 듣고 있는 방식을 초기화가 말없이 바꾸지 않도록 하기 위함입니다.</td></tr>
+                      <tr><th className="manual-th">Spectrum</th><td className="manual-td">처리 <strong>전(PRE)</strong>과 <strong>후(POST)</strong>의 주파수 곡선을 겹쳐 보여 줍니다. EQ를 움직이면 POST 곡선이 실시간으로 따라 바뀌어, 목소리가 어떻게 달라지는지 눈으로 확인할 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">01 High-Pass Filter</th><td className="manual-td">저역 <strong>럼블·팝 노이즈</strong>를 잘라 냅니다(12 dB/oct). FREQ로 자를 지점을 정합니다.</td></tr>
+                      <tr><th className="manual-th">02 Noise Gate</th><td className="manual-td">설정한 <strong>임계값(THRESH) 아래 소리를 줄여</strong> 숨소리와 방 소음을 정리합니다. RATIO · ATTACK · RELEASE로 반응을 다듬고, <strong>ATTENUATION</strong> 미터로 지금 얼마나 줄이고 있는지 확인합니다.</td></tr>
+                      <tr><th className="manual-th">03 Equalizer</th><td className="manual-td">9밴드 그래픽 EQ입니다. 세로 페이더를 끌어 대역별로 올리고 내립니다(<strong>더블클릭 = 0 dB</strong>).</td></tr>
+                      <tr><th className="manual-th">04 Compressor</th><td className="manual-td">큰 소리와 작은 소리의 <strong>차이를 좁혀</strong> 목소리를 고르게 만듭니다. THRESH · RATIO · ATTACK · RELEASE · MAKEUP을 노브로 조절하며, 노브는 <strong>휠로 미세 조정</strong>·<strong>더블클릭으로 초기화</strong>됩니다. <strong>GAIN REDUCTION</strong> 미터로 압축량을 봅니다.</td></tr>
+                      <tr><th className="manual-th">05 De-Esser</th><td className="manual-td">“ㅅ/ㅊ” 같은 <strong>치찰음</strong>이 셀 때 그 대역만 눌러 줍니다(컴프레서 뒤에 적용). FREQ · THRESH · AMOUNT로 설정하고 <strong>DE-ESS GR</strong> 미터로 동작량을 확인합니다.</td></tr>
+                      <tr><th className="manual-th">06 Broadband De-noise</th><td className="manual-td">일정하게 깔린 <strong>방 소음·히스</strong>를 제거합니다(⑩ 참고). 실시간이 아니라 <strong>파일로 찍어 내는 오프라인 처리</strong>입니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="manual-p">각 모듈 오른쪽의 <strong>ON / OFF</strong> 버튼으로 개별로 켜고 끌 수 있습니다. 꺼져 있어도 <strong>노브를 만지면 자동으로 켜집니다.</strong></p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-17-strip-preset-spectrum.png" alt="FX 프리셋 적용과 스펙트럼 비교" className="manual-img" />
+                    <div className="manual-figcaption"><strong>Podcast</strong> 프리셋을 적용한 모습입니다. Spectrum에 <strong>PRE(원음)</strong>와 <strong>POST(처리 후)</strong> 두 곡선이 겹쳐 표시되어 차이를 바로 확인할 수 있습니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-18-noise-gate.png" alt="Noise 게이트 작동 모습" className="manual-img" />
+                    <div className="manual-figcaption">Noise Gate가 동작하는 모습입니다. <strong>ATTENUATION</strong> 막대가 차오르며 지금 얼마나 줄이고 있는지(예: 21.7 dB) 보여 줍니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-19-comp-deesser.png" alt="Compressor와 De-Esser 작동 모습" className="manual-img" />
+                    <div className="manual-figcaption">Compressor와 De-Esser가 동작하는 모습입니다. 각각의 <strong>GAIN REDUCTION</strong> · <strong>DE-ESS GR</strong> 미터가 움직여, 효과가 미묘할 때도 실제로 걸리고 있는지 눈으로 확인할 수 있습니다.</div>
+                  </div>
+                  <div className="manual-note">프리셋은 <strong>Noise Gate를 일부러 건드리지 않습니다.</strong> 적정 임계값은 녹음마다 노이즈 바닥이 달라 고정값이 의미가 없기 때문입니다 — 너무 낮으면 아무 일도 일어나지 않고, 너무 높으면 말끝이 잘립니다. 게이트는 자신의 녹음을 들으며 직접 맞추세요.</div>
+
+                  <h3 className="manual-h3">⑩ 노이즈 제거 — Broadband De-noise</h3>
+                  <p className="manual-p">에어컨 소리나 히스처럼 <strong>계속 깔려 있는 잡음</strong>을 없애는 기능입니다. 먼저 잡음만 있는 구간을 들려주어 <strong>“이것이 잡음”이라고 학습</strong>시킨 뒤, 그 특성을 곡 전체에서 빼내는 방식입니다.</p>
+                  <ol className="manual-ol">
+                    <li className="manual-li">해당 트랙에서 <strong>소리 없이 잡음만 있는 구간</strong>(숨소리·방 소음만 있는 곳)을 <strong>Repeat 구간</strong>으로 지정합니다.</li>
+                    <li className="manual-li">스트립의 <strong>Learn Noise</strong>를 누릅니다. 학습에 성공하면 버튼이 <strong>✓ Noise learned</strong>로 바뀌고 아래에 학습한 길이가 표시됩니다.</li>
+                    <li className="manual-li"><strong>AMOUNT</strong>로 제거 강도를 정한 뒤 <strong>Apply De-noise</strong>를 누릅니다.</li>
+                  </ol>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-20-denoise.png" alt="Noise 제거 기능" className="manual-img" />
+                    <div className="manual-figcaption">잡음 학습을 마친 상태입니다. <strong>Noise profile learned — 0.35 s</strong>처럼 학습 결과가 표시되고 <strong>Apply De-noise</strong>를 누를 수 있게 됩니다.</div>
+                  </div>
+                  <div className="manual-note">De-noise는 <strong>비파괴</strong>입니다. 처리 결과는 <strong>새 파일로 저장</strong>되고 원본 녹음 WAV는 그대로 남으며, <strong>되돌리기(Undo)</strong>도 됩니다. AMOUNT를 지나치게 올리면 목소리까지 깎여 답답해질 수 있으니, 조금씩 올리며 들어 보고 정하세요.</div>
+
+                  <h3 className="manual-h3">⑪ 테이크 관리 · 이름 변경</h3>
                   <ul className="manual-ul">
                     <li className="manual-li">녹음이 끝나면 입력 신호가 트랙 위에 파형으로 붙고, 실제 오디오는 <code className="manual-code">.wav</code> 파일로 저장됩니다. 녹음을 시작한 위치가 곡의 중간이면 그 시점에 클립이 놓입니다.</li>
-                    <li className="manual-li">같은 트랙에서 <strong>다시 Record</strong>하면 새 테이크로 재녹음됩니다. 재녹음하면 이전에 표시되던 <strong>NO AUDIO</strong> 상태와 Solo/Mute 제한도 해제됩니다.</li>
-                    <li className="manual-li">트랙 제목을 <strong>더블클릭</strong>하면 이름을 바로 편집할 수 있습니다(Enter 확정, Esc 취소). Audio In 트랙이 녹음 WAV를 소유한 경우, 이름을 바꾸면 디스크의 WAV 파일도 같은 이름으로 바뀝니다. (임포트한 스템 파일 이름은 바뀌지 않습니다.)</li>
+                    <li className="manual-li">같은 트랙에서 <strong>다시 Record</strong>하면 새 테이크가 만들어집니다. Repeat나 Punch를 쓰지 않았다면 마지막 테이크가 재생 대상이 됩니다.</li>
+                    <li className="manual-li">트랙 제목을 <strong>더블클릭</strong>하면 이름을 바로 편집할 수 있습니다(Enter 확정, Esc 취소). <strong>트랙 이름과 녹음 파일 이름은 따로 관리</strong>되므로, 트랙 이름을 바꿔도 이미 녹음된 파일 이름은 바뀌지 않습니다.</li>
                   </ul>
                   <div className="manual-note">녹음 파일은 다른 오디오와 마찬가지로 마스터 EQ·리버브·에코 등 출력 이펙트와 트랙 볼륨 오토메이션의 영향을 받습니다. 완성된 테이크는 <strong>11. 믹스다운 내보내기</strong>에서 전체 믹스에 함께 렌더링됩니다.</div>
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">4. Recording (Audio In)</h2>
-                  <p className="manual-p">FocusDAW Studio can record a live input signal from a microphone or audio interface straight onto an <strong>Audio In track</strong>. Each recording is saved to the track folder as a <code className="manual-code">.wav</code> take, and behaves exactly like any other stem — you can set its volume, pan, solo, mute, automation, and route it through the master effects. This is ideal for overdubbing vocals or ad-libs on top of existing stems.</p>
+                  <h2 className="manual-h2">4. Recording &amp; Clip Editing</h2>
+                  <p className="manual-p">FocusDAW Studio can record a live input signal from a microphone or audio interface straight onto an <strong>Audio In track</strong>. Each recording is saved into the project folder as a <code className="manual-code">.wav</code> take and behaves exactly like any other stem — volume, pan, solo, mute, automation, and the master effects all apply. <strong>Overdubbing</strong> vocals or ad-libs on top of imported stems is what this app is built around.</p>
+                  <p className="manual-p">This chapter follows the whole flow in order: <strong>record → choose among takes → tidy the clips → shape the voice</strong>.</p>
 
-                  <div className="manual-note">Before recording, set up your input under <strong>Settings &gt; Audio Devices</strong> (mode, input/output device, sample rate, buffer). See <strong>12. Settings, Audio Devices &amp; Themes</strong> for the full device setup.</div>
+                  <div className="manual-note">Before recording, set up your input under <strong>Settings ▸ Audio Devices</strong> (mode, input/output device, sample rate, buffer). See <strong>12. Settings, Audio Devices &amp; Themes</strong> for the full device setup.</div>
 
                   <h3 className="manual-h3">1. Create an Audio In track</h3>
-                  <p className="manual-p">The <strong>Track</strong> header area at the top left of the timeline has two add buttons. The <strong>+</strong> (plus) creates a normal file track for importing audio, while the <strong>+ Audio In</strong> button creates a new <strong>input-recording track</strong>. Audio In tracks are tinted blue in the header to distinguish them from file tracks.</p>
+                  <p className="manual-p">The <strong>TRACK</strong> area at the top left of the timeline has two add buttons. The <strong>+</strong> (plus) creates a normal file track for importing audio; the <strong>+ Audio In</strong> button creates an <strong>input-recording track</strong>. Audio In tracks are tinted blue in the header and sit <strong>outside</strong> the FILE TRACKS group.</p>
 
                   <h3 className="manual-h3">2. Audio In track header controls</h3>
                   <p className="manual-p">In addition to the usual volume, pan, solo, and mute, an Audio In track header adds dedicated recording controls. (At track size <strong>S</strong> only ARM is shown inline on the title row for space; <strong>M/L</strong> reveal every control.)</p>
@@ -742,17 +1101,24 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/47-audio-in-track.png" alt="Audio In track header controls" className="manual-img" />
-                    <div className="manual-figcaption">An Audio In track header expanded at track size <strong>L</strong>: <strong>ARM</strong>·S·M and volume/pan on the title rows, with the <strong>input port (Input 1)</strong>·<strong>MON</strong>·<strong>LIM</strong>·<strong>input gain (IN)</strong> below.</div>
+                    <img src="manual/screens-v2/04-01-audioin-header-m.png" alt="Audio In track header at size M" className="manual-img" />
+                    <div className="manual-figcaption">An Audio In track header at track size <strong>M</strong>: <strong>ARM · S · M</strong> on the title row, with volume and pan below.</div>
                   </div>
-
-                  <h3 className="manual-h3">3. Recording — transport rules</h3>
-                  <p className="manual-p">Once armed, press the transport <strong>Record (red dot)</strong> button to start recording. To prevent mistakes, the recording transport follows these rules:</p>
-
                   <div className="manual-figure">
-                    <img src="manual/live-screens/48-audio-in-armed.png" alt="Armed Audio In track" className="manual-img" />
+                    <img src="manual/screens-v2/04-02-audioin-header-l.png" alt="Audio In track header at size L" className="manual-img" />
+                    <div className="manual-figcaption">Fully expanded at track size <strong>L</strong>: the <strong>input port (Input 1)</strong> · <strong>MON</strong> · <strong>LIM</strong> · <strong>input gain (IN)</strong> row with its meters, and automation <strong>Reset · Curve</strong> at the bottom.</div>
+                  </div>
+                  <p className="manual-p">On the lower row, next to the automation <strong>AUTO</strong> button, sits a waveform-shaped <strong>FX button</strong> — this is the entry point to the <strong>Vocal Channel Strip</strong> (see step 9). The <strong>SOURCE</strong> chip on the right confirms the track's audio is linked; it turns into a red <strong>NO SRC</strong> chip if the file cannot be found.</p>
+
+                  <h3 className="manual-h3">3. Arming the track</h3>
+                  <p className="manual-p">Press <strong>ARM</strong> on the track you want to record. The transport <strong>Record</strong> button only becomes active while a track is armed, and audio is captured to that track alone.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-03-arm.png" alt="Armed Audio In track" className="manual-img" />
                     <div className="manual-figcaption">The <strong>red ARM</strong> button indicates the track is armed. Only while a track is armed is the transport Record button active.</div>
                   </div>
+
+                  <h3 className="manual-h3">4. Starting a take — transport rules</h3>
+                  <p className="manual-p">Once armed, press the transport <strong>Record (red dot)</strong> button to start recording. To prevent mistakes, the recording transport follows these rules:</p>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th">Record from stopped — <strong>pre-roll</strong> (default)</th><td className="manual-td">With pre-roll on and <strong>music to roll into</strong>, playback starts the set number of seconds <strong>before</strong> the playhead and <strong>recording begins when it reaches the original position</strong>. A <strong>PRE-ROLL</strong> chip and the remaining time appear at the top; the timeline stays visible.</td></tr>
@@ -771,17 +1137,175 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/49-record-countin.png" alt="count-in overlay" className="manual-img" />
-                    <div className="manual-figcaption">Pressing Record from a stopped state shows a <strong>count-in</strong> overlay in the center, then starts playback and recording together (metronome on = <strong>4 → 3 → 2 → 1</strong> with clicks on the project BPM; off = a silent <strong>3 → 2 → 1</strong>). The transport Record button lights red and the armed Audio In track becomes the record target.</div>
+                    <img src="manual/screens-v2/04-04-record-countin.png" alt="Count-in overlay" className="manual-img" />
+                    <div className="manual-figcaption">Recording from a stopped state shows a large <strong>count-in</strong> number, then starts playback and recording together (metronome on = <strong>4 → 3 → 2 → 1</strong> with clicks at the project BPM; off = a silent <strong>3 → 2 → 1</strong>).</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-05-preroll.png" alt="Recording started with a pre-roll" className="manual-img" />
+                    <div className="manual-figcaption">Starting with a pre-roll. A <strong>PRE-ROLL 7.1s</strong> badge counts down on the track while the existing music plays; recording begins the moment the playhead reaches your original position. The transport pre-roll button shows the current length (here <strong>8</strong>).</div>
                   </div>
 
                   <div className="manual-warning">During recording and the count-in, the <strong>keyboard seek keys (←/→/,/./0) and mouse-click seeking on the timeline/ruler are all blocked</strong> to keep the playhead from jumping mid-take. Stop recording first if you need to move the position.</div>
 
-                  <h3 className="manual-h3">4. Managing takes &amp; renaming</h3>
+                  <h3 className="manual-h3">5. Loop recording — stacking takes</h3>
+                  <p className="manual-p">Use this when you want to sing a phrase several times and keep the best one. Drag a <strong>Repeat region</strong> on the OUTPUT FX ruler lane, turn <strong>Repeat</strong> on, and press Record: <strong>each pass around the region records a new take</strong>. While recording, a <strong>REC Take A · B · C …</strong> badge shows which take is being captured.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-06-loop-take.png" alt="Loop recording, one take per pass" className="manual-img" />
+                    <div className="manual-figcaption">Recording with a Repeat region active. The region is highlighted and the <strong>REC Take J</strong> badge names the take currently being recorded.</div>
+                  </div>
+
+                  <h3 className="manual-h3">6. Choosing takes and comping</h3>
+                  <p className="manual-p">Once more than one take exists, a <strong>“▾ n takes”</strong> badge appears at the top left of the clip. Click it to expand the <strong>take lanes</strong> and see Take A, B, C … side by side.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Pick a take</th><td className="manual-td"><strong>Click</strong> the round button on a lane to make that take <strong>active</strong> — the one used for playback and Export.</td></tr>
+                      <tr><th className="manual-th">Build a comp (swipe)</th><td className="manual-td"><strong>Swipe horizontally</strong> across the lanes to assemble one composite take from different passes — "Take B for the first half, Take D for the rest".</td></tr>
+                      <tr><th className="manual-th">Delete a take</th><td className="manual-td">The <strong>×</strong> button at the right of each lane removes that take.</td></tr>
+                      <tr><th className="manual-th">Flatten Comp</th><td className="manual-td"><strong>Commits the comp to a single audio file.</strong> The take lanes collapse into one clip. Run it once every take shows a fully loaded waveform.</td></tr>
+                      <tr><th className="manual-th">Collapse lanes</th><td className="manual-td">Click the badge again, or the <strong>∨</strong> button below the lanes.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-07-take-lanes.png" alt="Take lanes expanded" className="manual-img" />
+                    <div className="manual-figcaption">Take lanes expanded. Takes A–E each occupy a row, with <strong>Take E</strong> active. <strong>Flatten Comp</strong> at the bottom commits the result.</div>
+                  </div>
+                  <div className="manual-note">Clicking the take badge <strong>does not move the playhead</strong> — it only opens and closes the lanes.</div>
+
+                  <h3 className="manual-h3">7. Punch recording — redoing part of a take</h3>
+                  <p className="manual-p">When only one phrase is wrong, punch lets you <strong>overwrite just that span</strong> instead of re-singing everything. Set a <strong>Repeat region</strong>, turn on the transport's <strong>Punch</strong> button, and press Record: playback pre-rolls in, recording <strong>punches in automatically</strong> at the region start and <strong>punches out</strong> at its end. Everything outside the region is untouched.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-08-punch.png" alt="Punch recording" className="manual-img" />
+                    <div className="manual-figcaption">The span marked <strong>PUNCH</strong> (dashed). Only this region is re-recorded; the clips before and after stay as they were.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Requires a region</th><td className="manual-td">The button is enabled only while a <strong>Repeat region exists</strong>. Removing the region turns Punch off automatically — this prevents a region-less punch from destructively re-recording the whole track.</td></tr>
+                      <tr><th className="manual-th">Punch on + Repeat off</th><td className="manual-td"><strong>Single punch</strong> — records the region once and replaces that part of the active take.</td></tr>
+                      <tr><th className="manual-th">Punch on + Repeat on</th><td className="manual-td"><strong>Loop-Punch Comp</strong> — loops the region and stores <strong>every pass as a region-scoped take</strong>, so you can pick the best one from the take lanes.</td></tr>
+                      <tr><th className="manual-th">The original is kept</th><td className="manual-td">What was there before the punch is <strong>kept as a take</strong>, so you can always go back to it.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">8. Clip editing</h3>
+                  <p className="manual-p">Recorded audio can be edited as <strong>clips</strong> (available on Audio In tracks and on Bounce tracks created by merging). <strong>Click</strong> a clip to select it — its border brightens and its start/end times are shown.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-09-clip-selected.png" alt="A selected clip on a recording track" className="manual-img" />
+                    <div className="manual-figcaption">A selected clip. Only the selected clip gets the highlighted border.</div>
+                  </div>
+                  <p className="manual-p"><strong>Right-click</strong> a clip to open the edit menu.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-10-clip-menu.png" alt="Clip context menu" className="manual-img" />
+                    <div className="manual-figcaption">The clip context menu. Its footer also reminds you of drag-to-move, edge-trim, and multi-select gestures.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Deselect <kbd className="manual-kbd">Esc</kbd></th><td className="manual-td">Clears the selection.</td></tr>
+                      <tr><th className="manual-th">Copy <kbd className="manual-kbd">Ctrl+C</kbd></th><td className="manual-td">Copies the selected clip.</td></tr>
+                      <tr><th className="manual-th">Paste at playhead <kbd className="manual-kbd">Ctrl+V</kbd></th><td className="manual-td">Pastes the copied clip at the <strong>current playhead position</strong>.</td></tr>
+                      <tr><th className="manual-th">Duplicate <kbd className="manual-kbd">Ctrl+D</kbd></th><td className="manual-td">Duplicates the clip right after itself.</td></tr>
+                      <tr><th className="manual-th">Split <kbd className="manual-kbd">C</kbd></th><td className="manual-td"><strong>Cuts the clip in two</strong> at the playhead.</td></tr>
+                      <tr><th className="manual-th">Merge Clips <kbd className="manual-kbd">J</kbd></th><td className="manual-td"><strong>Joins</strong> adjacent clips into one.</td></tr>
+                      <tr><th className="manual-th">Delete <kbd className="manual-kbd">Del</kbd></th><td className="manual-td">Removes the clip.</td></tr>
+                    </tbody>
+                  </table>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Move</th><td className="manual-td"><strong>Drag</strong> the middle of a clip along the timeline.</td></tr>
+                      <tr><th className="manual-th">Trim</th><td className="manual-td"><strong>Drag a clip's left or right edge</strong> to shorten it from that side.</td></tr>
+                      <tr><th className="manual-th">Multi-select</th><td className="manual-td"><kbd className="manual-kbd">Ctrl</kbd>+click to select several clips at once.</td></tr>
+                      <tr><th className="manual-th">Nudge</th><td className="manual-td">With a clip selected, <kbd className="manual-kbd">←</kbd>/<kbd className="manual-kbd">→</kbd> nudges it — <strong>1 ms</strong> by default, <strong>10 ms</strong> with <kbd className="manual-kbd">Ctrl</kbd>, <strong>100 ms</strong> with <kbd className="manual-kbd">Shift</kbd>.</td></tr>
+                      <tr><th className="manual-th">Deselect</th><td className="manual-td">Press <kbd className="manual-kbd">Esc</kbd> or click empty space.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <p className="manual-p"><strong>Split — cutting a clip</strong></p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-11-split-before.png" alt="Before Split" className="manual-img" />
+                    <div className="manual-figcaption">Before Split — a single continuous clip.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-12-split-after.png" alt="After Split" className="manual-img" />
+                    <div className="manual-figcaption">After Split — the clip is divided at the playhead, and each part can be moved or deleted on its own.</div>
+                  </div>
+
+                  <p className="manual-p"><strong>Merge Clips — joining clips</strong></p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-13-merge-before.png" alt="Before Merge" className="manual-img" />
+                    <div className="manual-figcaption">Before Merge — two separate clips.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-14-merge-after.png" alt="After Merge" className="manual-img" />
+                    <div className="manual-figcaption">After Merge — one clip with a single start/end pair.</div>
+                  </div>
+
+                  <p className="manual-p"><strong>Per-clip volume</strong> — selecting a clip reveals a horizontal line across its top. <strong>Drag that line down to lower just that clip's volume.</strong> The top is 0 dB and the control is <strong>cut-only</strong>; a live dB label follows the drag and the waveform shrinks to match. Use it when one phrase came out too loud, without touching the track fader.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-15-clip-volume.png" alt="Per-clip volume line" className="manual-img" />
+                    <div className="manual-figcaption">The clip's volume line. As the tooltip says, <strong>drag down</strong> to attenuate only this clip.</div>
+                  </div>
+                  <div className="manual-note">Clip edits and clip volume are all <strong>undoable</strong>, saved with the project, and reflected in the Export.</div>
+
+                  <h3 className="manual-h3">9. The Vocal Channel Strip (FX)</h3>
+                  <p className="manual-p">The <strong>FX button</strong> (waveform icon) on an Audio In or Bounce track header opens the <strong>Vocal Channel Strip</strong> window. Six modules for shaping a recorded voice are stacked <strong>in the order the signal passes through them</strong>. The strip is an insert applied <strong>before the track fader (pre-fader)</strong> and is reflected in playback, Export, and the saved project.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-16a-vocal-strip.png" alt="Vocal channel strip — upper half" className="manual-img" />
+                    <div className="manual-figcaption">The top of the strip: track name and the <strong>STRIP ACTIVE</strong> (A/B) switch, the <strong>PRESET</strong> row, <strong>Spectrum</strong>, then <strong>01 High-Pass Filter</strong> and <strong>02 Noise Gate</strong>.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-16b-vocal-strip.png" alt="Vocal channel strip — lower half" className="manual-img" />
+                    <div className="manual-figcaption">The bottom of the strip: <strong>04 Compressor</strong>, <strong>05 De-Esser</strong>, and <strong>06 Broadband De-noise</strong>.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-16c-strip-eq.png" alt="Vocal strip 03 Equalizer" className="manual-img" />
+                    <div className="manual-figcaption"><strong>03 Equalizer</strong>, between the Noise Gate and the Compressor. Drag the nine vertical faders (60 Hz–15 kHz) to shape each band; the current value in dB sits above each fader (green for boosts, red for cuts). <strong>Double-click returns a band to 0 dB.</strong></div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">STRIP ACTIVE (A/B)</th><td className="manual-td">Bypasses or engages the <strong>whole strip</strong> — flip it to <strong>compare processed against unprocessed</strong> on the spot.</td></tr>
+                      <tr><th className="manual-th">PRESET</th><td className="manual-td">Four vocal starting points — <strong>Clean Lead · Warm Pop · Bright Air · Podcast</strong> — which set the HPF, EQ, compressor, and de-esser together.</td></tr>
+                      <tr><th className="manual-th">Reset</th><td className="manual-td">Returns every module to its defaults and switches it off. It deliberately <strong>leaves the A/B (bypass) state alone</strong>, so resetting never silently changes what you are hearing.</td></tr>
+                      <tr><th className="manual-th">Spectrum</th><td className="manual-td">Overlays the frequency curve <strong>before (PRE)</strong> and <strong>after (POST)</strong> the chain. Move the EQ and the POST curve follows in real time, so you can see how the voice is being reshaped.</td></tr>
+                      <tr><th className="manual-th">01 High-Pass Filter</th><td className="manual-td">Cuts low-end <strong>rumble and plosives</strong> (12 dB/oct). FREQ sets the cutoff.</td></tr>
+                      <tr><th className="manual-th">02 Noise Gate</th><td className="manual-td"><strong>Attenuates anything below the threshold</strong> to clean up breaths and room tone. RATIO · ATTACK · RELEASE shape the response, and the <strong>ATTENUATION</strong> meter shows how much is being removed right now.</td></tr>
+                      <tr><th className="manual-th">03 Equalizer</th><td className="manual-td">A 9-band graphic EQ — drag the vertical faders to boost or cut each band (<strong>double-click = 0 dB</strong>).</td></tr>
+                      <tr><th className="manual-th">04 Compressor</th><td className="manual-td"><strong>Narrows the gap between loud and quiet</strong> for an even vocal. THRESH · RATIO · ATTACK · RELEASE · MAKEUP knobs respond to <strong>the wheel for fine-tuning</strong> and <strong>double-click to recentre</strong>. The <strong>GAIN REDUCTION</strong> meter shows how hard it is working.</td></tr>
+                      <tr><th className="manual-th">05 De-Esser</th><td className="manual-td">Tames harsh <strong>sibilance</strong> ("s"/"sh") by attenuating just that band when it gets loud — applied after the compressor. Set FREQ · THRESH · AMOUNT and watch the <strong>DE-ESS GR</strong> meter.</td></tr>
+                      <tr><th className="manual-th">06 Broadband De-noise</th><td className="manual-td">Removes steady <strong>room tone or hiss</strong> (see step 10). This one is an <strong>offline print</strong>, not a realtime effect.</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="manual-p">Each module has its own <strong>ON / OFF</strong> button. Even while off, <strong>touching a knob switches that module on automatically.</strong></p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-17-strip-preset-spectrum.png" alt="Preset applied with PRE/POST spectrum" className="manual-img" />
+                    <div className="manual-figcaption">The <strong>Podcast</strong> preset applied. The Spectrum draws <strong>PRE</strong> (source) and <strong>POST</strong> (processed) on top of each other so the difference is immediately visible.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-18-noise-gate.png" alt="Noise gate working" className="manual-img" />
+                    <div className="manual-figcaption">The Noise Gate in action — the <strong>ATTENUATION</strong> bar fills to show how much is being removed (21.7 dB here).</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-19-comp-deesser.png" alt="Compressor and de-esser working" className="manual-img" />
+                    <div className="manual-figcaption">Compressor and De-Esser working. Their <strong>GAIN REDUCTION</strong> and <strong>DE-ESS GR</strong> meters move, so you can confirm the effect even when it is subtle.</div>
+                  </div>
+                  <div className="manual-note">The presets deliberately <strong>leave the Noise Gate alone.</strong> A usable threshold depends on your own recording's noise floor, so a fixed value is meaningless — too low and nothing happens, too high and word endings get chopped. Set the gate by ear on your own take.</div>
+
+                  <h3 className="manual-h3">10. Broadband De-noise</h3>
+                  <p className="manual-p">This removes <strong>constant background noise</strong> such as air conditioning or hiss. You first let it <strong>learn what the noise sounds like</strong> from a silent stretch, then subtract that profile from the whole clip.</p>
+                  <ol className="manual-ol">
+                    <li className="manual-li">Mark a stretch of this track that contains <strong>only noise</strong> (breaths / room tone, no singing) as the <strong>Repeat region</strong>.</li>
+                    <li className="manual-li">Press <strong>Learn Noise</strong> in the strip. On success the button becomes <strong>✓ Noise learned</strong> and the learned length is reported below.</li>
+                    <li className="manual-li">Set <strong>AMOUNT</strong>, then press <strong>Apply De-noise</strong>.</li>
+                  </ol>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/04-20-denoise.png" alt="De-noise after learning a profile" className="manual-img" />
+                    <div className="manual-figcaption">After learning. A status line such as <strong>Noise profile learned — 0.35 s</strong> appears and <strong>Apply De-noise</strong> becomes available.</div>
+                  </div>
+                  <div className="manual-note">De-noise is <strong>non-destructive</strong>: the cleaned audio is printed to a <strong>new file</strong>, the original recording WAV is kept, and the whole operation is <strong>undoable</strong>. Pushing AMOUNT too high starts eating the voice itself and sounds dull — raise it gradually and listen.</div>
+
+                  <h3 className="manual-h3">11. Managing takes &amp; renaming</h3>
                   <ul className="manual-ul">
-                    <li className="manual-li">When recording ends, the captured signal appears as a waveform on the track and the audio is saved as a <code className="manual-code">.wav</code> file. If you started recording partway through the song, the clip is placed at that position.</li>
-                    <li className="manual-li"><strong>Recording again</strong> on the same track replaces it with a new take. Re-recording also clears any prior <strong>NO AUDIO</strong> state and re-enables Solo/Mute.</li>
-                    <li className="manual-li"><strong>Double-click</strong> a track title to rename it inline (Enter to confirm, Esc to cancel). When an Audio In track owns its recorded WAV, renaming the track also renames the WAV file on disk. (Imported stem file names are left unchanged.)</li>
+                    <li className="manual-li">When recording ends, the captured signal appears as a waveform and the audio is saved as a <code className="manual-code">.wav</code> file. If you started partway through the song, the clip is placed at that position.</li>
+                    <li className="manual-li"><strong>Recording again</strong> on the same track creates a new take. Without Repeat or Punch, the latest take is the one that plays.</li>
+                    <li className="manual-li"><strong>Double-click</strong> a track title to rename it inline (Enter to confirm, Esc to cancel). <strong>Track names and recording file names are handled separately</strong>, so renaming a track does not rename its already-recorded files.</li>
                   </ul>
                   <div className="manual-note">Like any other audio, recordings are shaped by the master EQ, reverb, echo, and other output effects, plus track volume automation. Finished takes are rendered into the full mix in <strong>11. Exporting Mixdown</strong>.</div>
                 </>
@@ -793,33 +1317,44 @@ function HelpDialog({ onClose, standalone = false }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">5. 타임라인과 트랙</h2>
-                  <h3 className="manual-h3">전송 컨트롤</h3>
-                  <p className="manual-p">상단 중앙의 컨트롤로 처음으로 이동, 정지, 재생/일시정지, 루프를 조작합니다. 현재 재생 위치는 분:초 형식으로 표시됩니다.</p>
+                  <h3 className="manual-h3">트랜스포트 컨트롤</h3>
+                  <p className="manual-p">상단 가운데의 버튼들로 재생과 녹음을 조작합니다. 오른쪽의 시간 표시는 <strong>현재 재생 위치 / 전체 길이</strong>입니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">처음으로</th><td className="manual-td">재생 위치를 0초로 되돌립니다(<kbd className="manual-kbd">0</kbd>).</td></tr>
+                      <tr><th className="manual-th">정지</th><td className="manual-td">재생(및 녹음)을 멈춥니다.</td></tr>
+                      <tr><th className="manual-th">재생 / 일시정지</th><td className="manual-td">재생과 일시정지를 전환합니다(<kbd className="manual-kbd">Space</kbd>).</td></tr>
+                      <tr><th className="manual-th">Repeat</th><td className="manual-td">구간 반복을 켭니다. 구간은 아래 <strong>OUTPUT FX 눈금 레인을 드래그</strong>해 만듭니다. 녹음과 함께 쓰면 테이크가 쌓입니다(<strong>4장</strong>).</td></tr>
+                      <tr><th className="manual-th">메트로놈</th><td className="manual-td">카운트인 클릭을 켜고 끕니다. <strong>프로젝트 BPM이 있어야</strong> 활성화됩니다.</td></tr>
+                      <tr><th className="manual-th">프리롤</th><td className="manual-td">누를 때마다 <strong>2초 → 4초 → 8초 → 끔</strong>으로 바뀌며, 버튼에 현재 초가 표시됩니다(기본 4초).</td></tr>
+                      <tr><th className="manual-th">Punch</th><td className="manual-td">Repeat 구간만 다시 녹음하는 모드입니다. <strong>구간이 있어야</strong> 활성화됩니다(<strong>4장</strong>).</td></tr>
+                      <tr><th className="manual-th">Record</th><td className="manual-td">녹음을 시작합니다. <strong>ARM된 Audio In 트랙이 있어야</strong> 활성화됩니다.</td></tr>
+                    </tbody>
+                  </table>
 
                   <h3 className="manual-h3">줌과 트랙 크기</h3>
                   <ul className="manual-ul">
-                    <li className="manual-li"><strong>TIME</strong>: 타임라인의 가로 확대/축소를 조절합니다.</li>
-                    <li className="manual-li"><strong>AMP</strong>: 파형 표시 높이를 조절합니다. 실제 오디오 볼륨이 아니라 파형 보기 배율입니다.</li>
-                    <li className="manual-li"><strong>TRACK SIZE</strong>: 트랙 행 높이를 S, M, L 중에서 선택합니다.</li>
-                    <li className="manual-li">상단 미니맵을 클릭하거나 드래그하면 긴 프로젝트에서 원하는 구간으로 빠르게 이동합니다.</li>
+                    <li className="manual-li"><strong>TIME</strong>: 타임라인의 가로(시간축) 확대·축소입니다.</li>
+                    <li className="manual-li"><strong>AMP</strong>: 파형 표시 높이입니다. 실제 오디오 볼륨이 아니라 <strong>보기 배율</strong>입니다.</li>
+                    <li className="manual-li"><strong>TRACK SIZE</strong>: 트랙 행 높이를 S · M · L 중에서 고릅니다(<strong>1장</strong> 참고).</li>
                   </ul>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/08-time-zoom-in.png" alt="TIME ZOOM in 한 화면" className="manual-img" />
-                    <div className="manual-figcaption">TIME 줌을 올리면 시간축이 넓어져 짧은 구간의 파형과 오토메이션 포인트를 더 세밀하게 볼 수 있습니다.</div>
+                    <img src="manual/screens-v2/05-01-time-zoom.png" alt="Time 줌 기능" className="manual-img" />
+                    <div className="manual-figcaption">TIME 줌을 올리면 시간축이 넓어져 짧은 구간의 파형과 클립 경계, 오토메이션 포인트를 더 세밀하게 다룰 수 있습니다.</div>
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/09-amp-waveform-large.png" alt="AMP 기능으로 파형을 크게 보기" className="manual-img" />
-                    <div className="manual-figcaption">AMP를 올린 화면입니다. 오디오 레벨을 바꾸지 않고 파형 표시만 크게 만들어 작은 신호를 확인하기 좋습니다.</div>
+                    <img src="manual/screens-v2/05-02-amp-zoom.png" alt="AMP 줌 기능" className="manual-img" />
+                    <div className="manual-figcaption">AMP를 올린 화면입니다. 오디오 레벨은 그대로 두고 파형만 크게 그려 작은 신호를 확인하기 좋습니다.</div>
                   </div>
 
                   <h3 className="manual-h3">상단 미니맵 이동</h3>
-                  <p className="manual-p">타임라인 위쪽의 긴 막대는 전체 곡에서 현재 보고 있는 위치를 보여주는 미니맵입니다. 미니맵 안의 선택 영역을 드래그하면 긴 프로젝트에서도 원하는 시간대로 빠르게 이동할 수 있습니다.</p>
+                  <p className="manual-p">타임라인 위쪽의 긴 막대는 곡 전체에서 현재 보고 있는 위치를 보여 주는 미니맵입니다. 안쪽 선택 영역을 드래그하면 긴 프로젝트에서도 원하는 시간대로 단번에 이동할 수 있습니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/10-minimap-drag.png" alt="상단 미니맵을 통해 드래그 이동" className="manual-img" />
-                    <div className="manual-figcaption">상단 미니맵으로 1분대 구간으로 이동한 화면입니다. 긴 오디오 프로젝트에서 스크롤보다 빠르게 위치를 잡을 수 있습니다.</div>
+                    <img src="manual/screens-v2/05-03-minimap.png" alt="상단 미니맵 이동" className="manual-img" />
+                    <div className="manual-figcaption">미니맵으로 원하는 구간으로 이동한 화면입니다. 가로 스크롤보다 훨씬 빠르게 위치를 잡을 수 있습니다.</div>
                   </div>
 
                   <h3 className="manual-h3">트랙 헤더 컨트롤</h3>
@@ -830,23 +1365,62 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">B 버튼</th><td className="manual-td">BPM 측정 대상으로 사용할 트랙을 선택합니다. 한 번에 하나의 트랙만 선택됩니다.</td></tr>
                       <tr><th className="manual-th">S 버튼</th><td className="manual-td">해당 트랙만 듣는 Solo 기능입니다. Solo가 켜진 트랙이 있으면 다른 트랙은 자동으로 들리지 않습니다.</td></tr>
                       <tr><th className="manual-th">M 버튼</th><td className="manual-td">해당 트랙을 음소거합니다.</td></tr>
+                      <tr><th className="manual-th">AUTO</th><td className="manual-td">볼륨 오토메이션 레인을 켜고 끕니다(<strong>8장</strong>).</td></tr>
+                      <tr><th className="manual-th">FX 버튼</th><td className="manual-td">Audio In · Bounce 트랙에만 있습니다. <strong>보컬 채널 스트립</strong> 창을 엽니다(<strong>4장</strong>).</td></tr>
+                      <tr><th className="manual-th">SOURCE 칩</th><td className="manual-td">트랙의 원본 오디오가 정상 연결됐음을 뜻합니다. 파일을 찾지 못하면 붉은 <strong>NO SRC</strong>로 바뀝니다.</td></tr>
                       <tr><th className="manual-th">레벨 미터</th><td className="manual-td">트랙의 현재 출력 레벨을 표시합니다.</td></tr>
-                      <tr><th className="manual-th">삭제 버튼</th><td className="manual-td">트랙을 제거합니다. 확인 창에서 삭제를 확정해야 합니다.</td></tr>
+                      <tr><th className="manual-th">− 버튼</th><td className="manual-td">트랙을 제거합니다. 확인 창에서 삭제를 확정해야 합니다.</td></tr>
                     </tbody>
                   </table>
 
                   <div className="manual-warning">트랙 삭제와 오토메이션 초기화는 확인 후 즉시 적용됩니다. 필요하면 삭제 전에 프로젝트를 저장해 두세요.</div>
 
-                  <h3 className="manual-h3">트랙 이름 바꾸기 · 파일 트랙 일괄 뮤트</h3>
-                  <ul className="manual-ul">
-                    <li className="manual-li"><strong>이름 변경</strong>: 트랙 헤더의 제목을 <strong>더블클릭</strong>하면 인라인 편집이 열립니다(Enter 확정, Esc 취소). 모든 트랙에 적용되며, 녹음 WAV를 소유한 Audio In 트랙은 파일 이름도 함께 바뀝니다(<strong>4. 오디오 녹음</strong> 참고).</li>
-                    <li className="manual-li"><strong>파일 트랙 일괄 뮤트</strong>: 파일 트랙의 <strong>M</strong> 버튼을 <strong>Shift+클릭</strong>하면 모든 파일 트랙의 뮤트가 한 번에 켜지거나 꺼집니다(Audio In 트랙 제외). 믹서 창의 M 버튼에서도 동일하게 동작합니다.</li>
-                  </ul>
+                  <h3 className="manual-h3">트랙 이름 바꾸기</h3>
+                  <p className="manual-p">트랙 헤더의 제목을 <strong>더블클릭</strong>하면 그 자리에서 이름을 고칠 수 있습니다(Enter 확정, Esc 취소). <strong>트랙 이름과 녹음 파일 이름은 따로 관리</strong>되므로, 트랙 이름을 바꿔도 디스크의 녹음 파일 이름은 그대로 유지됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-04-track-rename.png" alt="트랙 헤더 이름 편집" className="manual-img" />
+                    <div className="manual-figcaption">트랙 제목을 더블클릭해 이름을 편집하는 모습입니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">파일 트랙 그룹 — 접기 · 일괄 뮤트 · 병합</h3>
+                  <p className="manual-p">불러온 스템은 모두 <strong>FILE TRACKS</strong> 그룹으로 묶입니다. 그룹 머리글에는 <strong>“n trk · n active”</strong>처럼 전체 트랙 수와 소리가 나고 있는 트랙 수가 표시되고, 오른쪽 <strong>HIDE / SHOW</strong>로 그룹 전체를 접거나 펼칩니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">일괄 뮤트</th><td className="manual-td">파일 트랙의 <strong>M</strong> 버튼을 <strong>Shift+클릭</strong>하면 <strong>모든 파일 트랙</strong>의 뮤트가 한 번에 켜지고 꺼집니다. 이때 그룹 머리글에 <strong>M4</strong>처럼 몇 개가 뮤트됐는지 배지가 표시됩니다. 믹서 창의 M 버튼에서도 똑같이 동작합니다.</td></tr>
+                      <tr><th className="manual-th">적용 대상</th><td className="manual-td">일괄 뮤트는 <strong>파일 트랙에만</strong> 적용됩니다. <strong>Audio In 트랙과 Bounce 트랙은 제외</strong>되므로, 스템을 통째로 음소거하고 자신의 녹음만 확인할 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">MUTE Clr</th><td className="manual-td">OUTPUT FX 헤더의 <strong>MUTE Clr</strong> 버튼을 누르면 모든 트랙의 뮤트·솔로가 한 번에 해제됩니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-05-batch-mute.png" alt="파일 트랙의 일괄 뮤트" className="manual-img" />
+                    <div className="manual-figcaption">파일 트랙을 일괄 뮤트한 모습입니다. 그룹 머리글이 <strong>4 trk · 0 active</strong>로 바뀌고 <strong>M4</strong> 배지가 표시되며, 아래 <strong>Audio In</strong> 트랙은 영향을 받지 않습니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">트랙 병합 — Merge Tracks (Bounce)</h3>
+                  <p className="manual-p">여러 스템을 <strong>하나의 오디오 트랙으로 합치는</strong> 기능입니다. 스템이 많아 화면이 복잡하거나, 반주 전체를 한 덩어리로 묶어 두고 보컬 작업에만 집중하고 싶을 때 씁니다.</p>
+                  <p className="manual-p">합칠 파일 트랙들을 고른 뒤 FILE TRACKS 머리글 오른쪽의 <strong>MERGE TRACKS…</strong> 버튼을 누르면 설정 창이 열립니다. 이 버튼은 <strong>트랙을 2개 이상 선택해야</strong> 활성화되며, 버튼 왼쪽에 선택한 트랙 수가 표시됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-06a-merge-button.png" alt="트랙 2개 선택 시 MERGE TRACKS 버튼 활성화" className="manual-img" />
+                    <div className="manual-figcaption">파일 트랙을 두 개 선택하자 FILE TRACKS 머리글의 <strong>MERGE TRACKS…</strong> 버튼이 활성화된 모습입니다.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-06b-merge-dialog.png" alt="Merge Tracks 대화창" className="manual-img" />
+                    <div className="manual-figcaption">Merge Tracks 창입니다. 맨 위에 합쳐질 트랙 목록이 표시되고, 아래에서 이름·채널·원본 처리 방식을 정한 뒤 <strong>Create Bounce</strong>로 렌더링합니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Track Name</th><td className="manual-td">만들어질 <strong>Bounce 트랙</strong>의 이름입니다.</td></tr>
+                      <tr><th className="manual-th">Channels</th><td className="manual-td"><strong>Stereo</strong> 또는 <strong>Mono</strong>로 렌더링합니다.</td></tr>
+                      <tr><th className="manual-th">Originals</th><td className="manual-td">원본 트랙 처리 방식입니다. <strong>Keep + Mute</strong>(남기고 음소거·기본값) · <strong>Keep</strong>(그대로 남김) · <strong>Delete</strong>(삭제) 중에서 고릅니다.</td></tr>
+                      <tr><th className="manual-th">Create Bounce</th><td className="manual-td">렌더링을 시작합니다. 완료되면 새 <strong>Bounce 트랙</strong>이 만들어집니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-note">만들어진 <strong>Bounce 트랙</strong>은 Audio In 트랙과 마찬가지로 <strong>클립 편집</strong>과 <strong>보컬 채널 스트립(FX)</strong>을 쓸 수 있습니다. 원본을 <strong>Keep + Mute</strong>로 두면 나중에 다시 펼쳐 볼 수 있으므로 가장 안전합니다.</div>
 
                   <h3 className="manual-h3">Edit 메뉴 — 모든 트랙 삭제 (Delete all tracks) <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">상단 <strong>Edit</strong> 메뉴의 Undo / Redo 아래에 <strong>Delete all tracks</strong> 항목이 있습니다. 현재 불러온 <strong>오디오 트랙만 모두 비우고</strong>, 마스터(프로젝트 전체)에 걸어 둔 <strong>이펙트 설정은 그대로 유지</strong>합니다. 같은 이펙트 체인(마스터 EQ·리버브·에코·Ambience·페이드 등)을 유지한 채 다른 스템 세트로 교체할 때 유용합니다.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/29-edit-delete-all-tracks.png" alt="Edit 메뉴의 Delete all tracks 항목" className="manual-img" />
+                    <img src="manual/screens-v2/01-03-edit-menu.png" alt="Edit 메뉴의 Delete all tracks 항목" className="manual-img" />
                     <div className="manual-figcaption">Edit 메뉴의 <strong>Delete all tracks</strong> 항목입니다. 실수를 막기 위해 확인 창을 거칩니다.</div>
                   </div>
                   <table className="manual-table">
@@ -862,32 +1436,43 @@ function HelpDialog({ onClose, standalone = false }) {
                 <>
                   <h2 className="manual-h2">5. Timeline & Tracks</h2>
                   <h3 className="manual-h3">Transport Controls</h3>
-                  <p className="manual-p">Located at the top center, these control Go to Start, Stop, Play/Pause, and Loop. The current play position is shown in min:sec format.</p>
+                  <p className="manual-p">The buttons at the top center drive playback and recording. The time readout on their right is <strong>current position / total length</strong>.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Return to start</th><td className="manual-td">Moves the playhead back to 0 (<kbd className="manual-kbd">0</kbd>).</td></tr>
+                      <tr><th className="manual-th">Stop</th><td className="manual-td">Stops playback (and recording).</td></tr>
+                      <tr><th className="manual-th">Play / Pause</th><td className="manual-td">Toggles playback (<kbd className="manual-kbd">Space</kbd>).</td></tr>
+                      <tr><th className="manual-th">Repeat</th><td className="manual-td">Loops a region, which you drag on the <strong>OUTPUT FX ruler lane</strong>. Combined with Record it stacks takes (<strong>ch. 4</strong>).</td></tr>
+                      <tr><th className="manual-th">Metronome</th><td className="manual-td">Toggles the count-in click. Requires a <strong>project BPM</strong> to be enabled.</td></tr>
+                      <tr><th className="manual-th">Pre-roll</th><td className="manual-td">Each press cycles <strong>2s → 4s → 8s → off</strong>; the button shows the current length (default 4s).</td></tr>
+                      <tr><th className="manual-th">Punch</th><td className="manual-td">Re-records only the Repeat region. Requires <strong>a region</strong> to be enabled (<strong>ch. 4</strong>).</td></tr>
+                      <tr><th className="manual-th">Record</th><td className="manual-td">Starts recording. Requires <strong>an armed Audio In track</strong>.</td></tr>
+                    </tbody>
+                  </table>
 
                   <h3 className="manual-h3">Zoom and Track Size</h3>
                   <ul className="manual-ul">
-                    <li className="manual-li"><strong>TIME</strong>: Adjusts horizontal zoom (time scale) of the timeline.</li>
-                    <li className="manual-li"><strong>AMP</strong>: Adjusts the display height of waveforms. This is a visual zoom scale only and does not change the actual audio level.</li>
-                    <li className="manual-li"><strong>TRACK SIZE</strong>: Changes the height of track headers and lanes (S, M, L options).</li>
-                    <li className="manual-li">Drag or click the top minimap to jump quickly to any section of the song.</li>
+                    <li className="manual-li"><strong>TIME</strong>: horizontal (time-axis) zoom of the timeline.</li>
+                    <li className="manual-li"><strong>AMP</strong>: waveform display height — a <strong>visual scale only</strong>, not the audio level.</li>
+                    <li className="manual-li"><strong>TRACK SIZE</strong>: track row height, S · M · L (see <strong>ch. 1</strong>).</li>
                   </ul>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/08-time-zoom-in.png" alt="Timeline Zoomed In" className="manual-img" />
-                    <div className="manual-figcaption">With horizontal TIME zoom increased, short clips and automation points can be edited with high precision.</div>
+                    <img src="manual/screens-v2/05-01-time-zoom.png" alt="Timeline zoomed in" className="manual-img" />
+                    <div className="manual-figcaption">With TIME zoom increased, waveforms, clip boundaries, and automation points can be handled with much more precision.</div>
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/09-amp-waveform-large.png" alt="Waveforms Visual Zoom" className="manual-img" />
-                    <div className="manual-figcaption">With visual AMP zoom increased, quiet signals and detailed waveform transients can be clearly inspected.</div>
+                    <img src="manual/screens-v2/05-02-amp-zoom.png" alt="Waveform amplitude zoom" className="manual-img" />
+                    <div className="manual-figcaption">With AMP raised, quiet signals and transients are easy to inspect — the audio level itself is unchanged.</div>
                   </div>
 
                   <h3 className="manual-h3">Minimap Navigation</h3>
-                  <p className="manual-p">The bar above the timeline represents the entire length of the project. Dragging the highlighted area moves the timeline view viewport instantly across long sessions.</p>
+                  <p className="manual-p">The bar above the timeline represents the whole song. Dragging the highlighted area moves the view instantly, even across long sessions.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/10-minimap-drag.png" alt="Minimap Drag Navigation" className="manual-img" />
-                    <div className="manual-figcaption">Using the minimap to navigate to the 1-minute mark. Much faster than manual horizontal scrolling.</div>
+                    <img src="manual/screens-v2/05-03-minimap.png" alt="Minimap navigation" className="manual-img" />
+                    <div className="manual-figcaption">Using the minimap to jump to a section — far faster than scrolling horizontally.</div>
                   </div>
 
                   <h3 className="manual-h3">Track Header Controls</h3>
@@ -898,23 +1483,62 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">B Button</th><td className="manual-td">Selects the track used for BPM detection. Only one track can be selected at a time.</td></tr>
                       <tr><th className="manual-th">S Button</th><td className="manual-td">Solos the track (mutes all other non-soloed tracks).</td></tr>
                       <tr><th className="manual-th">M Button</th><td className="manual-td">Mutes the track.</td></tr>
+                      <tr><th className="manual-th">AUTO</th><td className="manual-td">Toggles the volume automation lane (<strong>ch. 8</strong>).</td></tr>
+                      <tr><th className="manual-th">FX Button</th><td className="manual-td">Present on Audio In and Bounce tracks only — opens the <strong>Vocal Channel Strip</strong> (<strong>ch. 4</strong>).</td></tr>
+                      <tr><th className="manual-th">SOURCE chip</th><td className="manual-td">Confirms the track's source audio is linked. It turns into a red <strong>NO SRC</strong> chip when the file cannot be found.</td></tr>
                       <tr><th className="manual-th">Level Meter</th><td className="manual-td">Displays real-time playback output levels.</td></tr>
-                      <tr><th className="manual-th">Delete Button</th><td className="manual-td">Deletes the track from the project (requires confirmation).</td></tr>
+                      <tr><th className="manual-th">− Button</th><td className="manual-td">Deletes the track from the project (requires confirmation).</td></tr>
                     </tbody>
                   </table>
 
                   <div className="manual-warning">Track deletion and automation resets take effect immediately after confirmation. Save your project first if you are unsure.</div>
 
-                  <h3 className="manual-h3">Renaming tracks &amp; batch-muting file tracks</h3>
-                  <ul className="manual-ul">
-                    <li className="manual-li"><strong>Rename</strong>: <strong>Double-click</strong> a track title in the header to open inline editing (Enter to confirm, Esc to cancel). This works on every track; for an Audio In track that owns its recorded WAV, the file is renamed too (see <strong>4. Recording (Audio In)</strong>).</li>
-                    <li className="manual-li"><strong>Batch-mute file tracks</strong>: <strong>Shift+click</strong> the <strong>M</strong> button on a file track to toggle mute on all file tracks at once (Audio In tracks excluded). The same works from the M button in the Mixer window.</li>
-                  </ul>
+                  <h3 className="manual-h3">Renaming tracks</h3>
+                  <p className="manual-p"><strong>Double-click</strong> a track title in the header to edit it in place (Enter to confirm, Esc to cancel). <strong>Track names and recording file names are handled separately</strong>, so renaming a track leaves the recorded files on disk untouched.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-04-track-rename.png" alt="Editing a track name in the header" className="manual-img" />
+                    <div className="manual-figcaption">Double-clicking a track title to rename it inline.</div>
+                  </div>
+
+                  <h3 className="manual-h3">The file-track group — collapse, batch mute, merge</h3>
+                  <p className="manual-p">Imported stems are gathered under <strong>FILE TRACKS</strong>. The group header shows <strong>“n trk · n active”</strong> — total tracks and how many are actually sounding — and <strong>HIDE / SHOW</strong> folds or expands the whole group.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Batch mute</th><td className="manual-td"><strong>Shift+click</strong> the <strong>M</strong> button on a file track to toggle mute on <strong>every file track</strong> at once. The group header then shows a badge such as <strong>M4</strong> with the muted count. The M button in the Mixer window behaves the same way.</td></tr>
+                      <tr><th className="manual-th">Scope</th><td className="manual-td">Batch mute affects <strong>file tracks only</strong>. <strong>Audio In and Bounce tracks are excluded</strong>, so you can silence the backing stems and check your own recording alone.</td></tr>
+                      <tr><th className="manual-th">MUTE Clr</th><td className="manual-td">The <strong>MUTE Clr</strong> button on the OUTPUT FX header clears every mute and solo at once.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-05-batch-mute.png" alt="Batch-muting the file tracks" className="manual-img" />
+                    <div className="manual-figcaption">File tracks batch-muted. The group header reads <strong>4 trk · 0 active</strong> with an <strong>M4</strong> badge, while the <strong>Audio In</strong> track below is unaffected.</div>
+                  </div>
+
+                  <h3 className="manual-h3">Merge Tracks (Bounce)</h3>
+                  <p className="manual-p">Merging renders several stems down to <strong>a single audio track</strong> — useful when there are too many stems on screen, or when you want the whole backing as one block so you can focus on the vocal.</p>
+                  <p className="manual-p">Select the file tracks to combine, then press <strong>MERGE TRACKS…</strong> at the right of the FILE TRACKS header. The button only becomes active once <strong>two or more tracks are selected</strong>, and shows the selected count beside it.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-06a-merge-button.png" alt="MERGE TRACKS enabled with two tracks selected" className="manual-img" />
+                    <div className="manual-figcaption">With two file tracks selected, the <strong>MERGE TRACKS…</strong> button in the FILE TRACKS header becomes active.</div>
+                  </div>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/05-06b-merge-dialog.png" alt="Merge Tracks dialog" className="manual-img" />
+                    <div className="manual-figcaption">The Merge Tracks dialog. The tracks being combined are listed at the top; set the name, channels, and originals handling, then press <strong>Create Bounce</strong>.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Track Name</th><td className="manual-td">The name of the <strong>Bounce track</strong> that will be created.</td></tr>
+                      <tr><th className="manual-th">Channels</th><td className="manual-td">Render as <strong>Stereo</strong> or <strong>Mono</strong>.</td></tr>
+                      <tr><th className="manual-th">Originals</th><td className="manual-td">What happens to the source tracks: <strong>Keep + Mute</strong> (default), <strong>Keep</strong>, or <strong>Delete</strong>.</td></tr>
+                      <tr><th className="manual-th">Create Bounce</th><td className="manual-td">Starts rendering; a new <strong>Bounce track</strong> appears when it finishes.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-note">A <strong>Bounce track</strong> supports <strong>clip editing</strong> and the <strong>Vocal Channel Strip (FX)</strong>, just like an Audio In track. Leaving the originals on <strong>Keep + Mute</strong> is the safest choice — you can always unfold them again later.</div>
 
                   <h3 className="manual-h3">Edit Menu — Delete all tracks <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">The top <strong>Edit</strong> menu offers <strong>Delete all tracks</strong> below Undo / Redo. It clears <strong>all loaded audio tracks at once while keeping the master (project-wide) effect settings intact</strong> — handy when you want to swap in a different set of stems but keep the same effect chain (master EQ, reverb, echo, Ambience, fades, etc.).</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/29-edit-delete-all-tracks.png" alt="Delete all tracks item in the Edit menu" className="manual-img" />
+                    <img src="manual/screens-v2/01-03-edit-menu.png" alt="Delete all tracks item in the Edit menu" className="manual-img" />
                     <div className="manual-figcaption">The <strong>Delete all tracks</strong> item in the Edit menu. A confirmation dialog prevents accidental loss.</div>
                   </div>
                   <table className="manual-table">
@@ -937,7 +1561,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio는 트랙 오디오에서 곡의 BPM(분당 박자 수)을 자동으로 측정하고, 그 값을 기준으로 <strong>전체 음악</strong>의 재생 템포를 조정할 수 있습니다. 새 프로젝트의 BPM은 처음에 <strong>---</strong>로 표시되며, 모든 트랙을 지우거나 새 프로젝트를 시작하면 다시 <strong>---</strong>로 초기화됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM 표시기" className="manual-img" />
+                    <img src="manual/screens-v2/06-01-bpm-indicator.png" alt="BPM 표시기" className="manual-img" />
                     <div className="manual-figcaption">상단 도구 막대의 BPM 표시기입니다. <strong>100 BPM | 100</strong>처럼 두 숫자가 보이며, <strong>앞</strong>은 프로젝트 BPM(곡의 기준 템포), <strong>뒤</strong>는 재생 BPM(실제 재생 속도)입니다.</div>
                   </div>
 
@@ -947,7 +1571,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">먼저 어떤 트랙의 오디오로 BPM을 측정할지 정합니다. 트랙 헤더의 <strong>B</strong> 버튼을 누르면 그 트랙이 BPM 측정 소스로 선택되어 배경이 채워지며, B는 한 번에 한 트랙에만 켜집니다. 드럼처럼 박자가 뚜렷한 트랙을 고르면 측정이 더 정확합니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/20-bpm-source-track.png" alt="특정 트랙을 BPM 측정 트랙으로 설정" className="manual-img" />
+                    <img src="manual/screens-v2/06-02-bpm-source.png" alt="특정 트랙을 BPM 측정 트랙으로 설정" className="manual-img" />
                     <div className="manual-figcaption"><strong>B</strong> 버튼이 채워진 트랙이 BPM 측정 소스입니다.</div>
                   </div>
 
@@ -955,7 +1579,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">BPM 표시기를 클릭하면 아래로 설정 패널이 펼쳐집니다. 다시 누르거나, 마우스가 패널 밖으로 나간 채 5초가 지나면 접힙니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM 설정 패널" className="manual-img" />
+                    <img src="manual/screens-v2/06-03-bpm-panel.png" alt="BPM 설정 패널" className="manual-img" />
                     <div className="manual-figcaption">BPM 설정 패널입니다. 위쪽 <strong>BPM SOURCE</strong>에 선택된 트랙 이름과 <strong>Track</strong> 번호가 두 열로 표시되고, 그 아래 Detect · 직접 입력칸 · APPLY · TAP 버튼이 있습니다.</div>
                   </div>
 
@@ -968,11 +1592,17 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
+                  <p className="manual-p">자동 감지가 잘 맞지 않을 때는 <strong>TAP</strong>이 가장 확실합니다. 음악을 재생해 두고 박자에 맞춰 TAP 버튼을 반복해 누르면, 누른 간격의 평균으로 BPM이 계산됩니다. 버튼에는 지금까지의 추정값과 누른 횟수가 <code className="manual-code">TAP · n</code> 형태로 표시되며, 여러 번 누를수록 값이 안정됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/06-06-bpm-tap.png" alt="TAP을 이용한 BPM 입력" className="manual-img" />
+                    <div className="manual-figcaption">TAP으로 BPM을 직접 재는 모습입니다. 원하는 값이 나오면 <strong>APPLY</strong>로 확정합니다.</div>
+                  </div>
+
                   <h3 className="manual-h3">③ Detect 분석 중 표시</h3>
                   <p className="manual-p"><strong>Detect</strong>를 누르면 분석이 진행되는 동안 버튼이 회전 아이콘과 <strong>Analyzing…</strong> 표시로 바뀝니다. 분석이 끝나면 추정된 BPM이 입력칸에 강조 효과와 함께 표시됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM 분석 중 화면" className="manual-img" />
+                    <img src="manual/screens-v2/06-04-bpm-analyzing.png" alt="BPM 분석 중 화면" className="manual-img" />
                     <div className="manual-figcaption">Detect 실행 중에는 버튼이 <strong>Analyzing…</strong> 상태로 바뀌어 분석이 진행 중임을 알려줍니다.</div>
                   </div>
 
@@ -980,7 +1610,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p"><strong>Vari BPM</strong> 스위치를 켠 뒤 재생 BPM(뒤 숫자)을 바꾸면 모든 트랙이 같은 비율로 빨라지거나 느려진 상태로 재생됩니다. 예를 들어 프로젝트 BPM이 100일 때 재생 BPM을 120으로 올리면 곡 전체가 1.2배 빠르게 재생됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
+                    <img src="manual/screens-v2/06-05-vari-bpm.png" alt="BPM 속도를 변경한 뒤 재생 중인 화면" className="manual-img" />
                     <div className="manual-figcaption">재생 BPM을 <strong>100 → 120</strong>으로 올린 뒤 재생 중인 화면입니다. 표시기가 <strong>100 BPM | 120</strong>으로 바뀌고 곡 전체가 그 비율만큼 빠르게 재생됩니다.</div>
                   </div>
 
@@ -992,7 +1622,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio detects a song's BPM (beats per minute) from a track's audio and lets you adjust the playback tempo of the <strong>whole song</strong> based on it. A new project starts with BPM shown as <strong>---</strong>, and it returns to <strong>---</strong> whenever you clear all tracks or start a new project.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/19-bpm-indicator.png" alt="BPM indicator" className="manual-img" />
+                    <img src="manual/screens-v2/06-01-bpm-indicator.png" alt="BPM indicator" className="manual-img" />
                     <div className="manual-figcaption">The indicator shows two numbers such as <strong>100 BPM | 100</strong>: the front is the project BPM (reference tempo), the back is the playback BPM (actual speed).</div>
                   </div>
 
@@ -1002,7 +1632,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Press the <strong>B</strong> button on a track header to mark it as the BPM detection source (its background fills in). Only one track can be the B source at a time. Picking a track with a clear beat (e.g. drums) gives more accurate detection.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/20-bpm-source-track.png" alt="Track set as BPM detection source" className="manual-img" />
+                    <img src="manual/screens-v2/06-02-bpm-source.png" alt="Track set as BPM detection source" className="manual-img" />
                     <div className="manual-figcaption">The track whose <strong>B</strong> button is filled is the BPM detection source.</div>
                   </div>
 
@@ -1010,7 +1640,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Click the BPM indicator to expand the settings panel. Click it again, or leave it inactive outside the mouse area for 5 seconds, to collapse it.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/21-bpm-settings-panel.png" alt="BPM settings panel" className="manual-img" />
+                    <img src="manual/screens-v2/06-03-bpm-panel.png" alt="BPM settings panel" className="manual-img" />
                     <div className="manual-figcaption">The top row shows <strong>BPM SOURCE</strong> (selected track name) and its <strong>Track</strong> number in two columns, with Detect, an input field, APPLY, and TAP below.</div>
                   </div>
 
@@ -1023,11 +1653,17 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
+                  <p className="manual-p">When automatic detection struggles, <strong>TAP</strong> is the most reliable route. Play the song and tap the button along with the beat — the BPM is averaged from your tap intervals. The button shows the running estimate and tap count as <code className="manual-code">TAP · n</code>, and the value settles the more you tap.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/06-06-bpm-tap.png" alt="Entering BPM by tapping" className="manual-img" />
+                    <div className="manual-figcaption">Measuring BPM by tapping. Once the value looks right, confirm it with <strong>APPLY</strong>.</div>
+                  </div>
+
                   <h3 className="manual-h3">3. Detection-in-progress feedback</h3>
                   <p className="manual-p">While <strong>Detect</strong> runs, the button changes to a spinner with <strong>Analyzing…</strong>. When it finishes, the estimated BPM appears in the input field with a brief highlight.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/22-bpm-analyzing.png" alt="BPM analysis in progress" className="manual-img" />
+                    <img src="manual/screens-v2/06-04-bpm-analyzing.png" alt="BPM analysis in progress" className="manual-img" />
                     <div className="manual-figcaption">During detection the button shows the <strong>Analyzing…</strong> state.</div>
                   </div>
 
@@ -1035,7 +1671,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">With the <strong>Vari BPM</strong> switch on, changing the playback BPM (the back number) plays every track faster or slower by the same ratio. For example, with a project BPM of 100, raising the playback BPM to 120 plays the whole song 1.2× faster.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/23-bpm-tempo-changed.png" alt="Playing after a tempo change" className="manual-img" />
+                    <img src="manual/screens-v2/06-05-vari-bpm.png" alt="Playing after a tempo change" className="manual-img" />
                     <div className="manual-figcaption">Playing after raising the playback BPM <strong>100 → 120</strong>; the indicator reads <strong>100 BPM | 120</strong> and the whole song plays faster by that ratio.</div>
                   </div>
 
@@ -1052,7 +1688,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio는 프로젝트에 로드된 트랙 오디오의 화성 성분을 종합적으로 분석하여 곡의 원곡 키(Key)를 자동으로 감지하고, 반음(Semitones) 단위로 곡의 조성을 올리거나 내려서 실시간으로 이조 재생할 수 있습니다. 처음 세션을 열었을 때 키 표시창은 <strong>---</strong>로 표시됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/39-key-indicator-initial.png" alt="Key 표시창 초기 상태" className="manual-img" />
+                    <img src="manual/screens-v2/07-01-key-indicator.png" alt="Key 표시창 초기 상태" className="manual-img" />
                     <div className="manual-figcaption">상단 도구 막대의 Key 표시창 초기 상태입니다. 아직 키 설정이 적용되지 않아 <code>---</code>로 표시됩니다.</div>
                   </div>
 
@@ -1060,7 +1696,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Key 표시창 부분을 클릭하면 아래로 Key 설정 패널이 펼쳐집니다. 이 패널은 클릭하여 켜고 끌 수 있으며, 마우스 포인터가 패널에서 벗어난 지 5초가 지나면 자동으로 닫힙니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/40-key-panel-opened.png" alt="Key 설정 패널 열린 상태" className="manual-img" />
+                    <img src="manual/screens-v2/07-02-key-panel.png" alt="Key 설정 패널 열린 상태" className="manual-img" />
                     <div className="manual-figcaption">Key 표시창을 클릭하여 설정 패널을 열어둔 상태입니다.</div>
                   </div>
 
@@ -1068,12 +1704,12 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">패널 내의 <strong>Detect</strong> 버튼을 누르면 프로젝트의 활성화된 모든 오디오 트랙을 정밀 분석(STFT 기반 크로마 연산)하여 원곡의 키를 추정합니다. 분석이 끝나면 감지된 대표 키값이 패널 하단 목록에 표시됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/41-key-detected.png" alt="Key Detection 완료 화면" className="manual-img" />
+                    <img src="manual/screens-v2/07-03a-key-detect.png" alt="Key Detection 완료 화면" className="manual-img" />
                     <div className="manual-figcaption">Detect 버튼을 누르면 <code>Analyzing...</code> 상태를 거쳐 분석된 오디오의 감지된 키가 하단에 나타납니다.</div>
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/42-key-list-window.png" alt="하단 Key 후보 리스트" className="manual-img" />
+                    <img src="manual/screens-v2/07-03b-key-list.png" alt="하단 Key 후보 리스트" className="manual-img" />
                     <div className="manual-figcaption">하단 Key 리스트 창에서는 신뢰도가 높은 으뜸음 및 조성 후보들을 목록으로 제안합니다.</div>
                   </div>
 
@@ -1081,12 +1717,12 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">원하는 키 후보를 선택하거나, 패널 내의 <strong>+</strong> / <strong>-</strong> 버튼을 클릭해 원하는 반음(Semitones, 최대 ±6) 오프셋을 설정한 뒤 <strong>APPLY</strong> 버튼을 누르면 프로젝트의 기준 키가 세션에 등록됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/43-key-applied.png" alt="APPLY 적용 후의 Key 표시" className="manual-img" />
+                    <img src="manual/screens-v2/07-04a-key-apply.png" alt="APPLY 적용 후의 Key 표시" className="manual-img" />
                     <div className="manual-figcaption">APPLY 적용 후 Key 표시창의 <strong>앞부분</strong>에 분석/지정된 원곡 키(예: <code>Ab</code>)가 표시됩니다.</div>
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/44-key-settings-change.png" alt="오프셋 변경 후 APPLY된 화면" className="manual-img" />
+                    <img src="manual/screens-v2/07-04b-key-apply.png" alt="오프셋 변경 후 APPLY된 화면" className="manual-img" />
                     <div className="manual-figcaption">설정 패널에서 <code>+1</code> 반음과 같이 키 오프셋을 변경하고 APPLY 버튼을 눌러 적용을 완료한 화면입니다.</div>
                   </div>
 
@@ -1094,7 +1730,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Key 표시기 오른쪽의 <strong>Vari Key</strong> 스위치를 <strong>켜면</strong>, 사용자가 변경한 조(Key)의 피치가 재생 엔진에 즉각 반영되어 음높이가 실시간으로 변조(Pitch Shift)되어 플레이됩니다. 스위치를 끄면 원래 녹음된 피치 그대로 재생됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/45-vari-key-on.png" alt="Vari Key 기능을 켠 화면" className="manual-img" />
+                    <img src="manual/screens-v2/07-05-vari-key.png" alt="Vari Key 기능을 켠 화면" className="manual-img" />
                     <div className="manual-figcaption">Vari Key 스위치를 켜면 재생 Key(뒤쪽 표시값)에 변경된 조가 적용되고, 재생 중인 음악의 키가 실시간으로 변합니다.</div>
                   </div>
 
@@ -1104,7 +1740,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/46-vari-bpm-key-warning.png" alt="BPM 및 Key 동시 변경 경고 화면" className="manual-img" />
+                    <img src="manual/screens-v2/07-06-vari-both.png" alt="BPM 및 Key 동시 변경 경고 화면" className="manual-img" />
                     <div className="manual-figcaption">Vari BPM과 Vari Key 스위치가 동시에 활성화된 상태입니다. 과도한 이조와 템포 변경은 음질 왜곡을 유발할 수 있습니다.</div>
                   </div>
                 </>
@@ -1114,7 +1750,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio analyzes the harmonic content of all loaded audio tracks to estimate the song's original key and lets you shift the pitch up or down in semitones (up to ±6 semitones) for real-time key-shifted playback. When a new session is opened, the Key indicator reads <strong>---</strong>.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/39-key-indicator-initial.png" alt="Key indicator initial state" className="manual-img" />
+                    <img src="manual/screens-v2/07-01-key-indicator.png" alt="Key indicator initial state" className="manual-img" />
                     <div className="manual-figcaption">The initial state of the Key indicator in the top toolbar. It displays <code>---</code> when no key is set.</div>
                   </div>
 
@@ -1122,7 +1758,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Click the Key indicator in the toolbar to expand the Key settings panel. You can toggle the panel open and closed by clicking it, and it will close automatically 5 seconds after the mouse pointer leaves the panel area.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/40-key-panel-opened.png" alt="Key settings panel opened" className="manual-img" />
+                    <img src="manual/screens-v2/07-02-key-panel.png" alt="Key settings panel opened" className="manual-img" />
                     <div className="manual-figcaption">The Key settings panel opened by clicking the Key indicator.</div>
                   </div>
 
@@ -1130,12 +1766,12 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Click the <strong>Detect</strong> button in the panel to run a comprehensive harmonic analysis (STFT-based chromagram) across all active audio tracks. Once the analysis is complete, the estimated candidate keys will be displayed at the bottom of the panel.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/41-key-detected.png" alt="Key detection complete" className="manual-img" />
+                    <img src="manual/screens-v2/07-03a-key-detect.png" alt="Key detection complete" className="manual-img" />
                     <div className="manual-figcaption">Clicking Detect switches the button to an <code>Analyzing...</code> state, then reveals the detected key details.</div>
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/42-key-list-window.png" alt="Key candidate list" className="manual-img" />
+                    <img src="manual/screens-v2/07-03b-key-list.png" alt="Key candidate list" className="manual-img" />
                     <div className="manual-figcaption">The key candidate list at the bottom suggests the most probable tonic and scale options.</div>
                   </div>
 
@@ -1143,12 +1779,12 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Select your preferred candidate key, or use the <strong>+</strong> / <strong>-</strong> buttons to adjust the semitones offset (up to ±6 semitones), then click <strong>APPLY</strong> to write the reference key to the project.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/43-key-applied.png" alt="Key indicator showing applied key" className="manual-img" />
+                    <img src="manual/screens-v2/07-04a-key-apply.png" alt="Key indicator showing applied key" className="manual-img" />
                     <div className="manual-figcaption">After clicking APPLY, the estimated/selected key is displayed in the <strong>left</strong> portion of the Key indicator (e.g. <code>Ab</code>).</div>
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/44-key-settings-change.png" alt="Offset changed and applied" className="manual-img" />
+                    <img src="manual/screens-v2/07-04b-key-apply.png" alt="Offset changed and applied" className="manual-img" />
                     <div className="manual-figcaption">Changing the key offset (e.g. to <code>+1</code> semitone) and applying the changes.</div>
                   </div>
 
@@ -1156,7 +1792,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Enable the <strong>Vari Key</strong> switch next to the Key indicator to apply your pitch shifts directly to the playback engine in real-time. Turning the switch off reverts the playback pitch back to the original recorded audio state.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/45-vari-key-on.png" alt="Vari Key switch turned on" className="manual-img" />
+                    <img src="manual/screens-v2/07-05-vari-key.png" alt="Vari Key switch turned on" className="manual-img" />
                     <div className="manual-figcaption">Enabling Vari Key updates the playback key (the right value) and shifts the pitch of the playing music in real-time.</div>
                   </div>
 
@@ -1166,7 +1802,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/46-vari-bpm-key-warning.png" alt="Vari BPM and Vari Key active warning" className="manual-img" />
+                    <img src="manual/screens-v2/07-06-vari-both.png" alt="Vari BPM and Vari Key active warning" className="manual-img" />
                     <div className="manual-figcaption">Both Vari BPM and Vari Key enabled at the same time. Excessive stretching and shifting may degrade audio quality.</div>
                   </div>
                 </>
@@ -1198,7 +1834,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/11-vol-auto-on.png" alt="VOL AUTO를 켠 화면" className="manual-img" />
+                    <img src="manual/screens-v2/08-01-auto-on-off.png" alt="VOL AUTO를 켠 화면" className="manual-img" />
                     <div className="manual-figcaption">VOL AUTO를 켜면 해당 트랙 위에 노란 볼륨 오토메이션 레인이 표시됩니다. 트랙 크기가 L일 때 Reset과 Curve 버튼도 함께 보입니다.</div>
                   </div>
 
@@ -1206,7 +1842,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">오토메이션 선 위를 클릭해 포인트를 추가하고, 포인트를 드래그해 볼륨 변화 시점과 크기를 조절합니다. 아래로 내린 구간은 소리가 작아지고, 위로 올린 구간은 원래 볼륨에 가깝게 재생됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/12-vol-auto-edited.png" alt="볼륨 오토메이션을 조정한 화면" className="manual-img" />
+                    <img src="manual/screens-v2/08-02-point-edit.png" alt="볼륨 오토메이션을 조정한 화면" className="manual-img" />
                     <div className="manual-figcaption">여러 포인트를 배치해 구간별 볼륨을 조정한 화면입니다. 점과 선의 형태가 그대로 재생 및 내보내기에 적용됩니다.</div>
                   </div>
 
@@ -1214,7 +1850,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p"><strong>Curve</strong>를 켜면 포인트 사이가 직선이 아니라 부드러운 곡선으로 이어집니다. 급격한 볼륨 변화보다 자연스러운 페이드나 강조를 만들 때 유용합니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/13-vol-auto-curve.png" alt="볼륨 오토메이션 Curve 기능을 켠 화면" className="manual-img" />
+                    <img src="manual/screens-v2/08-03-curve.png" alt="볼륨 오토메이션 Curve 기능을 켠 화면" className="manual-img" />
                     <div className="manual-figcaption">Curve 기능을 켠 화면입니다. 점선은 기준 직선이고, 실제 적용 곡선은 부드럽게 보정되어 표시됩니다.</div>
                   </div>
                 </>
@@ -1241,7 +1877,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/11-vol-auto-on.png" alt="Automation Lane Enabled" className="manual-img" />
+                    <img src="manual/screens-v2/08-01-auto-on-off.png" alt="Automation Lane Enabled" className="manual-img" />
                     <div className="manual-figcaption">Volume automation lane enabled on a track. Reset and Curve options are visible when track size is L.</div>
                   </div>
 
@@ -1249,7 +1885,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Add points and adjust them to shape volume over time. Pulling the line down attenuates volume, while dragging it up approaches original volume.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/12-vol-auto-edited.png" alt="Edited Automation Curve" className="manual-img" />
+                    <img src="manual/screens-v2/08-02-point-edit.png" alt="Edited Automation Curve" className="manual-img" />
                     <div className="manual-figcaption">A customized automation curve. Point values and curves are applied to playback and exported mixdowns.</div>
                   </div>
 
@@ -1257,7 +1893,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Enabling **Curve** shapes the paths between points with smooth bezier curves. This is useful for creating organic fade-ins, fade-outs, or natural volume rises.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/13-vol-auto-curve.png" alt="Bezier Curve Automation" className="manual-img" />
+                    <img src="manual/screens-v2/08-03-curve.png" alt="Bezier Curve Automation" className="manual-img" />
                     <div className="manual-figcaption">Automation curves enabled. Dotted lines show linear references, while the solid line represents the active curve.</div>
                   </div>
                 </>
@@ -1272,35 +1908,44 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">상단 오른쪽의 <strong>Mixer</strong> 버튼을 누르면 떠 있는 믹서 창이 열립니다. 믹서 창은 제목 표시줄을 드래그해 위치를 옮길 수 있습니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/04-mixer-master.png" alt="FocusDAW Studio 믹서 화면" className="manual-img" />
-                    <div className="manual-figcaption">실제 앱에서 연 믹서 창입니다. 각 트랙의 채널 스트립과 오른쪽 MASTER 패널로 구성됩니다.</div>
+                    <img src="manual/screens-v2/09-01-mixer-overview.png" alt="메인 앱과 믹서 창" className="manual-img" />
+                    <div className="manual-figcaption">메인 창 위에 믹서를 띄운 모습입니다. 왼쪽에 트랙별 채널 스트립, 오른쪽에 MASTER 패널이 놓입니다. 타임라인 파형을 보면서 동시에 믹스를 조정할 수 있습니다.</div>
                   </div>
+                  <p className="manual-p">믹서 창 제목 표시줄에는 <strong>정지 · 재생</strong> 버튼이 있어, 메인 창으로 돌아가지 않고도 믹서에서 바로 재생을 조작할 수 있습니다.</p>
 
                   <h3 className="manual-h3">채널 스트립</h3>
-                  <ul className="manual-ul">
-                    <li className="manual-li"><strong>VRB</strong>: 트랙 리버브 전송량을 조절합니다.</li>
-                    <li className="manual-li"><strong>ECHO</strong>: 트랙 에코/딜레이 전송량을 조절합니다.</li>
-                    <li className="manual-li"><strong>S/M</strong>: Solo와 Mute를 전환합니다.</li>
-                    <li className="manual-li"><strong>PAN</strong>: 좌우 위치를 조정합니다.</li>
-                    <li className="manual-li"><strong>Fader</strong>: 트랙 볼륨을 세로 페이더로 조절합니다.</li>
-                  </ul>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">VRB</th><td className="manual-td">트랙 리버브 전송량입니다.</td></tr>
+                      <tr><th className="manual-th">ECHO</th><td className="manual-td">트랙 에코/딜레이 전송량입니다.</td></tr>
+                      <tr><th className="manual-th">S / M</th><td className="manual-td">Solo와 Mute입니다. <strong>M</strong>을 <strong>Shift+클릭</strong>하면 파일 트랙 일괄 뮤트가 동작합니다(<strong>5장</strong>).</td></tr>
+                      <tr><th className="manual-th">PAN</th><td className="manual-td">좌우 스테레오 위치입니다. 아래에 현재 값(C / L · R)이 표시됩니다.</td></tr>
+                      <tr><th className="manual-th">Fader</th><td className="manual-td">트랙 볼륨을 세로 페이더로 조절하고, 맨 아래 dB 값으로 확인합니다.</td></tr>
+                    </tbody>
+                  </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/14-mixer-pan-gain-detail.png" alt="Mixer PAN 기능과 볼륨 Gain 조정 상세" className="manual-img" />
-                    <div className="manual-figcaption">믹서 상세 화면입니다. 각 채널의 PAN 값과 하단 dB 값으로 좌우 위치와 볼륨 Gain 조정 상태를 확인할 수 있습니다.</div>
+                    <img src="manual/screens-v2/09-02a-strip-normal.png" alt="채널 스트립 — 일반 트랙" className="manual-img" />
+                    <div className="manual-figcaption">일반(파일) 트랙의 채널 스트립입니다. 위에서부터 VRB · ECHO, S · M, PAN, 볼륨 페이더와 dB 값 순서입니다.</div>
                   </div>
 
+                  <p className="manual-p"><strong>Audio In 트랙의 채널 스트립</strong>에는 아래쪽에 녹음 전용 구역이 더 붙습니다. <strong>ARM · MON · LIM</strong> 버튼과 <strong>입력 포트</strong> 선택, 큰 <strong>GAIN</strong> 노브, 그리고 그 오른쪽의 <strong>IN</strong>(입력 레벨) · <strong>GR</strong>(리미터 게인 리덕션) 미터입니다. 덕분에 믹서 창만 보면서도 입력 게인을 잡을 수 있습니다.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/15-mixer-pan-gain-full.png" alt="Mixer PAN 기능과 볼륨 Gain 조정 전체 화면" className="manual-img" />
-                    <div className="manual-figcaption">Arrange 화면 위에 믹서를 띄운 상태입니다. 타임라인 파형을 보면서 트랙별 PAN과 Gain을 동시에 조정할 수 있습니다.</div>
+                    <img src="manual/screens-v2/09-02b-strip-audioin.png" alt="채널 스트립 — Audio Input 트랙" className="manual-img" />
+                    <div className="manual-figcaption">Audio In 트랙의 채널 스트립입니다. 일반 트랙 구성 아래에 ARM · MON · LIM, 입력 포트, GAIN 노브와 IN · GR 미터가 추가됩니다.</div>
                   </div>
 
                   <h3 className="manual-h3">MASTER 패널</h3>
-                  <p className="manual-p">MASTER 패널은 최종 출력에 적용되는 설정입니다. 9밴드 Graphic EQ, FFT 또는 Level meter 보기, 마스터 볼륨, EQ 프리셋, 그리고 다섯 가지 <strong>OUTPUT EFFECTS</strong>(Reverb · Delay · Saturation · Widener · Exciter / Enhancer)를 제공합니다.</p>
+                  <p className="manual-p">MASTER 패널은 최종 출력에 적용되는 설정입니다. 9밴드 Graphic EQ, 마스터 볼륨(VOL), EQ 프리셋, 그리고 다섯 가지 <strong>OUTPUT EFFECTS</strong>(Reverb · Delay · Saturation · Widener · Exciter / Enhancer)를 제공합니다. 패널 오른쪽 위에는 현재 <strong>피크 레벨(dB)</strong>이 표시됩니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/16-mixer-eq-adjust.png" alt="믹서 EQ 조정 화면" className="manual-img" />
-                    <div className="manual-figcaption">MASTER 패널의 EQ 조정 화면입니다. 60Hz부터 15kHz까지 각 포인트를 위아래로 움직여 저역, 중역, 고역의 성격을 조절합니다.</div>
+                    <img src="manual/screens-v2/09-03a-master.png" alt="MASTER 패널" className="manual-img" />
+                    <div className="manual-figcaption">MASTER 패널입니다. 60Hz부터 15kHz까지 EQ 포인트를 위아래로 끌어 저역·중역·고역을 조절하고, 아래 EQ PRESET과 OUTPUT EFFECTS로 마스터를 다듬습니다.</div>
+                  </div>
+                  <p className="manual-p">EQ 그래프 위쪽의 <strong>GRAPHIC EQ · FFT</strong>와 <strong>LEVEL METER</strong> 버튼으로 배경 표시를 바꿀 수 있습니다. <strong>FFT</strong>는 실시간 주파수 스펙트럼을, <strong>LEVEL METER</strong>는 대역별 LED 레벨 미터를 보여 줍니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/09-03b-master-led.png" alt="MASTER 패널 — LED 오디오 레벨 미터" className="manual-img" />
+                    <div className="manual-figcaption"><strong>LEVEL METER</strong> 보기로 전환한 모습입니다. 주파수 대역별 LED 미터 위에서 EQ 포인트를 그대로 조작할 수 있습니다.</div>
                   </div>
 
                   <table className="manual-table">
@@ -1322,16 +1967,17 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/30-mixer-output-effects.png" alt="믹서 MASTER 패널의 새 OUTPUT EFFECTS" className="manual-img" />
-                    <div className="manual-figcaption">믹서 MASTER 패널 하단의 OUTPUT EFFECTS입니다. 다섯 효과와 EQ 프리셋(Reset · POP · Classic · HIP HOP), 정밀 편집용 <strong>ADVANCED</strong> 버튼이 보입니다.</div>
-                  </div>
+                  <p className="manual-p">EQ 프리셋 줄에서는 <strong>Reset · POP · Classic · HIP HOP</strong>을 바로 적용할 수 있고, OUTPUT EFFECTS 오른쪽의 <strong>ADVANCED</strong> 버튼은 정밀 편집용 Equalizer 창을 엽니다(<strong>10장</strong>).</p>
 
                   <h3 className="manual-h3">OUTPUT FX 트랙</h3>
-                  <p className="manual-p">타임라인 맨 아래의 OUTPUT FX 트랙은 Master 트랙 역할을 하며, 전체 믹스에 적용되는 페이드와 EQ/효과 상태를 보여줍니다. 이 트랙에서 Fade in/out 길이를 직접 조정할 수 있습니다.</p>
+                  <p className="manual-p">타임라인 맨 아래의 OUTPUT FX 트랙은 Master 트랙 역할을 하며, 전체 믹스에 적용되는 페이드와 EQ·효과 상태를 보여 줍니다. 이 트랙의 눈금 레인이 <strong>Repeat · Punch 구간을 드래그해 만드는 자리</strong>이기도 합니다(<strong>4장</strong>).</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/09-05-outputfx-header.png" alt="Output FX 트랙 헤더" className="manual-img" />
+                    <div className="manual-figcaption">OUTPUT FX 트랙 헤더입니다. 왼쪽의 작은 EQ 그래프를 클릭하면 믹서가 열리고, <strong>MUTE Clr</strong>은 모든 뮤트·솔로를 해제합니다. <strong>EFFECT</strong>는 출력 효과 전체를 한 번에 켜고 끄며, 아래의 <strong>R · D · S · W · E</strong> 배지는 각각 Reverb · Delay · Saturation · Widener · Exciter를 개별로 켜고 끕니다.</div>
+                  </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/17-output-fx-fade-handles.png" alt="Output FX 트랙 Fade in/out 핸들" className="manual-img" />
+                    <img src="manual/screens-v2/09-04-outputfx-fade.png" alt="Output FX 트랙 Fade in/out 핸들" className="manual-img" />
                     <div className="manual-figcaption">OUTPUT FX 트랙의 Fade in/out 핸들입니다. ①번 초록 점은 Fade in, ②번 빨간 점은 Fade out을 조정합니다.</div>
                   </div>
 
@@ -1349,35 +1995,44 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Click the <strong>Mixer</strong> button on the top right to open the floating mixer console. Drag its title bar to position it anywhere on the screen.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/04-mixer-master.png" alt="Mixer Panel Layout" className="manual-img" />
-                    <div className="manual-figcaption">Floating Mixer window. Consists of track channel strips on the left and the MASTER panel on the right.</div>
+                    <img src="manual/screens-v2/09-01-mixer-overview.png" alt="Main window with the mixer open" className="manual-img" />
+                    <div className="manual-figcaption">The mixer floating over the main window: track channel strips on the left, the MASTER panel on the right. You can mix while watching the timeline waveforms.</div>
                   </div>
+                  <p className="manual-p">The mixer's own title bar carries <strong>Stop</strong> and <strong>Play</strong> buttons, so you can drive playback without switching back to the main window.</p>
 
                   <h3 className="manual-h3">Channel Strips</h3>
-                  <ul className="manual-ul">
-                    <li className="manual-li"><strong>VRB</strong>: Controls track Reverb effect send level.</li>
-                    <li className="manual-li"><strong>ECHO</strong>: Controls track Echo/Delay effect send level.</li>
-                    <li className="manual-li"><strong>S/M</strong>: Toggles Solo and Mute states.</li>
-                    <li className="manual-li"><strong>PAN</strong>: Positions the track left or right in the stereo field.</li>
-                    <li className="manual-li"><strong>Fader</strong>: A vertical slider for high-precision volume adjustments.</li>
-                  </ul>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">VRB</th><td className="manual-td">Track reverb send level.</td></tr>
+                      <tr><th className="manual-th">ECHO</th><td className="manual-td">Track echo/delay send level.</td></tr>
+                      <tr><th className="manual-th">S / M</th><td className="manual-td">Solo and Mute. <strong>Shift+click</strong> <strong>M</strong> to batch-mute the file tracks (<strong>ch. 5</strong>).</td></tr>
+                      <tr><th className="manual-th">PAN</th><td className="manual-td">Stereo position, with the current value (C / L · R) shown beneath.</td></tr>
+                      <tr><th className="manual-th">Fader</th><td className="manual-td">Vertical volume fader with the exact dB value at the bottom.</td></tr>
+                    </tbody>
+                  </table>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/14-mixer-pan-gain-detail.png" alt="Mixer Fader Detail" className="manual-img" />
-                    <div className="manual-figcaption">Mixer strip detail showing PAN settings and exact volume values in decibels (dB).</div>
+                    <img src="manual/screens-v2/09-02a-strip-normal.png" alt="Channel strip — normal track" className="manual-img" />
+                    <div className="manual-figcaption">A normal (file) track strip: VRB · ECHO, S · M, PAN, then the volume fader and its dB readout.</div>
                   </div>
 
+                  <p className="manual-p">An <strong>Audio In track's strip</strong> adds a recording section below. It carries <strong>ARM · MON · LIM</strong>, the <strong>input port</strong> selector, a large <strong>GAIN</strong> knob, and <strong>IN</strong> (input level) and <strong>GR</strong> (limiter gain reduction) meters beside it — so input gain can be set entirely from the mixer.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/15-mixer-pan-gain-full.png" alt="Mixer Floating View" className="manual-img" />
-                    <div className="manual-figcaption">Floating Mixer active over the Arrange window. Allows adjusting levels and panning while viewing track waveforms.</div>
+                    <img src="manual/screens-v2/09-02b-strip-audioin.png" alt="Channel strip — Audio In track" className="manual-img" />
+                    <div className="manual-figcaption">An Audio In track strip. Below the normal controls sit ARM · MON · LIM, the input port, the GAIN knob, and the IN · GR meters.</div>
                   </div>
 
                   <h3 className="manual-h3">MASTER Panel</h3>
-                  <p className="manual-p">The MASTER panel shapes the final stereo mixdown. It provides a 9-band Graphic EQ with FFT frequency spectrum or level meters, master volume, EQ presets, and five <strong>OUTPUT EFFECTS</strong> (Reverb, Delay, Saturation, Widener, and Exciter / Enhancer).</p>
+                  <p className="manual-p">The MASTER panel shapes the final stereo mixdown: a 9-band Graphic EQ, master volume (VOL), EQ presets, and five <strong>OUTPUT EFFECTS</strong> (Reverb, Delay, Saturation, Widener, Exciter / Enhancer). The current <strong>peak level (dB)</strong> is shown at the panel's top right.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/16-mixer-eq-adjust.png" alt="Master EQ Adjustments" className="manual-img" />
-                    <div className="manual-figcaption">Shaping the 9-band Graphic EQ. Drag band points (60Hz to 15kHz) up or down to adjust Bass, Mids, and Treble.</div>
+                    <img src="manual/screens-v2/09-03a-master.png" alt="MASTER panel" className="manual-img" />
+                    <div className="manual-figcaption">The MASTER panel. Drag the band points (60 Hz–15 kHz) to shape lows, mids, and highs, then refine with the EQ PRESET row and OUTPUT EFFECTS below.</div>
+                  </div>
+                  <p className="manual-p">The <strong>GRAPHIC EQ · FFT</strong> and <strong>LEVEL METER</strong> buttons above the graph switch its background: <strong>FFT</strong> draws a live frequency spectrum, <strong>LEVEL METER</strong> shows per-band LED meters.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/09-03b-master-led.png" alt="MASTER panel with LED level meters" className="manual-img" />
+                    <div className="manual-figcaption">Switched to the <strong>LEVEL METER</strong> view. The EQ points remain fully draggable on top of the per-band LED meters.</div>
                   </div>
 
                   <table className="manual-table">
@@ -1399,16 +2054,17 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/30-mixer-output-effects.png" alt="New OUTPUT EFFECTS in the mixer MASTER panel" className="manual-img" />
-                    <div className="manual-figcaption">The OUTPUT EFFECTS at the bottom of the mixer MASTER panel: five effects plus EQ presets (Reset · POP · Classic · HIP HOP) and the <strong>ADVANCED</strong> button.</div>
-                  </div>
+                  <p className="manual-p">The EQ preset row applies <strong>Reset · POP · Classic · HIP HOP</strong> instantly, and the <strong>ADVANCED</strong> button beside OUTPUT EFFECTS opens the large Equalizer window for precise editing (<strong>ch. 10</strong>).</p>
 
                   <h3 className="manual-h3">Master OUTPUT FX Track</h3>
-                  <p className="manual-p">Located at the bottom of the timeline, the OUTPUT FX track represents the Master channel. Drag the handles on this track to shape master Fade-in and Fade-out curves directly.</p>
+                  <p className="manual-p">At the bottom of the timeline, the OUTPUT FX track represents the Master channel and shows the master fades plus the EQ/effect state. Its ruler lane is also <strong>where you drag out Repeat and Punch regions</strong> (<strong>ch. 4</strong>).</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/09-05-outputfx-header.png" alt="OUTPUT FX track header" className="manual-img" />
+                    <div className="manual-figcaption">The OUTPUT FX track header. Clicking the small EQ graph opens the mixer; <strong>MUTE Clr</strong> clears every mute and solo. <strong>EFFECT</strong> bypasses or engages all output effects at once, and the <strong>R · D · S · W · E</strong> badges below toggle Reverb, Delay, Saturation, Widener, and Exciter individually.</div>
+                  </div>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/17-output-fx-fade-handles.png" alt="Master Fade Handles" className="manual-img" />
+                    <img src="manual/screens-v2/09-04-outputfx-fade.png" alt="Master Fade Handles" className="manual-img" />
                     <div className="manual-figcaption">OUTPUT FX track handles. The green handle on the left shapes Fade-in, and the red handle on the right shapes Fade-out.</div>
                   </div>
 
@@ -1430,7 +2086,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h2 className="manual-h2">10. 고급 이펙트(Advanced Effects)</h2>
                   <p className="manual-p">상단 메뉴의 <strong>Advanced Effects</strong>에는 세 가지 전용 편집 창이 있습니다. 각 창은 마스터(프로젝트 전체) 출력에 적용되는 고급 효과를 넓은 화면에서 정밀하게 다루도록 만들어졌습니다.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/31-advanced-effects-menu.png" alt="Advanced Effects 메뉴" className="manual-img" />
+                    <img src="manual/screens-v2/10-01-advanced-effects.png" alt="Advanced Effects 메뉴" className="manual-img" />
                     <div className="manual-figcaption">상단 <strong>Advanced Effects</strong> 메뉴입니다. <strong>Ambience</strong>(공간감), <strong>Auto Panning</strong>(스테레오 배치), <strong>Equalizer Setup</strong>(EQ) 세 항목이 있습니다.</div>
                   </div>
                   <table className="manual-table">
@@ -1523,7 +2179,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h2 className="manual-h2">10. Advanced Effects</h2>
                   <p className="manual-p">The top <strong>Advanced Effects</strong> menu opens three dedicated editing windows, each giving you a larger workspace to fine-tune advanced effects applied to the master (project-wide) output.</p>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/31-advanced-effects-menu.png" alt="Advanced Effects menu" className="manual-img" />
+                    <img src="manual/screens-v2/10-01-advanced-effects.png" alt="Advanced Effects menu" className="manual-img" />
                     <div className="manual-figcaption">The <strong>Advanced Effects</strong> menu: <strong>Ambience</strong> (space), <strong>Auto Panning</strong> (stereo placement), and <strong>Equalizer Setup</strong> (EQ).</div>
                   </div>
                   <table className="manual-table">
@@ -1623,12 +2279,13 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">Export 설정</h3>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/05-export-dialog.png" alt="Export mixdown 창" className="manual-img" />
-                    <div className="manual-figcaption">실제 앱에서 연 Export mixdown 창입니다. 출력 형식, 비트레이트, 샘플레이트, Normalize, 오디오 태그를 설정합니다.</div>
+                    <img src="manual/screens-v2/11-01-export-dialog.png" alt="Export mixdown 창" className="manual-img" />
+                    <div className="manual-figcaption">Export mixdown 창입니다. 왼쪽 <strong>EXPORT</strong>에서 출력 형식과 품질을, 오른쪽 <strong>AUDIO INFO (TAGS)</strong>에서 곡 정보를 설정합니다. 아래 회색 상자에는 무엇이 렌더링되는지와 <strong>전체 길이</strong>가 요약됩니다.</div>
                   </div>
 
                   <table className="manual-table">
                     <tbody>
+                      <tr><th className="manual-th">File name</th><td className="manual-td">저장될 파일 이름입니다. 프로젝트 이름이 기본값으로 들어갑니다.</td></tr>
                       <tr><th className="manual-th">Format</th><td className="manual-td"><code>MP3</code> 또는 <code>WAV</code>를 선택합니다.</td></tr>
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">MP3 출력 시 192, 256, 320kbps 중에서 선택합니다.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">44.1kHz 또는 48kHz로 렌더링합니다.</td></tr>
@@ -1637,13 +2294,10 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/25-normalize-lufs.png" alt="Normalize LUFS 목표 선택" className="manual-img" />
-                    <div className="manual-figcaption">Normalize를 켜면 목표 LUFS를 고르는 드롭다운이 나타납니다. 스트리밍 발매에는 -14 LUFS가 기본값입니다.</div>
-                  </div>
+                  <div className="manual-note"><strong>Normalize</strong> 스위치를 켜면 그 아래에 목표 LUFS를 고르는 드롭다운이 나타납니다. 스트리밍 발매용으로는 <strong>-14 LUFS</strong>가 일반적인 기준값입니다.</div>
 
                   <h3 className="manual-h3">Audio info 태그</h3>
-                  <p className="manual-p">제목, 아티스트/작곡가, 앨범, 연도, 날짜를 입력할 수 있습니다. MP3 형식에서는 앨범 아트도 함께 넣을 수 있습니다. 프리셋 커버를 선택하거나 이미지 파일을 직접 고를 수 있습니다.</p>
+                  <p className="manual-p">오른쪽 <strong>AUDIO INFO (TAGS)</strong>에서 <strong>Title · Artist / Composer · Album · Year · Date</strong>를 입력합니다. MP3 형식에서는 <strong>Album art</strong>까지 넣을 수 있으며, 프리셋 커버를 고르거나 이미지 파일을 직접 지정할 수 있습니다.</p>
 
                   <h3 className="manual-h3">저장 절차</h3>
                   <ol className="manual-ol">
@@ -1661,12 +2315,13 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">Export Settings</h3>
                   <div className="manual-figure">
-                    <img src="manual/live-screens/05-export-dialog.png" alt="Export Dialog" className="manual-img" />
-                    <div className="manual-figcaption">Export Mixdown window. Configure output format, bitrate, sample rate, normalization, and metadata tags.</div>
+                    <img src="manual/screens-v2/11-01-export-dialog.png" alt="Export mixdown dialog" className="manual-img" />
+                    <div className="manual-figcaption">The Export mixdown window. <strong>EXPORT</strong> on the left sets format and quality; <strong>AUDIO INFO (TAGS)</strong> on the right holds the song metadata. The grey box below summarises what will be rendered and the <strong>total length</strong>.</div>
                   </div>
 
                   <table className="manual-table">
                     <tbody>
+                      <tr><th className="manual-th">File name</th><td className="manual-td">The output filename, pre-filled from the project name.</td></tr>
                       <tr><th className="manual-th">Format</th><td className="manual-td">Choose <code>MP3</code> or <code>WAV</code> format.</td></tr>
                       <tr><th className="manual-th">Bitrate</th><td className="manual-td">Choose 192, 256, or 320kbps for MP3 compression quality.</td></tr>
                       <tr><th className="manual-th">Sample rate</th><td className="manual-td">Select 44.1kHz or 48kHz for output rendering.</td></tr>
@@ -1675,13 +2330,10 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
 
-                  <div className="manual-figure">
-                    <img src="manual/live-screens/25-normalize-lufs.png" alt="Normalize LUFS target" className="manual-img" />
-                    <div className="manual-figcaption">Enabling Normalize reveals a LUFS target dropdown; -14 LUFS is the default for streaming releases.</div>
-                  </div>
+                  <div className="manual-note">Turning the <strong>Normalize</strong> switch on reveals a LUFS target dropdown beneath it. <strong>-14 LUFS</strong> is the usual reference for streaming releases.</div>
 
                   <h3 className="manual-h3">Audio Info Tags</h3>
-                  <p className="manual-p">Enter Title, Artist/Composer, Album, Year, and Date tags. When exporting to MP3, you can embed Cover Art by choosing a preset cover or choosing a custom image file.</p>
+                  <p className="manual-p">Fill in <strong>Title · Artist / Composer · Album · Year · Date</strong> under <strong>AUDIO INFO (TAGS)</strong> on the right. MP3 exports can also embed <strong>Album art</strong> — pick a preset cover or choose your own image file.</p>
 
                   <h3 className="manual-h3">Exporting Steps</h3>
                   <ol className="manual-ol">
@@ -1700,56 +2352,128 @@ function HelpDialog({ onClose, standalone = false }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">12. 설정 · 오디오 장치 · 테마</h2>
-                  <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 색상 테마를 변경하거나 분리된 믹서 창의 환경 설정을 관리할 수 있습니다.</p>
-                  <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
-                    <li style={{ marginBottom: 6 }}><strong>Color Theme (색상 테마)</strong>: 다양한 색상 테마 중 하나를 선택하면 앱 전체와 믹서 콘솔의 외관 색상이 즉시 연동되어 바뀝니다.</li>
-                    <li style={{ marginBottom: 6 }}><strong>Mixer Console Window (믹서 위치 및 크기 초기화)</strong>: 믹서의 위치를 드래그하여 화면 구석으로 치워두었거나 크기를 크게 늘렸던 정보를 초기 상태로 되돌리고 싶다면 <strong>Reset Position</strong> 버튼을 누르십시오. 믹서 창의 좌표와 크기 기억 값이 디폴트 상태로 깨끗이 지워져 다음 오픈 시 다시 화면 중앙에 나타나게 됩니다.</li>
-                  </ul>
+                  <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 설정 창이 열립니다. 왼쪽 <strong>CONTENTS</strong> 목록으로 <strong>Color Theme · Mixer Console Window · Audio Devices</strong> 세 영역을 오갈 수 있습니다.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/06-settings-themes.png" alt="색상 테마 및 설정 화면" className="manual-img" />
-                    <div className="manual-figcaption">실제 앱에서 연 Settings 창입니다. 10가지 색상 테마(Warm Analog, Classical Ivory, Modern Blue 등)와 믹서 리셋 항목이 표시됩니다.</div>
+                    <img src="manual/screens-v2/12-01-settings.png" alt="설정 · 오디오 장치 · 테마" className="manual-img" />
+                    <div className="manual-figcaption">Settings 창입니다. 색상 테마 10종, 오디오 입력 텍스처, 믹서 창 초기화, 오디오 장치 설정이 한 창에 모여 있습니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">Audio Devices — 녹음/재생 장치 설정</h3>
-                  <p className="manual-p">Settings 창의 <strong>Audio Devices</strong> 섹션에서 녹음과 재생에 사용할 오디오 장치를 지정합니다(<strong>4. 오디오 녹음</strong>의 사전 준비). 설정 순서는 <strong>모드 → 입력/출력 장치 → Sample Rate / Buffer</strong>입니다.</p>
+                  <h3 className="manual-h3">Color Theme — 색상 테마</h3>
+                  <p className="manual-p">10가지 테마 중 하나를 고르면 <strong>메인 창과 믹서·보컬 스트립·고급 이펙트 창까지 전부</strong> 즉시 같은 색으로 바뀝니다. 각 카드에는 미리보기와 성격을 설명하는 한 줄이 함께 표시됩니다.</p>
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">모드(드라이버 타입)</th><td className="manual-td"><strong>Shared</strong>(공유·범용), <strong>Low Latency</strong>(낮은 지연), <strong>Exclusive</strong>(단독 점유·최저 지연) 중에서 고릅니다. 선택한 모드에 해당하는 장치만 아래 목록에 나타납니다.</td></tr>
-                      <tr><th className="manual-th">입력 / 출력 장치</th><td className="manual-td">녹음에 쓸 입력 장치(인터페이스·마이크)와 재생에 쓸 출력 장치를 선택합니다. 인터페이스 구분은 여기서 이뤄지며, 트랙별 <strong>입력 포트</strong> 선택(모노/스테레오 채널)은 이 입력 장치의 채널을 따릅니다.</td></tr>
-                      <tr><th className="manual-th">Exclusive 자동 페어링</th><td className="manual-td">Exclusive 모드에서는 <strong>입력·출력을 모두 가진 인터페이스만</strong> 목록에 보이고, 입력을 고르면 같은 인터페이스의 출력이 자동으로 짝지어집니다(출력 드롭다운은 자동).</td></tr>
-                      <tr><th className="manual-th">Sample Rate / Buffer</th><td className="manual-td">샘플레이트와 버퍼 크기를 정합니다. 버퍼가 작을수록 지연은 줄지만 CPU 부하와 끊김 위험이 커집니다.</td></tr>
-                      <tr><th className="manual-th">Rescan</th><td className="manual-td">연결한 장치가 목록에 없으면 <strong>Rescan</strong>으로 다시 검색합니다(스캔 중에는 회전 스피너와 "Scanning" 표시).</td></tr>
+                      <tr><th className="manual-th">어두운 테마</th><td className="manual-td">Warm Analog(기본) · Modern Blue · Milky Purple · Clownfish · Neon Lime · Minimal Slate · Antique Olive · Ocean</td></tr>
+                      <tr><th className="manual-th">밝은 테마</th><td className="manual-td">Classical Ivory · Sage Mist</td></tr>
                     </tbody>
                   </table>
-                  <div className="manual-warning">Exclusive 모드는 장치가 그 샘플레이트/버퍼 조합을 지원하지 않으면 열리지 않을 수 있습니다. 이 경우 <strong>이전 정상 장치가 유지</strong>되고 Audio Devices 섹션에 적색 배너로 실패 사유가 표시됩니다. 배너의 사유를 참고해 Sample Rate/Buffer를 조정하거나 Shared/Low Latency 모드로 바꿔 보세요.</div>
+
+                  <h3 className="manual-h3">Audio Input Texture — 입력 트랙 질감</h3>
+                  <p className="manual-p">Audio In 트랙 영역의 배경 질감을 고릅니다. <strong>None</strong>(기본) · <strong>Diagonal</strong> · <strong>Dots</strong> · <strong>Brushed</strong> · <strong>Edge Lines</strong> 중에서 선택하며, 녹음 트랙을 파일 트랙과 시각적으로 더 뚜렷이 구분하고 싶을 때 씁니다. 소리에는 아무 영향이 없습니다.</p>
+
+                  <h3 className="manual-h3">Mixer Console Window — 믹서 창 초기화</h3>
+                  <p className="manual-p">믹서 창을 화면 구석으로 치워 두었거나 크기를 크게 바꿔 놓았다면 <strong>Reset Position</strong>을 누르세요. 기억해 둔 좌표와 크기가 지워져 다음에 열 때 화면 중앙에 기본 크기로 나타납니다.</p>
+
+                  <h3 className="manual-h3">Audio Devices — 녹음/재생 장치 설정</h3>
+                  <p className="manual-p"><strong>Audio Devices</strong> 섹션에서 녹음과 재생에 쓸 오디오 장치를 지정합니다(<strong>4장</strong>의 사전 준비). 설정 순서는 <strong>모드 → 입력/출력 장치 → Sample Rate / Buffer</strong>입니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/12-02-audio-devices.png" alt="오디오 디바이스 선택 및 설정" className="manual-img" />
+                    <div className="manual-figcaption">Audio Devices 섹션입니다. 드라이버 모드, 입력·출력 장치, 샘플레이트와 버퍼, 현재 상태와 지연 시간 추정치, <strong>Recording offset</strong>, 그리고 모드 비교 표가 함께 표시됩니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">모드(드라이버 타입)</th><td className="manual-td"><strong>Shared</strong>(공유·기본) · <strong>Exclusive</strong>(단독 점유) · <strong>Low Latency</strong>(낮은 지연) 중에서 고릅니다. 선택한 모드에 해당하는 장치만 아래 목록에 나타납니다.</td></tr>
+                      <tr><th className="manual-th">입력 / 출력 장치</th><td className="manual-td">녹음에 쓸 입력 장치와 재생에 쓸 출력 장치를 고릅니다. 트랙별 <strong>입력 포트</strong>(모노/스테레오 채널) 목록은 여기서 고른 입력 장치의 채널을 따릅니다.</td></tr>
+                      <tr><th className="manual-th">Exclusive 자동 페어링</th><td className="manual-td">Exclusive 모드에서는 <strong>입력·출력을 모두 가진 인터페이스만</strong> 보이고, 입력을 고르면 같은 인터페이스의 출력이 자동으로 짝지어집니다.</td></tr>
+                      <tr><th className="manual-th">Sample Rate / Buffer</th><td className="manual-td">샘플레이트와 버퍼 크기입니다. 버퍼가 작을수록 지연은 줄지만 CPU 부하와 끊김 위험이 커집니다.</td></tr>
+                      <tr><th className="manual-th">현재 상태 · 지연 표시</th><td className="manual-td">드롭다운 아래에 지금 열려 있는 입력·출력 장치와 샘플레이트·버퍼가 요약되고, 그 아래 줄에 <strong>입력 · 출력 · 왕복(round-trip) 지연 추정치</strong>가 표시됩니다.</td></tr>
+                      <tr><th className="manual-th">Rescan</th><td className="manual-td">연결한 장치가 목록에 없으면 다시 검색합니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">Recording offset — 녹음 위치 보정</h3>
+                  <p className="manual-p">오디오 장치는 입력을 붙잡아 앱에 넘기기까지 아주 짧은 시간이 걸립니다. 보정하지 않으면 녹음된 소리가 반주보다 <strong>조금씩 늦게</strong> 놓이는데, <strong>Recording offset</strong>이 이를 자동으로 맞춰 줍니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Auto (기본)</th><td className="manual-td">체크해 두면 드라이버가 보고한 지연값을 그대로 사용합니다. 대부분 이대로 두면 됩니다.</td></tr>
+                      <tr><th className="manual-th">수동 입력</th><td className="manual-td">Auto를 끄고 밀리초(ms)를 직접 넣습니다. <strong>양수</strong>는 녹음을 <strong>앞으로 당기고</strong>(입력 지연 보정), <strong>음수</strong>는 <strong>뒤로 미룹니다</strong>.</td></tr>
+                      <tr><th className="manual-th">Offset Cal.</th><td className="manual-td">녹음 클립을 귀로 맞춰 옮겼다면, 그 클립을 오른쪽 클릭해 <strong>Recording Offset Cal.</strong>을 실행하세요. 손으로 맞춘 간격이 <strong>전역 Recording offset에 반영</strong>되어 이후 녹음은 처음부터 제자리에 놓입니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">어떤 모드를 골라야 할까</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Exclusive</th><td className="manual-td">지연이 <strong>가장 낮지만</strong>, 하나의 장치를 앱이 독차지하므로 <strong>다른 프로그램 소리가 나지 않습니다</strong>. 샘플레이트도 앱이 정합니다.</td></tr>
+                      <tr><th className="manual-th">Low Latency</th><td className="manual-td">지연이 <strong>낮고</strong> 다른 프로그램 소리도 들립니다. 실제 지연은 드라이버에 따라 다릅니다.</td></tr>
+                      <tr><th className="manual-th">Shared (기본)</th><td className="manual-td">지연은 보통이지만 <strong>가장 안정적</strong>이며 다른 프로그램과 함께 쓸 수 있습니다. 평소에는 이 모드를 권장합니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-note">지연을 낮출수록 안정성은 떨어집니다. <strong>소리가 끊기거나 지직거리면 Shared로 되돌리세요.</strong></div>
+                  <div className="manual-warning">Exclusive 모드는 장치가 그 샘플레이트/버퍼 조합을 지원하지 않으면 열리지 않을 수 있습니다. 이 경우 <strong>이전 정상 장치가 유지</strong>되고 Audio Devices 섹션에 붉은 배너로 실패 사유가 표시됩니다. 배너를 참고해 Sample Rate/Buffer를 조정하거나 Shared / Low Latency로 바꿔 보세요.</div>
                 </>
               ) : (
                 <>
                   <h2 className="manual-h2">12. Settings, Audio Devices &amp; Themes</h2>
-                  <p className="manual-p">Click <strong>Settings</strong> in the menu bar to change color themes or manage settings for the detached Mixer window.</p>
-                  <ul className="manual-ul" style={{ paddingLeft: 20, margin: "10px 0", fontSize: 13, color: "var(--dim)" }}>
-                    <li style={{ marginBottom: 6 }}><strong>Color Theme</strong>: Choose from multiple color themes. The visual styles of the main window and Mixer console update instantly.</li>
-                    <li style={{ marginBottom: 6 }}><strong>Mixer Console Window</strong>: If you need to restore the Mixer window size and screen coordinates to their default settings, click the <strong>Reset Position</strong> button. The cached window bounds will be cleared, causing the Mixer window to reappear in the center of the screen on the next open.</li>
-                  </ul>
+                  <p className="manual-p">Click <strong>Settings</strong> in the menu bar to open the settings window. The <strong>CONTENTS</strong> list on the left moves between <strong>Color Theme · Mixer Console Window · Audio Devices</strong>.</p>
 
                   <div className="manual-figure">
-                    <img src="manual/live-screens/06-settings-themes.png" alt="Settings Dialog" className="manual-img" />
-                    <div className="manual-figcaption">Settings window. Switch between 10 color themes (Warm Analog, Classical Ivory, Modern Blue, and more) and reset the Mixer window bounds.</div>
+                    <img src="manual/screens-v2/12-01-settings.png" alt="Settings — themes, texture, devices" className="manual-img" />
+                    <div className="manual-figcaption">The Settings window gathers the 10 color themes, the audio input texture, the mixer-window reset, and audio device setup in one place.</div>
                   </div>
 
-                  <h3 className="manual-h3">Audio Devices — recording &amp; playback setup</h3>
-                  <p className="manual-p">The <strong>Audio Devices</strong> section of the Settings window is where you choose the devices used for recording and playback (the prerequisite for <strong>4. Recording (Audio In)</strong>). The order is <strong>mode → input/output device → Sample Rate / Buffer</strong>.</p>
+                  <h3 className="manual-h3">Color Theme</h3>
+                  <p className="manual-p">Choosing one of the ten themes instantly recolors <strong>everything — the main window, the mixer, the vocal strip, and the advanced effect windows</strong>. Each card shows a preview and a one-line description of its character.</p>
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">Mode (driver type)</th><td className="manual-td">Choose <strong>Shared</strong> (general purpose), <strong>Low Latency</strong>, or <strong>Exclusive</strong> (sole ownership, lowest latency). Only devices for the selected mode appear in the lists below.</td></tr>
-                      <tr><th className="manual-th">Input / Output device</th><td className="manual-td">Pick the input device (interface/mic) for recording and the output device for playback. Interface selection happens here; each track's <strong>input port</strong> (mono/stereo channel) follows the channels of this input device.</td></tr>
-                      <tr><th className="manual-th">Exclusive auto-pairing</th><td className="manual-td">In Exclusive mode, only interfaces that have <strong>both input and output</strong> are listed; choosing an input auto-selects the matching output of the same interface (the output dropdown becomes automatic).</td></tr>
-                      <tr><th className="manual-th">Sample Rate / Buffer</th><td className="manual-td">Set the sample rate and buffer size. A smaller buffer lowers latency but raises CPU load and the risk of dropouts.</td></tr>
-                      <tr><th className="manual-th">Rescan</th><td className="manual-td">If a connected device is missing from the list, use <strong>Rescan</strong> to search again (a spinner and "Scanning" show during the scan).</td></tr>
+                      <tr><th className="manual-th">Dark themes</th><td className="manual-td">Warm Analog (default) · Modern Blue · Milky Purple · Clownfish · Neon Lime · Minimal Slate · Antique Olive · Ocean</td></tr>
+                      <tr><th className="manual-th">Light themes</th><td className="manual-td">Classical Ivory · Sage Mist</td></tr>
                     </tbody>
                   </table>
-                  <div className="manual-warning">Exclusive mode may fail to open if the device does not support the chosen sample-rate/buffer combination. If that happens, the <strong>previous working device is kept</strong> and a red banner in the Audio Devices section shows the reason. Use it to adjust the Sample Rate/Buffer, or switch to Shared/Low Latency mode.</div>
+
+                  <h3 className="manual-h3">Audio Input Texture</h3>
+                  <p className="manual-p">Sets the background texture of Audio In track lanes — <strong>None</strong> (default), <strong>Diagonal</strong>, <strong>Dots</strong>, <strong>Brushed</strong>, or <strong>Edge Lines</strong>. Use it to make recording tracks stand out more clearly from file tracks. It has no effect on the audio.</p>
+
+                  <h3 className="manual-h3">Mixer Console Window</h3>
+                  <p className="manual-p">If you have parked the mixer in a screen corner or resized it heavily, press <strong>Reset Position</strong>. The remembered bounds are cleared and the window reopens centred at its default size.</p>
+
+                  <h3 className="manual-h3">Audio Devices — recording &amp; playback setup</h3>
+                  <p className="manual-p">The <strong>Audio Devices</strong> section is where you choose the devices used for recording and playback (the prerequisite for <strong>ch. 4</strong>). The order is <strong>mode → input/output device → Sample Rate / Buffer</strong>.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/12-02-audio-devices.png" alt="Audio device selection and setup" className="manual-img" />
+                    <div className="manual-figcaption">The Audio Devices section: driver mode, input/output device, sample rate and buffer, the active-state and latency estimate lines, <strong>Recording offset</strong>, and a mode comparison table.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Mode (driver type)</th><td className="manual-td">Choose <strong>Shared</strong> (default), <strong>Exclusive</strong> (sole ownership), or <strong>Low Latency</strong>. Only devices for the selected mode are listed below.</td></tr>
+                      <tr><th className="manual-th">Input / Output device</th><td className="manual-td">Pick the input device for recording and the output device for playback. Each track's <strong>input port</strong> (mono/stereo channel) list follows the channels of the input device chosen here.</td></tr>
+                      <tr><th className="manual-th">Exclusive auto-pairing</th><td className="manual-td">In Exclusive mode only interfaces with <strong>both input and output</strong> appear, and choosing an input auto-selects the matching output of the same interface.</td></tr>
+                      <tr><th className="manual-th">Sample Rate / Buffer</th><td className="manual-td">A smaller buffer lowers latency but raises CPU load and the risk of dropouts.</td></tr>
+                      <tr><th className="manual-th">Active state &amp; latency</th><td className="manual-td">Below the dropdowns, a line summarises the currently open input/output, sample rate, and buffer; the next line estimates <strong>input, output, and round-trip latency</strong>.</td></tr>
+                      <tr><th className="manual-th">Rescan</th><td className="manual-td">Searches again if a connected device is missing from the list.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">Recording offset</h3>
+                  <p className="manual-p">An audio device takes a small amount of time to capture your input and hand it to the app. Without compensation, recordings land <strong>slightly late</strong> against the backing track — <strong>Recording offset</strong> corrects that automatically.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Auto (default)</th><td className="manual-td">Uses the latency the driver reports. Leave it on unless you have a reason not to.</td></tr>
+                      <tr><th className="manual-th">Manual</th><td className="manual-td">Turn Auto off and type a value in milliseconds. <strong>Positive</strong> pulls recordings <strong>earlier</strong> (compensating capture delay); <strong>negative</strong> pushes them <strong>later</strong>.</td></tr>
+                      <tr><th className="manual-th">Offset Cal.</th><td className="manual-td">If you nudged a recorded clip into place by ear, right-click it and run <strong>Recording Offset Cal.</strong> — that manual alignment is <strong>folded into the global Recording offset</strong> so future takes land pre-aligned.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">Which mode should I use?</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Exclusive</th><td className="manual-td"><strong>Lowest latency</strong>, but the app takes over one device for input+output, so <strong>other apps are muted</strong> and the app sets the sample rate.</td></tr>
+                      <tr><th className="manual-th">Low Latency</th><td className="manual-td"><strong>Low latency</strong> while other apps stay audible. The real figure depends on the driver.</td></tr>
+                      <tr><th className="manual-th">Shared (default)</th><td className="manual-td">Normal latency but <strong>the most stable</strong>, and it shares the device with other apps. Recommended for everyday use.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-note">Lower latency trades away stability — <strong>if you hear dropouts or crackles, switch back to Shared.</strong></div>
+                  <div className="manual-warning">Exclusive mode may fail to open if the device does not support the chosen sample-rate/buffer combination. If that happens, the <strong>previous working device is kept</strong> and a red banner in the Audio Devices section shows the reason. Use it to adjust the Sample Rate/Buffer, or switch to Shared / Low Latency.</div>
                 </>
               )}
             </section>
@@ -1775,7 +2499,32 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">다시 실행</td></tr>
                     </tbody>
                   </table>
-                  <div className="manual-note">녹음 또는 카운트인이 진행되는 동안에는 <strong>이동키(←/→/,/./0)와 마우스 클릭 이동(seek)이 차단</strong>되고, <kbd className="manual-kbd">Space</kbd>(재생/일시정지)도 무시됩니다. 녹음을 멈추려면 트랜스포트의 Record 또는 Stop을 사용하세요(<strong>4. 오디오 녹음</strong> 참고).</div>
+
+                  <h3 className="manual-h3">도구 선택</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">S</kbd></th><td className="manual-td">선택 도구</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">C</kbd></th><td className="manual-td">자르기(가위) 도구 — 클립 Split</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">J</kbd></th><td className="manual-td">합치기 도구 — 클립 Merge</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">클립 편집 (클립을 선택한 상태)</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Esc</kbd></th><td className="manual-td">클립 선택 해제(도구도 함께 해제)</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Del</kbd> 또는 <kbd className="manual-kbd">Backspace</kbd></th><td className="manual-td">선택한 클립 삭제</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">C</kbd></th><td className="manual-td">클립 복사</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">V</kbd></th><td className="manual-td">재생 위치에 붙여넣기</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">D</kbd></th><td className="manual-td">클립 복제</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">←</kbd> / <kbd className="manual-kbd">→</kbd></th><td className="manual-td">클립 미세 이동 — <strong>1 ms</strong></td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">←</kbd> / <kbd className="manual-kbd">→</kbd></th><td className="manual-td">클립 미세 이동 — <strong>10 ms</strong></td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">←</kbd> / <kbd className="manual-kbd">→</kbd></th><td className="manual-td">클립 미세 이동 — <strong>100 ms</strong></td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + 클릭</th><td className="manual-td">여러 클립을 함께 선택</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-note">클립이 선택돼 있으면 <kbd className="manual-kbd">←</kbd>/<kbd className="manual-kbd">→</kbd>가 <strong>클립 미세 이동</strong>으로 쓰이고, 선택된 클립이 없을 때만 <strong>재생 위치 이동</strong>으로 동작합니다.</div>
+                  <div className="manual-note">녹음 또는 카운트인이 진행되는 동안에는 <strong>이동키(←/→/,/./0)와 마우스 클릭 이동(seek)이 차단</strong>되고, <kbd className="manual-kbd">Space</kbd>(재생/일시정지)도 무시됩니다. 녹음을 멈추려면 트랜스포트의 Record 또는 Stop을 사용하세요(<strong>4장</strong> 참고).</div>
                 </>
               ) : (
                 <>
@@ -1796,7 +2545,32 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">Redo</td></tr>
                     </tbody>
                   </table>
-                  <div className="manual-note">While recording or during the count-in, the <strong>seek keys (←/→/,/./0) and mouse-click seeking are blocked</strong>, and <kbd className="manual-kbd">Space</kbd> (play/pause) is ignored. Use the transport Record or Stop to end a take (see <strong>4. Recording (Audio In)</strong>).</div>
+
+                  <h3 className="manual-h3">Tools</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">S</kbd></th><td className="manual-td">Select tool</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">C</kbd></th><td className="manual-td">Scissors tool — split clips</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">J</kbd></th><td className="manual-td">Join tool — merge clips</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">Clip editing (with a clip selected)</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Esc</kbd></th><td className="manual-td">Deselect the clip (and release the active tool)</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Del</kbd> or <kbd className="manual-kbd">Backspace</kbd></th><td className="manual-td">Delete the selected clip</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">C</kbd></th><td className="manual-td">Copy the clip</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">V</kbd></th><td className="manual-td">Paste at the playhead</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">D</kbd></th><td className="manual-td">Duplicate the clip</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">←</kbd> / <kbd className="manual-kbd">→</kbd></th><td className="manual-td">Nudge the clip — <strong>1 ms</strong></td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">←</kbd> / <kbd className="manual-kbd">→</kbd></th><td className="manual-td">Nudge the clip — <strong>10 ms</strong></td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">←</kbd> / <kbd className="manual-kbd">→</kbd></th><td className="manual-td">Nudge the clip — <strong>100 ms</strong></td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + click</th><td className="manual-td">Select several clips at once</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-note">With a clip selected, <kbd className="manual-kbd">←</kbd>/<kbd className="manual-kbd">→</kbd> <strong>nudge the clip</strong>; they only <strong>move the playhead</strong> when no clip is selected.</div>
+                  <div className="manual-note">While recording or during the count-in, the <strong>seek keys (←/→/,/./0) and mouse-click seeking are blocked</strong>, and <kbd className="manual-kbd">Space</kbd> (play/pause) is ignored. Use the transport Record or Stop to end a take (see <strong>ch. 4</strong>).</div>
                 </>
               )}
             </section>
@@ -1814,8 +2588,23 @@ function HelpDialog({ onClose, standalone = false }) {
                     <li className="manual-li">운영체제의 출력 장치와 볼륨을 확인합니다.</li>
                   </ul>
 
-                  <h3 className="manual-h3">프로젝트를 열었는데 NO AUDIO가 보일 때</h3>
-                  <p className="manual-p">원본 오디오 파일의 위치가 바뀌었을 가능성이 큽니다. 같은 파일을 다시 가져오면 앱이 누락된 트랙을 파일 이름 또는 경로 기준으로 재연결합니다.</p>
+                  <h3 className="manual-h3">모든 트랙이 안 들리는데 레벨 미터는 움직일 때</h3>
+                  <p className="manual-p">저장된 <strong>출력 장치가 연결 해제</strong>된 경우입니다. <strong>Settings ▸ Audio Devices</strong>에서 지금 연결된 출력 장치를 다시 고르세요. 시작할 때 저장된 장치를 열지 못하면 앱이 시스템 기본 장치로 되돌리고 경고를 표시합니다.</p>
+
+                  <h3 className="manual-h3">프로젝트를 열었는데 NO SRC가 보일 때</h3>
+                  <p className="manual-p">원본 오디오 파일의 위치가 바뀌었을 가능성이 큽니다. <strong>같은 파일을 그 트랙 위로 끌어다 놓거나</strong> 다시 가져오면 앱이 파일 이름·경로 기준으로 재연결합니다. 프로젝트를 통째로 옮길 때는 <strong>Save As…</strong>로 저장하면 녹음·바운스가 함께 모아져 안전합니다(<strong>2장</strong>).</p>
+
+                  <h3 className="manual-h3">녹음한 소리가 반주보다 늦게(또는 빠르게) 들릴 때</h3>
+                  <p className="manual-p"><strong>Settings ▸ Audio Devices ▸ Recording offset</strong>을 확인하세요. 기본값인 <strong>Auto</strong>가 대부분 맞지만, 어긋난다면 Auto를 끄고 ms 값을 직접 조정하거나, 귀로 맞춘 클립에서 오른쪽 클릭 ▸ <strong>Recording Offset Cal.</strong>로 그 값을 전역 설정에 반영하세요(<strong>12장</strong>).</p>
+
+                  <h3 className="manual-h3">녹음 중 소리가 끊기거나 지직거릴 때</h3>
+                  <p className="manual-p">버퍼가 너무 작거나 드라이버 모드가 불안정한 경우입니다. <strong>Buffer를 키우고</strong>, 모드를 <strong>Shared</strong>로 되돌려 보세요. 지연을 낮출수록 안정성은 떨어집니다(<strong>12장</strong>).</p>
+
+                  <h3 className="manual-h3">Record 버튼이 눌리지 않을 때</h3>
+                  <p className="manual-p"><strong>ARM된 Audio In 트랙이 없기 때문</strong>입니다. 녹음할 트랙의 <strong>ARM</strong> 버튼을 먼저 켜세요. <strong>Punch</strong> 버튼이 눌리지 않는다면 <strong>Repeat 구간이 없기 때문</strong>이고, <strong>메트로놈</strong>이 눌리지 않는다면 <strong>프로젝트 BPM이 아직 없기 때문</strong>입니다(<strong>4장 · 6장</strong>).</p>
+
+                  <h3 className="manual-h3">프로젝트 폴더 용량이 계속 커질 때</h3>
+                  <p className="manual-p">여러 번 다시 녹음하면 쓰이지 않는 테이크 파일이 쌓입니다. <strong>Project ▸ Clean Up Unused Recordings…</strong>로 정리하세요. 되돌리기 기록에 남아 있는 파일은 제외되고, 삭제가 아니라 휴지통으로 이동합니다(<strong>2장</strong>).</p>
 
                   <h3 className="manual-h3">MP3 저장이 실패할 때</h3>
                   <p className="manual-p">데스크톱 앱은 내부적으로 ffmpeg를 사용해 MP3를 인코딩합니다. 개발 환경에서 문제가 있으면 의존성이 설치되어 있는지 확인한 뒤 <code className="manual-code">npm install</code>을 다시 실행하세요. 브라우저에서 직접 실행하는 경우에는 lamejs가 로드되어야 MP3 인코딩이 가능합니다.</p>
@@ -1834,8 +2623,23 @@ function HelpDialog({ onClose, standalone = false }) {
                     <li className="manual-li">Verify system audio output device settings and volume levels.</li>
                   </ul>
 
-                  <h3 className="manual-h3">NO AUDIO displays after loading a project</h3>
-                  <p className="manual-p">This occurs when source audio files have been moved or deleted. Re-importing matching audio files will let the app auto-reconnect them.</p>
+                  <h3 className="manual-h3">Nothing is audible but the meters still move</h3>
+                  <p className="manual-p">The saved <strong>output device has been disconnected</strong>. Pick a currently connected output under <strong>Settings ▸ Audio Devices</strong>. If the saved device cannot be opened at launch, the app falls back to the system default and shows a warning.</p>
+
+                  <h3 className="manual-h3">NO SRC appears after loading a project</h3>
+                  <p className="manual-p">The source audio has been moved or deleted. <strong>Drop the same file onto that track</strong>, or re-import it, and the app reconnects by name/path. When moving a project as a whole, save it with <strong>Save As…</strong> so its recordings and bounces travel with it (<strong>ch. 2</strong>).</p>
+
+                  <h3 className="manual-h3">Recordings land late (or early) against the backing</h3>
+                  <p className="manual-p">Check <strong>Settings ▸ Audio Devices ▸ Recording offset</strong>. The default <strong>Auto</strong> is right in most cases; otherwise turn Auto off and adjust the millisecond value, or align one clip by ear and use right-click ▸ <strong>Recording Offset Cal.</strong> to fold that into the global setting (<strong>ch. 12</strong>).</p>
+
+                  <h3 className="manual-h3">Dropouts or crackles while recording</h3>
+                  <p className="manual-p">The buffer is too small, or the driver mode is unstable on your system. <strong>Raise the Buffer</strong> and switch the mode back to <strong>Shared</strong> — lower latency always trades away stability (<strong>ch. 12</strong>).</p>
+
+                  <h3 className="manual-h3">The Record button will not press</h3>
+                  <p className="manual-p">There is <strong>no armed Audio In track</strong> — press <strong>ARM</strong> on the track you want to record. Likewise, <strong>Punch</strong> is disabled without a <strong>Repeat region</strong>, and the <strong>metronome</strong> is disabled until the project has a <strong>BPM</strong> (<strong>ch. 4 &amp; 6</strong>).</p>
+
+                  <h3 className="manual-h3">The project folder keeps growing</h3>
+                  <p className="manual-p">Repeated re-recording leaves unused take files behind. Run <strong>Project ▸ Clean Up Unused Recordings…</strong>. Files still held by the undo history are excluded, and everything goes to the Recycle Bin rather than being erased (<strong>ch. 2</strong>).</p>
 
                   <h3 className="manual-h3">MP3 Render Fails</h3>
                   <p className="manual-p">The desktop app uses ffmpeg internally to encode MP3s. In a development environment, run <code className="manual-code">npm install</code> to restore dependencies. In a standalone browser, lamejs must be loaded to support MP3 exports.</p>
@@ -1859,9 +2663,10 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.44.25",
-  date: "2026-08-03",
+  range: "v1.40.0 - v1.45.0",
+  date: "2026-08-11",
   features: [
+    "User manual rewritten for v1.45.0: the in-app manual and manual/사용자 메뉴얼.html now cover recording takes and comping, punch, clip editing, the vocal channel strip, de-noise, Merge Tracks, the file-track group, Save As portability, Clean Up Unused Recordings, and the new audio-device settings — with refreshed screenshots throughout.",
     "Vocal channel strip: Audio In and Bounce tracks now have an FX button that opens a dedicated Vocal Channel Strip window with a 9-band graphic EQ and a compressor, plus vocal presets (Clean Lead / Warm Pop / Bright Air / Podcast) and an A/B bypass. The strip is applied before the track fader and is reflected in playback, Export, and saved projects.",
     "Vocal strip layout: the Bypass / Strip Active switch moved up next to the track name, and the preset row gained a Reset button that returns every module to its defaults (your bypass state is left alone, and it is undoable).",
     "Vocal presets now set the high-pass filter and de-esser as well as the EQ and compressor. The Noise Gate is deliberately left alone, because a usable gate threshold depends on how noisy your own recording is.",
@@ -1884,6 +2689,10 @@ const RELEASE_NOTES = {
     "Track names and recording file names are handled separately, so renaming a track no longer changes its recorded file names.",
     "Recording and session scratch files now live under Documents\\FocusDAW\\Temp and are cleaned up automatically; temp originals are removed once collected into a saved project.",
     "Output device safety: if the saved output device is unavailable at launch, the app falls back to the system default and shows a themed warning instead of playing silently.",
+    "Recording offset: recorded takes are shifted to line up with the backing track. Auto follows the driver's latency estimate, and aligning one clip by ear can be folded into the global offset with Recording Offset Cal.",
+    "Audio device settings now show the active device summary, an input/output/round-trip latency estimate, and a mode comparison table so the latency-vs-stability trade-off is explicit.",
+    "Audio input texture: an optional background texture (Diagonal, Dots, Brushed, Edge Lines) that makes Audio In lanes easier to tell apart from file tracks.",
+    "Demo session now loads real mp3 stems bundled with the app instead of synthesized tones.",
   ],
   fixes: [
     "Fixed renaming a project breaking its audio on the next launch (recordings/bounces showed as missing). Renaming now changes only the display name and keeps the saved folder, so collected audio still resolves.",
