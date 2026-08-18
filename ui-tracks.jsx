@@ -469,7 +469,7 @@ function ScrollingTrackTitle({ name, compact, onRename }) {
 // when the other is off. Shown only when the effect send amount is non-zero.
 function FxTag({ label, color, on, onClick, title }) {
   return (
-    <span title={on ? (title != null ? title : `믹서에서 ${label} 노브 열기`) : undefined}
+    <span title={on ? (title != null ? title : `Open the ${label} knob in the mixer`) : undefined}
       onClick={on && onClick ? onClick : undefined}
       style={{ fontSize: 7.5, padding: "1px 2px", borderRadius: 3, fontWeight: 700, letterSpacing: 0,
         lineHeight: 1, whiteSpace: "nowrap", flex: "0 0 auto",
@@ -823,16 +823,16 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
         <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 340, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
             <Icon name="auto" size={17} style={{ color: "var(--amber)" }} />
-            <span style={{ fontWeight: 600, fontSize: 14 }}>Automation 초기화</span>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>Reset automation</span>
           </div>
           <div style={{ padding: "18px 20px" }}>
             <div style={{ fontSize: 12.5, color: "var(--cream-2)", lineHeight: 1.6 }}>
-              '{track.name}' 트랙의 편집된 볼륨 automation을 모두 초기화할까요? 되돌릴 수 없습니다.
+              Reset every edited volume automation point on '{track.name}'? This cannot be undone.
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-              <button className="btn" style={{ flex: 1 }} onClick={() => setConfirmReset(false)}>취소</button>
+              <button className="btn" style={{ flex: 1 }} onClick={() => setConfirmReset(false)}>Cancel</button>
               <button className="btn primary" style={{ flex: 1 }}
-                onClick={() => { onParam("automation", [{ t: 0, v: 1 }, { t: 1, v: 1 }]); setConfirmReset(false); }}>초기화</button>
+                onClick={() => { onParam("automation", [{ t: 0, v: 1 }, { t: 1, v: 1 }]); setConfirmReset(false); }}>Reset</button>
             </div>
           </div>
         </div>
@@ -844,16 +844,16 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
         <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 340, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center", background: "var(--red)", color: "#fff", fontSize: 14, fontWeight: 700, lineHeight: 1 }}>−</span>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>트랙 삭제</span>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>Delete track</span>
           </div>
           <div style={{ padding: "18px 20px" }}>
             <div style={{ fontSize: 12.5, color: "var(--cream-2)", lineHeight: 1.6 }}>
-              '{track.name}' 트랙을 삭제할까요? 되돌릴 수 없습니다.
+              Delete the track '{track.name}'? This cannot be undone.
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-              <button className="btn" style={{ flex: 1 }} onClick={() => setConfirmRemove(false)}>취소</button>
+              <button className="btn" style={{ flex: 1 }} onClick={() => setConfirmRemove(false)}>Cancel</button>
               <button className="btn primary" style={{ flex: 1 }}
-                onClick={() => { setConfirmRemove(false); onRemove(); }}>삭제</button>
+                onClick={() => { setConfirmRemove(false); onRemove(); }}>Delete</button>
             </div>
           </div>
         </div>
@@ -983,9 +983,14 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   const [takesOpen, setTakesOpen] = useState(false);
   const takeLanes = (track.kind === "audioIn" && DAW.getTakeLanes) ? DAW.getTakeLanes(track.id) : [];
   const takeLaneH = Math.max(40, Math.round((track.kind === "audioIn" ? laneH : laneH) * 0.5));
-  // Comp Lane (Phase 7): per-region take assignment. `comp` is null until the user swipes a
-  // region on a take lane; each lane then highlights the sub-regions currently assigned to it.
+  // Comp Lane (Phase 7): per-region take assignment; each lane highlights the sub-regions
+  // currently assigned to it. v1.46.0 — getComp returns the EFFECTIVE comp, which always has
+  // one segment per Take Group (= per clip). A plain per-clip choice therefore has exactly as
+  // many segments as groups; MORE segments means the user actually swiped a sub-region, which
+  // is what puts the lanes into "comp" presentation (dimmed lane + highlighted slices).
   const comp = (track.kind === "audioIn" && DAW.getComp) ? DAW.getComp(track.id) : null;
+  const groupCount = takeLanes.length ? takeLanes[0].groupCount : 0;
+  const compSplit = !!(comp && groupCount && comp.length > groupCount);
 
   // Phase 5 (전략 B): clip move/trim on Audio In / Bounce tracks. During a drag we
   // only move a visual "ghost" and commit the engine edit (which re-bakes t.buffer)
@@ -1163,13 +1168,18 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   };
 
-  // Stage 3: one Audio In track can hold several Takes, but only the ACTIVE take's clips
-  // are live (baked/played/exported). Until the Take Lanes UI (Stage 4) arrives, the
-  // timeline shows just the active lane so alternate takes don't stack as overlapping
-  // ghost clips. A track with no takes (file/bounce/legacy) has activeTakeId null → every
-  // clip is active, so those tracks render exactly as before.
-  const activeTakeId = (track.takes && track.takes.length && track.activeTakeId) ? track.activeTakeId : null;
-  const isActiveClip = (c) => !activeTakeId || !c.takeId || c.takeId === activeTakeId;
+  // Stage 3: one Audio In track can hold several Takes, but only the SELECTED take's clips
+  // are live (baked/played/exported), so the main lane shows just those — alternate takes
+  // don't stack as overlapping ghost clips; they live in the take lanes below.
+  //
+  // v1.46.0 — the selection is per Take Group (per clip/region), read straight from the
+  // engine so the main lane draws exactly the lanes marked active in getTakeLanes and exactly
+  // what plays/exports. Previously this read the single track-wide activeTakeId, which both
+  // hid the other clips' takes and disagreed with a swipe comp. A track with no takes
+  // (file/bounce/legacy) gets null → every clip renders, as before.
+  const selectedTakeIds = (track.takes && track.takes.length && DAW.getSelectedTakeIds)
+    ? DAW.getSelectedTakeIds(track.id) : null;
+  const isActiveClip = (c) => !c.takeId || !selectedTakeIds || selectedTakeIds.has(c.takeId);
   const activeClips = (track.clips || []).filter(isActiveClip);
   // The clips the user can actually SEE, in timeline order. The render skips
   // zero-duration placeholders, so the scissors/join tools must ignore them too —
@@ -1259,7 +1269,9 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
               background: "color-mix(in srgb, var(--surface2) 82%, var(--amber) 18%)",
               color: "var(--amber)", fontSize: 9.5, fontWeight: 700, whiteSpace: "nowrap" }}>
             <span style={{ transition: "transform .16s", transform: takesOpen ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
-            {takeLanes.length} take{takeLanes.length > 1 ? "s" : ""}
+            {takeLanes[0].groupCount > 1
+              ? `${takeLanes[0].groupCount} clips · ${takeLanes.length} takes`
+              : `${takeLanes.length} take${takeLanes.length > 1 ? "s" : ""}`}
           </button>
         )}
         {/* scissors hover highlight */}
@@ -1370,17 +1382,19 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
               {sel && (
                 <span className="mono" style={{ ...CLIP_TIME_STYLE, bottom: 2, right: 4 }}>{fmtClipTime(en)}</span>
               )}
-              {/* Stage 3a: the only visible sign that recordings accumulate as Takes (the
-                  Take Lanes UI is Stage 4). Under the start time on the selected active clip,
-                  show which Take is active + how many exist ("Take B · 2/2"). Shifts right of
-                  the moving spinner (top:15,left:4) so both are readable during a drag. */}
-              {sel && activeTakeId && (() => {
-                const tk = (track.takes || []).find((t) => t.id === clip.takeId);
-                if (!tk) return null;
-                const n = (track.takes || []).length;
+              {/* Under the start time on the selected clip, show which Take is playing here and
+                  how many alternatives THIS CLIP has ("Take B · 2/4"). v1.46.0: the count is the
+                  clip's own Take Group, not the track total — with several recorded spots the
+                  track total said nothing about the choices available here. Shifts right of the
+                  moving spinner (top:15,left:4) so both are readable during a drag. */}
+              {sel && clip.takeId && (() => {
+                const lane = takeLanes.find((l) => l.id === clip.takeId);
+                if (!lane) return null;
+                const peers = takeLanes.filter((l) => l.groupIndex === lane.groupIndex);
+                const pos = peers.findIndex((l) => l.id === lane.id) + 1;
                 return <span className="mono" style={{ ...CLIP_TIME_STYLE, top: 15, left: moving ? 18 : 4,
                   color: "var(--amber)", opacity: .85 }}>
-                  {n > 1 ? `${tk.name} · ${(tk.index || 0) + 1}/${n}` : tk.name}
+                  {peers.length > 1 ? `${lane.name} · ${pos}/${peers.length}` : lane.name}
                 </span>;
               })()}
               {/* Phase 6 Stage 5 (방안 B) — how far this take has been nudged from where it was
@@ -1480,13 +1494,35 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         <div style={{ position: "absolute", top: 0, bottom: 0, left: phx, width: 1.5, background: "var(--cream)", boxShadow: "0 0 6px rgba(239,230,212,.6)", pointerEvents: "none", zIndex: 10 }} />
       </div>
     </div>
-    {takesOpen && takeLanes.map((tk) => (
-      <TakeLaneRow key={tk.id} take={tk} trackId={track.id} laneW={laneW} laneH={takeLaneH}
-        pxPerSec={pxPerSec} ampZoom={ampZoom} playhead={playhead}
-        comp={comp} compActive={!!(comp && comp.length)}
-        onActivate={() => { if (!tk.active && onSetActiveTake) onSetActiveTake(track.id, tk.id); }}
-        onCompRegion={(start, end) => onSetCompRegion && onSetCompRegion(track.id, start, end, tk.id)}
-        onDelete={() => onDeleteTake && onDeleteTake(track.id, tk.id)} />
+    {/* v1.46.0 — lanes arrive grouped per clip/region. When the track has more than one
+        group, head each group with its clip number and time span so it is obvious that the
+        takes below belong to THAT clip and are chosen independently of the others. */}
+    {takesOpen && takeLanes.map((tk, i) => (
+      <React.Fragment key={tk.id}>
+        {tk.groupCount > 1 && (i === 0 || takeLanes[i - 1].groupIndex !== tk.groupIndex) && (
+          <div style={{ display: "flex", minWidth: "min-content" }}>
+            <div style={{ width: HEADER_W, flex: `0 0 ${HEADER_W}px`, position: "sticky", left: 0, zIndex: 7,
+              display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 26px",
+              background: "var(--surface2)", borderRight: "1px solid var(--line-strong)",
+              fontSize: 9.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--amber)" }}>
+              {`CLIP ${tk.groupIndex + 1}`}
+              <span style={{ color: "var(--muted)", fontWeight: 600 }}>
+                {`${tk.groupSize} take${tk.groupSize > 1 ? "s" : ""}`}
+              </span>
+            </div>
+            <div style={{ width: laneW, background: "var(--surface2)", display: "flex", alignItems: "center",
+              padding: "1px 10px", fontSize: 9.5, color: "var(--muted)" }}>
+              {`${fmtClipTime(tk.groupStart)} – ${fmtClipTime(tk.groupEnd)}`}
+            </div>
+          </div>
+        )}
+        <TakeLaneRow take={tk} trackId={track.id} laneW={laneW} laneH={takeLaneH}
+          pxPerSec={pxPerSec} ampZoom={ampZoom} playhead={playhead}
+          comp={comp} compActive={compSplit}
+          onActivate={() => { if (!tk.active && onSetActiveTake) onSetActiveTake(track.id, tk.id); }}
+          onCompRegion={(start, end) => onSetCompRegion && onSetCompRegion(track.id, start, end, tk.id)}
+          onDelete={() => onDeleteTake && onDeleteTake(track.id, tk.id)} />
+      </React.Fragment>
     ))}
     {/* Phase 7 Stage 4 — commit the comp. Lives INSIDE the expanded take lanes: it only
         makes sense once the user is actually choosing between takes, and keeping it out of
@@ -1498,18 +1534,16 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
           borderRight: "1px solid var(--line-strong)", borderBottom: "1px solid var(--line-strong)" }}>
           <button type="button"
             onClick={(e) => { e.stopPropagation(); onFlattenComp && onFlattenComp(track.id); }}
-            title={comp && comp.length
-              ? `Commit the comp: each region's take and the shared audio become one clip, and the other takes are dropped.\nUndo restores them, and the recorded WAV files stay on disk.`
-              : `Commit the comp: the active take and the shared audio become one clip, and the other ${takeLanes.length - 1 || ""} take${takeLanes.length === 2 ? "" : "s"} are dropped.\nUndo restores them, and the recorded WAV files stay on disk.`}
+            title={`Commit the comp: EACH clip's selected take (plus the shared audio) becomes one clip, and the other takes are dropped.\nUndo restores them, and the recorded WAV files stay on disk.`}
             style={{ flex: 1, height: 22, borderRadius: 6, cursor: "pointer",
               border: "1px solid var(--line-strong)", background: "var(--surface3)",
               color: "var(--cream-2)", fontSize: 10, fontWeight: 700, letterSpacing: ".02em" }}>
             Flatten Comp
           </button>
-          {comp && comp.length > 0 && (
+          {compSplit && (
             <button type="button"
               onClick={(e) => { e.stopPropagation(); onClearComp && onClearComp(track.id); }}
-              title="Clear the comp — go back to a single active take."
+              title="Clear the swiped regions — each clip goes back to playing one whole take."
               style={{ flex: "0 0 auto", height: 22, padding: "0 8px", borderRadius: 6, cursor: "pointer",
                 border: "1px solid var(--line-strong)", background: "transparent",
                 color: "var(--muted)", fontSize: 10, fontWeight: 700, letterSpacing: ".02em" }}>
@@ -1520,9 +1554,11 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         <div style={{ width: laneW, borderBottom: "1px solid var(--line-strong)",
           background: "var(--surface2)", display: "flex", alignItems: "center",
           padding: "0 12px", fontSize: 9.5, color: "var(--muted)" }}>
-          {comp && comp.length
-            ? "Swipe across a take lane to comp that region in. Flatten commits the comp; Undo restores every take."
-            : "Swipe across a take lane to comp part of it in, or click a lane to make it the whole take. Undo restores everything."}
+          {groupCount > 1
+            ? "Each clip picks its own take — click a lane to choose it for THAT clip. Swipe to comp part of a lane in. Flatten commits every clip's choice; Undo restores all takes."
+            : (compSplit
+              ? "Swipe across a take lane to comp that region in. Flatten commits the comp; Undo restores every take."
+              : "Swipe across a take lane to comp part of it in, or click a lane to make it the whole take. Undo restores everything.")}
         </div>
       </div>
     )}
@@ -1574,7 +1610,10 @@ function TakeLaneRow({ take, trackId, laneW, laneH, pxPerSec, ampZoom, playhead,
                            : "color-mix(in srgb, var(--surface2) 96%, var(--amber) 4%)",
         borderRight: "1px solid var(--line-strong)", borderBottom: "1px solid var(--line)",
         cursor: "pointer" }}
-        onClick={onActivate} title={active ? "Active take" : "Click to make this the active take"}>
+        onClick={onActivate}
+        title={active
+          ? (take.groupCount > 1 ? "Playing for this clip" : "Active take")
+          : (take.groupCount > 1 ? "Click to use this take for this clip" : "Click to make this the active take")}>
         <span style={{ width: 9, height: 9, borderRadius: "50%", flex: "0 0 9px",
           background: active ? "var(--amber)" : "transparent",
           border: active ? "none" : "1.5px solid var(--dim)" }} />
@@ -1709,18 +1748,30 @@ function FileTrackGroupHeader({ tracks, count, collapsed, onToggle, pxPerSec, pl
         <span onClick={(e) => { e.stopPropagation(); if (canMerge && onMergeSelected) onMergeSelected(); }}
           title={canMerge ? "Merge selected file tracks" : "Select two or more file tracks"}
           aria-disabled={!canMerge}
+          // Enabled = a FILLED accent chip; disabled = a quiet outline that melts into the
+          // header band. The old pairing (accent text on a translucent accent wash vs --dim
+          // text) inverted itself in themes whose accent is close to surface2: in Ocean the
+          // enabled chip measured 1.4:1 against the band while the disabled one measured
+          // 2.1:1, so the active state looked LESS clickable than the inactive one
+          // (사용자 보고, Modern Blue·Ocean). Filling with --amber/--accent-fg makes enabled
+          // ≥4.7:1 in all ten themes, several times the disabled contrast.
           style={{ position: "relative", zIndex: 4, marginLeft: "auto", height: 22, padding: "0 9px",
             borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
             fontSize: 9.5, fontWeight: 750, letterSpacing: ".04em", textTransform: "uppercase",
-            background: canMerge ? "var(--amber-soft)" : "rgba(255,255,255,.035)",
-            color: canMerge ? "var(--amber)" : "var(--dim)",
-            border: "1px solid " + (canMerge ? "var(--amber-deep)" : "var(--line-strong)"),
+            // Longhands, and NO transition: transitioning the `background` shorthand between
+            // `transparent` and a var() colour left Chromium stuck on the interpolated (fully
+            // transparent) value, so the enabled chip rendered unfilled even though the inline
+            // style read var(--amber).
+            backgroundColor: canMerge ? "var(--amber)" : "transparent",
+            color: canMerge ? "var(--accent-fg)" : "color-mix(in srgb, var(--muted) 70%, var(--cream) 30%)",
+            border: "1px solid " + (canMerge ? "var(--amber)" : "color-mix(in srgb, var(--line-strong) 70%, transparent)"),
+            boxShadow: canMerge ? "0 0 10px color-mix(in srgb, var(--amber) 40%, transparent)" : "none",
             cursor: canMerge ? "pointer" : "default" }}>
           {selectedCount > 0 && <span className="mono" style={{ fontSize: 9, minWidth: 12, textAlign: "center" }}>
             {selectedCount}
           </span>}
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"
-            style={{ flex: "0 0 auto", color: canMerge ? "var(--amber)" : "var(--dim)" }}>
+            style={{ flex: "0 0 auto", color: "currentColor" }}>
             <path d="M3 1.8h6.4L13 5.4v8.8H3z" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
             <path d="M9.4 1.8v3.6H13" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
             <path d="M5.3 7.8h5.2M5.3 10.2h5.2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" opacity=".72" />

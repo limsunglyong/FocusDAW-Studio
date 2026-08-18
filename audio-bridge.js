@@ -526,10 +526,16 @@
       return res;
     },
 
+    // LocalDAW.setVariBpm REFUSES to turn on without a measured Project BPM (v1.46.0),
+    // so mirror whatever it decided — never the requested value. Sending on:true after a
+    // refusal would leave the native engine stretching while the UI switch reads OFF.
+    // The neutral push is the belt-and-braces half of the same fix: even if some path
+    // gets the flag on with no BPM, native must not have a stale ratio to apply.
     setVariBpm(on) {
       const res = LocalDAW.setVariBpm(on);
       if (this.isNative) {
-        sendToNative({ command: "setVariBpm", on: !!on });
+        if (!LocalDAW.tempo.projectBpm) pushNeutralTempoToNative();
+        sendToNative({ command: "setVariBpm", on: !!res });
       }
       return res;
     },
@@ -926,6 +932,9 @@
           // Emptying the project lifted the EFFECT bypass inside LocalDAW.removeTrack;
           // the native engine is still holding the neutral values — re-push the real ones.
           if (fxWasBypassed && !LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
+          // LocalDAW.removeTrack also reset tempo to "---" on the last track (v1.46.0: push
+          // that, or native keeps the old BPM ratio / key shift for the next import).
+          syncTempoKeyToNative();
         }
       }
     },
@@ -944,6 +953,11 @@
         // defaults) so a New Project starts clean instead of inheriting the previous
         // project's EQ / reverb / echo / widener / saturation / exciter / volume.
         syncMasterToNative();
+        // …and the same for tempo/key (v1.46.0). LocalDAW.clearTracks just reset tempo to the
+        // uninitialized "---" state, but native has no clearTracks-side reset of its own, so
+        // without this push it keeps the old projectBpm/playbackBpm/keyShift and the next
+        // Vari BPM / Vari Key toggle applies the PREVIOUS project's ratio and transposition.
+        syncTempoKeyToNative();
         nativeState.offset = 0;
         nativeState.isPlaying = false;
       }
@@ -963,6 +977,10 @@
         pendingNativeLoads.clear();
         maybeActivateNativeOutput();
         if (fxWasBypassed && !LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
+        // Emptying the project resets LocalDAW.tempo (removeTrack does it on the last track),
+        // so native must follow or it keeps the old BPM ratio / key shift. Master is preserved
+        // here by design, but tempo is NOT part of the master section.
+        syncTempoKeyToNative();
         nativeState.offset = 0;
         nativeState.isPlaying = false;
       }
@@ -1304,16 +1322,32 @@
   // import, or a restored project plays at the wrong key/tempo. Crucially keyShift
   // must be sent: updateDspParams() derives the pitch shift from the integer keyShift,
   // not from the key strings, so omitting it leaves the engine at the original pitch.
+  // The native engine has no way to express "BPM not measured yet": its fields default to
+  // 120/120 and updateDspParams() only checks `projectBpm > 0`. So an UNMEASURED project must
+  // be pushed as the neutral 120/120 — otherwise the previous project's ratio (say 100 → 128)
+  // survives and Vari BPM plays the new, BPM-less project 1.28× too fast (v1.46.0 bug 1).
+  // 120 rather than 0: the non-JUCE build divides by projectBpm (AudioEngine.cpp:1413).
+  const NEUTRAL_BPM = 120;
+  function pushNeutralTempoToNative() {
+    sendToNative({ command: "setProjectBpm", bpm: NEUTRAL_BPM });
+    sendToNative({ command: "setPlaybackBpm", bpm: NEUTRAL_BPM });
+  }
+
   function syncTempoKeyToNative() {
     const t = LocalDAW.tempo;
     if (!t) return;
-    if (t.projectBpm) sendToNative({ command: "setProjectBpm", bpm: t.projectBpm });
-    if (t.playbackBpm) sendToNative({ command: "setPlaybackBpm", bpm: t.playbackBpm });
+    // ALWAYS send both, with the neutral fallback — a conditional push (the pre-v1.46.0
+    // `if (t.projectBpm)`) leaves stale values behind on every BPM-less project.
+    sendToNative({ command: "setProjectBpm", bpm: t.projectBpm || NEUTRAL_BPM });
+    sendToNative({ command: "setPlaybackBpm", bpm: t.playbackBpm || t.projectBpm || NEUTRAL_BPM });
     sendToNative({ command: "setVariBpm", on: !!t.variBpm });
     sendToNative({ command: "setVariKey", on: !!t.variKey });
-    if (t.detectedKey) sendToNative({ command: "setDetectedKey", key: t.detectedKey });
+    // Same reasoning for the key strings: an empty string CLEARS them native-side, so a
+    // project with no detected key can't inherit the previous one's (they are informational
+    // there — the audible shift comes from keyShift, which was already unconditional).
+    sendToNative({ command: "setDetectedKey", key: t.detectedKey || "" });
     sendToNative({ command: "setKeyShift", semitones: t.keyShift | 0 });
-    if (t.key) sendToNative({ command: "setKey", key: t.key });
+    sendToNative({ command: "setKey", key: t.key || "" });
   }
 
   // Push the Repeat region to the native engine, which wraps playback at the loop end

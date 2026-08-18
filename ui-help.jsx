@@ -223,7 +223,12 @@ function HelpDialog({ onClose, standalone = false }) {
         .manual-code {
           padding: 1px 4px;
           border-radius: 4px;
-          background: var(--surface2);
+          /* Not plain var(--surface2): in themes where the accent and surface2 are close
+             (Ocean — #178CA4 behind #18B7BE text ≈ 1.6:1) the text all but disappears.
+             Pulling the surface toward --bg keeps the accent readable: Ocean goes to ≈6.2:1
+             and every dark theme clears 4.5:1. The chip keeps the accent colour (it is an
+             emphasis element); the table header below uses body text instead. */
+          background: color-mix(in srgb, var(--surface2) 15%, var(--bg) 85%);
           color: var(--amber);
           font-family: var(--mono);
           font-size: 11px;
@@ -289,8 +294,15 @@ function HelpDialog({ onClose, standalone = false }) {
           vertical-align: top;
         }
         .manual-th {
-          background: var(--surface2);
-          color: var(--amber);
+          /* Left column of every manual table. surface2 + accent text failed badly in the
+             Ocean theme, where surface2 (#178CA4) and the accent (#18B7BE) are both bright
+             teal — about 1.6:1, far under the 4.5:1 minimum, so the row labels were unreadable
+             (사용자 보고, v1.46.0). Fixed as a FORMULA, not a per-theme exception: darken (or,
+             in light themes, lighten) the surface toward --bg AND use the theme's body text
+             colour instead of the accent. That pairing is ≥7:1 in all ten themes, and bold
+             weight still sets the label column apart from the --cream-2 description cells. */
+          background: color-mix(in srgb, var(--surface2) 30%, var(--bg) 70%);
+          color: var(--cream);
           font-weight: 600;
           width: 25%;
         }
@@ -652,10 +664,10 @@ function HelpDialog({ onClose, standalone = false }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">2. 시작과 프로젝트</h2>
-                  <h3 className="manual-h3">앱 실행</h3>
-                  <p className="manual-p">개발 환경에서 실행할 때는 프로젝트 루트에서 다음 명령을 사용합니다.</p>
-                  <p className="manual-p"><code className="manual-code">npm start</code></p>
-                  <p className="manual-p">패키징된 앱에서는 FocusDAW Studio 실행 파일을 열면 됩니다.</p>
+                  <h3 className="manual-h3">앱 설치와 실행</h3>
+                  <p className="manual-p">받으신 설치 파일(<code className="manual-code">FocusDAW-Studio-Setup-x.y.z.exe</code>)을 실행하면 설치가 진행되고, 바탕화면과 시작 메뉴에 <strong>FocusDAW Studio</strong> 아이콘이 만들어집니다. 이후에는 이 아이콘으로 앱을 실행합니다.</p>
+                  <p className="manual-p">앱을 켜면 <strong>마지막에 작업하던 세션이 자동으로 복원</strong>됩니다. 저장하지 않고 종료했더라도 이어서 작업할 수 있습니다(아래 <strong>RECENT PROJECT</strong> 참고). 완전히 새로 시작하려면 <strong>Project ▸ New Project</strong>를 사용하세요.</p>
+                  <div className="manual-note">처음 실행할 때 소리가 나지 않으면 <strong>Settings ▸ 오디오 장치</strong>에서 출력 장치가 현재 쓰는 장치로 지정되어 있는지 확인하세요(<strong>12장</strong>). 녹음을 하려면 입력 장치도 함께 지정합니다.</div>
 
                   <h3 className="manual-h3">상단 Project 메뉴</h3>
                   <div className="manual-figure">
@@ -713,10 +725,10 @@ function HelpDialog({ onClose, standalone = false }) {
               ) : (
                 <>
                   <h2 className="manual-h2">2. Start & Projects</h2>
-                  <h3 className="manual-h3">Launching the App</h3>
-                  <p className="manual-p">In the development environment, execute the following command at the project root:</p>
-                  <p className="manual-p"><code className="manual-code">npm start</code></p>
-                  <p className="manual-p">In the packaged release, simply open the FocusDAW Studio executable.</p>
+                  <h3 className="manual-h3">Installing and launching</h3>
+                  <p className="manual-p">Run the installer you received (<code className="manual-code">FocusDAW-Studio-Setup-x.y.z.exe</code>). It adds a <strong>FocusDAW Studio</strong> shortcut to the desktop and the Start menu — launch the app from there.</p>
+                  <p className="manual-p">On start-up the app <strong>restores the session you last worked on</strong>, even if you closed it without saving (see <strong>RECENT PROJECT</strong> below). Use <strong>Project ▸ New Project</strong> when you want a clean slate instead.</p>
+                  <div className="manual-note">If you hear nothing on first launch, check that the output device under <strong>Settings ▸ Audio device</strong> is the one you are actually using (<strong>ch. 12</strong>). Recording additionally needs an input device selected there.</div>
 
                   <h3 className="manual-h3">Top "Project" Menu</h3>
                   <div className="manual-figure">
@@ -923,12 +935,14 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">⑥ 테이크 고르기와 컴프(Comp)</h3>
                   <p className="manual-p">테이크가 둘 이상 쌓이면 클립 왼쪽 위에 <strong>“▾ n takes”</strong> 배지가 생깁니다. 이 배지를 누르면 아래로 <strong>테이크 레인</strong>이 펼쳐져 Take A, B, C … 를 나란히 볼 수 있습니다.</p>
+                  <p className="manual-p"><strong>테이크는 클립(녹음한 구간)별로 따로 관리됩니다.</strong> 한 트랙에서 서로 다른 구간을 여러 번 녹음했다면, 레인 목록도 <strong>CLIP 1 · CLIP 2 · CLIP 3 …</strong> 머리글로 나뉘어 표시되고 <strong>각 클립의 테이크는 그 클립 안에서 Take A부터</strong> 번호가 매겨집니다. 배지도 <strong>“3 clips · 8 takes”</strong>처럼 알려 줍니다. 클립마다 테이크 개수가 달라도 서로 영향을 주지 않으며, <strong>선택한 테이크가 맨 위 메인 타임라인에 표시되고 재생·내보내기에 쓰입니다</strong>.</p>
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">테이크 고르기</th><td className="manual-td">레인의 동그란 버튼을 <strong>클릭</strong>하면 그 테이크가 <strong>active</strong>가 되어 재생·내보내기에 쓰입니다.</td></tr>
-                      <tr><th className="manual-th">컴프 만들기 (swipe)</th><td className="manual-td">레인들 위를 <strong>가로로 쓸면(swipe)</strong> 구간마다 다른 테이크를 골라 <strong>이어 붙인 하나의 테이크</strong>를 만들 수 있습니다. “1절 앞부분은 Take B, 뒷부분은 Take D”처럼 좋은 부분만 조합하는 방식입니다.</td></tr>
+                      <tr><th className="manual-th">테이크 고르기</th><td className="manual-td">레인을 <strong>클릭</strong>하면 <strong>그 클립</strong>이 해당 테이크로 재생됩니다. <strong>다른 클립의 선택은 그대로 유지</strong>됩니다(예: 1번 클립은 Take A, 2번 클립은 Take C, 3번 클립은 Take B).</td></tr>
+                      <tr><th className="manual-th">컴프 만들기 (swipe)</th><td className="manual-td">레인 위를 <strong>가로로 쓸면(swipe)</strong> 한 클립 안에서도 구간마다 다른 테이크를 골라 이어 붙일 수 있습니다. “앞부분은 Take B, 뒷부분은 Take D”처럼 좋은 부분만 조합하는 방식입니다. 쓸기는 <strong>그 테이크가 속한 클립 구간 안으로만</strong> 적용됩니다.</td></tr>
+                      <tr><th className="manual-th">Clear</th><td className="manual-td">쓸어서 나눈 구간을 지우고 <strong>각 클립이 다시 테이크 하나를 통째로</strong> 재생하게 되돌립니다. 클립별 테이크 선택은 그대로 남습니다.</td></tr>
                       <tr><th className="manual-th">테이크 삭제</th><td className="manual-td">각 레인 오른쪽의 <strong>×</strong> 버튼으로 그 테이크를 지웁니다.</td></tr>
-                      <tr><th className="manual-th">Flatten Comp</th><td className="manual-td">조합한 결과를 <strong>하나의 오디오 파일로 확정</strong>합니다. 실행하면 테이크 레인이 정리되고 단일 클립이 됩니다. 모든 테이크의 파형이 완전히 로드된 뒤에 실행하세요.</td></tr>
+                      <tr><th className="manual-th">Flatten Comp</th><td className="manual-td">조합한 결과를 <strong>하나의 오디오 파일로 확정</strong>합니다. <strong>클립마다 선택한 테이크가 각각 확정</strong>되고 나머지 테이크는 정리됩니다. 모든 테이크의 파형이 완전히 로드된 뒤에 실행하세요.</td></tr>
                       <tr><th className="manual-th">레인 접기</th><td className="manual-td">배지를 다시 누르거나 아래쪽 <strong>∨</strong> 버튼으로 레인을 접습니다.</td></tr>
                     </tbody>
                   </table>
@@ -1156,12 +1170,14 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">6. Choosing takes and comping</h3>
                   <p className="manual-p">Once more than one take exists, a <strong>“▾ n takes”</strong> badge appears at the top left of the clip. Click it to expand the <strong>take lanes</strong> and see Take A, B, C … side by side.</p>
+                  <p className="manual-p"><strong>Takes belong to the clip they were recorded into.</strong> If you recorded several different spots on one track, the lane list is split by <strong>CLIP 1 · CLIP 2 · CLIP 3 …</strong> headers and <strong>each clip numbers its own takes from Take A</strong> (the badge reads e.g. <strong>“3 clips · 8 takes”</strong>). Clips can hold different numbers of takes without affecting each other, and <strong>the take you select is what the main lane shows and what plays and exports</strong>.</p>
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">Pick a take</th><td className="manual-td"><strong>Click</strong> the round button on a lane to make that take <strong>active</strong> — the one used for playback and Export.</td></tr>
-                      <tr><th className="manual-th">Build a comp (swipe)</th><td className="manual-td"><strong>Swipe horizontally</strong> across the lanes to assemble one composite take from different passes — "Take B for the first half, Take D for the rest".</td></tr>
+                      <tr><th className="manual-th">Pick a take</th><td className="manual-td"><strong>Click</strong> a lane to play that take <strong>for that clip</strong>. The other clips keep their own selections — clip 1 on Take A, clip 2 on Take C, clip 3 on Take B is perfectly fine.</td></tr>
+                      <tr><th className="manual-th">Build a comp (swipe)</th><td className="manual-td"><strong>Swipe horizontally</strong> across a lane to assemble one clip from different passes — "Take B for the first half, Take D for the rest". A swipe only applies <strong>inside its own clip's span</strong>.</td></tr>
+                      <tr><th className="manual-th">Clear</th><td className="manual-td">Drops the swiped regions so <strong>each clip plays one whole take</strong> again. The per-clip take selections stay.</td></tr>
                       <tr><th className="manual-th">Delete a take</th><td className="manual-td">The <strong>×</strong> button at the right of each lane removes that take.</td></tr>
-                      <tr><th className="manual-th">Flatten Comp</th><td className="manual-td"><strong>Commits the comp to a single audio file.</strong> The take lanes collapse into one clip. Run it once every take shows a fully loaded waveform.</td></tr>
+                      <tr><th className="manual-th">Flatten Comp</th><td className="manual-td"><strong>Commits the comp to audio.</strong> <strong>Every clip's selected take is committed</strong> and the remaining takes are cleared away. Run it once every take shows a fully loaded waveform.</td></tr>
                       <tr><th className="manual-th">Collapse lanes</th><td className="manual-td">Click the badge again, or the <strong>∨</strong> button below the lanes.</td></tr>
                     </tbody>
                   </table>
@@ -1416,6 +1432,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
                   <div className="manual-note">만들어진 <strong>Bounce 트랙</strong>은 Audio In 트랙과 마찬가지로 <strong>클립 편집</strong>과 <strong>보컬 채널 스트립(FX)</strong>을 쓸 수 있습니다. 원본을 <strong>Keep + Mute</strong>로 두면 나중에 다시 펼쳐 볼 수 있으므로 가장 안전합니다.</div>
+                  <div className="manual-note"><strong>바운스는 언제나 원본 BPM · Key로 렌더링됩니다.</strong> Vari BPM이나 Vari Key를 켜 둔 채 병합해도 결과물의 길이와 음정이 달라지지 않아, 타임라인에서 원본 트랙과 정확히 겹칩니다. 템포·조성 변경은 <strong>실시간 재생과 Export</strong>에만 적용된다고 기억하세요(<strong>6장 · 7장 · 11장</strong>).</div>
 
                   <h3 className="manual-h3">Edit 메뉴 — 모든 트랙 삭제 (Delete all tracks) <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">상단 <strong>Edit</strong> 메뉴의 Undo / Redo 아래에 <strong>Delete all tracks</strong> 항목이 있습니다. 현재 불러온 <strong>오디오 트랙만 모두 비우고</strong>, 마스터(프로젝트 전체)에 걸어 둔 <strong>이펙트 설정은 그대로 유지</strong>합니다. 같은 이펙트 체인(마스터 EQ·리버브·에코·Ambience·페이드 등)을 유지한 채 다른 스템 세트로 교체할 때 유용합니다.</p>
@@ -1534,6 +1551,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
                   <div className="manual-note">A <strong>Bounce track</strong> supports <strong>clip editing</strong> and the <strong>Vocal Channel Strip (FX)</strong>, just like an Audio In track. Leaving the originals on <strong>Keep + Mute</strong> is the safest choice — you can always unfold them again later.</div>
+                  <div className="manual-note"><strong>Bounces always render at the original BPM and key.</strong> Merging with Vari BPM or Vari Key switched on does not change the result's length or pitch, so it lines up exactly with the tracks it came from. Tempo and key changes apply to <strong>realtime playback and Export only</strong> (<strong>ch. 6 · 7 · 11</strong>).</div>
 
                   <h3 className="manual-h3">Edit Menu — Delete all tracks <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">The top <strong>Edit</strong> menu offers <strong>Delete all tracks</strong> below Undo / Redo. It clears <strong>all loaded audio tracks at once while keeping the master (project-wide) effect settings intact</strong> — handy when you want to swap in a different set of stems but keep the same effect chain (master EQ, reverb, echo, Ambience, fades, etc.).</p>
@@ -1566,6 +1584,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <p className="manual-p">BPM 표시기 오른쪽에는 <strong>Vari BPM</strong> 스위치가 있습니다. 이 스위치를 <strong>켜야</strong> 재생 BPM으로 곡 속도를 조정하며, <strong>끄면</strong> 재생 BPM을 바꿔도 속도가 변하지 않습니다(기본값 OFF). 스위치를 켠 상태에서 BPM 표시기 위에 마우스 휠을 돌리거나 ▲▼ 버튼을 누르면 <strong>뒤쪽 재생 BPM</strong>이 1씩 바뀌고, 곡 전체가 그 비율(<code>재생 BPM ÷ 프로젝트 BPM</code>)만큼 빨라지거나 느려집니다.</p>
+                  <div className="manual-note"><strong>Vari BPM은 프로젝트 BPM이 정해진 뒤에만 켤 수 있습니다.</strong> 기준이 될 BPM이 없으면 속도 비율을 계산할 수 없기 때문입니다. BPM 표시기가 <code className="manual-code">---</code>인 상태에서 스위치를 누르면 스위치가 흐리게 표시된 채 <strong>BPM 측정이 필요하다는 안내창</strong>이 뜹니다. 아래 ①~④ 절차로 BPM을 먼저 정하세요.</div>
 
                   <h3 className="manual-h3">① BPM 측정 대상 트랙 선택 (B 버튼)</h3>
                   <p className="manual-p">먼저 어떤 트랙의 오디오로 BPM을 측정할지 정합니다. 트랙 헤더의 <strong>B</strong> 버튼을 누르면 그 트랙이 BPM 측정 소스로 선택되어 배경이 채워지며, B는 한 번에 한 트랙에만 켜집니다. 드럼처럼 박자가 뚜렷한 트랙을 고르면 측정이 더 정확합니다.</p>
@@ -1627,6 +1646,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <p className="manual-p">The <strong>Vari BPM</strong> switch to the right of the indicator must be <strong>on</strong> for the playback BPM to change the song speed (off = no speed change; default off). With it on, hover the BPM indicator and scroll the mouse wheel, or use the ▲▼ buttons, to change the <strong>playback BPM</strong> by 1 — the whole song speeds up or slows down by that ratio (playback BPM ÷ project BPM).</p>
+                  <div className="manual-note"><strong>Vari BPM can only be switched on once a project BPM exists</strong> — without a reference tempo there is no ratio to apply. While the indicator reads <code className="manual-code">---</code> the switch is dimmed, and clicking it opens a notice explaining that the BPM has to be measured first. Use steps 1–4 below to set one.</div>
 
                   <h3 className="manual-h3">1. Choose the detection source track (B button)</h3>
                   <p className="manual-p">Press the <strong>B</strong> button on a track header to mark it as the BPM detection source (its background fills in). Only one track can be the B source at a time. Picking a track with a clear beat (e.g. drums) gives more accurate detection.</p>
@@ -1701,7 +1721,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <h3 className="manual-h3">② Key Detection (조성 감지)</h3>
-                  <p className="manual-p">패널 내의 <strong>Detect</strong> 버튼을 누르면 프로젝트의 활성화된 모든 오디오 트랙을 정밀 분석(STFT 기반 크로마 연산)하여 원곡의 키를 추정합니다. 분석이 끝나면 감지된 대표 키값이 패널 하단 목록에 표시됩니다.</p>
+                  <p className="manual-p">패널 내의 <strong>Detect</strong> 버튼을 누르면 프로젝트의 활성화된 모든 오디오 트랙을 정밀 분석(STFT 기반 크로마 연산)하여 원곡의 키를 추정합니다. 결과는 <strong>하나의 원곡 Key</strong>이며, 패널 가운데의 원Key 표시창에 나타나고 하단 조성 목록에서도 강조 표시됩니다.</p>
 
                   <div className="manual-figure">
                     <img src="manual/screens-v2/07-03a-key-detect.png" alt="Key Detection 완료 화면" className="manual-img" />
@@ -1710,7 +1730,7 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <div className="manual-figure">
                     <img src="manual/screens-v2/07-03b-key-list.png" alt="하단 Key 후보 리스트" className="manual-img" />
-                    <div className="manual-figcaption">하단 Key 리스트 창에서는 신뢰도가 높은 으뜸음 및 조성 후보들을 목록으로 제안합니다.</div>
+                    <div className="manual-figcaption">하단 Key 리스트는 <strong>참고용 전체 조성 목록</strong>입니다(장조 12개 · 단조 12개). 감지된 원곡 Key가 강조 표시되어 어떤 조성으로 판정됐는지 한눈에 확인할 수 있습니다. <strong>이 목록에서 Key를 고를 수는 없으며</strong>, 조성 변경은 <strong>+</strong> / <strong>−</strong> 오프셋을 정한 뒤 <strong>APPLY</strong>로만 적용됩니다.</div>
                   </div>
 
                   <h3 className="manual-h3">③ Key 설정 적용</h3>
@@ -1763,7 +1783,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <h3 className="manual-h3">2. Key Detection</h3>
-                  <p className="manual-p">Click the <strong>Detect</strong> button in the panel to run a comprehensive harmonic analysis (STFT-based chromagram) across all active audio tracks. Once the analysis is complete, the estimated candidate keys will be displayed at the bottom of the panel.</p>
+                  <p className="manual-p">Click the <strong>Detect</strong> button in the panel to run a comprehensive harmonic analysis (STFT-based chromagram) across all active audio tracks. It produces <strong>one original key</strong>, shown in the original-key box in the middle of the panel and highlighted in the key list below it.</p>
 
                   <div className="manual-figure">
                     <img src="manual/screens-v2/07-03a-key-detect.png" alt="Key detection complete" className="manual-img" />
@@ -1772,7 +1792,7 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <div className="manual-figure">
                     <img src="manual/screens-v2/07-03b-key-list.png" alt="Key candidate list" className="manual-img" />
-                    <div className="manual-figcaption">The key candidate list at the bottom suggests the most probable tonic and scale options.</div>
+                    <div className="manual-figcaption">The list at the bottom is a <strong>reference list of every key</strong> (12 major · 12 minor), with the detected original key highlighted so you can see what the analysis settled on. <strong>You cannot pick a key from this list</strong> — transposition is set with the <strong>+</strong> / <strong>−</strong> offset and committed with <strong>APPLY</strong>.</div>
                   </div>
 
                   <h3 className="manual-h3">3. Applying Key Settings</h3>
@@ -2607,7 +2627,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">여러 번 다시 녹음하면 쓰이지 않는 테이크 파일이 쌓입니다. <strong>Project ▸ Clean Up Unused Recordings…</strong>로 정리하세요. 되돌리기 기록에 남아 있는 파일은 제외되고, 삭제가 아니라 휴지통으로 이동합니다(<strong>2장</strong>).</p>
 
                   <h3 className="manual-h3">MP3 저장이 실패할 때</h3>
-                  <p className="manual-p">데스크톱 앱은 내부적으로 ffmpeg를 사용해 MP3를 인코딩합니다. 개발 환경에서 문제가 있으면 의존성이 설치되어 있는지 확인한 뒤 <code className="manual-code">npm install</code>을 다시 실행하세요. 브라우저에서 직접 실행하는 경우에는 lamejs가 로드되어야 MP3 인코딩이 가능합니다.</p>
+                  <p className="manual-p">MP3 인코딩은 앱에 함께 설치되는 변환기(ffmpeg)가 처리합니다. MP3 저장이 실패하면 ① 저장 위치에 <strong>쓰기 권한</strong>이 있는지(다른 폴더로 저장해 보기), ② 같은 이름의 파일이 <strong>다른 프로그램에서 열려 있지</strong> 않은지, ③ 디스크 여유 공간이 충분한지 확인하세요. 그래도 실패하면 <strong>WAV로 먼저 저장</strong>해 작업물을 안전하게 확보한 뒤, 앱을 <strong>다시 설치</strong>해 주세요.</p>
 
                   <h3 className="manual-h3">화면이 너무 좁을 때</h3>
                   <p className="manual-p">FocusDAW Studio의 최소 창 크기는 1258x600입니다. 믹서나 Export 창이 좁게 보이면 창을 넓히거나 타임라인을 스크롤해 필요한 영역을 확인하세요.</p>
@@ -2642,7 +2662,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Repeated re-recording leaves unused take files behind. Run <strong>Project ▸ Clean Up Unused Recordings…</strong>. Files still held by the undo history are excluded, and everything goes to the Recycle Bin rather than being erased (<strong>ch. 2</strong>).</p>
 
                   <h3 className="manual-h3">MP3 Render Fails</h3>
-                  <p className="manual-p">The desktop app uses ffmpeg internally to encode MP3s. In a development environment, run <code className="manual-code">npm install</code> to restore dependencies. In a standalone browser, lamejs must be loaded to support MP3 exports.</p>
+                  <p className="manual-p">MP3 encoding is handled by the converter (ffmpeg) that ships with the app. If an MP3 export fails, check that ① you can <strong>write to the destination folder</strong> (try another one), ② no other program has a file of the same name <strong>open</strong>, and ③ there is enough free disk space. If it still fails, <strong>export a WAV first</strong> to secure your work, then reinstall the app.</p>
 
                   <h3 className="manual-h3">Elements cut off or window too small</h3>
                   <p className="manual-p">The minimum window resolution is 1258x600. Resize your window or scroll horizontally on the timeline to locate hidden elements.</p>
@@ -2663,9 +2683,13 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v1.45.0",
-  date: "2026-08-11",
+  range: "v1.40.0 - v1.46.2",
+  date: "2026-08-18",
   features: [
+    "Takes are now organised per clip: when one Audio In track holds several recorded spots, the take lanes are grouped under CLIP 1 / CLIP 2 / CLIP 3 headers, each clip numbers its takes from Take A, and choosing a take for one clip leaves the other clips playing their own. Flatten Comp commits every clip's choice at once.",
+    "Vari BPM can no longer be switched on before the project BPM is known. While the indicator reads \"---\" the switch is dimmed and clicking it explains how to measure the tempo — previously it could silently apply the previous project's tempo ratio and play the song too fast or too slow.",
+    "Merge Tracks always renders its bounce at the original BPM and key, so a bounce lines up with the tracks it came from even when Vari BPM / Vari Key are on. Tempo and key changes now apply to realtime playback and Export only.",
+    "Manual: readable table headings in the Ocean theme, end-user (installed app) instructions instead of developer commands in \"Start & Projects\", and a corrected description of the key list in the Key chapter.",
     "User manual rewritten for v1.45.0: the in-app manual and manual/사용자 메뉴얼.html now cover recording takes and comping, punch, clip editing, the vocal channel strip, de-noise, Merge Tracks, the file-track group, Save As portability, Clean Up Unused Recordings, and the new audio-device settings — with refreshed screenshots throughout.",
     "Vocal channel strip: Audio In and Bounce tracks now have an FX button that opens a dedicated Vocal Channel Strip window with a 9-band graphic EQ and a compressor, plus vocal presets (Clean Lead / Warm Pop / Bright Air / Podcast) and an A/B bypass. The strip is applied before the track fader and is reflected in playback, Export, and saved projects.",
     "Vocal strip layout: the Bypass / Strip Active switch moved up next to the track name, and the preset row gained a Reset button that returns every module to its defaults (your bypass state is left alone, and it is undoable).",

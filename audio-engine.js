@@ -396,14 +396,20 @@
       }
       return null;
     },
-    // A clip is "live" when it belongs to the active take, OR carries no takeId at all
-    // (file/bounce clips, consolidations, anything predating takes) — those are shared
-    // across lanes and must always render. Only a clip tagged with a DIFFERENT take is
-    // hidden from bake/overlap/playback.
+    // A clip is "live" when it belongs to the take its REGION currently selects, OR carries
+    // no takeId at all (file/bounce clips, consolidations, anything predating takes) — those
+    // are shared across lanes and must always render. Only a clip tagged with a take that its
+    // own region did not select is hidden from bake/overlap/playback.
+    //
+    // v1.46.0 — "selected" is per Take Group (per clip/region), not per track. The old rule
+    // was a single track-wide activeTakeId, so choosing take C of the 2nd clip silenced the
+    // 1st and 3rd clips' takes entirely (수정요청 3). With one group the two rules agree, so
+    // single-region tracks and every old project behave exactly as before.
     _isActiveClip(track, clip) {
-      const act = this._activeTakeId(track);
-      if (!act) return true;
-      return !clip.takeId || clip.takeId === act;
+      if (!clip.takeId) return true;
+      const sel = this._selectedTakeIdSet(track);
+      if (!sel) return true;                 // no takes / no take clips → nothing to hide
+      return sel.has(clip.takeId);
     },
     _activeClips(track) {
       return (track.clips || []).filter(c => this._isActiveClip(track, c));
@@ -420,6 +426,137 @@
       }
       return hi > lo ? { start: lo, end: hi } : null;
     },
+
+    // ---- Take Groups (v1.46.0) --------------------------------------------
+    // A Take Group is "one clip's set of alternatives": the takes whose timeline spans
+    // overlap each other. Re-recording a region (punch / loop-punch) adds takes to that
+    // region's group, so a track with three recorded spots has three independent groups
+    // and each one picks its own take. Groups are DERIVED from the clips — nothing extra
+    // is stored or serialized, so old projects group themselves correctly on load.
+    // Returns groups in timeline order; each group's takes stay in recording order.
+    // `clips` overrides track.clips — used by _shiftInactiveTakeClips to group by the
+    // positions the clips had BEFORE the move it is compensating for.
+    _takeGroups(track, clips) {
+      const takes = (track && track.takes) || [];
+      if (!takes.length) return [];
+      const spans = new Map();               // takeId → { start, end } across its clips
+      for (const c of (clips || track.clips || [])) {
+        if (!c.takeId) continue;
+        const s = c.start || 0, e = s + (c.duration || 0);
+        const cur = spans.get(c.takeId);
+        if (!cur) spans.set(c.takeId, { start: s, end: e });
+        else { cur.start = Math.min(cur.start, s); cur.end = Math.max(cur.end, e); }
+      }
+      const rank = new Map(takes.map((t, i) => [t.id, i]));   // recording order
+      const ordered = takes
+        .filter(t => spans.has(t.id))
+        .map(t => ({ take: t, ...spans.get(t.id) }))
+        .sort((a, b) => (a.start - b.start) || (a.end - b.end));
+      const groups = [];
+      for (const item of ordered) {
+        const g = groups[groups.length - 1];
+        // Overlapping spans are alternatives for the same spot; a span that starts after the
+        // running group ends is a different spot and opens a new group.
+        if (g && item.start < g.end - 1e-3) {
+          g.start = Math.min(g.start, item.start);
+          g.end = Math.max(g.end, item.end);
+          g.takes.push(item.take);
+        } else {
+          groups.push({ start: item.start, end: item.end, takes: [item.take] });
+        }
+      }
+      groups.forEach((g, i) => {
+        g.index = i;
+        g.takes.sort((a, b) => rank.get(a.id) - rank.get(b.id));
+      });
+      return groups;
+    },
+    // Which take a group currently plays: the take covering most of the group's region in
+    // the comp (a swipe comp can split a group), else the track's last-touched take if it
+    // belongs here, else the group's newest take.
+    _groupSelection(track, group) {
+      const comp = Array.isArray(track.comp) ? track.comp : null;
+      if (comp && comp.length) {
+        const acc = new Map();
+        for (const s of comp) {
+          if (!s || !s.takeId || !group.takes.some(t => t.id === s.takeId)) continue;
+          const a = Math.max(s.start, group.start), b = Math.min(s.end, group.end);
+          if (b - a <= 1e-4) continue;
+          acc.set(s.takeId, (acc.get(s.takeId) || 0) + (b - a));
+        }
+        let best = null, bestLen = 0;
+        acc.forEach((len, id) => { if (len > bestLen) { best = id; bestLen = len; } });
+        if (best) return best;
+      }
+      const act = track.activeTakeId;
+      if (act && group.takes.some(t => t.id === act)) return act;
+      // No explicit choice for this group: fall back the way a recording itself would — the
+      // last COMPLETE pass, not a short trailing fragment. `activeTakeId` can only point at
+      // one group, so every other group lands here; picking the newest take blindly made a
+      // partial take take over as soon as the user punched somewhere else (T-1.46.0-3).
+      for (let i = group.takes.length - 1; i >= 0; i--) {
+        if (!group.takes[i].partial) return group.takes[i].id;
+      }
+      return group.takes[group.takes.length - 1].id;
+    },
+    // The take ids that are on top right now — one per group. null when the track has no
+    // takes at all, which callers read as "nothing to hide".
+    _selectedTakeIdSet(track) {
+      const groups = this._takeGroups(track);
+      if (!groups.length) return null;
+      return new Set(groups.map(g => this._groupSelection(track, g)));
+    },
+    // UI-facing (main lane draws exactly the lanes marked active in getTakeLanes).
+    getSelectedTakeIds(trackId) {
+      const t = this.tracks.find(x => x.id === trackId);
+      return t ? this._selectedTakeIdSet(t) : null;
+    },
+    // Recording a new take somewhere else must not disturb what the OTHER clips are playing.
+    // A group's choice can live purely in `activeTakeId` (never explicitly picked, so nothing
+    // is stored), and the new take is about to claim that field — so freeze every group's
+    // current selection into the comp, then let the new take win in its own group. Called by
+    // the punch paths with the comp captured BEFORE they touched the track (v1.46.1).
+    _applyPinnedSelections(track, pinned, newTakeId) {
+      const groups = this._takeGroups(track);
+      if (groups.length < 2) return;          // one group: activeTakeId already says it all
+      const live = new Set((track.takes || []).map(t => t.id));
+      const newGroup = newTakeId ? groups.find(g => g.takes.some(t => t.id === newTakeId)) : null;
+      const segs = (Array.isArray(pinned) ? pinned : [])
+        // Drop takes that no longer exist, and anything covering the group the new take
+        // joined — that region is decided by the take just recorded.
+        .filter(s => live.has(s.takeId)
+          && !(newGroup && s.start < newGroup.end - 1e-3 && s.end > newGroup.start + 1e-3))
+        .map(s => ({ ...s }));
+      if (newGroup && newTakeId) segs.push({ start: newGroup.start, end: newGroup.end, takeId: newTakeId });
+      segs.sort((a, b) => a.start - b.start);
+      track.comp = segs.length ? segs : null;
+    },
+    // The comp actually used for rendering: the stored comp where it says something, plus a
+    // full-region segment for every group it does not cover. Without this fill-in, a swipe on
+    // ONE region left the other regions uncovered and they rendered silence.
+    _effectiveComp(track) {
+      const groups = this._takeGroups(track);
+      if (!groups.length) return null;
+      const stored = Array.isArray(track.comp) ? track.comp : null;
+      const out = [];
+      for (const g of groups) {
+        const sel = this._groupSelection(track, g);
+        const inside = (stored || [])
+          .filter(s => s && s.takeId && g.takes.some(t => t.id === s.takeId))
+          .map(s => ({ start: Math.max(s.start, g.start), end: Math.min(s.end, g.end), takeId: s.takeId }))
+          .filter(s => s.end - s.start > 1e-4)
+          .sort((a, b) => a.start - b.start);
+        let cursor = g.start;
+        for (const s of inside) {
+          if (s.start > cursor + 1e-4) out.push({ start: cursor, end: s.start, takeId: sel });
+          out.push(s);
+          cursor = Math.max(cursor, s.end);
+        }
+        if (cursor < g.end - 1e-4) out.push({ start: cursor, end: g.end, takeId: sel });
+      }
+      out.sort((a, b) => a.start - b.start);
+      return out.length ? out : null;
+    },
     // Comp Lane (Phase 7). `track.comp` is a sorted, gap-free, non-overlapping list of
     // { start, end, takeId } segments tiling the take region: each region plays the audio
     // of its assigned Take, SLICED to the segment. This is the one comp-aware clip source —
@@ -428,7 +565,9 @@
     // The seams between differing takes are picked up by _planClipEdges as normal butt
     // joints and get the equal-power crossfade (v1.38.0) for free.
     _renderClips(track) {
-      const comp = track && track.comp;
+      // v1.46.0: the EFFECTIVE comp — the stored comp plus a segment for every Take Group it
+      // does not mention — so each clip/region contributes its own selected take.
+      const comp = track && this._effectiveComp(track);
       if (!Array.isArray(comp) || !comp.length) return this._activeClips(track);
       // Base clips (takeId=null: file audio, consolidations, pre-take clips) always render —
       // a comp only chooses among TAKE audio, never hides the shared base.
@@ -536,36 +675,49 @@
         // or dropped above) would be hidden forever by _isActiveClip. Detach it (takeId=null)
         // so it stays visible as a shared clip instead of vanishing.
         for (const c of (track.clips || [])) { if (c.takeId && !liveIds.has(c.takeId)) c.takeId = null; }
+        rebuilt.forEach((t, i) => { t.index = i; });
+        track.takes = rebuilt;
         // "Original" takes (pre-punch audio parked by _parkDisplacedAsTakes, v1.40.0) keep a
         // name instead of a letter, and are skipped by the A/B/C counter so the recorded
         // passes still read Take A, B, C… — the live record badge predicts those letters.
-        let passIdx = 0, origIdx = 0;
-        rebuilt.forEach((t, i) => {
-          t.index = i;
-          if (t.kind === "original") { t.name = origIdx === 0 ? "Original" : `Original ${origIdx + 1}`; origIdx++; }
-          else t.name = this._takeLabel(passIdx++);
-        });
-        track.takes = rebuilt;
+        //
+        // v1.46.0 — numbering is PER TAKE GROUP (per clip/region): every clip's own takes read
+        // Take A, B, C… so "clip 2의 Take C"는 클립 2 안에서만 세면 된다. A track with a single
+        // group numbers exactly as before. Groups are derived from the clips just rebuilt above.
+        const groups = this._takeGroups(track);
+        const numbered = new Set();
+        for (const g of groups) {
+          let passIdx = 0, origIdx = 0;
+          for (const t of g.takes) {
+            if (t.kind === "original") { t.name = origIdx === 0 ? "Original" : `Original ${origIdx + 1}`; origIdx++; }
+            else t.name = this._takeLabel(passIdx++);
+            numbered.add(t.id);
+          }
+        }
+        // Defensive: a take with no clip span can't land in a group (shouldn't happen — the
+        // rebuild above keeps only referenced takes) — leave its existing name rather than blank.
+        rebuilt.forEach((t) => { if (!numbered.has(t.id) && !t.name) t.name = this._takeLabel(t.index || 0); });
       }
       // Drop a dangling activeTakeId (points at a take that no longer exists) so
       // _activeTakeId() falls back sensibly instead of hiding every clip.
       if (track.activeTakeId && !track.takes.some(t => t.id === track.activeTakeId)) {
         track.activeTakeId = track.takes.length ? track.takes[track.takes.length - 1].id : null;
       }
-      // Comp hygiene (Phase 7): clamp segments to the current take region and re-point any
-      // that name a deleted take at the active fallback, so a dropped take can't leave a
-      // segment rendering silence. Collapses to null when it degenerates to one take/no takes.
+      // Comp hygiene (Phase 7): clamp segments to the current take region and DROP any that
+      // name a deleted take. Collapses to null when it degenerates to one take/no takes.
+      // v1.46.0 — dropping (rather than re-pointing at a track-wide fallback) is what makes
+      // this correct with Take Groups: the fallback take usually has no audio in the orphaned
+      // segment's region, so it would render silence. A dropped segment leaves a hole that
+      // _effectiveComp refills with that region's OWN selection.
       if (Array.isArray(track.comp) && track.comp.length) {
         const region = this._takeRegion(track);
         if (!region || !track.takes.length) {
           track.comp = null;
         } else {
           const liveTakeIds = new Set(track.takes.map(t => t.id));
-          const fallback = (track.activeTakeId && liveTakeIds.has(track.activeTakeId))
-            ? track.activeTakeId : track.takes[track.takes.length - 1].id;
           const cleaned = track.comp
-            .map(s => ({ start: Math.max(region.start, s.start), end: Math.min(region.end, s.end),
-              takeId: liveTakeIds.has(s.takeId) ? s.takeId : fallback }))
+            .filter(s => s && liveTakeIds.has(s.takeId))
+            .map(s => ({ start: Math.max(region.start, s.start), end: Math.min(region.end, s.end), takeId: s.takeId }))
             .filter(s => s.end - s.start > 1e-3)
             .sort((a, b) => a.start - b.start);
           track.comp = this._coalesceComp(cleaned, region);
@@ -1061,7 +1213,18 @@
       const outPt = Number(options.end) > inPt ? Number(options.end) : inPt + decoded.buffer.duration;
       const clipEnd = Math.min(inPt + decoded.buffer.duration, outPt);
       const clipDuration = Math.max(0, clipEnd - inPt);
-      const activeId = this._activeTakeId(track); // punch clip joins the active take (null = no takes)
+      // The punch clip joins the active take — but only when the punch actually lands in THAT
+      // take's region (v1.46.0). Takes are grouped per clip/region now, so punching somewhere
+      // else must not extend a take that lives elsewhere: that is exactly what produced takes
+      // spanning several clips and made per-clip selection impossible (수정요청 3).
+      let activeId = this._activeTakeId(track);
+      if (activeId) {
+        const g = this._takeGroups(track).find(x => x.takes.some(k => k.id === activeId));
+        const overlaps = g && inPt < g.end - 1e-3 && outPt > g.start + 1e-3;
+        if (!overlaps) activeId = null;
+      }
+      // What every clip is playing right now, frozen before we touch anything (v1.46.1).
+      const pinnedSelections = this._effectiveComp(track);
 
       // Split the ACTIVE clips at the punch span. Pieces outside stay exactly as they were
       // (still on the active take); pieces inside are parked as a take instead of being
@@ -1077,7 +1240,10 @@
         punchTakeId = this._takeId();
         track.takes = [...(track.takes || []), { id: punchTakeId, name: this._takeLabel(0), index: (track.takes || []).length }];
       }
-      const next = [...sliced.untouched, ...sliced.outside, ...(parked ? parked.clips : [])];
+      // Both `outside` (untouched live clips) and `remnants` (the punched clip's leading /
+      // trailing pieces) keep their takeId here — single punch replaces a span inside the
+      // active take, it does not create shared base material.
+      const next = [...sliced.untouched, ...sliced.outside, ...sliced.remnants, ...(parked ? parked.clips : [])];
       // Splice the punch clip in (tagged to the punch take so it plays/bakes/exports with it).
       next.push(this._normalizeClip({ start: inPt, end: clipEnd, offset: 0, duration: clipDuration, takeId: punchTakeId,
         recordedStart: inPt, recordedOffsetMs: Number.isFinite(options.recordedOffsetMs) ? options.recordedOffsetMs : 0 },
@@ -1085,6 +1251,7 @@
       track.clips = next;
       if (punchTakeId) track.activeTakeId = punchTakeId;   // the new punch is what you hear
       this._normalizeTrackLayout(track);   // name the parked "Original", renumber the passes
+      this._applyPinnedSelections(track, pinnedSelections, punchTakeId);
       this._reindexClips(track);
       this._ensureBaked(track);
       this.duration = Math.max(this.duration, this._projectClipDuration());
@@ -1173,8 +1340,9 @@
     // loop-Take (v1.30.0): unlike single Punch (one clip merged into the active take) or plain
     // loop-Take (region takes that hide any prior full take), it KEEPS the base outside [in,out]:
     //   (1) empty [in,out] among the currently-active clips (deleteRange's split/trim rules) and
-    //       DETACH the surviving pieces to takeId=null so they always render — that is the shared
-    //       base, common to every pass;
+    //       DETACH THE CUT-OFF PIECES to takeId=null so they always render — that is the shared
+    //       base, common to every pass. (v1.46.1: only the pieces of the clip the region actually
+    //       cut; clips elsewhere on the track keep their takes — see _sliceActiveAtRegion.)
     //   (2) slice the recording into one [in,out]-scoped Take per pass (active = last full pass).
     // _isActiveClip then renders base(null) + the active pass only, so Take Lanes switches passes
     // by swapping just the region clip — no re-splice. options.loopStart/loopEnd are the (offset-
@@ -1206,6 +1374,9 @@
       if (!track.filePath) track.filePath = options.filePath || null;
       track.needsAudio = false;
 
+      // What every clip is playing right now, frozen before we touch anything (v1.46.1).
+      const pinnedSelections = this._effectiveComp(track);
+
       // (1) Split the ACTIVE clips at the region. Pieces OUTSIDE become the shared base
       // (takeId=null → always rendered, per _isActiveClip). Pieces INSIDE are no longer
       // discarded (v1.40.0): they are parked as a take so the pre-punch audio stays
@@ -1214,7 +1385,11 @@
       const parked = this._parkDisplacedAsTakes(track, sliced.inside);
       track.clips = [
         ...sliced.untouched,
-        ...sliced.outside.map(c => ({ ...c, takeId: null })),
+        // Live clips the punch region never touched belong to OTHER clips/Take Groups — they
+        // keep their takeId (v1.46.1; detaching them stole other groups' selected takes).
+        ...sliced.outside,
+        // Only the pieces cut off the punched clip become the shared base for every pass.
+        ...sliced.remnants.map(c => ({ ...c, takeId: null })),
         ...(parked ? parked.clips : []),
       ];
 
@@ -1245,6 +1420,7 @@
       // label from B onward until an autosave/reopen normalizes — the record-time badge
       // (v1.36.1) reads takeBase to match this same numbering.
       this._normalizeTrackLayout(track);
+      this._applyPinnedSelections(track, pinnedSelections, track.activeTakeId);
       this._ensureBaked(track);
       this.duration = Math.max(this.duration, this._projectClipDuration());
       this._applyMix();
@@ -1255,33 +1431,62 @@
     // ---- Phase 6 Stage 4 — Take Lanes -------------------------------------
     // Make a different Take the live one. Only the active Take bakes/plays/exports
     // (Stage 3a), so this re-bakes and the bridge re-syncs native.
+    // v1.46.0 — group-scoped. Picking a take now changes ONLY the clip/region that take
+    // belongs to; the other regions keep whatever they were playing. With a single group
+    // this is the pre-v1.46.0 behaviour (activeTakeId + comp dropped) unchanged.
     setActiveTake(trackId, takeId) {
       const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
       if (!(t.takes || []).some(k => k.id === takeId)) return false;
-      if (t.activeTakeId === takeId) return false;
-      t.activeTakeId = takeId;
-      // Switching the active lane wholesale abandons any per-region comp — the comp was a
-      // choice AMONG takes, and "make this the only take" supersedes it.
-      t.comp = null;
+      const groups = this._takeGroups(t);
+      if (groups.length <= 1) {
+        if (t.activeTakeId === takeId && !t.comp) return false;
+        t.activeTakeId = takeId;
+        // Switching the active lane wholesale abandons any per-region comp — the comp was a
+        // choice AMONG takes, and "make this the only take" supersedes it.
+        t.comp = null;
+        this._ensureBaked(t);
+        return true;
+      }
+      const g = groups.find(x => x.takes.some(k => k.id === takeId));
+      if (!g) return false;
+      const sig = (segs) => (segs || []).map(s => `${s.start.toFixed(4)}:${s.end.toFixed(4)}:${s.takeId}`).join("|");
+      const before = sig(this._effectiveComp(t));
+      // Replace this group's whole region with the chosen take; every other group's segments
+      // survive untouched, which is exactly "each clip keeps its own selection".
+      const next = (this._effectiveComp(t) || [])
+        .filter(s => s.end <= g.start + 1e-4 || s.start >= g.end - 1e-4)
+        .concat([{ start: g.start, end: g.end, takeId }])
+        .sort((a, b) => a.start - b.start);
+      if (sig(next) === before) return false;      // no-op → caller drops the undo entry
+      t.comp = next;
+      t.activeTakeId = takeId;                     // last-touched take (badge + fallback)
       this._ensureBaked(t);
       return true;
     },
     // Comp Lane (Phase 7) — assign timeline region [start,end] to `takeId` (a swipe on the
-    // Take lane). The comp is seeded, the first time, as the whole take region = the current
-    // active take, so it always tiles gap-free; each swipe then splits/re-assigns part of it.
-    // A comp that collapses back to one take over the whole region is stored as no comp (that
-    // take simply becomes active). Undoable via the same snapshot path as setActiveTake.
+    // Take lane). The comp is seeded from the EFFECTIVE comp (v1.46.0: every Take Group's
+    // current selection), so it always tiles gap-free across ALL regions; each swipe then
+    // splits/re-assigns part of the take's own group. A comp that collapses back to one take
+    // over the whole region is stored as no comp (that take simply becomes active).
+    // Undoable via the same snapshot path as setActiveTake.
     setCompRegion(trackId, start, end, takeId) {
       const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
       if (!(t.takes || []).some(k => k.id === takeId)) return false;
       const region = this._takeRegion(t); if (!region) return false;
-      const a = Math.max(region.start, Math.min(start, end));
-      const b = Math.min(region.end, Math.max(start, end));
+      // Clamp the swipe to the take's OWN group (v1.46.0): a take only has audio inside its
+      // own clip's region, so a swipe that overshoots must not claim a neighbouring clip's
+      // region and silence it.
+      const groups = this._takeGroups(t);
+      const g = groups.find(x => x.takes.some(k => k.id === takeId));
+      const bounds = g ? { start: g.start, end: g.end } : region;
+      const a = Math.max(bounds.start, Math.min(start, end));
+      const b = Math.min(bounds.end, Math.max(start, end));
       if (b - a <= 1e-3) return false;
-      const seed = this._activeTakeId(t) || takeId;
-      let segs = (Array.isArray(t.comp) && t.comp.length)
-        ? t.comp.map(s => ({ ...s }))
-        : [{ start: region.start, end: region.end, takeId: seed }];
+      // Seed from the EFFECTIVE comp so every other group keeps its selection — seeding from
+      // one whole-region segment (pre-v1.46.0) blanked the regions the seed take had no audio in.
+      let segs = this._effectiveComp(t);
+      if (!segs) segs = [{ start: region.start, end: region.end, takeId: t.activeTakeId || takeId }];
+      segs = segs.map(s => ({ ...s }));
       // Interval-replace: trim/split any segment overlapping [a,b], then insert [a,b]→takeId.
       const next = [];
       for (const s of segs) {
@@ -1313,15 +1518,34 @@
       }
       return merged;
     },
+    // "Clear" drops the SWIPE SPLITS and leaves each clip playing one whole take. With several
+    // Take Groups the comp is also where the per-clip selections live (v1.46.0), so clearing it
+    // outright would throw those away too — collapse to one segment per group instead.
     clearComp(trackId) {
-      const t = this.tracks.find(x => x.id === trackId); if (!t || !t.comp) return false;
+      const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
+      const groups = this._takeGroups(t);
+      if (groups.length > 1) {
+        const next = groups.map(g => ({ start: g.start, end: g.end, takeId: this._groupSelection(t, g) }));
+        const sig = (segs) => (segs || []).map(s => `${s.start.toFixed(4)}:${s.end.toFixed(4)}:${s.takeId}`).join("|");
+        if (sig(t.comp) === sig(next)) return false;   // already one take per clip
+        t.comp = next;
+        this._ensureBaked(t);
+        return true;
+      }
+      if (!t.comp) return false;
       t.comp = null;
       this._ensureBaked(t);
       return true;
     },
+    // UI-facing: the EFFECTIVE comp (v1.46.0) — one segment per Take Group plus any swipe
+    // splits inside them. The lane highlights then cover every clip's region, and the caller
+    // can tell a plain per-clip selection (segments === groups) from a real sub-region comp
+    // (more segments than groups) without knowing how the comp is stored.
     getComp(trackId) {
       const t = this.tracks.find(x => x.id === trackId);
-      return (t && Array.isArray(t.comp) && t.comp.length) ? t.comp.map(s => ({ ...s })) : null;
+      if (!t) return null;
+      const eff = this._effectiveComp(t);
+      return eff && eff.length ? eff.map(s => ({ ...s })) : null;
     },
     // Repoint a source's stored file path (Save As collect, Phase 7): after the project's
     // audio is copied into the project folder, the source must reference the NEW location so
@@ -1344,9 +1568,15 @@
       const t = this.tracks.find(x => x.id === trackId); if (!t) return false;
       if (!(t.takes || []).some(k => k.id === takeId)) return false;
       const goneSources = new Set((t.clips || []).filter(c => c.takeId === takeId).map(c => c.sourceId));
+      // Group membership must be read BEFORE the clips go — a take with no clips has no span
+      // and so belongs to no group.
+      const group = this._takeGroups(t).find(g => g.takes.some(k => k.id === takeId));
       t.clips = (t.clips || []).filter(c => c.takeId !== takeId);
       if (t.activeTakeId === takeId) {
-        const remain = (t.takes || []).filter(k => k.id !== takeId);
+        // Prefer another take from the SAME group (v1.46.0) — falling back to the track's
+        // newest take would move the "last touched" marker to a different clip.
+        const sameGroup = group ? group.takes.filter(k => k.id !== takeId) : [];
+        const remain = sameGroup.length ? sameGroup : (t.takes || []).filter(k => k.id !== takeId);
         t.activeTakeId = remain.length ? remain[remain.length - 1].id : null;
       }
       t.takes = (t.takes || []).filter(k => k.id !== takeId);
@@ -1380,22 +1610,34 @@
     // UI-facing: one entry per Take with everything the lane needs to draw + label.
     // `render` is a pseudo-track (source raw buffer + peaks, layoutBaked=false) so the
     // existing Waveform can draw it by sampling clip.offset (source-indexed).
+    // v1.46.0 — lanes come back grouped: clip/region order first, recording order within a
+    // group, each carrying its group's index/span/size so the UI can head each clip's takes
+    // with its own label. `active` is the group's selection (what the main lane draws), not a
+    // single track-wide flag.
     getTakeLanes(trackId) {
       const t = this.tracks.find(x => x.id === trackId);
       if (!t || !(t.takes || []).length) return [];
-      return (t.takes || []).map(tk => {
-        const clips = (t.clips || []).filter(c => c.takeId === tk.id);
-        const sp = clips.length ? this._sourcePeaksFor(t, clips[0].sourceId) : null;
-        return {
-          id: tk.id, name: tk.name, index: tk.index, partial: !!tk.partial,
-          active: t.activeTakeId === tk.id, clips,
-          render: sp ? {
-            buffer: sp.buffer, peaks: sp.peaks, peaksMedium: sp.peaksMedium,
-            peaksCoarse: sp.peaksCoarse, peakAmp: sp.peakAmp, color: t.color,
-            _layoutBaked: false, recording: false, audioRev: t.audioRev || 0,
-          } : null,
-        };
+      const groups = this._takeGroups(t);
+      const selected = new Set(groups.map(g => this._groupSelection(t, g)));
+      const lanes = [];
+      groups.forEach((g) => {
+        g.takes.forEach((tk) => {
+          const clips = (t.clips || []).filter(c => c.takeId === tk.id);
+          const sp = clips.length ? this._sourcePeaksFor(t, clips[0].sourceId) : null;
+          lanes.push({
+            id: tk.id, name: tk.name, index: tk.index, partial: !!tk.partial,
+            active: selected.has(tk.id), clips,
+            groupIndex: g.index, groupCount: groups.length,
+            groupStart: g.start, groupEnd: g.end, groupSize: g.takes.length,
+            render: sp ? {
+              buffer: sp.buffer, peaks: sp.peaks, peaksMedium: sp.peaksMedium,
+              peaksCoarse: sp.peaksCoarse, peakAmp: sp.peakAmp, color: t.color,
+              _layoutBaked: false, recording: false, audioRev: t.audioRev || 0,
+            } : null,
+          });
+        });
       });
+      return lanes;
     },
 
     // Remove a single track from the live graph. Splicing the tracks array (as the
@@ -1654,10 +1896,20 @@
       return t;
     },
 
+    // Merge Tracks → a Bounce track that LANDS ON THE TIMELINE next to its sources. Unlike
+    // Export, it must therefore be rendered at the ORIGINAL tempo and key (v1.46.0): with
+    // Vari BPM / Vari Key on, renderMix's defaults would bake the stretch and the transposition
+    // into the bounce, so it would be a different length and pitch than the tracks it sits
+    // beside — and would be stretched a SECOND time during playback. Rule: timeline audio is
+    // always original; Vari BPM/Key belong to realtime playback and Export only.
     async mergeTracks(trackIds, onProgress, options = {}) {
       const ids = Array.isArray(trackIds) ? trackIds.filter(Boolean) : [];
       if (ids.length < 2) throw new Error("Select at least two tracks to merge.");
-      return this.renderMix(onProgress, { ...options, trackIds: ids, forceLocal: true });
+      return this.renderMix(onProgress, {
+        ...options,
+        applyTempo: false, applyKey: false,   // not overridable by callers: see above
+        trackIds: ids, forceLocal: true,
+      });
     },
 
     _anySolo() { return this.tracks.some((t) => t.params.solo && !t.needsAudio && t.buffer); },
@@ -1816,7 +2068,13 @@
     },
 
     // Vari BPM 모드 on/off. on이면 재생 BPM 비율로 곡 전체 속도를 조정한다.
+    //
+    // v1.46.0 — Project BPM이 아직 측정되지 않았으면(표시기 `---`) 켜지지 않는다. 웹 엔진은
+    // _projectRate()가 1을 돌려주므로 무해했지만, 네이티브 엔진은 "미측정"을 표현할 수 없어
+    // (기본 120/120) 직전 프로젝트의 비율이 남아 있으면 그대로 적용해 버렸다. 여기서 막으면
+    // 메뉴·복원·단축키 등 모든 진입점이 한 번에 안전해진다. 반환값 false = 켜지지 않음.
     setVariBpm(on) {
+      if (on && !this.tempo.projectBpm) return false;
       this.tempo.variBpm = !!on;
       this._restartPlaybackForTempo();
       this._emit();
@@ -2474,10 +2732,11 @@
       if (snap.tempo) {
         const detectedKey = snap.tempo.detectedKey ?? null;
         const key = snap.tempo.key ?? null;
+        const snapProjectBpm = this._normalizeBpm(snap.tempo.projectBpm);
         this.tempo = {
-          projectBpm: this._normalizeBpm(snap.tempo.projectBpm),
+          projectBpm: snapProjectBpm,
           playbackBpm: this._normalizeBpm(snap.tempo.playbackBpm),
-          variBpm: !!snap.tempo.variBpm,
+          variBpm: !!snap.tempo.variBpm && !!snapProjectBpm,   // see importProject (v1.46.0)
           detectedKey,
           key,
           keyShift: this._resolveKeyShift(snap.tempo, detectedKey, key),
@@ -2582,10 +2841,14 @@
       const jt = json.tempo || {};
       const jtDetectedKey = jt.detectedKey ?? null;
       const jtKey = jt.key ?? null;
+      const jtProjectBpm = this._normalizeBpm(jt.projectBpm);
       this.tempo = {
-        projectBpm: this._normalizeBpm(jt.projectBpm),
+        projectBpm: jtProjectBpm,
         playbackBpm: this._normalizeBpm(jt.playbackBpm),
-        variBpm: !!jt.variBpm,
+        // Vari BPM without a Project BPM has no ratio to apply (setVariBpm refuses that
+        // combination since v1.46.0). A project saved in that state — or one whose BPM was
+        // cleared — must open with the switch OFF, matching the "---" indicator.
+        variBpm: !!jt.variBpm && !!jtProjectBpm,
         detectedKey: jtDetectedKey,
         key: jtKey,
         keyShift: this._resolveKeyShift(jt, jtDetectedKey, jtKey),
@@ -3079,8 +3342,17 @@
     // undo stay stable); extra pieces get fresh ids. A piece whose start MOVES off the
     // original origin clears recordedStart/recordedOffsetMs, so its Recording Offset Cal.
     // badge cannot mislead (same rule as deleteRange).
+    //
+    // v1.46.1 — `outside` (live clips the region never touches) and `remnants` (the leading /
+    // trailing pieces left over from a clip the region DID cut) are returned separately. They
+    // used to share one array, and attachLoopPunchRecording detaches everything in it to
+    // takeId=null as "the shared base". With takes grouped per clip that destroyed unrelated
+    // groups: a second punch elsewhere on the track detached the FIRST punch group's selected
+    // take, so that take vanished from its lanes and its audio stuck to the main lane as an
+    // extra clip (사용자 시험 T-1.46.0-3). Only remnants are base material; other regions'
+    // takes must keep their takeId.
     _sliceActiveAtRegion(track, inPt, outPt) {
-      const untouched = [], outside = [], inside = [];
+      const untouched = [], outside = [], remnants = [], inside = [];
       for (const c of track.clips) {
         if (!this._isActiveClip(track, c)) { untouched.push(c); continue; }
         const cS = c.start, cE = c.start + (c.duration || 0);
@@ -3089,7 +3361,7 @@
         let first = true;
         const idFor = () => (first ? (first = false, c.id) : this._cid());
         if (cS < inPt) {
-          outside.push(this._normalizeClip({ ...c, id: idFor(), start: cS, end: inPt,
+          remnants.push(this._normalizeClip({ ...c, id: idFor(), start: cS, end: inPt,
             duration: inPt - cS, sourceOffset: curOff, offset: curOff }, c.sourceId, 0));
         }
         const mS = Math.max(cS, inPt), mE = Math.min(cE, outPt);
@@ -3102,12 +3374,12 @@
         }
         if (cE > outPt) {
           const rOff = curOff + (outPt - cS);
-          outside.push(this._normalizeClip({ ...c, id: idFor(), start: outPt, end: cE,
+          remnants.push(this._normalizeClip({ ...c, id: idFor(), start: outPt, end: cE,
             duration: cE - outPt, sourceOffset: rOff, offset: rOff,
             recordedStart: null, recordedOffsetMs: null, params: null, automation: null }, c.sourceId, 0));
         }
       }
-      return { untouched, outside, inside };
+      return { untouched, outside, remnants, inside };
     },
 
     // Park displaced region audio in a take so the user can select it back. Pieces that
@@ -3158,24 +3430,42 @@
       // source, queues a disk write), so a failure discovered halfway would leave the track
       // half-flattened. Refuse before touching anything.
       if (active.some(c => !this._rawBufferForSource(t, c.sourceId))) return { ok: false, reason: "raw" };
-      // Contiguous runs: a gap between clips (a deleted or moved clip) stays a gap, so
-      // silence is never baked into a WAV and the empty span remains usable.
+      // Only TAKE material is consolidated. Plain clips (takeId=null) are carried across
+      // untouched — v1.46.2: they used to join any run they happened to touch, so flattening
+      // a punch somewhere else silently welded two unrelated neighbouring clips into one
+      // (사용자 시험 T-1.46.0-4: "punch와 무관한 4·5번째 클립이 합쳐짐"). Committing a comp
+      // must only rewrite the takes it commits.
+      const groups = this._takeGroups(t);
+      const groupOf = (c) => (c.takeId
+        ? groups.findIndex(g => g.takes.some(k => k.id === c.takeId))
+        : -1);
+      const passthrough = active.filter(c => !c.takeId);
+      const takeClips = active.filter(c => c.takeId);
+      // Contiguous runs WITHIN one Take Group: a gap between clips (a deleted or moved clip)
+      // stays a gap, so silence is never baked into a WAV and the empty span remains usable,
+      // and two different clips' takes never fuse even when they butt up.
       const runs = [];
-      let cur = [active[0]];
-      for (let i = 1; i < active.length; i++) {
-        const prev = active[i - 1], c = active[i];
-        if ((c.start || 0) - ((prev.start || 0) + (prev.duration || 0)) <= 1e-3) cur.push(c);
+      let cur = takeClips.length ? [takeClips[0]] : null;
+      for (let i = 1; i < takeClips.length; i++) {
+        const prev = takeClips[i - 1], c = takeClips[i];
+        const contiguous = (c.start || 0) - ((prev.start || 0) + (prev.duration || 0)) <= 1e-3;
+        if (contiguous && groupOf(c) === groupOf(prev)) cur.push(c);
         else { runs.push(cur); cur = [c]; }
       }
-      runs.push(cur);
-      return { ok: true, runs, takeCount: t.takes.length, clipCount: active.length };
+      if (cur) runs.push(cur);
+      // groupCount = how many takes SURVIVE (one selected take per clip/region, v1.46.0), so
+      // the confirmation can say how many are actually dropped.
+      return { ok: true, runs, passthrough, takeCount: t.takes.length, clipCount: active.length,
+        groupCount: Math.max(1, groups.length) };
     },
 
     flattenComp(trackId) {
       const check = this.canFlattenComp(trackId);
       if (!check.ok) return null;
       const t = this.tracks.find(x => x.id === trackId);
-      const out = [];
+      // Clips that were never part of a take keep their identity, position and source —
+      // flatten has nothing to commit for them (v1.46.2).
+      const out = (check.passthrough || []).map(c => ({ ...c }));
       for (const run of check.runs) {
         if (run.length === 1) {
           // Nothing to merge — just detach it from its take so it survives as plain audio.
@@ -3694,18 +3984,31 @@
       return true;
     },
 
-    // Comp move (Stage 4, Q: "all takes move together"): only when the ACTIVE Take clip is
-    // actually moved should the INACTIVE Takes ride along by the same delta. Base/null-takeId
-    // clips are independent timeline material; moving them must not drag an unrelated take
-    // region (B-TakeSibling-OverShift, v1.43.7).
+    // Comp move (Stage 4, Q: "all takes move together"): when a Take clip is moved, that
+    // take's ALTERNATIVES ride along by the same delta so the choices stay aligned with each
+    // other. Base/null-takeId clips are independent timeline material; moving them must not
+    // drag an unrelated take region (B-TakeSibling-OverShift, v1.43.7).
+    //
+    // v1.46.0 — "alternatives" means the takes in the moved clip's own Take Group. Shifting
+    // EVERY other take (the old rule) would drag the other clips' takes across the timeline
+    // whenever one clip's take was nudged. Grouping is evaluated at the PRE-move positions,
+    // since this runs after the caller has already applied the delta.
     _shiftInactiveTakeClips(track, delta, movedClipIds) {
       if (!delta || Math.abs(delta) < 1e-9) return;
-      const act = this._activeTakeId(track);
-      if (!act) return;
       const moved = new Set(Array.isArray(movedClipIds) ? movedClipIds : [movedClipIds].filter(Boolean));
-      if (!track.clips.some(c => moved.has(c.id) && c.takeId === act)) return;
+      const movedTakeIds = new Set(
+        (track.clips || []).filter(c => moved.has(c.id) && c.takeId).map(c => c.takeId));
+      if (!movedTakeIds.size) return;
+      const preMove = (track.clips || []).map(c => (moved.has(c.id)
+        ? { ...c, start: (c.start || 0) - delta } : c));
+      const siblings = new Set();
+      for (const g of this._takeGroups(track, preMove)) {
+        if (!g.takes.some(t => movedTakeIds.has(t.id))) continue;
+        g.takes.forEach(t => { if (!movedTakeIds.has(t.id)) siblings.add(t.id); });
+      }
+      if (!siblings.size) return;
       for (const c of track.clips) {
-        if (c.takeId && c.takeId !== act && !moved.has(c.id)) {
+        if (c.takeId && siblings.has(c.takeId) && !moved.has(c.id)) {
           c.start = Math.max(0, (c.start || 0) + delta);
           c.end = c.start + (c.duration || 0);
         }
@@ -4496,7 +4799,9 @@
       // the exported file matches realtime playback. Tempo is still applied by graphRate
       // (playbackRate) below; for the common Vari-Key-only case graphRate is 1 so the
       // shift is exact.
-      const exportSemis = this._exportKeyShiftSemis();
+      // applyKey:false (Merge Tracks → timeline bounce, v1.46.0) renders at the ORIGINAL
+      // pitch, mirroring applyTempo:false above. Export leaves it unset → Vari Key applies.
+      const exportSemis = options.applyKey === false ? 0 : this._exportKeyShiftSemis();
       tracksForRender.forEach((t) => {
         if (!t || !t.buffer || t.needsAudio) return;
         const p = t.params;

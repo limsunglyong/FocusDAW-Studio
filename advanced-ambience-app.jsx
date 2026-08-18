@@ -9,11 +9,11 @@ const ambienceChannel = new BroadcastChannel("focusdaw-advanced-effects-sync");
 // Sound Environment / room-type presets. `key` matches ROOM_PRESETS in
 // audio-engine.js; `img` is the preset illustration under assets/ambience/.
 const ROOMS = [
-  { key: "concert", label: "Concert Hall", desc: "넓고 긴 잔향", img: "assets/ambience/concert-hall.png" },
-  { key: "home", label: "Home", desc: "아늑한 실내", img: "assets/ambience/home.png" },
-  { key: "far", label: "Far Field", desc: "원거리·슬랩 에코", img: "assets/ambience/far-field.png" },
-  { key: "studio", label: "Studio", desc: "타이트·드라이", img: "assets/ambience/studio.png" },
-  { key: "tunnel", label: "Tunnel", desc: "금속 반사·울림", img: "assets/ambience/tunnel.png" },
+  { key: "concert", label: "Concert Hall", desc: "wide, long reverb tail", img: "assets/ambience/concert-hall.png" },
+  { key: "home", label: "Home", desc: "cosy indoor space", img: "assets/ambience/home.png" },
+  { key: "far", label: "Far Field", desc: "distant source, slap echo", img: "assets/ambience/far-field.png" },
+  { key: "studio", label: "Studio", desc: "tight and dry", img: "assets/ambience/studio.png" },
+  { key: "tunnel", label: "Tunnel", desc: "metallic reflections, ringing", img: "assets/ambience/tunnel.png" },
 ];
 
 // Fine-tune controls — keys must match audio-engine.js makeRoomIR / setRoomParam.
@@ -438,7 +438,7 @@ function AdvancedAmbienceApp() {
                       </svg>
                     </span>
                     <span className="amb-card-name">Reset</span>
-                    <span className="amb-card-desc">효과 없음 (Dry)</span>
+                    <span className="amb-card-desc">No effect (Dry)</span>
                   </button>
                   {ROOMS.map((r) => {
                     const active = room === r.key;
@@ -466,7 +466,7 @@ function AdvancedAmbienceApp() {
                       </svg>
                     </span>
                     <span className="amb-card-name">Custom</span>
-                    <span className="amb-card-desc">사용자 설정</span>
+                    <span className="amb-card-desc">Custom</span>
                   </button>
                 </div>
                 <div className="amb-divider" />
@@ -483,7 +483,7 @@ function AdvancedAmbienceApp() {
                   <div className="amb-graph-wrap">
                     <DecayGraph spec={params} />
                     <AmbMeters spec={params} />
-                    <div className="amb-graph-caption">앰버=잔향 시간(Mix·Decay·Pre-delay) · 흰=슬랩 에코(Size·Echo)</div>
+                    <div className="amb-graph-caption">Amber = reverb time (Mix · Decay · Pre-delay) &middot; White = slap echo (Size · Echo)</div>
                   </div>
                   <div className="amb-sliders">
                     {FINE.filter((f) => f.control === "slider").map((f) => (

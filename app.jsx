@@ -730,9 +730,13 @@ function ActionBar({ onMixer, mixerOpen, onExport }) {
   );
 }
 
-function VariSwitch({ label, title, on, onToggle }) {
+// `unavailable` dims the switch to signal "this can't be turned on yet" while STILL
+// accepting the click — the click is what raises the explanatory modal (v1.46.0), so a
+// real `disabled` would leave the user with a dead control and no reason given.
+function VariSwitch({ label, title, on, onToggle, unavailable = false }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: TOOLBAR_PANEL_H, flex: "0 0 auto" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: TOOLBAR_PANEL_H, flex: "0 0 auto",
+      opacity: unavailable ? 0.45 : 1, transition: "opacity .15s" }}>
       <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", lineHeight: 1, whiteSpace: "nowrap", color: on ? "var(--amber)" : "var(--muted)" }}>{label}</span>
       <button role="switch" aria-checked={on} onClick={onToggle} title={title}
         style={{ width: 40, height: 20, padding: 0, borderRadius: 999, position: "relative", cursor: "pointer",
@@ -745,17 +749,19 @@ function VariSwitch({ label, title, on, onToggle }) {
   );
 }
 
-function VariBpmSwitch({ on, onToggle }) {
+function VariBpmSwitch({ on, onToggle, needsBpm = false }) {
   return (
-    <VariSwitch label="Vari BPM" on={on} onToggle={onToggle}
-      title="Vari BPM: 켜면 재생(Playback) BPM으로 곡 전체 속도를 조정합니다. 끄면 속도가 변하지 않습니다." />
+    <VariSwitch label="Vari BPM" on={on} onToggle={onToggle} unavailable={needsBpm}
+      title={needsBpm
+        ? "Vari BPM: set a Project BPM first — the indicator still reads '---'."
+        : "Vari BPM: when on, the playback BPM changes the speed of the whole song. When off, the speed never changes."} />
   );
 }
 
 function VariKeySwitch({ on, onToggle }) {
   return (
     <VariSwitch label="Vari Key" on={on} onToggle={onToggle}
-      title="Vari Key: 곡의 Key 변경 적용 여부를 전환합니다." />
+      title="Vari Key: applies the key change to playback (pitch shift). When off, playback stays at the original pitch." />
   );
 }
 
@@ -956,7 +962,7 @@ function KeyIndicator({ tempo, open, detecting, hasAudio, onToggle, onActivity, 
           {/* Read-only key list: shows the original (detected) key highlighted; the
               user cannot change the key here (selection reverts — Apply is the only
               way to set the applied key). */}
-          <select value={detectedKey || ""} onChange={() => {}} title="원곡 Key (선택 불가)"
+          <select value={detectedKey || ""} onChange={() => {}} title="Original key — reference list, not selectable"
             style={{ width: "100%", height: 30, borderRadius: 7, border: "1px solid var(--line-strong)",
               background: "var(--bg)", color: "var(--cream)", padding: "0 6px", fontSize: 12, cursor: "pointer", fontFamily: "var(--ui)" }}>
             <option value="">—</option>
@@ -2084,12 +2090,29 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     setPlaybackBpmDraft(null);
   }, [stretchDoneSeq]);
 
+  // Vari BPM needs a measured Project BPM: without one the speed ratio is undefined, and
+  // the native engine (which cannot represent "unmeasured") used to fall back on the
+  // PREVIOUS project's ratio and audibly speed up / slow down the song — v1.46.0 bug 1.
+  // The engine now refuses the toggle; here we explain why instead of failing silently.
   const toggleVariBpm = useCallback(() => {
     if (!DAW.setVariBpm) return;
-    DAW.setVariBpm(!(DAW.tempo && DAW.tempo.variBpm));
+    const turningOn = !(DAW.tempo && DAW.tempo.variBpm);
+    if (turningOn && !(DAW.tempo && DAW.tempo.projectBpm)) {
+      showAppNotice(
+        "Project BPM required",
+        "Vari BPM changes the playback speed relative to the Project BPM, so it cannot be turned on while the BPM indicator reads '---'.\n\n" +
+        "Click the BPM indicator to open its panel and set a Project BPM in one of these ways:\n" +
+        "· Detect — analyses the selected track's audio and measures the tempo for you.\n" +
+        "· TAP — tap along with the song to find the tempo.\n" +
+        "· Type it in — enter a value and press APPLY.\n\n" +
+        "Once a BPM is set, the Vari BPM switch can be turned on.",
+        "warning");
+      return;
+    }
+    DAW.setVariBpm(turningOn);
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
-  }, [projectName, projectPath]);
+  }, [projectName, projectPath, showAppNotice]);
 
   const toggleVariKey = useCallback(() => {
     if (!DAW.setVariKey) return;
@@ -3024,7 +3047,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       showAppNotice("Flatten Comp", FLATTEN_REFUSAL[check.reason] || "Flatten is not possible for this track.", "warning");
       return;
     }
-    setFlattenConfirm({ trackId, dropped: Math.max(0, check.takeCount - 1) });
+    // One take survives per clip/region (Take Group), not one per track — v1.46.0.
+    const groups = check.groupCount || 1;
+    setFlattenConfirm({ trackId, groups, dropped: Math.max(0, check.takeCount - groups) });
   }, [showAppNotice]);
 
   // Merge TOOL (J: click a clip to merge it with its neighbour). Same handler as the menu,
@@ -4336,7 +4361,8 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             onTap={tapBpm}
             onApply={applyBpm}
           />
-          <VariBpmSwitch on={!!(DAW.tempo && DAW.tempo.variBpm)} onToggle={toggleVariBpm} />
+          <VariBpmSwitch on={!!(DAW.tempo && DAW.tempo.variBpm)} onToggle={toggleVariBpm}
+            needsBpm={!(DAW.tempo && DAW.tempo.projectBpm)} />
           <ToolbarDivider />
           <KeyIndicator
             tempo={DAW.tempo}
@@ -4558,6 +4584,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                     style={{ padding: "7px 12px" }}>Delete</button>
                 </div>
               </div>
+              <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--muted)" }}>
+                The bounce is rendered at the <strong style={{ color: "var(--cream-2)" }}>original BPM and key</strong> —
+                leaving Vari BPM / Vari Key on does not change the result, so it lines up with the source
+                tracks in length and pitch. (Tempo and key changes apply to playback and Export only.)
+              </div>
               <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 2 }}>
                 <button className="btn" disabled={mergeTracksBusy} onClick={() => setMergeTracksNotice(false)}>Cancel</button>
                 <button className="btn primary" disabled={mergeTracksBusy || selectedFileTracks.length < 2} onClick={renderMergedTracks}>
@@ -4606,7 +4637,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             </div>
             <div style={{ padding: "18px 20px", fontSize: 13, lineHeight: 1.55, color: "var(--cream-2)" }}>
               <div style={{ marginBottom: 10 }}>
-                The active take and the shared audio become ordinary clips
+                {flattenConfirm.groups > 1
+                  ? `Each of the ${flattenConfirm.groups} clips keeps its selected take, and together with the shared audio they become ordinary clips`
+                  : "The active take and the shared audio become ordinary clips"}
                 {flattenConfirm.dropped
                   ? `, and ${flattenConfirm.dropped} other take${flattenConfirm.dropped === 1 ? "" : "s"} ${flattenConfirm.dropped === 1 ? "is" : "are"} dropped.`
                   : "."}
@@ -4634,7 +4667,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           <div onMouseDown={(e) => e.stopPropagation()}
             style={{ width: 460, maxWidth: "90vw", background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
             <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
-              <Icon name={appNotice.tone === "error" ? "info" : "check"} size={18}
+              <Icon name={appNotice.tone === "error" || appNotice.tone === "warning" ? "info" : "check"} size={18}
                 style={{ color: appNotice.tone === "error" ? "var(--red)" : "var(--amber)" }} />
               <span style={{ fontWeight: 600, fontSize: 15 }}>{appNotice.title || "Notice"}</span>
             </div>
