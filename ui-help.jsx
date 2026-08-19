@@ -1415,6 +1415,13 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h3 className="manual-h3">트랙 병합 — Merge Tracks (Bounce)</h3>
                   <p className="manual-p">여러 스템을 <strong>하나의 오디오 트랙으로 합치는</strong> 기능입니다. 스템이 많아 화면이 복잡하거나, 반주 전체를 한 덩어리로 묶어 두고 보컬 작업에만 집중하고 싶을 때 씁니다.</p>
                   <p className="manual-p">합칠 파일 트랙들을 고른 뒤 FILE TRACKS 머리글 오른쪽의 <strong>MERGE TRACKS…</strong> 버튼을 누르면 설정 창이 열립니다. 이 버튼은 <strong>트랙을 2개 이상 선택해야</strong> 활성화되며, 버튼 왼쪽에 선택한 트랙 수가 표시됩니다.</p>
+                  <p className="manual-p">여러 트랙을 선택하는 방법은 두 가지입니다. 트랙 헤더의 빈 곳을 클릭하면 됩니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd>+클릭</th><td className="manual-td">개별 트랙을 하나씩 클릭해 <strong>원하는 트랙만 골라</strong> 선택합니다. 이미 선택된 트랙을 다시 <kbd className="manual-kbd">Ctrl</kbd>+클릭하면 그 트랙만 선택에서 빠집니다.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd>+클릭</th><td className="manual-td">트랙 하나를 클릭해 선택한 뒤 다른 트랙을 <kbd className="manual-kbd">Shift</kbd>+클릭하면, 두 트랙 <strong>사이의 모든 트랙이 한 번에</strong> 선택됩니다.</td></tr>
+                    </tbody>
+                  </table>
                   <div className="manual-figure">
                     <img src="manual/screens-v2/05-06a-merge-button.png" alt="트랙 2개 선택 시 MERGE TRACKS 버튼 활성화" className="manual-img" />
                     <div className="manual-figcaption">파일 트랙을 두 개 선택하자 FILE TRACKS 머리글의 <strong>MERGE TRACKS…</strong> 버튼이 활성화된 모습입니다.</div>
@@ -1534,6 +1541,13 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h3 className="manual-h3">Merge Tracks (Bounce)</h3>
                   <p className="manual-p">Merging renders several stems down to <strong>a single audio track</strong> — useful when there are too many stems on screen, or when you want the whole backing as one block so you can focus on the vocal.</p>
                   <p className="manual-p">Select the file tracks to combine, then press <strong>MERGE TRACKS…</strong> at the right of the FILE TRACKS header. The button only becomes active once <strong>two or more tracks are selected</strong>, and shows the selected count beside it.</p>
+                  <p className="manual-p">There are two ways to select several tracks — click an empty part of the track header.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd>+click</th><td className="manual-td">Click tracks one at a time to <strong>pick exactly the ones you want</strong>. <kbd className="manual-kbd">Ctrl</kbd>+clicking an already selected track removes just that track from the selection.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd>+click</th><td className="manual-td">Click one track, then <kbd className="manual-kbd">Shift</kbd>+click another — <strong>every track between the two</strong> is selected at once.</td></tr>
+                    </tbody>
+                  </table>
                   <div className="manual-figure">
                     <img src="manual/screens-v2/05-06a-merge-button.png" alt="MERGE TRACKS enabled with two tracks selected" className="manual-img" />
                     <div className="manual-figcaption">With two file tracks selected, the <strong>MERGE TRACKS…</strong> button in the FILE TRACKS header becomes active.</div>
