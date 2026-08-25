@@ -4697,7 +4697,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             <div style={{ padding: "16px 20px", fontSize: 13, lineHeight: 1.5, color: "var(--cream-2)" }}>
               <div style={{ marginBottom: 12 }}>
                 The project opened, but {missingAudio.items.length} audio source{missingAudio.items.length === 1 ? "" : "s"} could not be loaded.
-                Those tracks show <b>NO AUDIO</b> until the missing files are restored to their original location.
+                Those tracks show <b>NO SRC</b> until the missing files are restored to their original location.
               </div>
               <div style={{ maxHeight: 210, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface2)" }}>
                 {missingAudio.items.map((it, i) => (
