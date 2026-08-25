@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openAdvancedPan: (target)       => ipcRenderer.invoke('open-advanced-pan', target),
   navigateAdvanced: (target)      => ipcRenderer.invoke('navigate-advanced', target),
   openVocalStrip: (trackId)       => ipcRenderer.invoke('open-vocal-strip', trackId),
+  openPitchEditor: (trackId, clipId) => ipcRenderer.invoke('open-pitch-editor', trackId, clipId),
 
   // Mixer window controls
   openMixer:      (tracksCount)   => ipcRenderer.invoke('open-mixer', tracksCount),

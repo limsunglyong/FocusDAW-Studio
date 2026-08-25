@@ -265,6 +265,9 @@ let helpWindow = null;
 let forceCloseMixerWindow = false;
 let forceCloseAdvancedPanWindow = false;
 let forceCloseVocalStripWindow = false;
+let pitchEditorWindow = null;
+let pitchEditorWinBounds = null;
+let forceClosePitchEditorWindow = false;
 let updaterReady = false;
 let updaterBusy = false;
 let updaterDownloaded = false;
@@ -386,6 +389,10 @@ function createWindow() {
     if (vocalStripWindow && !vocalStripWindow.isDestroyed()) {
       forceCloseVocalStripWindow = true;
       vocalStripWindow.close();
+    }
+    if (pitchEditorWindow && !pitchEditorWindow.isDestroyed()) {
+      forceClosePitchEditorWindow = true;
+      pitchEditorWindow.close();
     }
     if (helpWindow && !helpWindow.isDestroyed()) {
       helpWindow.close();
@@ -1252,6 +1259,9 @@ let initialContentHeight = 0;
 
 const MIXER_HEIGHT = 515;
 const VOCAL_STRIP_WIDTH = 680;
+// Pitch Editor is a piano roll: it needs width for time and height for the keyboard range.
+const PITCH_EDITOR_WIDTH = 1040;
+const PITCH_EDITOR_HEIGHT = 660;
 const VOCAL_STRIP_HEIGHT = 860;
 const ADVANCED_PAN_WIDTH = 1162;
 const ADVANCED_PAN_HEIGHT = 770;
@@ -1552,6 +1562,62 @@ ipcMain.handle('open-vocal-strip', async (_, trackId = '') => {
   vocalStripWindow.on('closed', () => {
     forceCloseVocalStripWindow = false;
     vocalStripWindow = null;
+  });
+});
+
+// Pitch Editor window (per CLIP, v2.0.0). The target is a clip — not a track — because pitch
+// editing operates on one clip's audio, so both ids ride the query string. Same window pattern
+// as the vocal strip (hide-on-close, remembered bounds, shared BroadcastChannel for state).
+ipcMain.handle('open-pitch-editor', async (_, trackId = '', clipId = '') => {
+  const query = { track: String(trackId || ''), clip: String(clipId || '') };
+  if (pitchEditorWindow && !pitchEditorWindow.isDestroyed()) {
+    pitchEditorWindow.loadFile(path.join(__dirname, '..', 'pitch-editor.html'), { query });
+    pitchEditorWindow.show();
+    pitchEditorWindow.focus();
+    return;
+  }
+
+  const isMac = process.platform === 'darwin';
+  const bounds = pitchEditorWinBounds ? clampMixerBounds(pitchEditorWinBounds) : null;
+
+  pitchEditorWindow = new BrowserWindow({
+    width: bounds ? bounds.width : PITCH_EDITOR_WIDTH,
+    height: bounds ? bounds.height : PITCH_EDITOR_HEIGHT,
+    useContentSize: true,
+    minWidth: 720,
+    minHeight: 480,
+    parent: mainWindow || undefined,
+    icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'logo.png'),
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : { frame: false }),
+    webPreferences: buildWebPreferences(),
+    backgroundColor: '#1b1712',
+    title: 'FocusDAW Pitch Editor',
+  });
+
+  pitchEditorWindow.loadFile(path.join(__dirname, '..', 'pitch-editor.html'), { query });
+  if (bounds) pitchEditorWindow.setContentBounds(bounds);
+
+  const captureBounds = () => {
+    if (pitchEditorWindow && !pitchEditorWindow.isDestroyed()) {
+      const cb = pitchEditorWindow.getContentBounds();
+      pitchEditorWinBounds = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+    }
+  };
+  pitchEditorWindow.on('moved', captureBounds);
+  pitchEditorWindow.on('resized', captureBounds);
+
+  pitchEditorWindow.on('close', (event) => {
+    if (!forceClosePitchEditorWindow) {
+      event.preventDefault();
+      captureBounds();
+      pitchEditorWindow.hide();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
+    }
+  });
+
+  pitchEditorWindow.on('closed', () => {
+    forceClosePitchEditorWindow = false;
+    pitchEditorWindow = null;
   });
 });
 

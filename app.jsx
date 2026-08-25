@@ -2461,6 +2461,23 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           reply(true, "De-noise applied — printed as new audio, original kept (undoable).", { printed: true });
           break;
         }
+        // v2.0.0 Pitch Editor — the window is scoped to ONE clip and asks for everything it
+        // needs to draw it (peaks + metadata) rather than receiving samples over the channel.
+        // Stage A is read-only: nothing here changes engine state, so no undo entry.
+        case "REQUEST_PITCH_CLIP": {
+          const info = DAW.clipAudioInfo ? DAW.clipAudioInfo(msg.trackId, msg.clipId, msg.buckets) : null;
+          channel.postMessage({
+            type: "PITCH_CLIP",
+            trackId: msg.trackId, clipId: msg.clipId,
+            ok: !!info,
+            info,
+            // A clip can vanish between the right-click and the window asking for it (undo,
+            // delete, a split that replaced it with two new ids) — say so instead of leaving
+            // an empty canvas the user cannot interpret.
+            message: info ? "" : "This clip is no longer available — reopen the editor from the clip.",
+          });
+          break;
+        }
         case "BEFORE_CHANGE":
           pushUndo();
           break;

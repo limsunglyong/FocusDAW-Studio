@@ -1042,9 +1042,20 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     const curOff = Number(localStorage.getItem(OFF_MS_KEY)) || 0;      // current global (modal "prev")
     const recOff = Number.isFinite(clip.recordedOffsetMs) ? clip.recordedOffsetMs : 0; // record-time offset
     const newOff = Math.max(-100, Math.min(500, recOff - shiftMs));
+    // v2.0.0 — Pitch Editor entry point. The clip's right-click menu (not a track-header
+    // button) because pitch editing targets ONE CLIP, and because the 244px header has no
+    // horizontal slack left (the vocal-strip FX control had to shrink to an icon for exactly
+    // this reason — see the header row below). Vocal tracks only, same gating as the strip.
+    const canPitchEdit = (track.kind === "audioIn" || track.kind === "bounce")
+      && !!(window.electronAPI && window.electronAPI.openPitchEditor);
     return [
       { label: groupN > 1 ? `Deselect (${groupN} selected)` : "Deselect", hint: "Esc",
         onClick: () => onDeselectClip && onDeselectClip() },
+      ...(canPitchEdit ? [
+        { sep: true },
+        { label: "Pitch Editor...",
+          onClick: () => window.electronAPI.openPitchEditor(track.id, clip.id) },
+      ] : []),
       ...(canCal ? [
         { sep: true },
         { label: (

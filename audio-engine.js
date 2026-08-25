@@ -636,6 +636,18 @@
         recordedOffsetMs: Number.isFinite(clip && clip.recordedOffsetMs) ? clip.recordedOffsetMs : null,
         params: clip && clip.params ? { ...clip.params } : null,
         automation: clip && clip.automation ? clip.automation.map(p => ({ ...p })) : null,
+        // v2.0.0 Pitch Editor — note-level pitch editing state. THIS WHITELIST IS THE SAVE
+        // FORMAT: a field not copied here is silently dropped on every load/normalize, so
+        // `pitch` must be listed even though only the editor writes it.
+        // { baseSourceId, printedSourceId, notes[], analysis } — 피치-에디터-설계.md §2.
+        // baseSourceId is the ORIGINAL audio and never changes, so re-editing re-renders from
+        // the original instead of stacking artefacts on a previous print.
+        pitch: clip && clip.pitch ? {
+          baseSourceId: clip.pitch.baseSourceId || null,
+          printedSourceId: clip.pitch.printedSourceId || null,
+          notes: Array.isArray(clip.pitch.notes) ? clip.pitch.notes.map(n => ({ ...n })) : [],
+          analysis: clip.pitch.analysis ? { ...clip.pitch.analysis } : null,
+        } : null,
       };
     },
     _normalizeTrackLayout(track) {
@@ -3239,6 +3251,69 @@
       // so applying needs neither a live clip selection nor the Repeat region to still be set.
       this._denoiseProfiles[trackId] = { prof, sampleRate: sr, fftSize: N, seconds: (hi - lo) / sr, clipId };
       return { seconds: (hi - lo) / sr, sampleRate: sr, clipId };
+    },
+
+    // ── v2.0.0 Pitch Editor ────────────────────────────────────────────────────────────
+    // Everything the editor window needs to draw a clip, without shipping the samples over
+    // BroadcastChannel: min/max peaks per bucket + the metadata the analysis will need.
+    //
+    // Reads the RAW SOURCE buffer (like denoiseClip), never track.buffer — the baked buffer is
+    // indexed by TIMELINE position when track._layoutBaked is true, and that duality is the
+    // single most repeated bug in this codebase (see 앱개발.md "버퍼 인덱싱 이원성"). The raw
+    // source has no such ambiguity: clip.sourceOffset is simply where in the source this clip
+    // starts. Pitch analysis and PSOLA rendering must read the same domain, so both go here.
+    clipAudioInfo(trackId, clipId, buckets = 900) {
+      const track = this.tracks.find(t => t.id === trackId);
+      const clip = track && (track.clips || []).find(c => c.id === clipId);
+      if (!track || !clip) return null;
+      const raw = this._rawBufferForSource(track, clip.sourceId);
+      if (!raw) return null;
+      const sr = raw.sampleRate;
+      const off = clip.sourceOffset != null ? clip.sourceOffset : (clip.offset || 0);
+      const lo = Math.max(0, Math.round(off * sr));
+      const hi = Math.min(raw.length, lo + Math.round((clip.duration || 0) * sr));
+      if (hi <= lo) return null;
+      const n = Math.max(1, Math.min(4000, Math.round(buckets)));
+      const step = (hi - lo) / n;
+      const mins = new Float32Array(n), maxs = new Float32Array(n);
+      const chans = [];
+      for (let c = 0; c < raw.numberOfChannels; c++) chans.push(raw.getChannelData(c));
+      for (let b = 0; b < n; b++) {
+        const a = lo + Math.floor(b * step), z = Math.min(hi, lo + Math.floor((b + 1) * step));
+        let mn = 0, mx = 0;
+        for (let i = a; i < z; i++) {
+          for (let c = 0; c < chans.length; c++) {
+            const v = chans[c][i];
+            if (v < mn) mn = v;
+            if (v > mx) mx = v;
+          }
+        }
+        mins[b] = mn; maxs[b] = mx;
+      }
+      const src = (track.sources || []).find(x => x.id === clip.sourceId);
+      return {
+        trackId: track.id, trackName: track.name || "", kind: track.kind || "",
+        clipId: clip.id, start: clip.start || 0, duration: clip.duration || 0,
+        sourceId: clip.sourceId, sourceOffset: off,
+        fileName: (src && src.fileName) || null,
+        sampleRate: sr, channels: raw.numberOfChannels,
+        peaks: { mins: Array.from(mins), maxs: Array.from(maxs) },
+        pitch: clip.pitch ? {
+          baseSourceId: clip.pitch.baseSourceId || null,
+          printedSourceId: clip.pitch.printedSourceId || null,
+          notes: (clip.pitch.notes || []).map(x => ({ ...x })),
+          analysis: clip.pitch.analysis ? { ...clip.pitch.analysis } : null,
+        } : null,
+        // Vari Key/BPM never bake into timeline audio (v1.46.0 rule), so the editor analyses and
+        // renders in the ORIGINAL domain — but it must SAY so when playback is transposed, or the
+        // note names on screen disagree with what the user hears (설계 §3).
+        tempo: {
+          variKey: !!(this.tempo && this.tempo.variKey),
+          keyShift: (this.tempo && this.tempo.keyShift) || 0,
+          detectedKey: (this.tempo && this.tempo.detectedKey) || null,
+          variBpm: !!(this.tempo && this.tempo.variBpm),
+        },
+      };
     },
 
     denoiseProfileInfo(trackId) {

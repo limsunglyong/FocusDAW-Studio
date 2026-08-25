@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pitch Editor - FocusDAW Studio</title>
+<link rel="icon" type="image/png" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
+  --line:rgba(232,212,170,.10); --line-strong:rgba(232,212,170,.18);
+  --cream:#efe6d4; --cream-2:#d8cdb6; --dim:#b0a690; --muted:#857c6b; --faint:#5f574a;
+  --amber:#e8b04b; --amber-deep:#c8893a; --amber-soft:rgba(232,176,75,.16);
+  --green:#94c06a; --green-deep:#6e9a48; --red:#d96a4e; --blue:#7fb0c4; --violet:#c98fb0;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.7);
+  --ui:"Space Grotesk",system-ui,sans-serif; --mono:"Space Mono",ui-monospace,monospace;
+  --r:10px; --mixer-bar-bg:linear-gradient(#efe7d6,#e3d8c0); --mixer-bar-fg:#241a0a; --on-amber:var(--mixer-bar-fg);
+}
+:root[data-theme="ivory"]{
+  --bg:#e4dcc8; --bg2:#dad0b8; --surface:#f0ead9; --surface2:#e2dac3; --surface3:#d4caac;
+  --line:rgba(95,75,42,.15); --line-strong:rgba(95,75,42,.26);
+  --cream:#3b3327; --cream-2:#6e6149; --dim:#8a7d62; --muted:#9a8c6e; --faint:#c8bb9a;
+  --amber:#bf7f2e; --amber-deep:#9e6620; --amber-soft:rgba(191,127,46,.14);
+  --green:#7c9a4f; --green-deep:#5e7a38; --red:#c2593b; --blue:#5f86a6; --violet:#a0668a;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.22); --mixer-bar-bg:linear-gradient(#2a2520,#221d17); --mixer-bar-fg:#efe6d4;
+}
+:root[data-theme="blue"]{
+  --bg:#142841; --bg2:#1c3556; --surface:#274665; --surface2:#33567b; --surface3:#3f6791;
+  --line:rgba(180,205,235,.14); --line-strong:rgba(180,205,235,.24);
+  --cream:#eaf1fb; --cream-2:#a7b8d0; --dim:#8fa5bf; --muted:#6f82a0; --faint:#4d6680;
+  --amber:#5b9bd5; --amber-deep:#3a7bbf; --amber-soft:rgba(91,155,213,.16);
+  --green:#3fb985; --green-deep:#2a9068; --red:#e8654a; --blue:#7fb9e8; --violet:#c085c8;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.8); --mixer-bar-bg:linear-gradient(#9cccf2,#6fb0e6); --mixer-bar-fg:#0f2640;
+}
+:root[data-theme="forest"]{
+  --bg:#1b1234; --bg2:#231942; --surface:#352a58; --surface2:#5E548E; --surface3:#7568a1;
+  --line:rgba(224,177,203,.14); --line-strong:rgba(190,149,196,.28);
+  --cream:#f4e8f1; --cream-2:#E0B1CB; --dim:#BE95C4; --muted:#9F86C0; --faint:#5E548E;
+  --amber:#E0B1CB; --amber-deep:#BE95C4; --amber-soft:rgba(224,177,203,.18);
+  --green:#BE95C4; --green-deep:#9F86C0; --red:#e98aae; --blue:#9F86C0; --violet:#E0B1CB;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.85); --mixer-bar-bg:linear-gradient(#E0B1CB,#BE95C4); --mixer-bar-fg:#231942;
+}
+:root[data-theme="arctic"]{
+  --bg:#041426; --bg2:#022E51; --surface:#12385a; --surface2:#1e4667; --surface3:#2f5876;
+  --line:rgba(163,180,200,.15); --line-strong:rgba(204,109,61,.26);
+  --cream:#dbe5ef; --cream-2:#A3B4C8; --dim:#8399b4; --muted:#687f9d; --faint:#314f6f;
+  --amber:#CC6D3D; --amber-deep:#B74803; --amber-soft:rgba(204,109,61,.18);
+  --green:#A3B4C8; --green-deep:#6f849e; --red:#d86d54; --blue:#A3B4C8; --violet:#8da1ba;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.85); --mixer-bar-bg:linear-gradient(#CC6D3D,#B74803); --mixer-bar-fg:#061426;
+}
+:root[data-theme="lime"]{
+  --bg:#0c0e0a; --bg2:#151a11; --surface:#1a1e15; --surface2:#20261b; --surface3:#283121;
+  --line:rgba(163,230,53,.12); --line-strong:rgba(163,230,53,.22);
+  --cream:#e4ead8; --cream-2:#c2c9b4; --dim:#8d9a7d; --muted:#67725b; --faint:#4a533f;
+  --amber:#a3e635; --amber-deep:#6fa80f; --amber-soft:rgba(163,230,53,.16);
+  --green:#bef264; --green-deep:#84cc16; --red:#ffb4ab; --blue:#bacac3; --violet:#96a69f;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.9); --mixer-bar-bg:linear-gradient(#d9ff7a,#a3e635); --mixer-bar-fg:#182404;
+}
+:root[data-theme="slate"]{
+  --bg:#020617; --bg2:#0f172a; --surface:#111827; --surface2:#1e293b; --surface3:#334155;
+  --line:rgba(148,163,184,.14); --line-strong:rgba(148,163,184,.26);
+  --cream:#f8fafc; --cream-2:#cbd5e1; --dim:#94a3b8; --muted:#64748b; --faint:#475569;
+  --amber:#e2e8f0; --amber-deep:#cbd5e1; --amber-soft:rgba(226,232,240,.14);
+  --green:#94a3b8; --green-deep:#64748b; --red:#fca5a5; --blue:#cbd5e1; --violet:#94a3b8;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.9); --mixer-bar-bg:linear-gradient(#e2e8f0,#cbd5e1); --mixer-bar-fg:#0f172a;
+}
+:root[data-theme="sage"]{
+  --bg:#f7f9f8; --bg2:#eef4f1; --surface:#e7ece9; --surface2:#e1e8e4; --surface3:#d5ded9;
+  --line:rgba(63,73,69,.15); --line-strong:rgba(63,73,69,.26);
+  --cream:#191c1a; --cream-2:#3f4945; --dim:#5f6965; --muted:#6f7974; --faint:#bec9c3;
+  --amber:#236a56; --amber-deep:#0f523f; --amber-soft:rgba(35,106,86,.14);
+  --green:#7abea7; --green-deep:#4f947f; --red:#ba1a1a; --blue:#4f7f93; --violet:#904a43;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.18); --mixer-bar-bg:linear-gradient(#154c3c,#0f3d30); --mixer-bar-fg:#eef8f2;
+}
+:root[data-theme="solar"]{
+  --bg:#1f3130; --bg2:#2a3f3e; --surface:#374F4E; --surface2:#48605d; --surface3:#5f746d;
+  --line:rgba(218,204,196,.14); --line-strong:rgba(237,189,149,.27);
+  --cream:#DACCC4; --cream-2:#EDBD95; --dim:#c5ad92; --muted:#AA8552; --faint:#6f7464;
+  --amber:#d6a63a; --amber-deep:#a87e22; --amber-soft:rgba(214,166,58,.20);
+  --green:#AA8552; --green-deep:#80623c; --red:#d86d54; --blue:#EDBD95; --violet:#b9906f;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.82); --mixer-bar-bg:#694d00; --mixer-bar-fg:#f1dec0; --on-amber:#2a1e02;
+}
+:root[data-theme="navy"]{
+  --bg:#061826; --bg2:#072A40; --surface:#0f3d56; --surface2:#178CA4; --surface3:#18B7BE;
+  --line:rgba(249,247,240,.13); --line-strong:rgba(24,183,190,.28);
+  --cream:#F9F7F0; --cream-2:#cde8e8; --dim:#9dc8cf; --muted:#6fa7b4; --faint:#24576b;
+  --amber:#18B7BE; --amber-deep:#178CA4; --amber-soft:rgba(24,183,190,.17);
+  --green:#6fd2c5; --green-deep:#178CA4; --red:#ff9b82; --blue:#18B7BE; --violet:#a9d7e8;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.86); --mixer-bar-bg:linear-gradient(#F9F7F0,#cde8e8); --mixer-bar-fg:#072A40;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg2);overflow:hidden}
+body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.35}
+#root{height:100vh;width:100vw}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+button:focus,button:focus-visible{outline:none;box-shadow:none}
+.mono{font-family:var(--mono);font-feature-settings:"tnum"1}
+/* scrollbars — match the main studio window */
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#3a342c;border-radius:6px;border:3px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:#4a4338}
+:root[data-theme="ivory"] ::-webkit-scrollbar-thumb{background:#c9bfa8;border-color:var(--bg)}
+:root[data-theme="ivory"] ::-webkit-scrollbar-thumb:hover{background:#b8ae97}
+/* ── Pitch Editor shell ─────────────────────────────────────────────────────────────
+   Theme variables above are copied verbatim from vocal-strip.html so every window moves
+   together when a theme changes. Never hardcode an accent colour here (v1.44.21 replaced
+   52 such colours app-wide) — always var(--amber) & friends. */
+.pe-shell{width:100%;height:100%;background:var(--bg2);display:flex;flex-direction:column;overflow:hidden}
+
+.pe-titlebar{position:relative;height:38px;flex:0 0 38px;display:flex;align-items:center;gap:12px;padding:0 12px;
+  background:linear-gradient(180deg,var(--bg2),var(--bg));border-bottom:1px solid var(--line);user-select:none;-webkit-app-region:drag}
+.pe-titlebar button{-webkit-app-region:no-drag}
+.pe-brand{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.13em;color:var(--muted)}
+.pe-brand-dot{width:8px;height:8px;border-radius:2px;background:var(--amber);box-shadow:0 0 8px var(--amber-soft)}
+.pe-title-c{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12.5px;color:var(--dim);letter-spacing:.02em}
+.pe-title-c b{color:var(--cream-2);font-weight:600}
+
+/* Toolbar — Stage A shows the controls disabled so the shape of the feature is visible,
+   but nothing here can change audio yet (analysis lands in Stage B, printing in Stage E). */
+.pe-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;
+  background:var(--bg);border-bottom:1px solid var(--line)}
+.pe-clipname{display:flex;align-items:baseline;gap:8px;min-width:0;margin-right:4px}
+.pe-clipname b{font-size:12.5px;font-weight:600;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.pe-clipmeta{font-size:10px;color:var(--faint);white-space:nowrap}
+.pe-btn{padding:7px 13px;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--dim);
+  background:rgba(255,255,255,.02);border:1px solid var(--line-strong);transition:border-color .15s,color .15s,background .15s}
+.pe-btn:hover:not(:disabled){border-color:var(--amber);color:var(--cream);background:rgba(255,255,255,.04)}
+.pe-btn:disabled{opacity:.38;cursor:default}
+.pe-btn.primary{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber)}
+.pe-btn.primary:disabled{opacity:.32}
+.pe-spacer{flex:1 1 auto}
+.pe-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;font-size:10px;font-weight:700;
+  letter-spacing:.05em;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-deep)}
+.pe-stagetag{font-size:9.5px;font-weight:700;letter-spacing:.1em;color:var(--muted);
+  padding:4px 8px;border-radius:6px;border:1px dashed var(--line-strong)}
+
+/* Piano roll */
+.pe-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;background:var(--bg2)}
+.pe-roll{flex:1 1 auto;min-height:0;position:relative;overflow:hidden}
+.pe-roll canvas{display:block;width:100%;height:100%}
+.pe-empty{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);
+  font-size:12.5px;line-height:1.7;padding:24px}
+
+.pe-footer{height:26px;flex:0 0 26px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px;
+  background:var(--bg);border-top:1px solid rgba(0,0,0,.4);font-size:10px;color:var(--faint)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="build/vendor/react.production.min.js"></script>
+<script src="build/vendor/react-dom.production.min.js"></script>
+<script src="build/ui-kit.js"></script>
+<script src="build/pitch-editor-app.js"></script>
+</body>
+</html>
