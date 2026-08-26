@@ -897,6 +897,9 @@ function ClipContextMenu({ x, y, items, hint, onClose }) {
         borderRadius: 10, boxShadow: "var(--shadow)", padding: 6, zIndex: 4000 }}>
       {items.map((it, i) => it.sep ? (
         <div key={i} style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
+      ) : it.heading ? (
+        <div key={i} style={{ padding: "6px 10px 3px", fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em",
+          color: "var(--muted)", textTransform: "uppercase" }}>{it.label}</div>
       ) : (
         <div key={i} title={it.title || undefined}
           onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
@@ -971,7 +974,7 @@ function RecordingOffsetCalModal({ prev, next, recOff, moveMs, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onSetClipGain, onDeleteClip, onCopyClip, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onSetCompRegion, onClearComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onSetClipGain, onDeleteClip, onCopyClip, onCopyClipToTrack, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onSetCompRegion, onClearComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -1018,6 +1021,8 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     if (e.target.closest("[data-clip-hit]")) return; // the clip's own handler owns this
     openClipMenu(e, null);
   };
+  // Recomputed per menu open (cheap, and track names/kinds change under the user).
+  const copyTargets = (clipMenu && DAW.copyToTrackTargets) ? DAW.copyToTrackTargets(track.id) : [];
   const clipMenuItems = (clip) => {
     if (!clip) return [
       { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
@@ -1055,6 +1060,22 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
         { sep: true },
         { label: "Pitch Editor...",
           onClick: () => window.electronAPI.openPitchEditor(track.id, clip.id) },
+      ] : []),
+      // Copy this clip into another clip-editable track, at the same timeline position.
+      // Listed inline rather than in a submenu: a project has a handful of Audio In / bounce
+      // tracks, and the menu has no submenu machinery to justify building for that.
+      // The engine already carried source metadata + raw audio across for paste (pasteClip);
+      // what was missing was only a way to NAME the destination — Ctrl+V always resolves back
+      // to the track the copied clip came from, and an empty track has no clip to click.
+      ...(copyTargets.length && onCopyClipToTrack ? [
+        { sep: true },
+        { heading: true, label: "Copy to track" },
+        ...copyTargets.map((d) => ({
+          label: d.name || "(unnamed)",
+          hint: d.kind === "bounce" ? "BOUNCE" : "AUDIO IN",
+          title: `Copy this clip to "${d.name}" at the same position`,
+          onClick: () => onCopyClipToTrack(track.id, clip.id, d.id),
+        })),
       ] : []),
       ...(canCal ? [
         { sep: true },

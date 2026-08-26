@@ -4497,6 +4497,68 @@
       };
       return true;
     },
+    // Copy one clip into ANOTHER track, keeping its timeline position (v2.0.3).
+    //
+    // The plumbing is the same as pasteClip — carry the source metadata and the raw buffer
+    // across so the destination can resolve the audio — but this deliberately does NOT touch
+    // `_clipboard`: the user's Ctrl+C content must survive using this menu.
+    //
+    // Position: the clip lands at the SAME timeline position it occupies in the source track.
+    // That is the point of the command (line up a bounce under the vocal it came from);
+    // _clampStartNoOverlap still pushes it right if that spot is taken in the destination.
+    copyClipToTrack(trackId, clipId, destTrackId, atStart) {
+      const src = this.tracks.find(x => x.id === trackId);
+      const dest = this.tracks.find(x => x.id === destTrackId);
+      if (!src || !dest || src === dest) return null;
+      if (!this._clipEditable(dest)) return null;      // stems stay read-only
+      const c = src.clips.find(x => x.id === clipId);
+      if (!c) return null;
+
+      this._captureRawBuffers(src);
+      const sid = c.sourceId;
+      const raw = this._rawBufferForSource(src, sid);
+      const meta = (src.sources || []).find(s => s.id === sid) || null;
+      if (raw) {
+        if (!(dest.sources || []).some(s => s.id === sid) && meta) {
+          dest.sources = [...(dest.sources || []), { ...meta }];
+        }
+        this._captureRawBuffers(dest);
+        dest._rawBuffers = dest._rawBuffers || {};
+        if (!dest._rawBuffers[sid]) dest._rawBuffers[sid] = raw;
+      }
+
+      const dur = c.duration || 0;
+      const want = Number.isFinite(atStart) ? atStart : (c.start || 0);
+      const start = this._clampStartNoOverlap(dest, null, want, dur);
+      const clip = this._normalizeClip({
+        ...c, id: this._cid(), start, end: start + dur,
+        // takeId is meaningless in the destination — its take list knows nothing about this
+        // id, so carrying it over would produce a clip that belongs to a lane that does not
+        // exist and can never be selected. The copy is always a plain clip.
+        takeId: null,
+        // Record-time anchors describe where the ORIGINAL take was captured; a copy in another
+        // track was not recorded at all, so "Recording Offset Cal." must not offer to
+        // calibrate from it.
+        recordedStart: null, recordedOffsetMs: null,
+        // Pitch edit state does not travel: the audio does (clip.sourceId already points at
+        // the printed source when the clip was corrected), but the note list belongs to the
+        // clip it was measured on — same rule as split/Merge (설계 §10-2).
+        pitch: null,
+      }, sid, 0);
+      dest.clips = [...dest.clips, clip];
+      this._reindexClips(dest);
+      this._ensureBaked(dest);
+      return clip.id;
+    },
+
+    // Tracks this clip could be copied into, for the menu to list. Excludes the clip's own
+    // track and anything not clip-editable (stems).
+    copyToTrackTargets(trackId) {
+      return this.tracks
+        .filter(t => t.id !== trackId && this._clipEditable(t))
+        .map(t => ({ id: t.id, name: t.name || "", kind: t.kind || "" }));
+    },
+
     pasteClip(trackId, atStart = 0) {
       const cb = this._clipboard; if (!cb) return false;
       const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
@@ -6043,5 +6105,7 @@
   Engine.duplicateClip = Engine.duplicateClip.bind(Engine);
   Engine.copyClip = Engine.copyClip.bind(Engine);
   Engine.pasteClip = Engine.pasteClip.bind(Engine);
+  Engine.copyClipToTrack = Engine.copyClipToTrack.bind(Engine);
+  Engine.copyToTrackTargets = Engine.copyToTrackTargets.bind(Engine);
   window.DAW = Engine;
 })();

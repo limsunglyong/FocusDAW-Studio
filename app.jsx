@@ -3025,6 +3025,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     if (id) setClipSel({ trackId, clipIds: [id] }); force((n) => n + 1);
   }, [pushUndo, lockTimelineZoom]);
   const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
+  // "Copy to track" — the destination is named by the menu, so this needs none of the
+  // clipboard/paste-target guessing Ctrl+V does (and deliberately leaves the clipboard alone).
+  const handleCopyClipToTrack = useCallback((trackId, clipId, destTrackId) => {
+    lockTimelineZoom();
+    const savedRedo = pushUndo();
+    const id = DAW.copyClipToTrack(trackId, clipId, destTrackId);
+    if (!id) { cancelUndo(savedRedo); return; }
+    lastClipTrackRef.current = destTrackId;
+    setClipSel({ trackId: destTrackId, clipIds: [id] });   // select it where it landed
+    force((n) => n + 1);
+  }, [pushUndo, cancelUndo, lockTimelineZoom]);
   // Keyed by canConsolidateClips()'s reason code. Each says what to do next, not just what
   // went wrong — "same Take lane" alone left the user guessing which clip was the problem.
   const CONSOLIDATE_REFUSAL = {
@@ -4458,6 +4469,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onSelectClip={handleSelectClip} onMoveClip={handleMoveClip} onMoveClips={handleMoveClips}
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd} onSetClipGain={handleSetClipGain}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
+                  onCopyClipToTrack={handleCopyClipToTrack}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
                   onFlattenComp={handleFlattenComp}
@@ -4495,6 +4507,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onSelectClip={handleSelectClip} onMoveClip={handleMoveClip} onMoveClips={handleMoveClips}
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd} onSetClipGain={handleSetClipGain}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
+                  onCopyClipToTrack={handleCopyClipToTrack}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
                   onFlattenComp={handleFlattenComp}
