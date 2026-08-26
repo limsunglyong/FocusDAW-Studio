@@ -2506,6 +2506,31 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         case "REQUEST_PLAY_PAUSE":
           transportRef.current.transportPlayPause && transportRef.current.transportPlayPause();
           break;
+        // Transport for the Pitch Editor (v2.2.0). The strip window only ever needed
+        // play/pause; the pitch editor also needs stop, seeking and a playhead read-out, so
+        // those join the shared channel here rather than growing a second one.
+        case "REQUEST_STOP":
+          transportRef.current.transportStop && transportRef.current.transportStop();
+          break;
+        case "REQUEST_SEEK":
+          // Through transportRef, not the guardedUserSeek closure: this effect does not re-run
+          // every render, so a captured closure would go stale (the same trap the menu
+          // handlers hit). Every other transport call here goes through the ref for exactly
+          // this reason. And guardedUserSeek rather than DAW.seek because it is the path that
+          // refuses to move the playhead mid-recording — a window must not get a rawer seek
+          // than the main timeline has.
+          if (Number.isFinite(msg.t) && transportRef.current.transportSeek) transportRef.current.transportSeek(msg.t);
+          break;
+        // Polled (~30 fps) rather than broadcast every frame: the studio has no idea the
+        // editor is open, and the existing per-frame LEVEL_METERS feed is gated on the mixer /
+        // advanced windows being visible. Two numbers per tick is cheaper than teaching the
+        // frame loop about another window — same reasoning as REQUEST_VOCAL_METERS.
+        case "REQUEST_TRANSPORT":
+          channel.postMessage({
+            type: "TRANSPORT_STATE",
+            playhead: DAW.getPlayhead(), isPlaying: DAW.isPlaying, duration: DAW.duration,
+          });
+          break;
         // undo()/redo() broadcast to the advanced windows themselves (preview + authoritative
         // refresh), so every entry point — this window, the mixer, the main keyboard — syncs.
         case "REQUEST_UNDO":
@@ -4000,7 +4025,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const transportStop = () => { if (isCountingIn()) return cancelCountIn(); if (isRecordingActive()) return doStopRecording(); DAW.stop(); force((n) => n + 1); };
   const transportPlayPause = () => { if (isCountingIn()) return cancelCountIn(); if (isRecordingActive()) return; DAW.isPlaying ? DAW.pause() : DAW.play(); force((n) => n + 1); };
   const transportToStart = () => { if (isCountingIn() || isRecordingActive()) return; DAW.seek(0); force((n) => n + 1); };
-  transportRef.current = { transportRecordToggle, transportStop, transportPlayPause, transportToStart, isRecordingActive, isCountingIn };
+  transportRef.current = { transportRecordToggle, transportStop, transportPlayPause, transportToStart, isRecordingActive, isCountingIn, transportSeek: (t) => guardedUserSeek(t) };
   // Mouse seeks (ruler / track lanes / output track) are ignored while recording
   // or counting in, matching the keyboard seek keys — the playhead must not jump
   // mid-take.
