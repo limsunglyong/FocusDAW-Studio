@@ -3316,6 +3316,269 @@
       };
     },
 
+    // ── v2.0.0 Pitch Editor Stage B — pitch tracking (YIN) ──────────────────────────────
+    //
+    // Runs on a DECIMATED copy of the clip. A vocal fundamental tops out around 1.1 kHz, so
+    // 12 kHz is ample (Nyquist 6 kHz), and the difference function — the cost of YIN — shrinks
+    // with BOTH the window and the lag range, i.e. quadratically. Detection still reports in
+    // the original TIME domain: frame k covers t = k*hopSec seconds into the clip regardless
+    // of what rate the samples were crunched at.
+    //
+    // Time-domain difference (not FFT autocorrelation) on purpose: the lag range here is only
+    // ~11..184 samples, so the direct sum is ~90k multiply-adds per frame — cheaper than the
+    // three 2048-point FFTs that textbook "fast YIN" would need.
+    PITCH_TARGET_SR: 12000,
+    PITCH_FMIN: 65,          // C2 — below any sung vocal
+    PITCH_FMAX: 1100,        // C6 — above any sung vocal
+    PITCH_WIN_SEC: 0.0427,   // 42.7 ms ~= 2 periods at fmin
+    PITCH_HOP_SEC: 0.0107,   // 10.7 ms — a note is >= 60 ms, so this is ~6 frames per note
+
+    // Anti-aliased decimation to ~12 kHz, mixed to mono. Channels are summed BEFORE
+    // decimation: pitch is a property of the performance, not of a channel, and summing first
+    // keeps a stereo take from being analysed twice.
+    // Takes channel arrays + a sample range rather than an AudioBuffer: analysis needs
+    // samples, not a Web Audio object, and the engine's `ctx` is created lazily (it is null
+    // before playback ever starts) — depending on it here would make analysis fail on a
+    // freshly opened project.
+    _decimateForPitch(chans, lo, hi, inSr) {
+      const factor = Math.max(1, Math.floor(inSr / this.PITCH_TARGET_SR));
+      const nIn = hi - lo;
+      const mono = new Float32Array(nIn);
+      for (let i = 0; i < nIn; i++) {
+        let v = 0;
+        for (let c = 0; c < chans.length; c++) v += chans[c][lo + i];
+        mono[i] = v / chans.length;
+      }
+      if (factor === 1) return { data: mono, sampleRate: inSr };
+      // 33-tap windowed sinc, cutoff just under the new Nyquist. Without it, energy above
+      // 6 kHz folds down into the very range the difference function is reading.
+      const TAPS = 33, half = (TAPS - 1) / 2, fc = (0.5 / factor) * 0.9;
+      const h = new Float32Array(TAPS);
+      let sum = 0;
+      for (let i = 0; i < TAPS; i++) {
+        const m = i - half;
+        const sinc = m === 0 ? 2 * fc : Math.sin(2 * Math.PI * fc * m) / (Math.PI * m);
+        const w = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (TAPS - 1)); // Hamming
+        h[i] = sinc * w;
+        sum += h[i];
+      }
+      for (let i = 0; i < TAPS; i++) h[i] /= sum;
+      const nOut = Math.floor(nIn / factor);
+      const out = new Float32Array(nOut);
+      for (let o = 0; o < nOut; o++) {
+        const centre = o * factor;
+        let acc = 0;
+        for (let k = 0; k < TAPS; k++) {
+          const idx = centre + k - half;
+          if (idx >= 0 && idx < nIn) acc += mono[idx] * h[k];
+        }
+        out[o] = acc;
+      }
+      return { data: out, sampleRate: inSr / factor };
+    },
+
+    // One YIN frame over x[start .. start+W+tauMax). Returns { tau, cmnd } or null when
+    // nothing periodic enough is there.
+    _yinFrame(x, start, W, tauMin, tauMax, thresh) {
+      const d = new Float32Array(tauMax + 1);
+      for (let tau = tauMin; tau <= tauMax; tau++) {
+        let sum = 0;
+        for (let j = 0; j < W; j++) {
+          const diff = x[start + j] - x[start + j + tau];
+          sum += diff * diff;
+        }
+        d[tau] = sum;
+      }
+      // Cumulative mean normalised difference — this is what makes YIN indifferent to level.
+      const cmnd = new Float32Array(tauMax + 1);
+      let running = 0;
+      for (let tau = tauMin; tau <= tauMax; tau++) {
+        running += d[tau];
+        cmnd[tau] = running > 0 ? (d[tau] * (tau - tauMin + 1)) / running : 1;
+      }
+      // First dip below the absolute threshold, walked down to its local minimum (paper's
+      // step 4). Falling back to the global minimum keeps quiet-but-voiced frames alive.
+      let best = -1;
+      for (let tau = tauMin; tau <= tauMax; tau++) {
+        if (cmnd[tau] < thresh) {
+          while (tau + 1 <= tauMax && cmnd[tau + 1] < cmnd[tau]) tau++;
+          best = tau;
+          break;
+        }
+      }
+      if (best < 0) {
+        let mn = Infinity;
+        for (let tau = tauMin; tau <= tauMax; tau++) if (cmnd[tau] < mn) { mn = cmnd[tau]; best = tau; }
+        if (best < 0 || mn > 0.6) return null;
+      }
+      // Parabolic interpolation around the dip. Without it f0 quantises to the lag grid,
+      // which at 12 kHz is already ~1.5 semitones wide up near C6.
+      let refined = best;
+      if (best > tauMin && best < tauMax) {
+        const a = d[best - 1], b = d[best], c = d[best + 1];
+        const denom = a + c - 2 * b;
+        if (Math.abs(denom) > 1e-12) refined = best + (a - c) / (2 * denom);
+      }
+      return { tau: refined, cmnd: cmnd[best] };
+    },
+
+    // Median of the voiced neighbourhood in SEMITONES (log domain) — an octave error is a
+    // constant +/-12 there, so a median rejects it cleanly. In Hz, loud low notes would drag
+    // the estimate around instead.
+    _medianSmoothSemitones(st, voiced, radius) {
+      const n = st.length, out = new Float32Array(n), win = [];
+      for (let i = 0; i < n; i++) {
+        if (!voiced[i]) { out[i] = st[i]; continue; }
+        win.length = 0;
+        for (let k = Math.max(0, i - radius); k <= Math.min(n - 1, i + radius); k++) {
+          if (voiced[k]) win.push(st[k]);
+        }
+        if (!win.length) { out[i] = st[i]; continue; }
+        win.sort((a, b) => a - b);
+        out[i] = win[win.length >> 1];
+      }
+      return out;
+    },
+
+    // Split into setup / step / finish so the same code can run in one go (tests, short clips)
+    // or in slices that keep the window responsive (analyzeClipPitchAsync below). The frame
+    // loop is the only expensive part, and it is the only thing `step` does.
+    _pitchAnalysisSetup(trackId, clipId, opts) {
+      const track = this.tracks.find(t => t.id === trackId);
+      const clip = track && (track.clips || []).find(c => c.id === clipId);
+      if (!track || !clip) return null;
+      // Analyse the ORIGINAL audio when this clip has been printed before, so a second pass
+      // measures the take as sung rather than a previous correction (설계 §2).
+      const baseId = (clip.pitch && clip.pitch.baseSourceId) || clip.sourceId;
+      const raw = this._rawBufferForSource(track, baseId) || this._rawBufferForSource(track, clip.sourceId);
+      if (!raw) return null;
+
+      const srcSr = raw.sampleRate;
+      const off = clip.sourceOffset != null ? clip.sourceOffset : (clip.offset || 0);
+      const lo = Math.max(0, Math.round(off * srcSr));
+      const hi = Math.min(raw.length, lo + Math.round((clip.duration || 0) * srcSr));
+      if (hi - lo < srcSr * 0.06) return null;   // shorter than a single analysis window
+
+      // Only the clip's own range: analysing the whole source would report other clips'
+      // audio, and cost more for the privilege.
+      const chans = [];
+      for (let c = 0; c < raw.numberOfChannels; c++) chans.push(raw.getChannelData(c));
+      const dec = this._decimateForPitch(chans, lo, hi, srcSr);
+      const x = dec.data, sr = dec.sampleRate;
+      const W = Math.round(this.PITCH_WIN_SEC * sr);
+      const hop = Math.round(this.PITCH_HOP_SEC * sr);
+      const fmin = (opts && opts.fmin) || this.PITCH_FMIN;
+      const fmax = (opts && opts.fmax) || this.PITCH_FMAX;
+      const tauMin = Math.max(2, Math.floor(sr / fmax));
+      const tauMax = Math.min(Math.floor(sr / fmin), W - 1);
+      const frames = Math.max(0, Math.floor((x.length - (W + tauMax)) / hop) + 1);
+      if (frames <= 0) return null;
+
+      // Silence gate. A vocal take is mostly NOT singing, and skipping those frames outright
+      // is the biggest speed win available here — the difference function never runs for them.
+      let peak = 0;
+      for (let i = 0; i < x.length; i++) { const a = Math.abs(x[i]); if (a > peak) peak = a; }
+
+      return {
+        started: (typeof performance !== "undefined" ? performance.now() : Date.now()),
+        trackId: track.id, clipId: clip.id,
+        x, sr, srcSr, W, hop, fmin, fmax, tauMin, tauMax, frames,
+        rmsFloor: Math.max(1e-4, peak * 0.02),
+        durationSec: (hi - lo) / srcSr,
+        k: 0, analysed: 0,
+        f0: new Float32Array(frames), conf: new Float32Array(frames),
+        midi: new Float32Array(frames), voiced: new Uint8Array(frames),
+      };
+    },
+
+    // Advance at most `count` frames. Leaves st.k where it stopped.
+    _pitchAnalysisStep(st, count) {
+      const { x, W, hop, tauMin, tauMax, sr, fmin, fmax } = st;
+      const end = Math.min(st.frames, st.k + count);
+      for (; st.k < end; st.k++) {
+        const start = st.k * hop;
+        let energy = 0;
+        for (let j = 0; j < W; j++) { const v = x[start + j]; energy += v * v; }
+        if (Math.sqrt(energy / W) < st.rmsFloor) continue;      // arrays already zero = unvoiced
+        st.analysed++;
+        const r = this._yinFrame(x, start, W, tauMin, tauMax, 0.15);
+        if (!r || !(r.tau > 0)) continue;
+        const hz = sr / r.tau;
+        if (hz < fmin || hz > fmax) continue;
+        st.f0[st.k] = hz;
+        st.conf[st.k] = Math.max(0, Math.min(1, 1 - r.cmnd));
+        st.voiced[st.k] = 1;
+        st.midi[st.k] = 69 + 12 * Math.log2(hz / 440);
+      }
+      return st.k >= st.frames;
+    },
+
+    _pitchAnalysisFinish(st) {
+      // Median smoothing in the log domain, then Hz rebuilt from it. Radius 2 = 5 frames
+      // (~53 ms): long enough to outvote a stray octave, short enough to keep a real slide.
+      const sm = this._medianSmoothSemitones(st.midi, st.voiced, 2);
+      let voicedCount = 0;
+      for (let k = 0; k < st.frames; k++) {
+        if (!st.voiced[k]) continue;
+        voicedCount++;
+        st.midi[k] = sm[k];
+        st.f0[k] = 440 * Math.pow(2, (sm[k] - 69) / 12);
+      }
+      const now = (typeof performance !== "undefined" ? performance.now() : Date.now());
+      return {
+        trackId: st.trackId, clipId: st.clipId,
+        sampleRate: st.sr, sourceSampleRate: st.srcSr,
+        hopSec: st.hop / st.sr, winSec: st.W / st.sr,
+        frames: st.frames, analysedFrames: st.analysed, voicedFrames: voicedCount,
+        fmin: st.fmin, fmax: st.fmax,
+        f0: st.f0, voiced: st.voiced, conf: st.conf, midi: st.midi,
+        durationSec: st.durationSec,
+        elapsedMs: now - st.started,
+        version: 1,
+      };
+    },
+
+    // Analyse one clip in one go. Returns per-frame f0 / voiced / confidence plus the timing
+    // the editor needs to place the curve. The CURVE IS NOT PERSISTED — it would bloat the
+    // project file; clip.pitch.analysis keeps only the parameters so it can be recomputed.
+    analyzeClipPitch(trackId, clipId, opts) {
+      const st = this._pitchAnalysisSetup(trackId, clipId, opts);
+      if (!st) return null;
+      while (!this._pitchAnalysisStep(st, 4096));
+      return this._pitchAnalysisFinish(st);
+    },
+
+    // Same analysis, run in slices so the UI stays alive and can show progress.
+    //
+    // MEASURED (v2.0.1, Stage B): a 5-minute take is 28,120 frames and takes ~4.2 s — 1.4% of
+    // realtime, but 4.2 s of a FROZEN window if run in one go. 설계 §5-1 left the choice open
+    // until this number existed; a Web Worker is not worth its plumbing (a second bundle to
+    // build, package and keep in sync, plus transferring the decimated buffer) for a cost that
+    // yielding to the event loop removes just as well. Typical clips are far shorter — a 30 s
+    // take lands around 0.4 s.
+    //
+    // `onProgress(done, total)` is called between slices, never during one.
+    analyzeClipPitchAsync(trackId, clipId, opts, onProgress) {
+      const st = this._pitchAnalysisSetup(trackId, clipId, opts);
+      if (!st) return Promise.resolve(null);
+      const SLICE_MS = 90;   // long enough to be efficient, short enough to feel responsive
+      const step = () => new Promise((resolve) => {
+        // setTimeout(0) rather than a microtask: a resolved promise would starve rendering,
+        // which is the whole point of slicing.
+        setTimeout(() => {
+          const until = (typeof performance !== "undefined" ? performance.now() : Date.now()) + SLICE_MS;
+          while (st.k < st.frames) {
+            this._pitchAnalysisStep(st, 64);
+            if ((typeof performance !== "undefined" ? performance.now() : Date.now()) >= until) break;
+          }
+          if (onProgress) { try { onProgress(st.k, st.frames); } catch (_) {} }
+          resolve(st.k >= st.frames);
+        }, 0);
+      });
+      const loop = () => step().then((done) => (done ? this._pitchAnalysisFinish(st) : loop()));
+      return loop();
+    },
+
     denoiseProfileInfo(trackId) {
       const p = this._denoiseProfiles && this._denoiseProfiles[trackId];
       return p ? { seconds: p.seconds, sampleRate: p.sampleRate, clipId: p.clipId } : null;

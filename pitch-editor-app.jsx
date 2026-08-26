@@ -68,7 +68,7 @@ function WindowControls() {
 // A canvas is NOT restyled by a CSS variable change — it holds pixels, not styled elements. The
 // colours below are read once per draw, so `theme` has to be a real dependency of the drawing
 // effect or the roll keeps the palette it was painted with (v2.0.0 defect, T-2.0.0-1 ④).
-function PianoRoll({ info, theme }) {
+function PianoRoll({ info, analysis, theme }) {
   const wrapRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 0, h: 0 });
@@ -167,6 +167,41 @@ function PianoRoll({ info, theme }) {
       g.globalAlpha = 1;
     }
 
+    // Stage B — the detected pitch curve, drawn on top of the waveform and under whatever
+    // Stage C will put here. Voiced runs are stroked as continuous segments and unvoiced gaps
+    // genuinely break the line: a curve that bridges a breath would invent pitch that is not
+    // there. Confidence drives opacity, so shaky detections look shaky.
+    const an = analysis;
+    if (an && an.frames && dur > 0) {
+      const yOfMidi = (m) => RULER_H + (PITCH_HI + 0.5 - m) * rowH;
+      g.lineWidth = 2;
+      g.lineJoin = "round";
+      g.lineCap = "round";
+      let k = 0;
+      while (k < an.frames) {
+        if (!an.voiced[k]) { k++; continue; }
+        let end = k;
+        while (end + 1 < an.frames && an.voiced[end + 1]) end++;
+        if (end > k) {
+          // one stroke per run, alpha from the run's mean confidence
+          let csum = 0;
+          for (let i = k; i <= end; i++) csum += an.conf[i];
+          const meanConf = csum / (end - k + 1);
+          g.globalAlpha = 0.35 + 0.65 * Math.max(0, Math.min(1, meanConf));
+          g.strokeStyle = C.amber;
+          g.beginPath();
+          for (let i = k; i <= end; i++) {
+            const t = i * an.hopSec + an.winSec / 2;   // frame centre, not its left edge
+            const x = xOf(t), y = yOfMidi(an.midi[i]);
+            if (i === k) g.moveTo(x, y); else g.lineTo(x, y);
+          }
+          g.stroke();
+        }
+        k = end + 1;
+      }
+      g.globalAlpha = 1;
+    }
+
     // keyboard gutter — drawn last so nothing bleeds under it
     g.fillStyle = C.surface;
     g.fillRect(0, RULER_H, KEY_W, rollH);
@@ -186,7 +221,7 @@ function PianoRoll({ info, theme }) {
     g.beginPath(); g.moveTo(KEY_W + 0.5, RULER_H); g.lineTo(KEY_W + 0.5, H); g.stroke();
     // `theme` is unused inside the draw, but it IS what the CSS variables above depend on —
     // it is in the dependency list to force a repaint, so do not "clean it up".
-  }, [size, info, theme]);
+  }, [size, info, analysis, theme]);
 
   return (
     <div className="pe-roll" ref={wrapRef}>
@@ -204,6 +239,16 @@ function PitchEditorApp() {
   const [projectName, setProjectName] = React.useState("");
   const [info, setInfo] = React.useState(null);
   const [error, setError] = React.useState("");
+  const [analysis, setAnalysis] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
+  const [note, setNote] = React.useState("");
+
+  const runAnalyze = React.useCallback(() => {
+    if (!trackId || !clipId || busy) return;
+    setBusy(true); setProgress(0); setNote(""); setAnalysis(null);
+    peChannel.postMessage({ type: "REQUEST_PITCH_ANALYZE", trackId, clipId });
+  }, [trackId, clipId, busy]);
 
   const requestClip = React.useCallback(() => {
     if (!trackId || !clipId) { setError("No clip was passed to the editor."); return; }
@@ -222,10 +267,22 @@ function PitchEditorApp() {
         // replace this clip, so re-pull the clip on every broadcast rather than trusting
         // the copy taken when the window opened.
         requestClip();
+        // The clip may have been trimmed, moved or undone — a curve measured from the old
+        // audio would sit over the new waveform and quietly lie. Drop it and let the user
+        // re-analyse.
+        setAnalysis(null);
       } else if (msg.type === "PITCH_CLIP") {
         if (msg.trackId !== trackId || msg.clipId !== clipId) return;
         if (msg.ok && msg.info) { setInfo(msg.info); setError(""); }
         else { setInfo(null); setError(msg.message || "This clip could not be read."); }
+      } else if (msg.type === "PITCH_ANALYZE_PROGRESS") {
+        if (msg.trackId !== trackId || msg.clipId !== clipId) return;
+        setProgress(msg.total ? msg.done / msg.total : 0);
+      } else if (msg.type === "PITCH_ANALYSIS") {
+        if (msg.trackId !== trackId || msg.clipId !== clipId) return;
+        setBusy(false); setProgress(0);
+        if (msg.ok && msg.analysis) { setAnalysis(msg.analysis); setNote(""); }
+        else { setAnalysis(null); setNote(msg.message || "Pitch analysis failed."); }
       }
     };
     peChannel.addEventListener("message", onMsg);
@@ -281,26 +338,33 @@ function PitchEditorApp() {
           </span>
         </div>
         <div className="pe-spacer" />
-        {/* Every control is inert in Stage A. Each is enabled by the stage that gives it
-            meaning, so a half-wired button never sits in front of the user. */}
-        <button className="pe-btn" disabled title="Pitch detection lands in Stage B">Analyze</button>
+        {/* Controls are enabled by the stage that gives them meaning, so a half-wired button
+            never sits in front of the user. */}
+        <button className="pe-btn" onClick={runAnalyze} disabled={!info || busy}
+          title="Detect the sung pitch across this clip">
+          {busy ? `Analyzing… ${Math.round(progress * 100)}%` : (analysis ? "Re-analyze" : "Analyze")}
+        </button>
         <button className="pe-btn" disabled title="Note editing lands in Stage D">Snap all to key</button>
         <button className="pe-btn primary" disabled title="Rendering and printing land in Stage E">Apply</button>
         <button className="pe-btn" disabled title="Available once a correction has been printed (Stage E)">Revert</button>
-        <span className="pe-stagetag">STAGE A</span>
+        <span className="pe-stagetag">STAGE B</span>
       </div>
 
       <div className="pe-body">
         {error
           ? <div className="pe-empty">{error}</div>
-          : (info ? <PianoRoll info={info} theme={theme} /> : <div className="pe-empty">Loading clip…</div>)}
+          : (info ? <PianoRoll info={info} analysis={analysis} theme={theme} /> : <div className="pe-empty">Loading clip…</div>)}
       </div>
 
       <div className="pe-footer">
         <span>
-          {info
-            ? `${info.trackName || "track"} · clip at ${peFmtTime(info.start)} · no pitch data yet`
-            : "—"}
+          {!info ? "—" : (note ? note : (analysis
+            // Voiced coverage is the honest headline number: it says how much of the clip the
+            // detector actually found a pitch in, which is what the next stage segments.
+            ? `${info.trackName || "track"} · ${(100 * analysis.voicedFrames / analysis.frames).toFixed(0)}% voiced`
+              + ` · ${analysis.frames} frames @ ${Math.round(analysis.hopSec * 1000)} ms`
+              + ` · analysed in ${(analysis.elapsedMs / 1000).toFixed(1)} s`
+            : `${info.trackName || "track"} · clip at ${peFmtTime(info.start)} · press Analyze to detect pitch`))}
         </span>
         {/* Vari Key/BPM never bake into timeline audio, so analysis and rendering always work
             in the original domain. Say so when playback is transposed, or the note names on

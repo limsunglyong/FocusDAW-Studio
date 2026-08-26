@@ -2478,6 +2478,28 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           });
           break;
         }
+        // Stage B — pitch tracking. Runs in slices (analyzeClipPitchAsync) so the studio window
+        // stays responsive: a 5-minute take is ~4.2 s of arithmetic and would otherwise freeze
+        // the app. Read-only — NOTHING here mutates the model, so there is deliberately no
+        // pushUndo (an undo entry that restores an identical snapshot eats the next Ctrl+Z,
+        // 앱개발.md "Undo 스냅샷 정합성").
+        case "REQUEST_PITCH_ANALYZE": {
+          const { trackId, clipId } = msg;
+          const reply = (extra) => channel.postMessage({ type: "PITCH_ANALYSIS", trackId, clipId, ...extra });
+          if (!DAW.analyzeClipPitchAsync) { reply({ ok: false, message: "This build cannot analyse pitch." }); break; }
+          DAW.analyzeClipPitchAsync(trackId, clipId, null, (done, total) => {
+            channel.postMessage({ type: "PITCH_ANALYZE_PROGRESS", trackId, clipId, done, total });
+          }).then((res) => {
+            if (!res) {
+              reply({ ok: false, message: "This clip is too short to analyse (about 0.06 s minimum), or its audio is not loaded." });
+              return;
+            }
+            reply({ ok: true, analysis: res });
+          }).catch((err) => {
+            reply({ ok: false, message: "Pitch analysis failed: " + (err && err.message ? err.message : String(err)) });
+          });
+          break;
+        }
         case "BEFORE_CHANGE":
           pushUndo();
           break;
