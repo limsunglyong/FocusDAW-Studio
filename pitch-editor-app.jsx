@@ -33,6 +33,16 @@ const RULER_H = 20;    // time ruler (px)
 // itself is reused rather than reimplemented.
 const peFmtTime = (s) => (Number.isFinite(s) ? fmtTime(s) : "--:--");
 
+// Applied to <html> the moment a theme arrives, NOT from an effect. React runs CHILD effects
+// before PARENT effects, so a parent effect that sets data-theme would land AFTER the piano
+// roll's redraw — the canvas would read the previous theme's CSS variables and keep the old
+// colours until the window was reopened (v2.0.0 defect, T-2.0.0-1 ④).
+function peApplyThemeAttr(theme) {
+  const root = document.documentElement;
+  if (!theme || theme === "default") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", theme);
+}
+
 /* ---------- window frame ---------- */
 
 function WindowControls() {
@@ -54,8 +64,11 @@ function WindowControls() {
 
 // Drawn on a canvas rather than in the DOM: Stage C will put one note block per sung syllable
 // and Stage B a pitch point every ~5 ms, which is thousands of elements for a 5-minute vocal.
-// Colours come from the CSS variables so the canvas follows the theme like everything else.
-function PianoRoll({ info }) {
+//
+// A canvas is NOT restyled by a CSS variable change — it holds pixels, not styled elements. The
+// colours below are read once per draw, so `theme` has to be a real dependency of the drawing
+// effect or the roll keeps the palette it was painted with (v2.0.0 defect, T-2.0.0-1 ④).
+function PianoRoll({ info, theme }) {
   const wrapRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 0, h: 0 });
@@ -171,7 +184,9 @@ function PianoRoll({ info }) {
     }
     g.strokeStyle = C.lineStrong;
     g.beginPath(); g.moveTo(KEY_W + 0.5, RULER_H); g.lineTo(KEY_W + 0.5, H); g.stroke();
-  }, [size, info]);
+    // `theme` is unused inside the draw, but it IS what the CSS variables above depend on —
+    // it is in the dependency list to force a repaint, so do not "clean it up".
+  }, [size, info, theme]);
 
   return (
     <div className="pe-roll" ref={wrapRef}>
@@ -201,7 +216,7 @@ function PitchEditorApp() {
       const msg = e.data;
       if (!msg) return;
       if (msg.type === "INIT_STATE" || msg.type === "SYNC_STATE") {
-        if (msg.theme) setTheme(msg.theme);
+        if (msg.theme) { peApplyThemeAttr(msg.theme); setTheme(msg.theme); }
         if (typeof msg.projectName === "string") setProjectName(msg.projectName);
         // Studio re-broadcasts on ready / undo / redo / rename. Undo can move, trim or
         // replace this clip, so re-pull the clip on every broadcast rather than trusting
@@ -218,11 +233,9 @@ function PitchEditorApp() {
     return () => peChannel.removeEventListener("message", onMsg);
   }, [requestClip, trackId, clipId]);
 
-  React.useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "default") root.removeAttribute("data-theme");
-    else root.setAttribute("data-theme", theme);
-  }, [theme]);
+  // Safety net only (initial mount, and any future path that sets theme without the helper).
+  // The attribute is normally already correct by the time this runs — see peApplyThemeAttr.
+  React.useEffect(() => { peApplyThemeAttr(theme); }, [theme]);
 
   // Theme changes are broadcast on their own channel while this window is open (same as the
   // vocal strip): INIT_STATE only carries the theme at open time.
@@ -230,7 +243,9 @@ function PitchEditorApp() {
     let ch = null;
     try {
       ch = new BroadcastChannel("focusdaw-theme-sync");
-      ch.addEventListener("message", (e) => { if (e.data && e.data.type === "THEME_CHANGED" && e.data.theme) setTheme(e.data.theme); });
+      ch.addEventListener("message", (e) => {
+        if (e.data && e.data.type === "THEME_CHANGED" && e.data.theme) { peApplyThemeAttr(e.data.theme); setTheme(e.data.theme); }
+      });
     } catch (_) { /* channel unavailable — theme still arrives with INIT_STATE */ }
     return () => { try { ch && ch.close(); } catch (_) {} };
   }, []);
@@ -278,7 +293,7 @@ function PitchEditorApp() {
       <div className="pe-body">
         {error
           ? <div className="pe-empty">{error}</div>
-          : (info ? <PianoRoll info={info} /> : <div className="pe-empty">Loading clip…</div>)}
+          : (info ? <PianoRoll info={info} theme={theme} /> : <div className="pe-empty">Loading clip…</div>)}
       </div>
 
       <div className="pe-footer">
