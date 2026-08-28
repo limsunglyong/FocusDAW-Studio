@@ -1697,13 +1697,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const songEndRef = useRef(0);          // end (sec) of longest existing track, captured at record start
   const prevLoopRef = useRef(null);      // Loop (whole-song) flag saved at record start (restored on stop)
   const prevRepeatRef = useRef(null);    // Repeat-play (region) flag saved when a PUNCH began (restored on stop)
+  // Repeat region borrowed by the Pitch Editor's CLIP loop, saved so closing that toggle (or
+  // the window) puts the user's own region back. Same shape as prevRepeatRef, different owner:
+  // punch restores on stop, this restores on release.
+  const peLoopPrevRef = useRef(null);
   const transportRef = useRef({});       // latest rule-honoring transport action fns (toolbar/keyboard/mixer)
   const [recordCount, setRecordCount] = useState(null); // 3→2→1 count-in overlay number (null = hidden)
   const [prerollLeft, setPrerollLeft] = useState(null); // seconds until punch-in (null = not pre-rolling)
   const MAX_UNDO = 50;
   const stretchPreparing = !!DAW._stretchPreviewPreparing;
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
-  const fileTracks = DAW.tracks.filter((t) => !t.kind || t.kind === "file" || t.kind === "bounce");
+  const fileTracks = DAW.tracks.filter(isFileGroupTrack);
   const nonFileTracks = DAW.tracks.filter((t) => t.kind && t.kind !== "file" && t.kind !== "bounce");
   const fileTrackIdSet = useMemo(() => new Set(fileTracks.map((t) => t.id)), [fileTracks.map((t) => t.id).join("|")]);
   const selectedFileTrackSet = useMemo(() => new Set(selectedFileTrackIds), [selectedFileTrackIds.join("|")]);
@@ -2293,11 +2297,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           break;
 
         case "MUTE_ALL_FILES":
-          // Shift+Mute in the mixer: toggle Mute for every file track (file
-          // tracks only). The main window is authoritative and re-syncs the
-          // mixer via the normal state broadcast.
+          // Shift+Mute in the mixer: toggle Mute for every track in the File Tracks group.
+          // The main window is authoritative and re-syncs the mixer via the normal state
+          // broadcast.
           DAW.tracks.forEach((track) => {
-            if (track.kind === "file") DAW.setTrackParam(track.id, "mute", !!msg.v);
+            if (isFileGroupTrack(track)) DAW.setTrackParam(track.id, "mute", !!msg.v);
           });
           saveRecentProject(projectName, projectPath);
           force((n) => n + 1);
@@ -2510,6 +2514,11 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         // play/pause; the pitch editor also needs stop, seeking and a playhead read-out, so
         // those join the shared channel here rather than growing a second one.
         case "REQUEST_STOP":
+          // `fromEditor` marks a stop the Pitch Editor issued on its own initiative (opening
+          // while the song rolls, or playback reaching the clip's end) rather than the user
+          // pressing ■. Those must never cut a take short — transportStop would otherwise
+          // call doStopRecording — so they are dropped while a recording or count-in is live.
+          if (msg.fromEditor && (isRecordingActive() || isCountingIn())) break;
           transportRef.current.transportStop && transportRef.current.transportStop();
           break;
         case "REQUEST_SEEK":
@@ -2529,8 +2538,45 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           channel.postMessage({
             type: "TRANSPORT_STATE",
             playhead: DAW.getPlayhead(), isPlaying: DAW.isPlaying, duration: DAW.duration,
+            loopStart: DAW.loopRange ? DAW.loopRange.start : null,
+            loopEnd: DAW.loopRange ? DAW.loopRange.end : null,
+            repeat: !!DAW.repeatPlayEnabled,
           });
           break;
+        // Pitch Editor "CLIP" loop (v2.3.0): keep playback inside the clip being edited by
+        // BORROWING the Repeat region rather than inventing a second loop mechanism — the
+        // engine already honours loopRange on both the web and native paths, and a parallel
+        // one would be two things to keep in agreement.
+        //
+        // No undo snapshot: loopRange / repeatPlayEnabled are transport state and getSnapshot()
+        // carries neither, so pushing one would only stack an entry identical to the current
+        // state (the reasoning ui-mixer's own loop drag already follows).
+        case "REQUEST_LOOP_RANGE": {
+          if (msg.restore) {
+            const prev = peLoopPrevRef.current;
+            if (!prev) break;
+            DAW.setLoopRange(prev.range);
+            DAW.setRepeatPlayEnabled(!!prev.repeat);
+            peLoopPrevRef.current = null;
+            force((n) => n + 1);
+            break;
+          }
+          // Refused mid-recording: PUNCH reads this very region as its [in, out] span, so
+          // moving it under a running take would redefine what is being replaced.
+          if (isRecordingActive()) break;
+          if (!Number.isFinite(msg.start) || !Number.isFinite(msg.end) || msg.end <= msg.start) break;
+          if (!peLoopPrevRef.current) {
+            const r = DAW.loopRange;
+            peLoopPrevRef.current = {
+              range: r ? { start: r.start, end: r.end } : null,
+              repeat: !!DAW.repeatPlayEnabled,
+            };
+          }
+          DAW.setLoopRange({ start: msg.start, end: msg.end });
+          DAW.setRepeatPlayEnabled(true);
+          force((n) => n + 1);
+          break;
+        }
         // undo()/redo() broadcast to the advanced windows themselves (preview + authoritative
         // refresh), so every entry point — this window, the mixer, the main keyboard — syncs.
         case "REQUEST_UNDO":
@@ -4224,12 +4270,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);
   };
-  // Shift+Mute on a file track toggles Mute for ALL file tracks at once (file
-  // tracks only). One undo snapshot covers the whole batch.
+  // Shift+Mute on a track in the File Tracks group toggles Mute for EVERY track in that
+  // group — stems and bounces alike. One undo snapshot covers the whole batch.
   const muteAllFileTracks = (next) => {
     pushUndo(); lastUndoKey.current = null;
     DAW.tracks.forEach((track) => {
-      if (track.kind === "file") DAW.setTrackParam(track.id, "mute", next);
+      if (isFileGroupTrack(track)) DAW.setTrackParam(track.id, "mute", next);
     });
     saveRecentProject(projectName, projectPath);
     force((n) => n + 1);

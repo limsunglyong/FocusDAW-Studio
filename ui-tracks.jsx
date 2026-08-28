@@ -631,10 +631,17 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
         {track.kind !== "audioIn" && <button title={noAudio ? "BPM source unavailable until audio is re-linked" : "Use this track for BPM detection"} disabled={noAudio} onClick={noAudio ? undefined : () => onParam("bpmSource", !p.bpmSource)} style={bpmButtonStyle}>B</button>}
         {(compact || audioInInlineControls) && track.kind === "audioIn" && <button title={armLocked ? "Recording — ARM locked" : p.arm ? "Disarm Audio In track" : "Arm Audio In track"} disabled={armLocked} onClick={armLocked ? undefined : () => onParam("arm", !p.arm)} style={compactArmButtonStyle}>ARM</button>}
         <SoloBtn size={buttonSize} on={p.solo} disabled={noAudio} onClick={() => onParam("solo", !p.solo)} />
-        <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} onClick={(e) => {
-          if (e && e.shiftKey && track.kind === "file" && onMuteAllFiles) onMuteAllFiles(!p.mute);
-          else onParam("mute", !p.mute);
-        }} />
+        {/* The header's own mousedown is the track-SELECTION handler, and Shift there means
+            "extend the selection" — a different gesture that happens to share the modifier.
+            Without this the batch mute also swept tracks in and out of the selection
+            (v2.3.3 사용자 보고). Only the Shift press is withheld; a plain Mute click still
+            selects its track, as it always has. */}
+        <MuteBtn size={buttonSize} on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio}
+          onMouseDown={(e) => { if (e && e.shiftKey && isFileGroupTrack(track) && onMuteAllFiles) e.stopPropagation(); }}
+          onClick={(e) => {
+            if (e && e.shiftKey && isFileGroupTrack(track) && onMuteAllFiles) onMuteAllFiles(!p.mute);
+            else onParam("mute", !p.mute);
+          }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: compact ? 7 : 9, minWidth: 0, minHeight: compact ? 24 : 28 }}>
         {/* horizontal volume fader */}

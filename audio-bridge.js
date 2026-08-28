@@ -986,19 +986,58 @@
       }
     },
 
+    // Undo/redo used to tear the whole project out of the engine (clearTracks) and reload
+    // every track — for a Mute. That meant a temp-WAV write for every clip-edited track, a
+    // reload of every stem, and `nativeOutputActive = false` until the handover completed, so
+    // audio fell back to the web engine on every Ctrl+Z (v2.3.3, 사용자 보고 "undo가 1초").
+    //
+    // Nothing here is new machinery: syncTrackToNative is ALREADY the standalone per-track
+    // path every clip edit uses (split / trim / move / gain), and `removeTrack` is already the
+    // per-track removal command. All this does is stop doing the work for tracks whose
+    // signature says the engine's copy is still correct.
     applySnapshot(snap) {
-      const wasNative = this.isNative;
-      if (wasNative) resetNativeProjectState();
+      if (!this.isNative) { LocalDAW.applySnapshot(snap); return; }
+      const before = nativeTrackSigs();
       LocalDAW.applySnapshot(snap);
-      if (wasNative) {
-        syncTempoKeyToNative();
-        syncMasterToNative();
-        LocalDAW.tracks.forEach(track => {
-          if (track && track.buffer && !track.needsAudio) syncTrackToNative(track);
-        });
-        sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
-        pushLoopRangeToNative();
-        if (LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
+      const after = nativeTrackSigs();
+
+      // Project-wide state is a handful of commands — always cheap, so always pushed.
+      syncTempoKeyToNative();
+      syncMasterToNative();
+      sendToNative({ command: "setLoop", enabled: !!LocalDAW.loopEnabled });
+      pushLoopRangeToNative();
+      if (LocalDAW.masterFxBypassed) pushMasterFxStateToNative();
+
+      let touched = 0;
+      before.forEach((_sig, id) => {
+        if (after.has(id)) return;
+        sendToNative({ command: "removeTrack", trackId: id });
+        touched++;
+      });
+      after.forEach((sig, id) => {
+        const track = LocalDAW.tracks.find((t) => t.id === id);
+        if (!track || !track.buffer || track.needsAudio) return;
+        const was = before.get(id);
+        if (!was || was.audio !== sig.audio) {
+          syncTrackToNative(track);   // the audio itself changed — reload (this pushes params too)
+          touched++;
+          return;
+        }
+        // The engine's AUDIO copy is still correct, but its PARAMS may not be: applySnapshot
+        // writes mute / solo / volume / pan / sends / automation straight into the LocalDAW
+        // track objects and never goes through setTrackParam, which is the only thing that
+        // normally tells the engine. The old full reload happened to carry them along at the
+        // end of syncTrackToNative — take the reload away and undo stops reaching the sound
+        // at all (the v2.3.3 회귀 the user caught: Mute and Automation undid on screen only).
+        // So push the runtime state on its own — a handful of small commands, none of the file
+        // or temp-WAV work — and only for the tracks whose values actually moved, so a Ctrl+Z
+        // does not re-seat identical values on every track mid-playback.
+        if (was.params !== sig.params) sendTrackRuntimeStateToNative(track);
+      });
+      // NB: songLength lives in every signature, so a change in project duration re-pushes
+      // ALL tracks — which is exactly what the engine needs (each track loops at its own
+      // baked-in songLength; see trackTimelinePlacement).
+      if (touched) {
         maybeActivateNativeOutput();
         if (!nativeOutputActive) armHandoverFallback();
       }
@@ -1558,6 +1597,45 @@
   function trackIsBakedLayout(track) {
     return !!(track && LocalDAW && typeof LocalDAW._isTrivialLayout === "function"
       && track.buffer && !LocalDAW._isTrivialLayout(track));
+  }
+
+  // Everything syncTrackToNative would actually SEND for a track, as one comparable string.
+  // AudioBuffers can only be compared by identity, so each gets a tag from a WeakMap rather
+  // than being described by its length (two takes of the same length are not the same audio).
+  let bufferTagSeq = 0;
+  const bufferTags = new WeakMap();
+  function bufferTag(buf) {
+    if (!buf) return "-";
+    let tag = bufferTags.get(buf);
+    if (!tag) { tag = "b" + (++bufferTagSeq); bufferTags.set(buf, tag); }
+    return tag;
+  }
+  function nativeTrackSig(track) {
+    const place = trackTimelinePlacement(track);
+    return [
+      track._nativePath || track.filePath || "-",
+      trackIsBakedLayout(track) ? "baked" : "file",
+      bufferTag(track.buffer),
+      place.startSeconds, place.songLength,
+      track.type || "-", track.color || "-",
+      track.needsAudio ? "1" : "0",
+      track._forceNativeTemp ? "1" : "0",
+    ].join("|");
+  }
+  // The other half of what the engine holds: the per-track runtime values, which travel as
+  // small commands rather than as a reload. Kept separate from nativeTrackSig because the two
+  // have completely different costs — one is a file/temp-WAV load, the other is a few numbers.
+  function nativeParamSig(track) {
+    const p = track.params || {};
+    return JSON.stringify([p.volume, p.pan, !!p.mute, !!p.solo, p.reverb || 0, p.echo || 0,
+      !!p.autoOn, !!p.autoCurve, p.automation || null, p.vocalFx || null]);
+  }
+  function nativeTrackSigs() {
+    const m = new Map();
+    (LocalDAW.tracks || []).forEach((t) => {
+      if (t && t.id) m.set(t.id, { audio: nativeTrackSig(t), params: nativeParamSig(t) });
+    });
+    return m;
   }
 
   // The native engine loops each track at its OWN padded buffer length (songLength baked

@@ -37,6 +37,12 @@ const IC = {
   // Punch: a record dot bracketed by an in/out region — record replaces just that span.
   punch: "M7 5H4v14h3M17 5h3v14h-3M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
 };
+// The "File Tracks" group holds stems, BOUNCES, and tracks saved before `kind` existed.
+// Every batch action on that group must use this same test as the group's own filter — when
+// the two disagree, the group shows one set of tracks and the action operates on another
+// (v2.3.2: Shift+Mute muted the stems and skipped the bounces sitting right beside them).
+function isFileGroupTrack(t) { return !!t && (!t.kind || t.kind === "file" || t.kind === "bounce"); }
+
 function Icon({ name, size = 18, stroke = 1.7, fill = false, style }) {
   const d = IC[name];
   return (
@@ -239,10 +245,12 @@ function SoloBtn({ on, onClick, size = 24, disabled = false }) {
     border: "1px solid " + (on ? "var(--amber)" : "var(--line-strong)"), boxShadow: on ? "0 0 10px color-mix(in srgb,var(--amber) 50%,transparent)" : "none",
     opacity: disabled ? .38 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>S</button>;
 }
-function MuteBtn({ on, auto, onClick, size = 24, disabled = false }) {
+function MuteBtn({ on, auto, onClick, onMouseDown, size = 24, disabled = false }) {
   // `auto` = implicitly muted because another track is soloed (display only)
+  // onMouseDown exists so a caller can stop the press from reaching a selection handler
+  // underneath — Shift+Mute must not also extend the track selection (v2.3.3).
   const active = on || auto;
-  return <button onClick={disabled ? undefined : onClick} disabled={disabled} title={disabled ? "Mute unavailable until audio is re-linked" : (!on && auto ? "Muted (Solo active elsewhere)" : "Mute")}
+  return <button onClick={disabled ? undefined : onClick} onMouseDown={disabled ? undefined : onMouseDown} disabled={disabled} title={disabled ? "Mute unavailable until audio is re-linked" : (!on && auto ? "Muted (Solo active elsewhere)" : "Mute")}
     style={{ width: size, height: size, borderRadius: 6, fontWeight: 700, fontSize: 11,
     background: active ? "var(--red)" : "var(--surface2)",
     color: active ? "#fff" : "var(--dim)",

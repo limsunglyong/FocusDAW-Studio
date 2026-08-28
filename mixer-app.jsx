@@ -62,12 +62,12 @@ window.DAW = {
     }
     channel.postMessage({ type: 'SET_TRACK_PARAM', id, k, v });
   },
-  // Shift+Mute on a file-track channel toggles Mute for ALL file tracks at once
-  // (file tracks only). The main window is authoritative and echoes the result
-  // back via SYNC_STATE.
+  // Shift+Mute on a File Tracks channel toggles Mute for EVERY track in that group —
+  // stems and bounces alike. The main window is authoritative and echoes the result back
+  // via SYNC_STATE; this is only the optimistic local paint, so it must use the same test.
   muteAllFileTracks(next) {
     const on = !!next;
-    this.tracks.forEach((t) => { if (t.kind === "file" && t.params) t.params.mute = on; });
+    this.tracks.forEach((t) => { if (isFileGroupTrack(t) && t.params) t.params.mute = on; });
     channel.postMessage({ type: 'MUTE_ALL_FILES', v: on });
   },
   setMaster(k, v) {

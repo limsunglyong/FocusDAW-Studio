@@ -400,7 +400,7 @@ function ChannelStrip({ track, level, texture = "none", onParam, onBeforeChange 
         <SoloBtn on={p.solo} disabled={noAudio} size={22} onClick={() => { onBeforeChange && onBeforeChange(); onParam("solo", !p.solo); }} />
         <MuteBtn on={p.mute} auto={DAW._anySolo() && !p.solo} disabled={noAudio} size={22} onClick={(e) => {
           onBeforeChange && onBeforeChange();
-          if (e && e.shiftKey && track.kind === "file" && DAW.muteAllFileTracks) DAW.muteAllFileTracks(!p.mute);
+          if (e && e.shiftKey && isFileGroupTrack(track) && DAW.muteAllFileTracks) DAW.muteAllFileTracks(!p.mute);
           else onParam("mute", !p.mute);
         }} />
       </div>

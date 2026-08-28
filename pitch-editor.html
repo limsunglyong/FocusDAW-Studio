@@ -91,6 +91,22 @@
   --green:#6fd2c5; --green-deep:#178CA4; --red:#ff9b82; --blue:#18B7BE; --violet:#a9d7e8;
   --shadow:0 18px 50px -18px rgba(0,0,0,.86); --mixer-bar-bg:linear-gradient(#F9F7F0,#cde8e8); --mixer-bar-fg:#072A40;
 }
+/* ── Piano key faces ────────────────────────────────────────────────────────────────
+   Deliberately kept OUT of the theme blocks above: those are copy-synced verbatim with
+   vocal-strip.html across every window, and these four tokens exist only here. A piano key
+   is a piano key in every theme — near-white face, near-black sharps, dark ink — so they are
+   tinted per theme rather than re-hued. Painting the keys with --cream / --bg (v2.2.0) is
+   what collapsed the note-name contrast the user reported in T-2.2.0-2. */
+:root{ --key-white:#e6dcc6; --key-white-2:#cbc0a6; --key-black:#221e18; --key-ink:#4a4033 }
+:root[data-theme="ivory"]{ --key-white:#f5efe0; --key-white-2:#ddd3ba; --key-black:#3b3327; --key-ink:#3b3327 }
+:root[data-theme="blue"]{ --key-white:#dfe8f3; --key-white-2:#bfcde0; --key-black:#101f33; --key-ink:#1a2b40 }
+:root[data-theme="forest"]{ --key-white:#efe3ee; --key-white-2:#d3c2d6; --key-black:#1b1230; --key-ink:#2f2246 }
+:root[data-theme="arctic"]{ --key-white:#dce6f0; --key-white-2:#bccbd9; --key-black:#03101f; --key-ink:#10283d }
+:root[data-theme="lime"]{ --key-white:#e2e8d5; --key-white-2:#c3ccb2; --key-black:#0b0f08; --key-ink:#1d2415 }
+:root[data-theme="slate"]{ --key-white:#eef2f7; --key-white-2:#ccd4de; --key-black:#060a14; --key-ink:#16202f }
+:root[data-theme="sage"]{ --key-white:#f4f8f6; --key-white-2:#d8e2dd; --key-black:#1a201d; --key-ink:#1a201d }
+:root[data-theme="solar"]{ --key-white:#e8ddd2; --key-white-2:#cbbcae; --key-black:#1a2726; --key-ink:#33261a }
+:root[data-theme="navy"]{ --key-white:#e4eeee; --key-white-2:#c3d5d6; --key-black:#04121c; --key-ink:#06222f }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg2);overflow:hidden}
 body{font-family:var(--ui);color:var(--cream);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.35}
@@ -151,10 +167,57 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .pe-stagetag{font-size:9.5px;font-weight:700;letter-spacing:.1em;color:var(--muted);
   padding:4px 8px;border-radius:6px;border:1px dashed var(--line-strong)}
 
-/* Piano roll */
-.pe-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;background:var(--bg2)}
+/* ── Main area (v2.3.0) ─────────────────────────────────────────────────────────────
+   Transport bar → clip overview → (piano roll | side panel) → status bar.
+   The side panel is a FIXED 300px, not a percentage: the roll is the only thing here that
+   gets better with more width, and a percentage panel wastes half a wide screen while
+   squeezing the roll on a laptop. */
+.pe-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:row;background:var(--bg2)}
+.pe-center{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+/* min-height:0 is load-bearing: a flex item's automatic minimum size is its CONTENT size, so
+   the canvas inside (which reports an intrinsic height) clamped this 46px band up to ~400px
+   and stole the roll's height. overflow:hidden and the absolutely-positioned canvas below keep
+   the band's size a property of the layout, never of what is drawn in it. */
+.pe-overview{flex:0 0 46px;min-height:0;overflow:hidden;display:flex;background:var(--bg);border-bottom:1px solid var(--line)}
+.pe-ovlabel{flex:0 0 54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--faint);
+  background:linear-gradient(180deg,var(--surface2),var(--surface));border-right:1px solid var(--line-strong)}
+.pe-ovcanvas{flex:1 1 auto;min-width:0;position:relative;cursor:pointer}
+.pe-ovcanvas canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
 .pe-roll{flex:1 1 auto;min-height:0;position:relative;overflow:hidden}
 .pe-roll canvas{display:block;width:100%;height:100%}
+
+/* Scrollbars are DOM, not canvas: a 10px strip that has to be grabbed and dragged is far
+   easier to hit-test and style as an element than as painted pixels. */
+/* Vertical only. The horizontal bar was removed in v2.3.3: the CLIP MAP strip above already
+   shows where in the clip the view sits AND scrolls it by dragging, so a second horizontal
+   control said the same thing twice and cost the roll 10px of height. */
+.pe-vbar{position:absolute;top:0;right:0;bottom:0;width:10px;background:var(--bg2);border-left:1px solid var(--line)}
+/* --cream-2, not the reference design's --surface3: that token sits a hair from --bg2 on the
+   light themes (Classical Ivory measured 1.07:1, Sage 1.23:1), so the thumb was invisible until
+   hovered — exactly the report against T-2.3.0-1 ⑩. Measured across all ten themes, --cream-2
+   is the only candidate that clears the 3:1 UI-component floor everywhere (min 3.95:1, Ivory),
+   and it is the token the palette already assigns to secondary controls and icons.
+   Hover is --amber, not --amber-deep: on the dark themes amber-deep is darker than the thumb
+   itself, so hovering would have read as the bar dimming. */
+.pe-thumb{position:absolute;border-radius:3px;background:var(--cream-2);cursor:grab}
+.pe-thumb:hover{background:var(--amber)}
+.pe-vbar .pe-thumb{left:2px;right:2px}
+
+/* Side panel */
+.pe-side{flex:0 0 300px;display:flex;flex-direction:column;gap:0;overflow-y:auto;overflow-x:hidden;
+  background:var(--bg);border-left:1px solid var(--line-strong)}
+.pe-sec{padding:11px 13px;border-bottom:1px solid var(--line)}
+.pe-sechd{font-size:8.5px;font-weight:700;letter-spacing:.13em;color:var(--muted);margin-bottom:9px}
+.pe-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.pe-row:last-child{margin-bottom:0}
+.pe-rowlbl{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--faint);width:34px;flex:0 0 34px}
+.pe-stat{font-size:10.5px;color:var(--dim);line-height:1.6}
+.pe-stat b{color:var(--cream-2);font-weight:600}
+.pe-hint{font-size:9.5px;color:var(--faint);line-height:1.65}
+.pe-hint kbd{font-family:var(--mono);font-size:9px;color:var(--dim);background:rgba(255,255,255,.04);
+  border:1px solid var(--line-strong);border-radius:3px;padding:0 3px}
+.pe-wide{width:100%;justify-content:center}
 /* Playhead is a DOM overlay, not part of the canvas: it moves ~30x a second and repainting
    the whole roll to shift one line would be pure waste. */
 .pe-playhead{position:absolute;top:0;bottom:0;width:1px;background:var(--amber);

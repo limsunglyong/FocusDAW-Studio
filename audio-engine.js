@@ -2762,6 +2762,7 @@
       });
       for (const st of snapTracks) {
         let t = this.tracks.find(x => x.id === st.id);
+        let bufferChanged = false;
         if (!t) {
           const source = Array.isArray(st.sources) && st.sources[0] ? st.sources[0] : null;
           const sourceDuration = (source && source.duration) || (st.buffer ? st.buffer.duration : this.duration);
@@ -2791,13 +2792,18 @@
           if (st.fileName !== undefined) t.fileName = st.fileName;
           if (st.filePath !== undefined) t.filePath = st.filePath;
           if (st.needsAudio !== undefined) t.needsAudio = !!st.needsAudio;
+          // Peaks are THREE full scans of the audio, and this used to run for every track on
+          // every undo — ~1 s of Ctrl+Z on a five-stem project (v2.3.3). Two reasons it was
+          // wasted work:
+          //   • Snapshots hold the SAME AudioBuffer object (the undo stack is in-memory), so
+          //     an unchanged buffer has unchanged peaks by definition.
+          //   • For a clip-edited track, _ensureBaked below replaces this buffer with the
+          //     baked render and computes peaks for THAT — the pair computed here was
+          //     thrown away a few lines later.
+          // So: remember whether the object actually changed, and let the tail decide.
           if (st.buffer) {
+            bufferChanged = t.buffer !== st.buffer;
             t.buffer = st.buffer;
-            const peaks = computePeakLevels(st.buffer);
-            t.peaks = peaks.fine;
-            t.peaksMedium = peaks.medium;
-            t.peaksCoarse = peaks.coarse;
-            t.peakAmp = maxAbsPeak(peaks.coarse);
           }
         }
         const { automation, ...rest } = st.params || {};
@@ -2825,8 +2831,18 @@
           t._rawBuffers = t._rawBuffers || {};
           t._rawBuffers[t.sources[0].id] = t.buffer;
         }
-        if (t.buffer && !this._isTrivialLayout(t)) this._ensureBaked(t);
-        else t._layoutBaked = false;
+        if (t.buffer && !this._isTrivialLayout(t)) {
+          this._ensureBaked(t);     // bakes (or reuses its cache) AND computes peaks itself
+        } else {
+          t._layoutBaked = false;
+          if (t.buffer && (bufferChanged || !t.peaks)) {
+            const peaks = computePeakLevels(t.buffer);
+            t.peaks = peaks.fine;
+            t.peaksMedium = peaks.medium;
+            t.peaksCoarse = peaks.coarse;
+            t.peakAmp = maxAbsPeak(peaks.coarse);
+          }
+        }
       }
       if (snapTracks.length) {
         const order = new Map(snapTracks.map((st, i) => [st.id, i]));
@@ -4004,6 +4020,30 @@
     // Render clips[] into a fresh flattened AudioBuffer. Geometry + static clip.gain
     // + boundary micro-fade only; clip.params.volume / automation stay dynamic in
     // _buildCompositeCurve so they are not double-applied.
+    // Everything _bakeTrackLayout reads, in a comparable form. The raw AudioBuffers can only
+    // be compared by IDENTITY (two different recordings can share a length), so they travel
+    // beside the string rather than in it.
+    _bakeSignature(track) {
+      const clips = this._renderClips(track).filter(c => !c.muted && (c.duration || 0) > 0)
+        .sort((a, b) => (a.start || 0) - (b.start || 0));
+      const raws = [];
+      let key = "";
+      for (const c of clips) {
+        const raw = this._rawBufferForSource(track, c.sourceId);
+        let ri = raws.indexOf(raw);
+        if (ri < 0) { ri = raws.length; raws.push(raw); }
+        key += [c.sourceId, c.start || 0, c.offset || 0,
+                c.sourceOffset == null ? "-" : c.sourceOffset,
+                c.duration || 0, c.gain == null ? 1 : c.gain, ri].join(",") + "|";
+      }
+      return { key, raws };
+    },
+    _sameRawSet(a, b) {
+      if (!a || !b || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    },
+
     _bakeTrackLayout(track) {
       if (!ctx) return null;
       this._captureRawBuffers(track);
@@ -4059,7 +4099,7 @@
       // track length, not edit size. Timings go to the console under [perf bake]
       // so long tracks can be measured in the real app (시험.md T-1.41.4-1).
       const _t0 = performance.now();
-      let _tBake = 0, _tPeaks = 0;
+      let _tBake = 0, _tPeaks = 0, bakeSig = null;
       this._captureRawBuffers(track);
       if (this._isTrivialLayout(track)) {
         const primary = track.sources && track.sources[0];
@@ -4068,12 +4108,30 @@
         // Raw buffer is source-indexed: the Waveform samples peaks by clip.offset.
         track._layoutBaked = false;
       } else {
+        // Undo/redo re-enters this for every clip-edited track even when the edit was a
+        // Mute — a full re-render plus peaks, ~200 ms per track (v2.3.3). The bake is a pure
+        // function of the signature below, so an identical signature means the buffer we
+        // already produced IS the answer. Cache hit restores the baked buffer AND its peaks.
+        const sig = this._bakeSignature(track);
+        const cache = track._bakeCache;
+        if (cache && cache.out && cache.key === sig.key && this._sameRawSet(cache.raws, sig.raws)) {
+          track.buffer = cache.out;
+          track._layoutBaked = true;
+          track.peaks = cache.peaks.fine; track.peaksMedium = cache.peaks.medium;
+          track.peaksCoarse = cache.peaks.coarse; track.peakAmp = cache.peaks.amp;
+          // Deliberately NOT bumping audioRev and NOT restarting the live source: nothing
+          // about this track's audio changed, and restarting it mid-playback would be an
+          // audible glitch for a no-op.
+          this.duration = this._projectClipDuration();
+          return;
+        }
         const _b0 = performance.now();
         const baked = this._bakeTrackLayout(track);
         _tBake = performance.now() - _b0;
         // Baked buffer is TIMELINE-indexed (clip audio placed at clip.start), so the
         // Waveform must sample its peaks by timeline position, not clip.offset.
         if (baked) { track.buffer = baked; track._layoutBaked = true; }
+        bakeSig = sig;
       }
       if (track.buffer) {
         const _p0 = performance.now();
@@ -4081,6 +4139,10 @@
         track.peaks = pk.fine; track.peaksMedium = pk.medium; track.peaksCoarse = pk.coarse;
         track.peakAmp = maxAbsPeak(pk.coarse);
         _tPeaks = performance.now() - _p0;
+        if (bakeSig && track._layoutBaked) {
+          track._bakeCache = { key: bakeSig.key, raws: bakeSig.raws, out: track.buffer,
+            peaks: { fine: pk.fine, medium: pk.medium, coarse: pk.coarse, amp: track.peakAmp } };
+        }
       }
       track.audioRev = (track.audioRev || 0) + 1;
       // Recompute exactly (not Math.max) so moving/trimming a clip earlier lets the
@@ -4497,68 +4559,130 @@
       };
       return true;
     },
-    // Copy one clip into ANOTHER track, keeping its timeline position (v2.0.3).
-    //
-    // The plumbing is the same as pasteClip — carry the source metadata and the raw buffer
-    // across so the destination can resolve the audio — but this deliberately does NOT touch
-    // `_clipboard`: the user's Ctrl+C content must survive using this menu.
-    //
-    // Position: the clip lands at the SAME timeline position it occupies in the source track.
-    // That is the point of the command (line up a bounce under the vocal it came from);
-    // _clampStartNoOverlap still pushes it right if that spot is taken in the destination.
-    copyClipToTrack(trackId, clipId, destTrackId, atStart) {
-      const src = this.tracks.find(x => x.id === trackId);
-      const dest = this.tracks.find(x => x.id === destTrackId);
-      if (!src || !dest || src === dest) return null;
-      if (!this._clipEditable(dest)) return null;      // stems stay read-only
-      const c = src.clips.find(x => x.id === clipId);
-      if (!c) return null;
-
-      this._captureRawBuffers(src);
-      const sid = c.sourceId;
-      const raw = this._rawBufferForSource(src, sid);
-      const meta = (src.sources || []).find(s => s.id === sid) || null;
-      if (raw) {
-        if (!(dest.sources || []).some(s => s.id === sid) && meta) {
-          dest.sources = [...(dest.sources || []), { ...meta }];
-        }
-        this._captureRawBuffers(dest);
-        dest._rawBuffers = dest._rawBuffers || {};
-        if (!dest._rawBuffers[sid]) dest._rawBuffers[sid] = raw;
-      }
-
-      const dur = c.duration || 0;
-      const want = Number.isFinite(atStart) ? atStart : (c.start || 0);
-      const start = this._clampStartNoOverlap(dest, null, want, dur);
-      const clip = this._normalizeClip({
-        ...c, id: this._cid(), start, end: start + dur,
-        // takeId is meaningless in the destination — its take list knows nothing about this
-        // id, so carrying it over would produce a clip that belongs to a lane that does not
-        // exist and can never be selected. The copy is always a plain clip.
-        takeId: null,
-        // Record-time anchors describe where the ORIGINAL take was captured; a copy in another
-        // track was not recorded at all, so "Recording Offset Cal." must not offer to
-        // calibrate from it.
-        recordedStart: null, recordedOffsetMs: null,
-        // Pitch edit state does not travel: the audio does (clip.sourceId already points at
-        // the printed source when the clip was corrected), but the note list belongs to the
-        // clip it was measured on — same rule as split/Merge (설계 §10-2).
-        pitch: null,
-      }, sid, 0);
-      dest.clips = [...dest.clips, clip];
-      this._reindexClips(dest);
-      this._ensureBaked(dest);
-      return clip.id;
-    },
-
-    // Tracks this clip could be copied into, for the menu to list. Excludes the clip's own
-    // track and anything not clip-editable (stems).
-    copyToTrackTargets(trackId) {
-      return this.tracks
-        .filter(t => t.id !== trackId && this._clipEditable(t))
-        .map(t => ({ id: t.id, name: t.name || "", kind: t.kind || "" }));
-    },
-
+    // Copy one clip into ANOTHER track, keeping its timeline position (v2.0.3).
+
+    //
+
+    // The plumbing is the same as pasteClip — carry the source metadata and the raw buffer
+
+    // across so the destination can resolve the audio — but this deliberately does NOT touch
+
+    // `_clipboard`: the user's Ctrl+C content must survive using this menu.
+
+    //
+
+    // Position: the clip lands at the SAME timeline position it occupies in the source track.
+
+    // That is the point of the command (line up a bounce under the vocal it came from);
+
+    // _clampStartNoOverlap still pushes it right if that spot is taken in the destination.
+
+    copyClipToTrack(trackId, clipId, destTrackId, atStart) {
+
+      const src = this.tracks.find(x => x.id === trackId);
+
+      const dest = this.tracks.find(x => x.id === destTrackId);
+
+      if (!src || !dest || src === dest) return null;
+
+      if (!this._clipEditable(dest)) return null;      // stems stay read-only
+
+      const c = src.clips.find(x => x.id === clipId);
+
+      if (!c) return null;
+
+
+
+      this._captureRawBuffers(src);
+
+      const sid = c.sourceId;
+
+      const raw = this._rawBufferForSource(src, sid);
+
+      const meta = (src.sources || []).find(s => s.id === sid) || null;
+
+      if (raw) {
+
+        if (!(dest.sources || []).some(s => s.id === sid) && meta) {
+
+          dest.sources = [...(dest.sources || []), { ...meta }];
+
+        }
+
+        this._captureRawBuffers(dest);
+
+        dest._rawBuffers = dest._rawBuffers || {};
+
+        if (!dest._rawBuffers[sid]) dest._rawBuffers[sid] = raw;
+
+      }
+
+
+
+      const dur = c.duration || 0;
+
+      const want = Number.isFinite(atStart) ? atStart : (c.start || 0);
+
+      const start = this._clampStartNoOverlap(dest, null, want, dur);
+
+      const clip = this._normalizeClip({
+
+        ...c, id: this._cid(), start, end: start + dur,
+
+        // takeId is meaningless in the destination — its take list knows nothing about this
+
+        // id, so carrying it over would produce a clip that belongs to a lane that does not
+
+        // exist and can never be selected. The copy is always a plain clip.
+
+        takeId: null,
+
+        // Record-time anchors describe where the ORIGINAL take was captured; a copy in another
+
+        // track was not recorded at all, so "Recording Offset Cal." must not offer to
+
+        // calibrate from it.
+
+        recordedStart: null, recordedOffsetMs: null,
+
+        // Pitch edit state does not travel: the audio does (clip.sourceId already points at
+
+        // the printed source when the clip was corrected), but the note list belongs to the
+
+        // clip it was measured on — same rule as split/Merge (설계 §10-2).
+
+        pitch: null,
+
+      }, sid, 0);
+
+      dest.clips = [...dest.clips, clip];
+
+      this._reindexClips(dest);
+
+      this._ensureBaked(dest);
+
+      return clip.id;
+
+    },
+
+
+
+    // Tracks this clip could be copied into, for the menu to list. Excludes the clip's own
+
+    // track and anything not clip-editable (stems).
+
+    copyToTrackTargets(trackId) {
+
+      return this.tracks
+
+        .filter(t => t.id !== trackId && this._clipEditable(t))
+
+        .map(t => ({ id: t.id, name: t.name || "", kind: t.kind || "" }));
+
+    },
+
+
+
     pasteClip(trackId, atStart = 0) {
       const cb = this._clipboard; if (!cb) return false;
       const t = this.tracks.find(x => x.id === trackId); if (!this._clipEditable(t)) return false;
