@@ -14,6 +14,10 @@
 <style>
 :root{
   --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
+  /* Clip boundary line on the waveform canvas. A token because canvas cannot read var()
+     at paint time — ui-tracks.jsx resolves it once per draw. The light themes override it
+     below; every dark theme keeps this cream. */
+  --clip-edge:rgba(232,212,170,.30);
   --line:rgba(232,212,170,.10); --line-strong:rgba(232,212,170,.18);
   --cream:#efe6d4; --cream-2:#d8cdb6; --dim:#b0a690; --muted:#857c6b; --faint:#5f574a;
   --amber:#e8b04b; --amber-deep:#c8893a; --amber-soft:rgba(232,176,75,.16);
@@ -65,6 +69,8 @@
   --mixer-metal:color-mix(in srgb,var(--surface2) 85%,#000 15%);
   --input-gain-readout-fg:#efe6d4;
   --audio-input-port-fg:#efe6d4;
+  /* Cream on cream is invisible here — the boundary needs the theme's own dark ink. */
+  --clip-edge:rgba(95,75,42,.45);
 }
 :root[data-theme="ivory"] html,
 :root[data-theme="ivory"] body{ background:#cfc6ae; }
@@ -154,6 +160,7 @@
   --mixer-metal:color-mix(in srgb,var(--surface2) 85%,#000 15%);
   --input-gain-readout-fg:#eef8f2;
   --audio-input-port-fg:#eef8f2;
+  --clip-edge:rgba(63,73,69,.45);
 }
 :root[data-theme="sage"] html,
 :root[data-theme="sage"] body{ background:#e4ece7; }

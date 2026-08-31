@@ -218,6 +218,29 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .pe-hint kbd{font-family:var(--mono);font-size:9px;color:var(--dim);background:rgba(255,255,255,.04);
   border:1px solid var(--line-strong);border-radius:3px;padding:0 3px}
 .pe-wide{width:100%;justify-content:center}
+/* Stage C — the note-grid picker. A native <select> on purpose: it is one choice out of three,
+   the OS list is keyboard- and screen-reader-ready for free, and the app has no custom select
+   to reuse. Only the closed face is styled; the popup belongs to the platform.
+   color-scheme is what makes that popup follow the theme instead of always coming up light. */
+.pe-select{flex:1 1 auto;min-width:0;padding:5px 8px;border-radius:7px;font-family:inherit;font-size:10.5px;
+  font-weight:600;color:var(--cream);background:rgba(255,255,255,.03);border:1px solid var(--line-strong);
+  color-scheme:dark}
+/* ivory and sage are the only two light themes of the ten (measured --bg). */
+:root[data-theme="ivory"] .pe-select,:root[data-theme="sage"] .pe-select{color-scheme:light}
+.pe-select:hover:not(:disabled){border-color:var(--amber);color:var(--cream)}
+.pe-select:disabled{opacity:.4;cursor:default}
+/* The OPEN list needs its own colours. Options inherit the select's text colour, which on the
+   dark themes is a near-white cream — and the popup did not follow color-scheme, so the list
+   came up light and the entries were cream-on-white, i.e. unreadable (사용자 보고 2026-08-31).
+   Measured across all ten themes this pairing is 8.7:1 at worst.
+   option:checked is deliberately NOT styled: the platform's own highlight already draws the
+   selected row readably (it overrides the inherited colour — visible in the user's screenshot),
+   and every token pair measured for it was WORSE than leaving it alone (--surface3 fell to
+   2.3:1 on Deep Navy, the amber pair to 1.7:1 on Solar Flare). */
+.pe-select option{background:var(--bg);color:var(--cream)}
+/* Status-bar segments. The left one carries variable-length text (a clip name, a selected
+   note) and must give way rather than push the readout beside it off the bar. */
+.pe-fseg{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Playhead is a DOM overlay, not part of the canvas: it moves ~30x a second and repainting
    the whole roll to shift one line would be pure waste. */
 .pe-playhead{position:absolute;top:0;bottom:0;width:1px;background:var(--amber);

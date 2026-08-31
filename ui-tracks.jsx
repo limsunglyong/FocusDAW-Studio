@@ -80,6 +80,13 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
 
       const c2d = cv.getContext("2d");
       c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Clip boundaries were a hardcoded cream — invisible on the two LIGHT themes, where a
+      // pale line sits on a pale background (사용자 보고 2026-08-31: Classical Ivory / Sage
+      // Mist). A canvas cannot use var(), so the token is resolved here, ONCE per draw rather
+      // than per clip: this runs on every scroll frame. This is the same class of defect
+      // v1.44.21 swept out of the CSS; it survived because the colour lives in a JS string.
+      const clipEdge = (getComputedStyle(document.documentElement)
+        .getPropertyValue("--clip-edge") || "").trim() || "rgba(232,212,170,.30)";
       c2d.clearRect(0, 0, drawW, height);
       const drawLiveRecording = () => {
         const livePeaks = track.recording && Array.isArray(track._recordingPeaks) ? track._recordingPeaks : null;
@@ -263,7 +270,7 @@ function Waveform({ track, clips, pxPerSec, ampZoom, height, volume = 1, normali
         }
 
         // clip boundary lines
-        c2d.strokeStyle = "rgba(232,212,170,.30)"; c2d.lineWidth = 1.5;
+        c2d.strokeStyle = clipEdge; c2d.lineWidth = 1.5;
         const leftEdge = clipStartX - drawStart;
         const rightEdge = clipEndX - drawStart;
         if (leftEdge >= 0 && leftEdge <= drawW) {

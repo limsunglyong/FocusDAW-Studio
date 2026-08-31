@@ -149,6 +149,208 @@ function peFitRange(an) {
   return { lo: Math.max(PITCH_MIN, l), hi: Math.min(PITCH_MAX, h) };
 }
 
+/* ---------- Stage C — note segmentation (설계 §12-1) ---------- */
+
+// The rule that decides how many notes appear is a MUSICAL one, not a signal one.
+//
+// Stage B's curve wobbles: a singer holding one note crosses a semitone boundary several times
+// on vibrato alone, so cutting on the pitch threshold by itself turns one sung note into three
+// or four blocks. Segmentation therefore takes its shortest-note length from the BEAT — "no
+// note is shorter than a 1/16" is how music says it, and it scales with the song instead of
+// being a constant that is too coarse at 60 BPM and too fine at 180.
+const PE_DIVISIONS = [8, 16, 32];        // 1/8 · 1/16 · 1/32
+const PE_MIN_NOTE_FLOOR = 0.06;          // the detector's own limit (설계 §5-3)
+const PE_MIN_NOTE_CEIL = 0.20;           // so a slow song does not swallow a genuine fast run
+const PE_MIN_NOTE_NOBPM = 0.12;          // used when the project has no BPM — a normal state
+const PE_HYST_ST = 0.6;                  // semitones; the pitch step that can open a new note
+const PE_GAP_SEC = 0.04;                 // unvoiced longer than this is a note boundary
+const PE_DENSITY_SLACK = 1.2;            // notes may exceed one-per-grid-slot by this much
+const PE_DENSITY_PASSES = 2;             // extra re-cuts allowed when the cap is blown
+
+// Shortest admissible note, and where that number came from — the UI shows both, because a
+// user who sees 40 notes where they sang 12 needs to know which rule produced them.
+function peNoteGrid(tempo, division) {
+  const bpm = tempo && Number.isFinite(tempo.projectBpm) && tempo.projectBpm > 0 ? tempo.projectBpm : null;
+  const div = PE_DIVISIONS.includes(division) ? division : 16;
+  if (!bpm) return { bpm: null, division: div, gridSec: null, minNoteSec: PE_MIN_NOTE_NOBPM };
+  const gridSec = (60 / bpm) * (4 / div);          // a 1/16 at 96 BPM = 156 ms
+  return { bpm, division: div, gridSec, minNoteSec: peClamp(gridSec * 0.75, PE_MIN_NOTE_FLOOR, PE_MIN_NOTE_CEIL) };
+}
+
+function peMedian(arr) {
+  if (!arr.length) return 0;
+  const a = arr.slice().sort((x, y) => x - y);
+  return a[a.length >> 1];
+}
+
+// The note's pitch is the median of its CENTRAL 60% (설계 §5-3): the attack scoops and the
+// release drifts, and neither is the note the singer meant.
+function peCoreMedian(an, idx) {
+  const n = idx.length;
+  if (n < 4) return peMedian(idx.map((k) => an.midi[k]));
+  const a = Math.floor(n * 0.2), b = Math.ceil(n * 0.8);
+  const core = [];
+  for (let i = a; i < b; i++) core.push(an.midi[idx[i]]);
+  return peMedian(core.length ? core : idx.map((k) => an.midi[k]));
+}
+
+// Voiced stretches, bridging unvoiced gaps shorter than PE_GAP_SEC. A consonant in the middle
+// of a word is not a note boundary; a breath is.
+function peVoicedRuns(an) {
+  const gapFrames = Math.max(1, Math.round(PE_GAP_SEC / an.hopSec));
+  const runs = [];
+  let k = 0;
+  while (k < an.frames) {
+    if (!an.voiced[k]) { k++; continue; }
+    const idx = [k];
+    let i = k + 1;
+    while (i < an.frames) {
+      if (an.voiced[i]) { idx.push(i); i++; continue; }
+      let j = i;
+      while (j < an.frames && !an.voiced[j]) j++;
+      if (j >= an.frames || j - i >= gapFrames) break;   // a real gap ends the run
+      i = j;                                             // a short one does not
+    }
+    runs.push(idx);
+    k = idx[idx.length - 1] + 1;
+  }
+  return runs;
+}
+
+// One pass of segmentation at the given thresholds. Returns notes in clip-relative seconds.
+//
+// Two things stop the over-splitting, and the SECOND one is the important half:
+//  1. the pitch has to move more than `hystSt` from the note's running reference, and
+//  2. it has to STAY there for half a minimum note before the boundary is accepted.
+// Vibrato satisfies 1 constantly and 2 never, which is exactly the distinction that was
+// missing while the minimum was a flat 60 ms.
+function peSegmentPass(an, clipDur, hystSt, minNoteSec) {
+  const hop = an.hopSec, half = an.winSec / 2;
+  const holdCount = Math.max(2, Math.round((minNoteSec / 2) / hop));
+  const notes = [];
+  let seq = 0;
+
+  for (const idx of peVoicedRuns(an)) {
+    // cut the run wherever the pitch genuinely steps
+    let segs = [];
+    let segStart = 0;
+    let ref = an.midi[idx[0]];
+    let devStart = -1;
+    for (let p = 1; p < idx.length; p++) {
+      const v = an.midi[idx[p]];
+      if (Math.abs(v - ref) > hystSt) {
+        if (devStart < 0) devStart = p;
+        if (p - devStart + 1 >= holdCount) {
+          segs.push(idx.slice(segStart, devStart));
+          segStart = devStart;
+          ref = an.midi[idx[devStart]];
+          devStart = -1;
+        }
+      } else {
+        devStart = -1;
+        // The reference follows the note slowly, so a portamento does not read as a step — but
+        // only from frames INSIDE the note, or a deviation would drag the reference after it
+        // and the boundary would never fire.
+        ref += 0.08 * (v - ref);
+      }
+    }
+    segs.push(idx.slice(segStart));
+    segs = segs.filter((x) => x.length);
+
+    // Absorb fragments (설계 §12-1). Deleting them would leave holes that Stage E then cannot
+    // correct, so a short piece joins whichever NEIGHBOUR it is closest to in pitch. Merging
+    // can never empty a run: the last note standing is kept whatever its length, and a run too
+    // short even for the detector's own floor was never a note to begin with.
+    const durOf = (x) => (x[x.length - 1] - x[0] + 1) * hop;
+    while (segs.length > 1) {
+      let worst = -1, worstDur = Infinity;
+      for (let i = 0; i < segs.length; i++) {
+        const d = durOf(segs[i]);
+        if (d < minNoteSec && d < worstDur) { worst = i; worstDur = d; }
+      }
+      if (worst < 0) break;
+      const mine = peCoreMedian(an, segs[worst]);
+      const prev = worst > 0 ? Math.abs(peCoreMedian(an, segs[worst - 1]) - mine) : Infinity;
+      const next = worst < segs.length - 1 ? Math.abs(peCoreMedian(an, segs[worst + 1]) - mine) : Infinity;
+      const into = prev <= next ? worst - 1 : worst + 1;
+      const lo = Math.min(into, worst), hi = Math.max(into, worst);
+      segs.splice(lo, 2, segs[lo].concat(segs[hi]));
+    }
+    if (segs.length === 1 && durOf(segs[0]) < PE_MIN_NOTE_FLOOR) continue;
+
+    for (const sg of segs) {
+      // A frame stands for the hop around its centre, so the block reaches half a hop past the
+      // outermost frames — otherwise every note is drawn one frame short at each end.
+      const t0 = peClamp(sg[0] * hop + half - hop / 2, 0, clipDur);
+      const t1 = peClamp(sg[sg.length - 1] * hop + half + hop / 2, 0, clipDur);
+      if (t1 - t0 <= 0) continue;
+      let csum = 0;
+      for (const k of sg) csum += an.conf[k];
+      const midi = peCoreMedian(an, sg);
+      notes.push({
+        id: "n" + (++seq),
+        t0, t1,
+        midi,                       // as detected
+        target: Math.round(midi),   // Stage D lets this move; Stage C shows the nearest semitone
+        strength: 1,
+        keepVibrato: true,
+        confidence: peClamp(csum / sg.length, 0, 1),
+      });
+    }
+  }
+  return notes;
+}
+
+// Segmentation with the density cap in front of it (설계 §12-1). The cap is a last line of
+// defence, not the main mechanism: however messy the signal, the roll must not end up carpeted
+// in blocks. When it trips, the thresholds go up and the clip is cut again — at most twice, so
+// a pathological take cannot spin here.
+function peBuildNotes(an, grid, clipDur) {
+  if (!an || !an.frames || !clipDur) return { notes: [], relaxed: 0 };
+  const cap = grid.gridSec ? Math.ceil(clipDur / grid.gridSec) * PE_DENSITY_SLACK : Infinity;
+  let hyst = PE_HYST_ST, minSec = grid.minNoteSec, notes = [];
+  for (let pass = 0; ; pass++) {
+    notes = peSegmentPass(an, clipDur, hyst, minSec);
+    if (notes.length <= cap || pass >= PE_DENSITY_PASSES) return { notes, relaxed: pass };
+    hyst *= 1.5;
+    minSec = Math.min(minSec * 1.5, PE_MIN_NOTE_CEIL * 1.5);
+  }
+}
+
+// Pitch classes of the project's detected key, for the "outside the key" outline (설계 §12-2).
+// The key string is the engine's own format — "C", "F#", "Am" — so minor is the trailing "m".
+const PE_MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
+const PE_MINOR_STEPS = [0, 2, 3, 5, 7, 8, 10];
+function peScalePcs(key) {
+  if (!key || typeof key !== "string") return null;
+  const m = /^([A-G])([#b]?)(m?)$/.exec(key.trim());
+  if (!m) return null;
+  const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]];
+  const tonic = (base + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0) + 12) % 12;
+  const steps = m[3] === "m" ? PE_MINOR_STEPS : PE_MAJOR_STEPS;
+  return new Set(steps.map((x) => (tonic + x) % 12));
+}
+
+// How far off the nearest semitone the singer actually was.
+const peCentsOff = (nt) => Math.round((nt.midi - Math.round(nt.midi)) * 100);
+const peFmtCents = (c) => (c > 0 ? "+" : "") + c + "¢";
+
+// One shared empty set, so a roll with no selection does not allocate one per draw.
+const PE_NO_SEL = new Set();
+
+// Canvas roundRect exists in this Electron, but it throws when the radius exceeds half the
+// box — which happens on every note narrower than 6px. Clamping here keeps the caller simple.
+function peRoundRect(g, x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  g.beginPath();
+  g.moveTo(x + rr, y);
+  g.arcTo(x + w, y, x + w, y + h, rr);
+  g.arcTo(x + w, y + h, x, y + h, rr);
+  g.arcTo(x, y + h, x, y, rr);
+  g.arcTo(x, y, x + w, y, rr);
+  g.closePath();
+}
+
 /* ---------- window frame ---------- */
 
 function WindowControls() {
@@ -178,14 +380,15 @@ function WindowControls() {
 // The PLAYHEAD is deliberately a DOM element on top, not part of the drawing: it moves ~30
 // times a second, and repainting the grid + waveform + curve at that rate to move one line
 // would be pure waste.
-function PianoRoll({ info, analysis, view, range, theme, playhead, litMidi, onSeek, onView, onRange, onPreview }) {
+function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, theme, playhead, litMidi,
+                     onSeek, onView, onRange, onPreview, onSelectNote }) {
   const wrapRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 0, h: 0 });
   // The wheel handler is attached imperatively (it needs passive:false to preventDefault), so
   // it reads live state through a ref instead of being torn down and rebound on every change.
   const liveRef = React.useRef(null);
-  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, onSeek, onView, onRange };
+  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, notes, onSeek, onView, onRange, onSelectNote };
 
   React.useEffect(() => {
     const el = wrapRef.current;
@@ -280,6 +483,7 @@ function PianoRoll({ info, analysis, view, range, theme, playhead, litMidi, onSe
       line: v("--line", "rgba(232,212,170,.10)"), lineStrong: v("--line-strong", "rgba(232,212,170,.18)"),
       cream: v("--cream", "#efe6d4"), dim: v("--dim", "#b0a690"), faint: v("--faint", "#5f574a"),
       muted: v("--muted", "#857c6b"), amber: v("--amber", "#e8b04b"), red: v("--red", "#d96a4e"),
+      amberDeep: v("--amber-deep", "#8a6b2e"),
       onAmber: v("--mixer-bar-fg", "#241a0a"),
       keyWhite: v("--key-white", "#e6dcc6"), keyWhite2: v("--key-white-2", "#cbc0a6"),
       keyBlack: v("--key-black", "#221e18"), keyInk: v("--key-ink", "#4a4033"),
@@ -397,6 +601,58 @@ function PianoRoll({ info, analysis, view, range, theme, playhead, litMidi, onSe
       g.globalAlpha = 1;
     }
 
+    // Stage C — the note blocks, drawn OVER the curve. Amber block, red curve (참조 디자인
+    // §3d): the block is what a correction will act on, the curve is what was actually sung,
+    // and the two have to be tellable apart at a glance.
+    if (notes && notes.length) {
+      const sel = selection || PE_NO_SEL;
+      const nh = Math.max(3, Math.min(rowH - 2, 26));
+      g.textBaseline = "middle";
+      for (const nt of notes) {
+        if (nt.t1 < t0 || nt.t0 > t0 + tDur) continue;
+        const row = nt.target;
+        if (row < mLo || row > mHi) continue;
+        const x0 = xOf(nt.t0);
+        const w = Math.max(2, xOf(nt.t1) - x0);
+        const y = yOf(row) + (rowH - nh) / 2;
+        const rad = Math.min(3, nh / 2, w / 2);
+        const isSel = sel.has(nt.id);
+        const offKey = scalePcs ? !scalePcs.has(((row % 12) + 12) % 12) : false;
+
+        const grad = g.createLinearGradient(0, y, 0, y + nh);
+        grad.addColorStop(0, C.amber);
+        grad.addColorStop(1, C.amberDeep);
+        // A block is only as solid as the detection behind it, so a shaky note looks shaky —
+        // the same rule the curve already follows.
+        g.globalAlpha = 0.45 + 0.55 * peClamp(nt.confidence, 0, 1);
+        g.fillStyle = grad;
+        peRoundRect(g, x0, y, w, nh, rad); g.fill();
+        g.globalAlpha = 1;
+
+        // Two outlines that must coexist: selection is a BRIGHT ring, "outside the project's
+        // key" is a DASHED one (설계 §12-2). Colour therefore carries selection and the dash
+        // carries the key, instead of both competing for the same channel.
+        g.lineWidth = isSel ? 2 : 1;
+        g.setLineDash(offKey ? [3, 2] : []);
+        g.strokeStyle = isSel ? C.cream : (offKey ? C.dim : "rgba(0,0,0,.45)");
+        peRoundRect(g, x0 + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, nh - 1), rad); g.stroke();
+        g.setLineDash([]);
+
+        // 설계 §12-2 — the block itself says which note it is; reading it off the keyboard
+        // gutter is hard once the view is zoomed out. Thresholds are the reference design's
+        // declutter rule (name at rowH >= 12 && w > 30, cents from w > 62): a label spilling
+        // out of its block is worse than no label, so it is clipped to the block as well.
+        if (rowH >= 12 && w > 30) {
+          g.save();
+          g.beginPath(); g.rect(x0, y, w, nh); g.clip();
+          g.fillStyle = C.onAmber;
+          g.font = "700 " + Math.min(11, Math.max(8, nh - 4)) + 'px "Space Mono", ui-monospace, monospace';
+          g.fillText(midiName(row) + (w > 62 ? " " + peFmtCents(peCentsOff(nt)) : ""), x0 + 4, y + nh / 2);
+          g.restore();
+        }
+      }
+    }
+
     // Keyboard gutter — drawn last so nothing bleeds under it.
     //
     // The faces come from their own --key-* tokens rather than --cream / --bg (v2.2.0). Those
@@ -435,7 +691,7 @@ function PianoRoll({ info, analysis, view, range, theme, playhead, litMidi, onSe
     g.restore();
     // `theme` is unused inside the draw, but it IS what the CSS variables above depend on —
     // it is in the dependency list to force a repaint, so do not "clean it up".
-  }, [size, info, analysis, view, range, theme, litMidi]);
+  }, [size, info, analysis, notes, selection, scalePcs, view, range, theme, litMidi]);
 
   // Playhead overlay. Hidden when the transport sits outside this clip, so playback elsewhere
   // in the song does not park a misleading line at the edge of the roll.
@@ -474,6 +730,16 @@ function PianoRoll({ info, analysis, view, range, theme, playhead, litMidi, onSe
       // which is what makes the detected curve checkable by ear (사용자 요청, T-2.0.2-1 ④).
       if (py > RULER_H && onPreview) onPreview(yToMidi(py));
       return;
+    }
+    // A click on a note SELECTS it instead of seeking. The block is what Stage D will edit,
+    // and a note that could not be picked up without moving the transport would be unusable;
+    // everywhere else the roll stays the seek surface it has always been.
+    const L = liveRef.current;
+    if (L.onSelectNote) {
+      const t = xToTime(px), m = yToMidi(py);
+      const hit = (L.notes || []).find((nt) => nt.target === m && t >= nt.t0 && t <= nt.t1);
+      if (hit) { L.onSelectNote(hit.id, e.shiftKey || e.ctrlKey || e.metaKey); return; }
+      L.onSelectNote(null, false);
     }
     if (onSeek) onSeek(peClamp(xToTime(px), 0, clipDur));
   };
@@ -665,6 +931,10 @@ function PitchEditorApp() {
   const [transport, setTransport] = React.useState({ playhead: null, isPlaying: false });
   const [clipLoop, setClipLoop] = React.useState(false);
   const [sideOpen, setSideOpen] = React.useState(true);
+  // Stage C. `division` is the note grid the segmenter measures against (설계 §12-1) and
+  // `selection` holds note ids — a Set, because Stage D selects ranges of them.
+  const [division, setDivision] = React.useState(16);
+  const [selection, setSelection] = React.useState(PE_NO_SEL);
   const [struck, setStruck] = React.useState(null);   // key flashed by a preview click
   const viewRef = React.useRef(view); viewRef.current = view;
   const infoRef = React.useRef(info); infoRef.current = info;
@@ -887,6 +1157,18 @@ function PitchEditorApp() {
     struckTimer.current = setTimeout(() => setStruck(null), 420);
   }, []);
 
+  // Click = select one; Ctrl/Shift+click = add or remove. Clicking empty roll clears, and
+  // returns the SAME set when it was already empty so the roll is not repainted for nothing.
+  const selectNote = React.useCallback((id, additive) => {
+    setSelection((prev) => {
+      if (id == null) return prev.size ? PE_NO_SEL : prev;
+      if (!additive) return (prev.size === 1 && prev.has(id)) ? prev : new Set([id]);
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
   React.useEffect(() => {
     const onKey = (e) => {
       // Undo / redo belong to the window the user is looking at. Every other satellite window
@@ -939,6 +1221,21 @@ function PitchEditorApp() {
   const tempo = info && info.tempo;
   const transposed = !!(tempo && tempo.variKey && tempo.keyShift);
   const zoomedTime = dur > 0 && view.dur < dur - 1e-6;
+
+  // Stage C — notes are DERIVED from the analysis, never stored alongside it. Re-cutting a
+  // 5-minute take costs a few ms (the expensive part was the detection, already done), so
+  // changing the grid re-segments instantly instead of asking for another Analyze.
+  const grid = peNoteGrid(tempo, division);
+  const seg = React.useMemo(
+    () => peBuildNotes(analysis, grid, dur),
+    [analysis, grid.minNoteSec, grid.gridSec, dur]
+  );
+  const notes = seg.notes;
+  const scalePcs = React.useMemo(() => peScalePcs(tempo && tempo.detectedKey), [tempo && tempo.detectedKey]);
+  // Ids are only unique within one segmentation, so a selection cannot outlive the notes it
+  // pointed at — a re-cut (new analysis, new grid) starts from nothing selected.
+  React.useEffect(() => { setSelection(PE_NO_SEL); }, [seg]);
+  const selNote = selection.size === 1 ? notes.find((nt) => selection.has(nt.id)) : null;
 
   // While playing, light the key the singer was actually on. It is the cheapest way to check
   // the detected curve against the piano by ear and by eye at the same time — the standing
@@ -1013,9 +1310,10 @@ function PitchEditorApp() {
           {error
             ? <div className="pe-empty">{error}</div>
             : (info
-              ? <PianoRoll info={info} analysis={analysis} view={view} range={range} theme={theme}
+              ? <PianoRoll info={info} analysis={analysis} notes={notes} selection={selection}
+                  scalePcs={scalePcs} view={view} range={range} theme={theme}
                   playhead={transport.playhead} litMidi={litMidi} onSeek={seekTo} onView={setView}
-                  onRange={setRange} onPreview={previewKey} />
+                  onRange={setRange} onPreview={previewKey} onSelectNote={selectNote} />
               : <div className="pe-empty">Loading clip…</div>)}
         </div>
 
@@ -1062,6 +1360,33 @@ function PitchEditorApp() {
               </div>
             </div>
 
+            {/* Stage C. The grid lives with the notes it produces, above CORRECTION, because
+                it decides WHAT gets corrected before anything decides how. */}
+            <div className="pe-sec">
+              <div className="pe-sechd">NOTES</div>
+              <div className="pe-row">
+                <span className="pe-rowlbl">MIN</span>
+                <select className="pe-select" value={division} disabled={!grid.bpm}
+                  onChange={(e) => setDivision(+e.target.value)}
+                  title={grid.bpm
+                    ? "Shortest note the segmenter may produce, as a fraction of a bar"
+                    : "This project has no BPM, so the shortest note is a fixed 120 ms — set a BPM in the studio to use a musical grid"}>
+                  {PE_DIVISIONS.map((d) => <option key={d} value={d}>{"1/" + d + " note"}</option>)}
+                </select>
+              </div>
+              <div className="pe-stat" style={{ marginTop: 8 }}>
+                {!analysis
+                  ? "Notes appear once the clip has been analysed."
+                  : <>
+                      <b>{notes.length}</b> notes · shortest <b>{Math.round(grid.minNoteSec * 1000)} ms</b><br />
+                      {grid.bpm ? `1/${grid.division} at ${grid.bpm} BPM` : "no project BPM — fixed default"}
+                      {/* Say when the density cap had to step in, rather than quietly handing
+                          back fewer notes than the grid asked for. */}
+                      {seg.relaxed > 0 ? <><br />density cap — thresholds raised ×{seg.relaxed}</> : null}
+                    </>}
+              </div>
+            </div>
+
             <div className="pe-sec" style={{ borderBottom: "none" }}>
               <div className="pe-sechd">CORRECTION</div>
               {/* Enabled by the stage that gives them meaning, so a half-wired button never
@@ -1081,10 +1406,26 @@ function PitchEditorApp() {
       </div>
 
       <div className="pe-footer">
-        <span>
-          {!info ? "—" : `${info.trackName || "track"} · clip at ${peFmtTime(info.start)} · click a key to hear it`
-            + (analysis ? "" : " · press Analyze to detect pitch")}
+        {/* Left: what is selected, or how to get there. A selected note pushes the standing
+            hint aside — while one is picked, its numbers are the useful thing to show. */}
+        <span className="pe-fseg">
+          {selNote
+            ? `${midiName(selNote.target)} · ${peFmtTime(selNote.t0)} → ${peFmtTime(selNote.t1)} · ${(selNote.t1 - selNote.t0).toFixed(2)} s · ${peFmtCents(peCentsOff(selNote))} · ${Math.round(selNote.confidence * 100)}% conf`
+            : (!info ? "—" : `${info.trackName || "track"} · clip at ${peFmtTime(info.start)} · click a key to hear it`
+              + (!analysis ? " · press Analyze to detect pitch"
+                : selection.size > 1 ? ` · ${selection.size} notes selected`
+                : notes.length ? " · click a note to select it" : ""))}
         </span>
+        {/* Middle: WHICH rule produced the notes on screen (설계 §12-1). Without it a user who
+            sang twelve notes and sees forty has no way to tell whether the grid or the singing
+            is responsible. */}
+        {analysis &&
+          <span className="pe-fseg mono" style={{ flex: "0 0 auto" }}
+            title={grid.bpm
+              ? "Shortest note allowed, derived from the project BPM"
+              : "Shortest note allowed. The project has no BPM, so a fixed default is used instead of a musical grid."}>
+            {`Min note ${Math.round(grid.minNoteSec * 1000)} ms ` + (grid.bpm ? `(1/${grid.division} @ ${grid.bpm} BPM)` : "(no project BPM)")}
+          </span>}
         {/* Vari Key/BPM never bake into timeline audio, so analysis and rendering always work
             in the original domain. Say so when playback is transposed, or the note names on
             screen silently disagree with what the user hears (설계 §3). */}

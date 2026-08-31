@@ -858,6 +858,21 @@
       if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));
       return id;
     },
+    // "Copy to track" (v2.1.0) was the ONE clip operation that never reached the engine. The
+    // Proxy at the bottom of this file forwards anything without a wrapper straight to
+    // LocalDAW, so the copy landed in the renderer model — waveform, meters and the Pitch
+    // Editor all read it — while the engine that actually feeds the speakers never learned
+    // the destination track had audio. The track stayed silent until the project was
+    // reopened (사용자 보고 2026-08-31, v2.4.1).
+    //
+    // ⚠️ The track to re-send is **destTrackId**, not trackId. Every sibling wrapper above
+    // syncs the track it was called on; this is the only clip command whose effect lands on a
+    // DIFFERENT track, which is exactly how it slipped through.
+    copyClipToTrack(trackId, clipId, destTrackId, atStart) {
+      const id = LocalDAW.copyClipToTrack(trackId, clipId, destTrackId, atStart);
+      if (id && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === destTrackId));
+      return id;
+    },
     nudgeClip(trackId, clipId, deltaSec) {
       const ok = LocalDAW.nudgeClip(trackId, clipId, deltaSec);
       if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find(t => t.id === trackId));

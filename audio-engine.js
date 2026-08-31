@@ -1748,9 +1748,23 @@
       // clip at the original audio and stretched it to the original length, so reopening
       // showed the pre-consolidation clip and silently discarded the merge (v1.37.0 field
       // report: "재열기하면 원래 clip 1개만 남아있음").
+      //
+      // …and NOT when that lone clip is the EMPTY PLACEHOLDER deleteClip leaves behind. Emptying
+      // a recording track keeps one zero-length clip at 0 pointing at the primary source ("keep
+      // at least an empty placeholder clip"), which matches this guard exactly — so reopening
+      // stretched that placeholder back over the whole recording and the deleted take returned,
+      // audible, every single time (사용자 보고 2026-08-31: "삭제하고 재실행하면 예전에 녹음했던
+      // 클립이 살아나 있음"). Save and import were both innocent; the clip was resurrected here,
+      // at audio reconnect.
+      //
+      // The test is duration <= 0 AND clip-editable, not duration alone: a LEGACY stem whose
+      // saved source duration is 0/unknown legitimately relies on this stretch, and stems are
+      // not clip-editable, so they keep it. Only audioIn/bounce — the only tracks deleteClip
+      // will act on — can own a deliberate empty placeholder.
       const primaryId = track.sources && track.sources[0] && track.sources[0].id;
       const lone = track.clips && track.clips.length === 1 ? track.clips[0] : null;
-      if (lone && lone.start === 0 && (!lone.sourceId || lone.sourceId === primaryId)) {
+      const emptied = !!lone && !(lone.duration > 0) && this._clipEditable(track);
+      if (lone && !emptied && lone.start === 0 && (!lone.sourceId || lone.sourceId === primaryId)) {
         track.clips[0] = this._normalizeClip({ ...lone, end: decoded.buffer.duration, duration: decoded.buffer.duration }, primaryId, decoded.buffer.duration);
       }
       track.audioRev = (track.audioRev || 0) + 1;
@@ -3328,6 +3342,13 @@
           keyShift: (this.tempo && this.tempo.keyShift) || 0,
           detectedKey: (this.tempo && this.tempo.detectedKey) || null,
           variBpm: !!(this.tempo && this.tempo.variBpm),
+          // Stage C derives the note grid from the BEAT, not from seconds (설계 §12-1), so the
+          // editor needs the ORIGINAL tempo — projectBpm, never playbackBpm. Vari BPM changes
+          // playback speed only; what is analysed and segmented is the original take, and a
+          // grid taken from the stretched tempo would mis-size every note.
+          // null is a NORMAL value here (this app never guesses a BPM, v1.46.0) — the editor
+          // falls back to a fixed minimum and says on screen which rule it is using.
+          projectBpm: (this.tempo && this.tempo.projectBpm) || null,
         },
       };
     },
