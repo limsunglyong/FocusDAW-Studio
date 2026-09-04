@@ -463,8 +463,13 @@ function startAudioEngine() {
       console.error(`[AudioEngine Err] ${data.toString().trim()}`);
     });
     
-    audioEngineProc.on('close', (code) => {
-      console.log(`[AudioEngine] Process exited with code ${code}`);
+    // Log the SIGNAL as well as the code: Node reports exactly one of the two, so our own
+    // stopAudioEngine() kill (Windows: TerminateProcess, reported as SIGTERM) always printed
+    // "exited with code null" and read as a crash. A real crash carries a numeric code
+    // (e.g. 3221226505 = abort, 3221225477 = access violation) — see 시험.md T-1.20.8-1.
+    audioEngineProc.on('close', (code, signal) => {
+      const how = signal ? `signal ${signal} (killed by app)` : `code ${code}`;
+      console.log(`[AudioEngine] Process exited with ${how}`);
       audioEngineProc = null;
     });
   } catch (err) {

@@ -1220,9 +1220,18 @@
       // Sync current track layout if already loaded. This is already a full push at the
       // current duration, so suppress the per-track songLength re-sync hook (it would make
       // each track trigger another full pass) and seed lastPushedSongLength directly.
+      //
+      // ⚠️ Tracks whose audio has NOT been reconnected yet must be skipped (v2.4.8). A just-
+      // imported project holds placeholders whose filePath is the RELATIVE path a collected
+      // project stores; the absolute `_nativePath` is only stamped when reconnectProjectAudio
+      // re-reads the file. This loop fires whenever the engine's socket opens — which lands
+      // mid-reconnect on a machine where decoding is slow — and pushed those relative paths
+      // straight to an engine whose cwd is the app root: `[AudioEngine] File not found: <Project>
+      // Audio/Bounces/….wav`, always the tracks the reconnect loop had not reached yet.
+      // Bridge.importProject already gated on this; only here was it missing.
       if (LocalDAW.tracks.length > 0) {
         syncingAllTracks = true;
-        LocalDAW.tracks.forEach(track => syncTrackToNative(track));
+        LocalDAW.tracks.forEach(track => { if (trackAudioReady(track)) syncTrackToNative(track); });
         syncingAllTracks = false;
         lastPushedSongLength = LocalDAW.duration || 0;
       }
@@ -1672,6 +1681,18 @@
     // Skip a track that is still recording — re-decoding it mid-take would drop the input.
     LocalDAW.tracks.forEach((t) => { if (t.buffer && !t.needsAudio && !t.recording) syncTrackToNative(t); });
     syncingAllTracks = false;
+  }
+
+  // Is this track's audio actually in hand, i.e. safe to push to the native engine?
+  // "Not yet" means a project reopen is still re-reading it: the track (or one of its extra
+  // Takes) is a placeholder whose only path is the stored — possibly relative — one, and the
+  // absolute `_nativePath` the engine needs is stamped by the reconnect itself. Pushing it
+  // early either fails to load (relative path) or installs the SILENT placeholder buffer.
+  // Every such track is pushed again, with real audio, the moment its reconnect finishes
+  // (addFileBuffer / hydrateSource → syncTrackToNative), so skipping here loses nothing.
+  function trackAudioReady(track) {
+    if (!track || track.needsAudio || track.recording) return false;
+    return !(track.sources || []).some((s) => s && s.needsAudio && s.filePath);
   }
 
   // Helper to synchronize a newly added track to JUCE C++ engine

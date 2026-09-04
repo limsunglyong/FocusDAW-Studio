@@ -2912,7 +2912,17 @@
         const primarySource = Array.isArray(td.sources) && td.sources[0] ? td.sources[0] : null;
         const fileName = td.fileName || (primarySource && primarySource.fileName) || null;
         const filePath = td.filePath || (primarySource && primarySource.filePath) || null;
-        const isAudioPlaceholder = !td.isDemo && (!!fileName || !!filePath);
+        // "Placeholder" = audio that is on disk and has to be re-read (reconnectProjectAudio).
+        // The test is the PATH, never the name (v2.4.8). A source with no filePath is not
+        // missing audio — it is audio that was never written anywhere, and nothing can ever
+        // re-read it: reconnectProjectAudio only visits tracks that HAVE a filePath, so the
+        // flag it raises here can never be cleared. An Audio In track that holds no recording
+        // of its own is exactly that case — _normalizeTrackLayout synthesises a primary source
+        // from the track fields (`filePath: null`, `fileName: track.name`), a reopen promotes
+        // that name to the track level (`fileName` below), and the name alone used to be enough
+        // to mark the track "missing audio". The result was a permanent NO SRC badge on a track
+        // that plays fine, plus Solo/Mute/bpmSource gated off (below) — 사용자 보고 2026-09-05.
+        const isAudioPlaceholder = !td.isDemo && !!filePath;
         const sourceDuration = (primarySource && primarySource.duration) || this.duration;
         let buffer;
         if (td.isDemo) {
@@ -2923,8 +2933,15 @@
         } else {
           buffer = ctx.createBuffer(1, Math.max(1, Math.ceil(sourceDuration * ctx.sampleRate)), ctx.sampleRate);
         }
+        // Per SOURCE, same test — an extra Take is reloadable iff it has a path of its own
+        // (reconnectProjectAudio's extras loop reads `s.needsAudio && s.filePath`). Stamping
+        // the track-wide verdict here would strand the mixed case both ways: a pathless
+        // primary would silence a perfectly reloadable Take beside it (the copied bounce clip
+        // on the reported Audio In track), which is why this is computed per source and not
+        // from isAudioPlaceholder. _normalizeTrackLayout re-stamps sources[0] from the track
+        // flag and leaves the extras alone.
         const sources = Array.isArray(td.sources) && td.sources.length
-          ? td.sources.map(s => ({ ...s, needsAudio: isAudioPlaceholder }))
+          ? td.sources.map(s => ({ ...s, needsAudio: !td.isDemo && !!s.filePath }))
           : null;
         const primaryId = sources && sources[0] && sources[0].id;
         const clips = Array.isArray(td.clips)
