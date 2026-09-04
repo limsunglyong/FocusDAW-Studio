@@ -3595,25 +3595,60 @@
     // take lands around 0.4 s.
     //
     // `onProgress(done, total)` is called between slices, never during one.
+    //
+    // ⚠️ The yield is a MessageChannel port, NOT setTimeout (v2.4.4). Two reasons, and the
+    // first one cost a user five minutes of watching a progress bar crawl:
+    //  1. Chromium throttles setTimeout to ONE WAKE PER SECOND in a page it considers
+    //     hidden, and a window fully covered by another one counts as hidden. This analysis
+    //     runs in the STUDIO window (app.jsx REQUEST_PITCH_ANALYZE), and every satellite
+    //     window is a `parent:` child that sits on top of it — so maximising the Pitch
+    //     Editor hid the very window doing the work. 90 ms of arithmetic per 1000 ms wake
+    //     turned 3.5 s into 31 s, and worse once Chromium's five-minute "intensive
+    //     throttling" (one wake per MINUTE) took over. electron/main.js now also sets
+    //     backgroundThrottling:false, which fixes it at the window level; this keeps the
+    //     analysis honest even in a renderer that never got that flag.
+    //  2. setTimeout(0) nested more than five deep is clamped to 4 ms by spec, so every 90 ms
+    //     of work also paid ~4 ms of dead time. A port message has no such clamp.
+    // A MessagePort task is still a macrotask, so it yields to rendering — the whole point of
+    // slicing — unlike a resolved promise, which would starve it.
     analyzeClipPitchAsync(trackId, clipId, opts, onProgress) {
       const st = this._pitchAnalysisSetup(trackId, clipId, opts);
       if (!st) return Promise.resolve(null);
       const SLICE_MS = 90;   // long enough to be efficient, short enough to feel responsive
+      const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+      // setTimeout is the fallback for plain-node harnesses, which have no MessageChannel.
+      const chan = (typeof MessageChannel === "function") ? new MessageChannel() : null;
+      let onTick = null;
+      if (chan) {
+        chan.port1.onmessage = () => { const f = onTick; onTick = null; if (f) f(); };
+        if (chan.port1.start) chan.port1.start();
+      }
+      const yieldToLoop = (fn) => {
+        if (!chan) { setTimeout(fn, 0); return; }
+        onTick = fn;
+        chan.port2.postMessage(0);
+      };
+      const close = () => { if (chan) { try { chan.port1.close(); chan.port2.close(); } catch (_) {} } };
+
       const step = () => new Promise((resolve) => {
-        // setTimeout(0) rather than a microtask: a resolved promise would starve rendering,
-        // which is the whole point of slicing.
-        setTimeout(() => {
-          const until = (typeof performance !== "undefined" ? performance.now() : Date.now()) + SLICE_MS;
+        yieldToLoop(() => {
+          const until = now() + SLICE_MS;
           while (st.k < st.frames) {
             this._pitchAnalysisStep(st, 64);
-            if ((typeof performance !== "undefined" ? performance.now() : Date.now()) >= until) break;
+            if (now() >= until) break;
           }
           if (onProgress) { try { onProgress(st.k, st.frames); } catch (_) {} }
           resolve(st.k >= st.frames);
-        }, 0);
+        });
       });
-      const loop = () => step().then((done) => (done ? this._pitchAnalysisFinish(st) : loop()));
-      return loop();
+      const loop = () => step().then((done) => {
+        if (!done) return loop();
+        close();
+        return this._pitchAnalysisFinish(st);
+      });
+      // Without this the ports would leak if a slice ever threw mid-analysis.
+      return loop().catch((err) => { close(); throw err; });
     },
 
     denoiseProfileInfo(trackId) {

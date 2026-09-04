@@ -25,6 +25,17 @@ function buildWebPreferences() {
     nodeIntegration: false,
     sandbox: false,
     devTools: !app.isPackaged,
+    // v2.4.4. Chromium treats a fully covered ("occluded") window as hidden and throttles
+    // its timers to one wake per second — then to one per MINUTE after five minutes. Every
+    // child window here (Pitch Editor, Mixer, Vocal Strip, Advanced Pan) is a `parent:`
+    // window, so it sits ON TOP of the studio: maximise any of them and the studio is
+    // covered, hidden, and throttled. That froze the studio's meters and playhead, and it
+    // stretched a 3.5 s pitch analysis (which runs in the STUDIO window, not the editor —
+    // app.jsx REQUEST_PITCH_ANALYZE) into 31 s, or minutes once intensive throttling hit.
+    // Toggling maximise re-ran the occlusion check and the analysis finished on the spot,
+    // which is the symptom the user reported. A DAW must keep running while its own
+    // satellite windows are in front of it, so throttling is wrong here for every window.
+    backgroundThrottling: false,
   };
 }
 

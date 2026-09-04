@@ -1188,6 +1188,15 @@ function PitchEditorApp() {
       if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
         e.preventDefault(); peChannel.postMessage({ type: "REQUEST_REDO" }); return;
       }
+      // Ctrl/Cmd+R runs the analysis. The button lives in the side panel, so folding the
+      // panel used to make the window's most-used action unreachable — the user hit this
+      // while testing the v2.4.4 progress overlay, which exists precisely for the folded
+      // case. Ctrl+R is free: the application menu is removed (electron/main.js
+      // Menu.setApplicationMenu(null)), so there is no default reload accelerator to fight.
+      // runAnalyze is a no-op while an analysis is already running or no clip loaded.
+      if (mod && e.key.toLowerCase() === "r") {
+        e.preventDefault(); runAnalyze(); return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         if (window.electronAPI) window.electronAPI.winAction("close"); else window.close();
@@ -1203,7 +1212,7 @@ function PitchEditorApp() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [playPause]);
+  }, [playPause, runAnalyze]);
 
   const dur = (info && info.duration) || 0;
   const zoomTime = (factor) => {
@@ -1304,6 +1313,19 @@ function PitchEditorApp() {
 
       <div className="pe-body">
         <div className="pe-center">
+          {/* Analysis can take seconds on a long take and the side panel may be folded away,
+              so say so over the roll rather than only in the button. See .pe-analyzing. */}
+          {busy &&
+            <div className="pe-analyzing">
+              <div className="pe-analyzing-card">
+                <div className="pe-analyzing-ring" />
+                <div className="pe-analyzing-label">Analyzing pitch…</div>
+                <div className="pe-analyzing-bar">
+                  <div className="pe-analyzing-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+                </div>
+                <div className="pe-analyzing-pct">{Math.round(progress * 100)}%</div>
+              </div>
+            </div>}
           {info && !error &&
             <ClipOverview info={info} analysis={analysis} view={view} playhead={transport.playhead}
               theme={theme} onView={setView} />}
@@ -1342,7 +1364,7 @@ function PitchEditorApp() {
             <div className="pe-sec">
               <div className="pe-sechd">ANALYSIS</div>
               <button className="pe-btn pe-wide" onClick={runAnalyze} disabled={!info || busy}
-                title="Detect the sung pitch across this clip" style={{ marginBottom: 9 }}>
+                title="Detect the sung pitch across this clip (Ctrl+R)" style={{ marginBottom: 9 }}>
                 {busy ? `Analyzing… ${Math.round(progress * 100)}%` : (analysis ? "Re-analyze" : "Analyze")}
               </button>
               <div className="pe-stat">
@@ -1412,7 +1434,7 @@ function PitchEditorApp() {
           {selNote
             ? `${midiName(selNote.target)} · ${peFmtTime(selNote.t0)} → ${peFmtTime(selNote.t1)} · ${(selNote.t1 - selNote.t0).toFixed(2)} s · ${peFmtCents(peCentsOff(selNote))} · ${Math.round(selNote.confidence * 100)}% conf`
             : (!info ? "—" : `${info.trackName || "track"} · clip at ${peFmtTime(info.start)} · click a key to hear it`
-              + (!analysis ? " · press Analyze to detect pitch"
+              + (!analysis ? " · press Ctrl+R to detect pitch"
                 : selection.size > 1 ? ` · ${selection.size} notes selected`
                 : notes.length ? " · click a note to select it" : ""))}
         </span>
