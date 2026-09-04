@@ -9,3 +9,6 @@ third_party/JUCE/
 **/Builds/
 **/*.ilk
 **/build/
+
+# Pitch Editor 시험용 합성 오디오 (tools/make-pitch-test-audio.js 로 재생성)
+test-audio/

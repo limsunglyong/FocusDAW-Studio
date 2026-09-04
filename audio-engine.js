@@ -3369,6 +3369,32 @@
     PITCH_FMAX: 1100,        // C6 — above any sung vocal
     PITCH_WIN_SEC: 0.0427,   // 42.7 ms ~= 2 periods at fmin
     PITCH_HOP_SEC: 0.0107,   // 10.7 ms — a note is >= 60 ms, so this is ~6 frames per note
+    // v2.4.7. A frame only counts as sung if YIN is at least this sure of it. The gate before
+    // this was the RMS floor alone plus _yinFrame's own `cmnd <= 0.6` fallback, which let
+    // breaths and consonants through as confident-looking notes — the ghost blocks reported
+    // in the gaps between phrases ("숨 쉬는 구간에 A5 / C4 노트가 생긴다").
+    //
+    // ⚠️ This one number is the whole switch, and it is worth knowing that: 0 disables the
+    // gate and restores the v2.4.6 behaviour EXACTLY (verified frame-by-frame against a build
+    // with the gate line deleted). Nothing else has to change, and no rebuild is needed —
+    // studio.html loads this file directly. That is how it was A/B'd (시험.md T-2.4.6-2).
+    //
+    // MEASURED at 0.5 on the reported take (a 2-3 voice chorus): removes 23 of the 68 stray
+    // excursions, and 16 of the 26 UPWARD ones — which is what a ghost note looks like —
+    // while costing nothing on clean solo material (the synthetic fixture's voiced coverage
+    // moves 80% -> 79% and its curve stays 40/40 exact).
+    // CONFIRMED by ear (2026-09-02). On a real solo take 0.5 discards 382 frames, and 71% of
+    // them sit INSIDE a note — which looks alarming until you measure the holes: 80% are 1-3
+    // frames, well under peVoicedRuns' PE_GAP_SEC (40 ms), so they are bridged and invisible.
+    // Note-block counts did not rise; they FELL (1/16: 106 -> 95, 1/32: 170 -> 141), i.e. the
+    // gate removed junk blocks rather than fragmenting real ones. Exactly two whole stretches
+    // vanished — 0:16.83 (A#4, 117 ms, -27 dB) and 0:22.86 (A#5, 75 ms, -26 dB) — and the
+    // user listened to both: syllable transitions with essentially no pitch. Correct removals.
+    //
+    // Do not raise it much past 0.5 without re-measuring: 0.6 scored slightly better on one
+    // chorus take but starts discarding genuinely quiet singing, which reads to a user as a
+    // note that simply vanished.
+    PITCH_MIN_CONF: 0.5,
 
     // Anti-aliased decimation to ~12 kHz, mixed to mono. Channels are summed BEFORE
     // decimation: pitch is a property of the performance, not of a channel, and summing first
@@ -3448,6 +3474,49 @@
         for (let tau = tauMin; tau <= tauMax; tau++) if (cmnd[tau] < mn) { mn = cmnd[tau]; best = tau; }
         if (best < 0 || mn > 0.6) return null;
       }
+
+      // ── Sub-multiple check (v2.4.6) — the octave-down fix ──────────────────────────────
+      // The loop above asks an ABSOLUTE question ("is this dip below 0.15?") to decide a
+      // RELATIVE one ("which dip is the period?"), and that is where octave errors are born.
+      // Measured on a real failure (user report, noisy take, F4 read as F3 for 320 ms):
+      //     frame       cmnd at tau (true)   cmnd at 2*tau   result
+      //     27.08 s     0.1216  (< 0.15)     0.0739          F4  correct
+      //     27.28 s     0.1523  (> 0.15)     0.0875          F3  WRONG
+      //     27.40 s     0.2019  (> 0.15)     0.1431          F3  WRONG
+      // The true dip never disappeared — noise nudged it from 0.12 to 0.15, and the instant
+      // it crossed, the scan walked straight past it to 2*tau. A threshold cannot separate
+      // those; 0.03 of cmnd is inside the frame-to-frame noise of any real take.
+      //
+      // So ask the relative question directly: is there a SHORTER lag — an exact sub-multiple
+      // of the one we picked — whose dip is nearly as deep? If yes it is the real period and
+      // ours is its harmonic. Take the shortest that qualifies (= the highest pitch).
+      //
+      // ⚠️ RATIO is deliberately loose (2.5). The obvious worry is the opposite error —
+      // halving a period that was right — so it was measured rather than guessed: swept over
+      // notes F3..F4 with the fundamental attenuated to 60/30/10/0% and even harmonics
+      // dominant, at -60 and -32 dB noise, this adds ZERO octave-up errors versus the code
+      // above (the few +12 cases fail identically with and without it, and are genuinely
+      // ambiguous — a signal with no fundamental and only even harmonics really does repeat
+      // at tau/2). YIN measures waveform periodicity, not spectral peaks, so removing the
+      // fundamental does not create a dip at tau/2; that is why the margin can be this wide.
+      //
+      // The rejected alternative was a post-hoc "snap each frame to the octave nearest the
+      // local median" pass. It fixes this same case, but it cannot tell a tracker octave jump
+      // from a SUNG one: on a legato C4-C5-C4-C5-C4 line of 300 ms notes it corrupted 3 of 5
+      // genuine leaps. This check never touches a frame whose own dip is already the best one.
+      const RATIO = 2.5;
+      for (let k = 2; k <= 4; k++) {
+        const cand = Math.round(best / k);
+        if (cand < tauMin) break;
+        // The sub-multiple lands within a sample or two of best/k once the period is not an
+        // exact integer, so look at a small neighbourhood rather than the one bin.
+        let lo = Infinity, at = -1;
+        for (let t = Math.max(tauMin, cand - 2); t <= Math.min(tauMax, cand + 2); t++) {
+          if (cmnd[t] < lo) { lo = cmnd[t]; at = t; }
+        }
+        if (at > 0 && lo < cmnd[best] * RATIO) { best = at; break; }
+      }
+
       // Parabolic interpolation around the dip. Without it f0 quantises to the lag grid,
       // which at 12 kHz is already ~1.5 semitones wide up near C6.
       let refined = best;
@@ -3542,8 +3611,13 @@
         if (!r || !(r.tau > 0)) continue;
         const hz = sr / r.tau;
         if (hz < fmin || hz > fmax) continue;
+        // Voicing gate (v2.4.7). Leaving the frame unvoiced is the honest answer for a
+        // breath or a consonant: the editor then draws nothing there instead of inventing a
+        // note. Setting PITCH_MIN_CONF to 0 makes this inert — see that constant.
+        const conf = Math.max(0, Math.min(1, 1 - r.cmnd));
+        if (conf < this.PITCH_MIN_CONF) continue;
         st.f0[st.k] = hz;
-        st.conf[st.k] = Math.max(0, Math.min(1, 1 - r.cmnd));
+        st.conf[st.k] = conf;
         st.voiced[st.k] = 1;
         st.midi[st.k] = 69 + 12 * Math.log2(hz / 440);
       }
