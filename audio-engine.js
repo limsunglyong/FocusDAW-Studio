@@ -4896,8 +4896,30 @@
         // on null throws and blanks the mixer window (which pulls the spectrum).
         if (!t.buffer || t.needsAudio) return;
         const ch = t.buffer.getChannelData(0);
-        const m = Math.min(total, ch.length);
-        for (let i = 0; i < m; i++) mono[i] += ch[i];
+        // A track buffer is NOT guaranteed to be at ctx.sampleRate (v2.4.9). `sr` above is the
+        // device rate, and it fixes both the time base of `mono` and the bin→Hz mapping below —
+        // so a buffer at another rate must be converted into it, never copied index-for-index.
+        // The case that bites: Merge Tracks renders a bounce at a FORCED 44100 (app.jsx) and
+        // addBounceTrack installs that buffer directly, so on a 96 kHz device the fresh bounce
+        // sat in the sum read at 96000/44100 of its real speed, so its content landed ~13.5
+        // semitones HIGH (a 440 Hz tone reads as 958) and filled only 46% of the timeline.
+        // It corrected itself on reopen (decodeAudioData resamples to ctx.sampleRate), which is
+        // why the curve only ever looked wrong in the session that made the bounce.
+        // computeTrackSpectrum below never had this because it reads one buffer and takes ITS
+        // rate; here several rates can meet, so we resample.
+        const bsr = t.buffer.sampleRate || sr;
+        if (bsr === sr) {
+          const m = Math.min(total, ch.length);
+          for (let i = 0; i < m; i++) mono[i] += ch[i];
+        } else {
+          const step = bsr / sr;
+          const m = Math.min(total, Math.floor((ch.length - 1) / step));
+          for (let i = 0; i < m; i++) {
+            const p = i * step, j = p | 0, f = p - j;
+            const a = ch[j], b = j + 1 < ch.length ? ch[j + 1] : a;
+            mono[i] += a + (b - a) * f;   // linear interp: this is a display curve, not a render
+          }
+        }
       });
       const win = new Float32Array(N);
       for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
