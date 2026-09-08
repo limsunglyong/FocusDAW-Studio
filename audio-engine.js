@@ -1042,6 +1042,29 @@
         };
       }
       this._normalizeTrackLayout(track);
+      // A track handed both a primary source AND its buffer must register that buffer as the
+      // source's RAW (v2.5.1). track.buffer alone is only the timeline render — playback, peaks
+      // and meters read it, but everything that works from the ORIGINAL audio goes through
+      // _rawBufferForSource(): Pitch Editor (clipAudioInfo), Analyze, De-noise. Miss this and
+      // those three report the clip as GONE while the waveform sits there looking fine.
+      // addBounceTrack was doing exactly that, so Merge Tracks produced a track whose Pitch
+      // Editor said "This clip is no longer available" until some UNRELATED action happened to
+      // call _captureRawBuffers on it — copying a clip elsewhere, a re-bake, Learn Noise — which
+      // is why it looked intermittent (사용자 보고 2026-09-08, 재현율 100%).
+      // Seeding here rather than in addBounceTrack closes the class: every other creation path
+      // (file decode, undo-snapshot restore, importProject) already seeds its own, and this is
+      // the same guarded helper they use — _captureRawBuffers only fills an EMPTY slot and only
+      // while the buffer is still a raw decode (!_layoutBaked), so re-seeding is a no-op there.
+      // ⚠️ NEVER seed from a placeholder. importProject hands us a SILENT buffer sized to the
+      // saved duration plus sources flagged needsAudio, and _normalizeTrackLayout runs just
+      // above — so without this guard a reopened project would register that silence as the
+      // source's raw. _rawBufferForSource checks _rawBuffers BEFORE it checks needsAudio, so
+      // the seeded silence would win and the "wait for hydration" guard right below it would
+      // never fire: clips would bake to silence instead of being skipped until the reconnect
+      // lands (the failure mode v2.4.8 was about). Real audio arrives via hydrateSource /
+      // addFileBuffer, which register the decoded buffer themselves.
+      const rawSeed = track.sources && track.sources[0];
+      if (track.buffer && !track.needsAudio && rawSeed && !rawSeed.needsAudio) this._captureRawBuffers(track);
       // Keep file/demo tracks grouped ahead of Audio In tracks: a new file track
       // is inserted before the first Audio In track (not appended after it), so the
       // array stays [file tracks…, audio-in tracks…]. Audio In tracks append at the
@@ -1672,7 +1695,7 @@
         Object.values(t.nodes).forEach((n) => { try { n.disconnect(); } catch (e) {} });
       }
       this.tracks.splice(i, 1);
-      this._spectrum = null;
+      this._spectrum = null; this._specCache = {};
       // When the project becomes empty, reset the tempo so Project/Playback BPM
       // return to the uninitialized "---" state (matches a fresh project), and
       // STOP the transport — otherwise isPlaying/offset linger and the next
@@ -1946,7 +1969,7 @@
         const buffer = renderMono(ctx, (ch, sr) => def.synth(ch, sr));
         this._addTrack({ name: def.name, type: def.type, color: def.color, buffer, isDemo: true, params: { volume: 0.5 } });
       });
-      this._spectrum = null;
+      this._spectrum = null; this._specCache = {};
     },
     clearTracks() {
       this.stop();
@@ -1954,7 +1977,7 @@
       this.duration = DURATION;
       this.loopRange = null;
       this.repeatPlayEnabled = false;
-      this._spectrum = null;
+      this._spectrum = null; this._specCache = {};
       this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
       this._renderCacheKey = null;
       this._renderCacheBuffer = null;
@@ -1999,7 +2022,7 @@
       this.duration = DURATION;
       this.loopRange = null;
       this.repeatPlayEnabled = false;
-      this._spectrum = null;
+      this._spectrum = null; this._specCache = {};
       this.tempo = { projectBpm: null, playbackBpm: null, variBpm: false, key: null, keyShift: 0, variKey: false, detectedKey: null };
       this._renderCacheKey = null;
       this._renderCacheBuffer = null;
@@ -2871,7 +2894,7 @@
       this.init();
       this.stop();
       this.tracks.length = 0;
-      this._spectrum = null;
+      this._spectrum = null; this._specCache = {};
       this.duration = json.duration || DURATION;
       // Restore the Repeat region, but open with Repeat OFF: a project that starts
       // looping a region the moment it opens would be a surprise, and the region is
@@ -4882,118 +4905,220 @@
       return curve;
     },
 
-    // averaged magnitude spectrum of the whole song (static FFT), cached
-    computeSpectrum() {
-      this.init();
-      const key = this.tracks.length + ":" + this.duration.toFixed(2);
-      if (this._spectrum && this._specKey === key) return this._spectrum;
-      const sr = ctx.sampleRate, N = 2048;
-      const total = Math.floor(this.duration * sr);
-      const mono = new Float32Array(total);
-      this.tracks.forEach((t) => {
-        // Audio In tracks start with a null buffer (empty until recorded) and
-        // reopened placeholders are needsAudio — skip both, or getChannelData(0)
-        // on null throws and blanks the mixer window (which pulls the spectrum).
-        if (!t.buffer || t.needsAudio) return;
-        const ch = t.buffer.getChannelData(0);
-        // A track buffer is NOT guaranteed to be at ctx.sampleRate (v2.4.9). `sr` above is the
-        // device rate, and it fixes both the time base of `mono` and the bin→Hz mapping below —
-        // so a buffer at another rate must be converted into it, never copied index-for-index.
-        // The case that bites: Merge Tracks renders a bounce at a FORCED 44100 (app.jsx) and
-        // addBounceTrack installs that buffer directly, so on a 96 kHz device the fresh bounce
-        // sat in the sum read at 96000/44100 of its real speed, so its content landed ~13.5
-        // semitones HIGH (a 440 Hz tone reads as 958) and filled only 46% of the timeline.
-        // It corrected itself on reopen (decodeAudioData resamples to ctx.sampleRate), which is
-        // why the curve only ever looked wrong in the session that made the bounce.
-        // computeTrackSpectrum below never had this because it reads one buffer and takes ITS
-        // rate; here several rates can meet, so we resample.
-        const bsr = t.buffer.sampleRate || sr;
-        if (bsr === sr) {
-          const m = Math.min(total, ch.length);
-          for (let i = 0; i < m; i++) mono[i] += ch[i];
-        } else {
-          const step = bsr / sr;
-          const m = Math.min(total, Math.floor((ch.length - 1) / step));
-          for (let i = 0; i < m; i++) {
-            const p = i * step, j = p | 0, f = p - j;
-            const a = ch[j], b = j + 1 < ch.length ? ch[j + 1] : a;
-            mono[i] += a + (b - a) * f;   // linear interp: this is a display curve, not a render
-          }
-        }
-      });
-      const win = new Float32Array(N);
-      for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
-      const mag = new Float32Array(N / 2);
-      const totalFrames = Math.max(1, Math.floor((total - N) / N));
-      const stride = Math.max(1, Math.floor(totalFrames / 200));
-      let count = 0;
-      for (let f = 0; f + N <= total; f += N * stride) {
-        const re = new Float32Array(N), im = new Float32Array(N);
-        for (let i = 0; i < N; i++) re[i] = mono[f + i] * win[i];
-        fft(re, im);
-        for (let i = 0; i < N / 2; i++) mag[i] += Math.hypot(re[i], im[i]);
-        count++;
+    // ── Spectrum core (v2.5.0) ────────────────────────────────────────────────────────────
+    // Three places draw a spectrum: the mixer's master EQ, Advanced > EQ (handed the same data
+    // over BroadcastChannel by app.jsx — it computes nothing itself), and the Vocal Strip. Until
+    // v2.5.0 the first two shared one function and the strip carried a near-copy, and the two
+    // copies drifted: the master stayed at N=2048 while the strip moved to 4096, the strip read
+    // the buffer's own rate while the master assumed ctx.sampleRate (the v2.4.9 defect), and the
+    // strip's cache was keyed on buffer LENGTH so a de-noise print never invalidated it. One path
+    // now, so a fix lands in all three at once:
+    //
+    //   _trackSpecEntry(track)  → one track's magnitude spectrum, cached, built incrementally
+    //   _specPointMags(entry)   → that track mapped onto the SHARED log-frequency grid
+    //   computeTrackSpectrum()  → one track's points             (Vocal Strip)
+    //   computeSpectrum()       → weighted power sum of tracks   (mixer + Advanced EQ)
+    //
+    // Combining in the FREQUENCY domain rather than by summing waveforms is what lets tracks at
+    // DIFFERENT sample rates meet safely: each is measured in its own rate domain before it
+    // reaches the shared grid, which makes the v2.4.9 rate-mixing defect structurally impossible
+    // instead of merely fixed. 설계·실측 근거는 제안.md P-1/P-2/P-3.
+
+    SPEC_BIN_HZ: 11.7,   // target bin width, held CONSTANT across devices (상시 지침 ③)
+    SPEC_FRAMES: 200,    // frames averaged per track
+    SPEC_POINTS: 150,    // log-spaced points drawn
+    SPEC_FMIN: 30,
+    SPEC_FMAX: 20000,
+    // Per CALL, not per frame — and app.jsx calls this TWICE per frame when the mixer and an
+    // Advanced window are both open. 4 ms x 2 calls + the one in-flight FFT that overruns the
+    // check (~1.4 ms at N=8192) stays clear of a 60 fps frame; 8 ms measured 10.5 ms per call,
+    // which doubles to 21 ms and drops frames. A build simply takes more frames instead.
+    SPEC_BUDGET_MS: 4,
+
+    // A FIXED N would hand a 96 kHz device half the resolution of a 48 kHz one. Measured: the low
+    // end 30~500 Hz (43% of the curve's width) is drawn from 10 distinct values at 96 kHz vs 21
+    // at 48 kHz, and 30~70 Hz collapses to 20 identical points — a literal horizontal line, which
+    // is what the user reported as "굉장히 rough한 직선". Same class of defect as v2.4.9, so
+    // derive N from the rate. Rounding in the log domain lands on the NEAREST power of two
+    // (48k→4096, 96k→8192, 44.1k→4096); Math.ceil would overshoot an octave and cost 4x for free.
+    _specFftSize(sr) {
+      const n = Math.pow(2, Math.round(Math.log2(Math.max(1, sr) / this.SPEC_BIN_HZ)));
+      return Math.max(1024, Math.min(16384, n));
+    },
+
+    _specWindow(N) {
+      this._specWins = this._specWins || {};
+      if (!this._specWins[N]) {
+        const w = new Float32Array(N);
+        for (let i = 0; i < N; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
+        this._specWins[N] = w;
       }
-      for (let i = 0; i < N / 2; i++) mag[i] /= Math.max(1, count);
-      const fmin = 30, fmax = Math.min(20000, sr / 2), P = 150, pts = [];
+      return this._specWins[N];
+    },
+
+    // One track's magnitude spectrum, built INCREMENTALLY under a time budget. A full build costs
+    // 270 ms per track at 96 kHz / N=8192 (실측) and computeSpectrum() runs inside app.jsx's
+    // per-frame state push, so a whole build must never land in one frame. The running average is
+    // returned complete or not: the curve appears immediately and sharpens over about a second.
+    _trackSpecEntry(track, budgetMs) {
+      if (!track || !track.buffer || track.needsAudio) return null;
+      const buf = track.buffer;
+      const sr = buf.sampleRate || ctx.sampleRate;
+      const N = this._specFftSize(sr);
+      const ch = buf.getChannelData(0);
+      if (ch.length < N) return null;
+      // audioRev is this codebase's content revision: _ensureBaked bumps it only when a track is
+      // genuinely re-baked (a bake-cache hit deliberately does not). Keying on it is what makes a
+      // de-noise print, a clip edit or a Stage E pitch print invalidate the spectrum — the
+      // staleness recorded as 제안.md P-1, which BOTH old length-based keys missed.
+      const key = (track.audioRev || 0) + ":" + sr + ":" + N;
+      this._specCache = this._specCache || {};
+      let e = this._specCache[track.id];
+      if (e && e.key === key) {
+        if (!e.done && budgetMs > 0) this._specAdvance(e, ch, budgetMs);
+        return e;
+      }
+      // ⚠️ While a track is RECORDING, audioRev climbs on every recordingPeaks batch, so a fresh
+      // build would restart itself several times a second and never finish. Keep serving the
+      // previous spectrum (stale on purpose) and rebuild once, after the rev settles.
+      if (track.recording) return e || null;
+      // No budget left this call? Do not even ALLOCATE yet. Creating all eight entries up front
+      // cost 25 ms on the very first call (8 x 80 kB of mag+scratch at N=8192) against a 4.8 ms
+      // median for every call after it — so tracks are started one at a time, each as the budget
+      // reaches it. The curve fills in track by track, which is what it did anyway.
+      if (!(budgetMs > 0)) return null;
+      const frames = Math.max(1, Math.floor((ch.length - N) / N));
+      e = this._specCache[track.id] = {
+        key, sr, N, mag: new Float32Array(N >> 1), count: 0, pos: 0, done: false,
+        pts: null, pub: null,
+        // Scratch for the FFT, allocated ONCE per track and released when the build finishes.
+        // Allocating these per call instead threw away ~25 MB over a build (2 x 32 kB x ~390
+        // calls at N=8192), and the resulting GC showed up as a 24 ms spike against a 4.8 ms
+        // median — the one thing this incremental design exists to avoid.
+        re: new Float32Array(N), im: new Float32Array(N),
+        stride: Math.max(1, Math.floor(frames / this.SPEC_FRAMES)),
+      };
+      if (budgetMs > 0) this._specAdvance(e, ch, budgetMs);
+      return e;
+    },
+
+    _specAdvance(e, ch, budgetMs) {
+      const t0 = performance.now();
+      const N = e.N, half = N >> 1, win = this._specWindow(N);
+      const re = e.re, im = e.im;
+      while (e.pos + N <= ch.length) {
+        im.fill(0);
+        for (let i = 0; i < N; i++) re[i] = ch[e.pos + i] * win[i];
+        fft(re, im);
+        for (let i = 0; i < half; i++) e.mag[i] += Math.hypot(re[i], im[i]);
+        e.count++;
+        e.pos += N * e.stride;
+        if (performance.now() - t0 >= budgetMs) break;
+      }
+      if (e.pos + N > ch.length) { e.done = true; e.re = null; e.im = null; }
+      e.pts = null; e.pub = null;   // both are derived from mag/count
+    },
+
+    // Map one track onto the shared log grid. Each point averages the POWER of every bin inside
+    // the band it represents instead of sampling a single bin with round(), which fixes both ends
+    // at once (실측): at the low end many points landed on the SAME bin and drew a flat step,
+    // while at 15 kHz one point spans ~14 bins and picking one of them was arbitrary noise.
+    _specPointMags(e) {
+      if (e.pts) return e.pts;
+      const P = this.SPEC_POINTS, fmin = this.SPEC_FMIN, fmax = this.SPEC_FMAX;
+      const half = e.N >> 1, binHz = e.sr / e.N;
+      const ratio = Math.pow(fmax / fmin, 1 / (P - 1)), edge = Math.sqrt(ratio);
+      const inv = 1 / Math.max(1, e.count);
+      const out = new Float32Array(P);
+      for (let p = 0; p < P; p++) {
+        const fr = fmin * Math.pow(ratio, p);
+        const lo = Math.max(1, Math.round(fr / edge / binHz));
+        if (lo > half - 1) { out[p] = 0; continue; }   // above THIS track's Nyquist: no energy
+        const hi = Math.max(lo, Math.min(half - 1, Math.round((fr * edge) / binHz)));
+        let acc = 0;
+        for (let b = lo; b <= hi; b++) { const m = e.mag[b] * inv; acc += m * m; }
+        out[p] = Math.sqrt(acc / (hi - lo + 1));
+      }
+      e.pts = out;
+      return out;
+    },
+
+    _specToPoints(mags) {
+      const P = this.SPEC_POINTS, fmin = this.SPEC_FMIN;
+      const ratio = Math.pow(this.SPEC_FMAX / fmin, 1 / (P - 1));
+      const pts = [];
       let mn = Infinity, mx = -Infinity;
       for (let p = 0; p < P; p++) {
-        const fr = fmin * Math.pow(fmax / fmin, p / (P - 1));
-        const bin = Math.min(N / 2 - 1, Math.max(1, Math.round(fr / (sr / N))));
-        const db = 20 * Math.log10(mag[bin] + 1e-6);
-        pts.push({ f: fr, db });
-        mn = Math.min(mn, db); mx = Math.max(mx, db);
+        const db = 20 * Math.log10(mags[p] + 1e-6);
+        pts.push({ f: fmin * Math.pow(ratio, p), db });
+        if (db < mn) mn = db;
+        if (db > mx) mx = db;
       }
-      pts.forEach((p) => (p.n = (p.db - mn) / Math.max(1e-6, mx - mn)));
-      this._spectrum = pts; this._specKey = key;
+      const span = Math.max(1e-6, mx - mn);
+      pts.forEach((q) => (q.n = (q.db - mn) / span));
       return pts;
     },
 
-    // Static per-track FFT spectrum for the Vocal Channel Strip (Stage C). Same machinery
-    // as computeSpectrum() but for ONE track's buffer, so the strip can show that vocal's
-    // own PRE curve (the strip window derives the POST curve by applying the 9-band EQ
-    // response on top). Mode-independent: reads the buffer, not a live analyser, so it works
-    // whether native or web output is authoritative. Returns [{ f, db, n }] (db raw so the
-    // strip can add EQ dB before normalizing); [] when the track has no audio yet.
+    // The master curve = what you are HEARING, not what the project happens to contain
+    // (사용자 결정 2026-09-07). The trigger was Merge Tracks: bounce with the originals left on
+    // mute+Keep and the SAME audio was summed twice, so the curve systematically disagreed with
+    // the speakers — and an EQ reference that disagrees with what you hear has no purpose.
+    // Weights use renderMix's exact formula so the two can never drift apart. Clip gain and clip
+    // mute need nothing here: _ensureBaked already bakes them into track.buffer. Master EQ bands
+    // and master volume are deliberately NOT applied — this curve is the EQ's INPUT and the EQ
+    // response is drawn on top of it; applying them here would count them twice.
+    computeSpectrum() {
+      this.init();
+      const anySolo = this._anySolo();
+      const t0 = performance.now();
+      const parts = [];
+      let sig = "";
+      for (const t of this.tracks) {
+        const left = this.SPEC_BUDGET_MS - (performance.now() - t0);
+        const e = this._trackSpecEntry(t, left > 0 ? left : 0);
+        if (!e) continue;
+        const p = t.params || {};
+        const w = (p.mute ? 0 : (anySolo && !p.solo ? 0 : 1)) * (p.volume == null ? 1 : p.volume);
+        // `count` is in the signature so a still-building track keeps refreshing the curve.
+        sig += t.id + ":" + e.key + ":" + e.count + ":" + w.toFixed(4) + "|";
+        if (w > 0) parts.push({ e, w });
+      }
+      if (this._spectrum && this._specKey === sig) return this._spectrum;
+      // Power sum. Summing the magnitudes of separately-analysed tracks is not the same as
+      // analysing their summed waveform — phase cancellation is lost — but measured against the
+      // old path on realistic stems the NORMALISED curve differs by at most 9.5 px out of 156,
+      // and power summation is the right model for sources that are not phase-locked. What it
+      // buys: mute/solo/gain become a recombination of cached spectra — 0.014 ms instead of the
+      // 311 ms a full re-sum costs (실측 5분·96 kHz·8트랙), i.e. a gain fader can be dragged.
+      const P = this.SPEC_POINTS;
+      const mags = new Float32Array(P);
+      for (const part of parts) {
+        const m = this._specPointMags(part.e), ww = part.w * part.w;
+        for (let p = 0; p < P; p++) mags[p] += ww * m[p] * m[p];
+      }
+      for (let p = 0; p < P; p++) mags[p] = Math.sqrt(mags[p]);
+      this._spectrum = this._specToPoints(mags);
+      this._specKey = sig;
+      return this._spectrum;
+    },
+
+    // The Vocal Strip's PRE curve: ALWAYS the take as recorded — mute, solo and track gain are
+    // deliberately NOT applied (사용자 확정 2026-09-07). The strip is where you edit that vocal,
+    // so its curve must not move when the fader does, and a muted track is still being edited.
+    // Returns [{ f, db, n }] with db raw so the strip can add the 9-band EQ response before
+    // normalising; [] when the track has no audio yet.
     computeTrackSpectrum(trackId) {
       this.init();
       const t = this.tracks.find((x) => x.id === trackId);
-      if (!t || !t.buffer || t.needsAudio) return [];
-      const ch = t.buffer.getChannelData(0);
-      // N=4096 (vs the master EQ's 2048) — finer low-end resolution (~11.7 Hz/bin @48k) so the
-      // 60/150 Hz vocal bands read clearly. Static one-shot compute, so the extra cost is negligible.
-      const total = ch.length, N = 4096;
-      if (total < N) return [];
-      const sr = t.buffer.sampleRate || ctx.sampleRate;
-      const key = trackId + ":" + total + ":" + sr;
-      this._trackSpec = this._trackSpec || {};
-      if (this._trackSpec[trackId] && this._trackSpec[trackId].key === key) return this._trackSpec[trackId].pts;
-      const win = new Float32Array(N);
-      for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
-      const mag = new Float32Array(N / 2);
-      const totalFrames = Math.max(1, Math.floor((total - N) / N));
-      const stride = Math.max(1, Math.floor(totalFrames / 200));
-      let count = 0;
-      for (let f = 0; f + N <= total; f += N * stride) {
-        const re = new Float32Array(N), im = new Float32Array(N);
-        for (let i = 0; i < N; i++) re[i] = ch[f + i] * win[i];
-        fft(re, im);
-        for (let i = 0; i < N / 2; i++) mag[i] += Math.hypot(re[i], im[i]);
-        count++;
-      }
-      for (let i = 0; i < N / 2; i++) mag[i] /= Math.max(1, count);
-      const fmin = 30, fmax = Math.min(20000, sr / 2), P = 150, pts = [];
-      let mn = Infinity, mx = -Infinity;
-      for (let p = 0; p < P; p++) {
-        const fr = fmin * Math.pow(fmax / fmin, p / (P - 1));
-        const bin = Math.min(N / 2 - 1, Math.max(1, Math.round(fr / (sr / N))));
-        const db = 20 * Math.log10(mag[bin] + 1e-6);
-        pts.push({ f: fr, db });
-        mn = Math.min(mn, db); mx = Math.max(mx, db);
-      }
-      pts.forEach((p) => (p.n = (p.db - mn) / Math.max(1e-6, mx - mn)));
-      this._trackSpec[trackId] = { key, pts };
-      return pts;
+      // Infinity, NOT the frame budget: unlike the master curve this is not on a per-frame path.
+      // app.jsx answers a one-off request when the strip opens or its target changes, so handing
+      // back a partially-averaged spectrum would leave a coarse curve on screen until something
+      // happened to ask again. One synchronous build (~120 ms at 48 kHz) is the old behaviour and
+      // the right trade here. If computeSpectrum already advanced this entry, this finishes it.
+      const e = this._trackSpecEntry(t, Infinity);
+      if (!e) return [];
+      if (!e.pub) e.pub = this._specToPoints(this._specPointMags(e));
+      return e.pub;
     },
 
     // debounced reschedule for high-frequency edits (drag); ~50ms coalescing window
