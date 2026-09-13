@@ -454,7 +454,16 @@ function VocalStripApp() {
           if (msg.learned) setDnLearned(true);
           // A print consumes the profile's usefulness: the clip now points at de-noised
           // audio, so re-learning on the NEW audio is the honest next step.
-          if (msg.printed) setDnLearned(false);
+          if (msg.printed) {
+            setDnLearned(false);
+            // v2.5.2 — and the PRE curve must follow the print. The cache is already correct
+            // (its key is audioRev, which denoiseClip bumps via _ensureBaked BEFORE replying,
+            // so the new buffer is standing by the time this message arrives) — what was
+            // missing is simply the request: the strip only asks on track change / INIT /
+            // SYNC, and a print sends neither, so the curve stayed until the window was
+            // reopened. This is the one place that knows the audio just changed.
+            vsChannel.postMessage({ type: "REQUEST_TRACK_SPECTRUM", id: msg.id });
+          }
         }
       } else if (msg.type === "VOCAL_METERS") {
         if (msg.id === targetIdRef.current) setMeters({ gate: msg.gate || 0, comp: msg.comp || 0, deEss: msg.deEss || 0 });
