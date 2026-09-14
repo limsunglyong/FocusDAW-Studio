@@ -11,6 +11,14 @@
 <!-- Key read-out fonts (separate links so a missing family can't break the line above) -->
 <link href="https://fonts.googleapis.com/css2?family=Elms+Sans&display=swap" rel="stylesheet" />
 <link href="https://fonts.googleapis.com/css2?family=Tai+Heritage+Pro&display=swap" rel="stylesheet" />
+<!-- Output FX project-name watermark (v2.5.5, weight normalised in v2.5.6). Google Sans Flex
+     carries NO Hangul/CJK subset, so Latin resolves there and Korean falls through to Nanum
+     Myeongjo per character - the EN/KO split needs no conditional.
+     Weight 400 ONLY, and it must stay in lockstep with the fontWeight on the watermark div:
+     Google Sans Flex is variable (wght 1-1000), so asking for a weight the CSS does not use
+     is dead download, while USING a weight not asked for makes the browser synthesise it.
+     Both families are SIL OFL 1.1 (google/fonts ofl/). -->
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400&family=Nanum+Myeongjo:wght@400&display=swap" rel="stylesheet" />
 <style>
 :root{
   --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;

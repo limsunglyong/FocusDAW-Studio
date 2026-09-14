@@ -856,9 +856,20 @@ function MixerWindow({ onClose, onBeforeChange }) {
 }
 
 /* ---------- output effect track (master fade + EQ overlay on timeline) ---------- */
-function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo }) {
+function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeChange, onClearMuteSolo, projectName = "", viewScrollLeft = 0, visibleW = 0 }) {
   useTick();
   const laneW = Math.max(1, DAW.duration * pxPerSec);
+  // Project-name watermark centre (v2.5.4). `visibleW` is timelineView.clientWidth, which the
+  // arrange scroller already keeps as (element width - HEADER_W) = the visible LANE width.
+  // The user wants the whole app window centred, and the sticky header covers the lane's first
+  // HEADER_W px, so the window centre sits HEADER_W/2 to the LEFT of the visible lane centre.
+  const wmVisW = Math.max(1, visibleW);
+  // 🔴 When the lane is narrower than the viewport (short song, zoomed out, empty project) the
+  // window centre lands PAST the lane's right edge and overflow:hidden eats the label entirely.
+  // Fall back to the lane's own centre there — that is the whole reason this is not a one-liner.
+  const wmX = laneW <= wmVisW
+    ? laneW / 2
+    : Math.max(0, viewScrollLeft + (wmVisW - HEADER_W) / 2);
   const m = DAW.master;
   // EFFECT = temporary bypass of ALL master effects (EQ + the Ambience-window fx;
   // Spatial Field / volume / fades excluded) for A/B comparison. Node-level only —
@@ -1057,6 +1068,30 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
         // paint above the sibling sticky header when scrolled left (seek-back + zoom-in). See TrackRow.
         style={{ position: "relative", width: laneW, height: laneH, background: "color-mix(in srgb, var(--amber) 4%, transparent)", cursor: "text", overflow: "hidden", isolation: "isolate" }}>
         <TimeGrid pxPerSec={pxPerSec} height={laneH} />
+        {/* Project name watermark (v2.5.3, centred in v2.5.4) - so the current project is
+            readable at a glance. The lane is as wide as the WHOLE SONG (laneW = duration *
+            pxPerSec), so a plain `left: 50%` would park the text in the middle of the SONG and
+            off screen almost always. `wmX` above centres it on the app WINDOW instead and rides
+            the horizontal scroll - the same idiom the take badge uses in TrackRow.
+            🔴 pointerEvents:none is REQUIRED: this lane's onMouseDown is what drags out the
+            Repeat / Punch region, and an overlay that eats the press would kill that.
+            Vertically centred to clear the fade handles (top) and the FADE IN/OUT labels (bottom).
+            Colour is var(--cream), the body-text token, so it stays correct on light themes
+            (Ivory: dark text) and dark ones alike. Never hardcode it (v2.4.3 lesson). */}
+        {projectName && (
+          <div style={{ position: "absolute", left: wmX, top: "50%", transform: "translate(-50%, -50%)",
+            zIndex: 1, pointerEvents: "none", userSelect: "none", WebkitUserSelect: "none", whiteSpace: "nowrap",
+            fontSize: 36, fontWeight: 400, letterSpacing: ".06em", color: "var(--cream)", opacity: .08,
+            // EN -> Google Sans Flex, KO -> Nanum Myeongjo (per-character fallback; Google Sans Flex
+            // has no Hangul subset). var(--ui) is the last resort so an offline launch still reads
+            // exactly as it did before these two were added - the CDN is the app-wide font path.
+            // 🔴 fontWeight above must match the wght the <link> in studio.html requests (400).
+            // Google Sans Flex is a variable font: use a weight that was not fetched and the
+            // browser fakes it (synthetic bold), which looks muddy at this size.
+            fontFamily: '"Google Sans Flex", "Nanum Myeongjo", var(--ui)' }}>
+            {projectName}
+          </div>
+        )}
         {/* fade in */}
         <svg width={laneW} height={laneH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
           <path d={`M0 ${laneH} L${inX} 0 L${inX} ${laneH} Z`} fill="rgba(148,192,106,.18)" stroke="var(--green)" strokeWidth="1.5" />

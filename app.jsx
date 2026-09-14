@@ -4591,7 +4591,10 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
               <OutputTrack pxPerSec={pxPerSec} laneH={Math.max(110, laneH * 0.9)} playhead={playhead}
                 onSeek={guardedUserSeek}
                 onOpenMixer={openMixerIfClosed} onBeforeChange={pushUndo}
-                onClearMuteSolo={clearMuteSolo} />
+                onClearMuteSolo={clearMuteSolo}
+                projectName={projectName || DEFAULT_PROJECT_NAME}
+                viewScrollLeft={timelineView.scrollLeft}
+                visibleW={timelineView.clientWidth} />
               {DAW.loopRange && (
                 <div
                   style={{
