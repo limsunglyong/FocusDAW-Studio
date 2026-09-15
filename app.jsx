@@ -2468,6 +2468,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         // v2.0.0 Pitch Editor — the window is scoped to ONE clip and asks for everything it
         // needs to draw it (peaks + metadata) rather than receiving samples over the channel.
         // Stage A is read-only: nothing here changes engine state, so no undo entry.
+        // Stage D — the editor sends the whole edit list whenever it changes. One undo entry
+        // per message: the editor coalesces a drag into a single send, so the studio stack
+        // gains one step per gesture rather than one per mouse-move (설계 §11-2).
+        case "SET_PITCH_EDITS": {
+          const savedRedo = pushUndo();
+          const ok = DAW.setClipPitchEdits && DAW.setClipPitchEdits(msg.trackId, msg.clipId, msg.edits);
+          if (!ok) { cancelUndo(savedRedo); break; }
+          force((n) => n + 1);
+          break;
+        }
         case "REQUEST_PITCH_CLIP": {
           const info = DAW.clipAudioInfo ? DAW.clipAudioInfo(msg.trackId, msg.clipId, msg.buckets) : null;
           channel.postMessage({

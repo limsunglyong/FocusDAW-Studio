@@ -762,6 +762,16 @@
       return track;
     },
 
+    // Stage D pitch edits (v2.7.0). A wrapper exists ONLY so the next person does not have to
+    // re-derive why there is no syncTrackToNative here: these edits change no samples. They
+    // are a description of what the user WANTS done, and nothing acts on them until Stage E
+    // prints corrected audio through the normal source/bake path — which does sync. The
+    // native engine has no concept of a pitch edit and would not know what to do with one.
+    // ⚠️ If Stage E ever makes this call touch audio, this wrapper must grow the sync.
+    setClipPitchEdits(trackId, clipId, edits) {
+      return LocalDAW.setClipPitchEdits(trackId, clipId, edits);
+    },
+
     addAudioInTrack(name) {
       return LocalDAW.addAudioInTrack(name);
     },

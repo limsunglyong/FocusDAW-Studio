@@ -646,6 +646,12 @@
           baseSourceId: clip.pitch.baseSourceId || null,
           printedSourceId: clip.pitch.printedSourceId || null,
           notes: Array.isArray(clip.pitch.notes) ? clip.pitch.notes.map(n => ({ ...n })) : [],
+          // Stage D (설계 §4-1). The USER's edits, anchored to a time span rather than to a
+          // note id: note ids are only unique inside one segmentation run, and the
+          // segmentation is rebuilt every time the clip is re-analysed (the curve is not
+          // persisted, so reopening a project always re-analyses), whenever the NOTES
+          // division changes, and again the day the segmenter itself is fixed.
+          edits: Array.isArray(clip.pitch.edits) ? clip.pitch.edits.map(e => ({ ...e })) : [],
           analysis: clip.pitch.analysis ? { ...clip.pitch.analysis } : null,
         } : null,
       };
@@ -769,6 +775,18 @@
         recordedOffsetMs: Number.isFinite(c.recordedOffsetMs) ? c.recordedOffsetMs : null,
         params: c.params ? { ...c.params } : null,
         automation: c.automation ? c.automation.map(p => ({ ...p })) : null,
+        // 🔴 v2.7.0 — this was MISSING. _normalizeClip has carried clip.pitch since Stage A,
+        // but the serializer that BOTH exportProject and getSnapshot use did not copy it, so
+        // pitch data was silently dropped on save AND on every undo snapshot. Nothing wrote
+        // clip.pitch before Stage D, which is why it never showed: the bug was waiting for
+        // the first feature that actually stored something here.
+        pitch: c.pitch ? {
+          baseSourceId: c.pitch.baseSourceId || null,
+          printedSourceId: c.pitch.printedSourceId || null,
+          notes: Array.isArray(c.pitch.notes) ? c.pitch.notes.map(n => ({ ...n })) : [],
+          edits: Array.isArray(c.pitch.edits) ? c.pitch.edits.map(e => ({ ...e })) : [],
+          analysis: c.pitch.analysis ? { ...c.pitch.analysis } : null,
+        } : null,
       }));
     },
     _projectClipDuration() {
@@ -3409,6 +3427,9 @@
           baseSourceId: clip.pitch.baseSourceId || null,
           printedSourceId: clip.pitch.printedSourceId || null,
           notes: (clip.pitch.notes || []).map(x => ({ ...x })),
+          // The editor re-segments from scratch on every Analyze and then re-attaches these
+          // by time overlap (설계 §4-1) — they are what survives a re-cut, not the notes.
+          edits: (clip.pitch.edits || []).map(x => ({ ...x })),
           analysis: clip.pitch.analysis ? { ...clip.pitch.analysis } : null,
         } : null,
         // Vari Key/BPM never bake into timeline audio (v1.46.0 rule), so the editor analyses and
@@ -3734,6 +3755,39 @@
       if (!st) return null;
       while (!this._pitchAnalysisStep(st, 4096));
       return this._pitchAnalysisFinish(st);
+    },
+
+    // Stage D — store the user's pitch edits on the clip (설계 §4-1).
+    //
+    // What is stored is NOT the notes. Notes are derived from the analysis and are rebuilt
+    // from scratch on every Analyze; what the user owns is the set of DEPARTURES from what
+    // the detector proposed, each anchored to a span of clip-source time. Defaults are not
+    // stored at all — the editor filters them out — so the presence of an entry here means
+    // "the user touched this", which is the distinction `target` alone cannot carry (the
+    // segmenter fills target with Math.round(midi) for every note).
+    //
+    // ⚠️ This does NOT change what anyone hears. Stage E is what prints corrected audio;
+    // until then these are notes-on-paper. That is also why audio-bridge needs no
+    // syncTrackToNative here — see the wrapper.
+    setClipPitchEdits(trackId, clipId, edits) {
+      const track = this.tracks.find((t) => t.id === trackId);
+      const clip = track && (track.clips || []).find((c) => c.id === clipId);
+      if (!clip) return false;
+      const list = Array.isArray(edits) ? edits : [];
+      const clean = [];
+      for (const e of list) {
+        const t0 = Number(e && e.t0), t1 = Number(e && e.t1);
+        if (!Number.isFinite(t0) || !Number.isFinite(t1) || t1 <= t0) continue;
+        clean.push({
+          t0, t1,
+          target: Number.isFinite(e.target) ? e.target : null,
+          strength: Number.isFinite(e.strength) ? e.strength : 1,
+          keepVibrato: e.keepVibrato !== false,
+        });
+      }
+      if (!clip.pitch) clip.pitch = { baseSourceId: clip.sourceId || null, printedSourceId: null, notes: [], edits: [], analysis: null };
+      clip.pitch.edits = clean;
+      return true;
     },
 
     // Same analysis, run in slices so the UI stays alive and can show progress.

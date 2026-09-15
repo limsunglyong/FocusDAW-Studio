@@ -317,6 +317,78 @@ function peBuildNotes(an, grid, clipDur) {
   }
 }
 
+
+// ── Stage D — 편집 모델 (설계 §4-1) ────────────────────────────────────────
+//
+// 편집은 노트 id 가 아니라 **시간 구간**에 앵커된다. id 는 세그멘테이션 한 번 안에서만
+// 유일하고, 세그멘테이션은 ⓐ재열기 후 Analyze(곡선을 저장하지 않으므로 매번) ⓑNOTES
+// 설정 변경 ⓒ세그멘터 결함을 고치는 날 — 세 가지로 바뀐다. ⓒ가 결정적이었다: id 기반
+// 이면 버그 수정이 기존 프로젝트의 편집을 전부 무효로 만든다.
+
+// 튜닝 값은 모듈 const 가 아니라 이 객체에 둔다. 엔진의 PITCH_MIN_CONF 와 같은 방식이라
+// 개발자 도구에서 `window.PE_TUNING.reattachTau = 0.4` 로 **재빌드 없이** 바꿔 볼 수 있고,
+// 하네스가 같은 코드를 같은 파라미터로 스윕한다 — 재는 것과 도는 것이 갈라지지 않는다.
+const PE_TUNING = {
+  // edit 길이 대비 겹침 비율이 이 값 이상인 새 노트에 편집이 다시 붙는다.
+  //
+  // 계측으로 골랐다(2026-09-15 · 곡 8개 × 조건 7가지 · 무성 경계와 레가토 양쪽):
+  //   τ      보존율   dup(번짐)   비고
+  //   0.10    98%      0.3%      번짐이 생긴다 — 건드리지 않은 옆 음이 바뀐다
+  //   0.25    92%      0%        ← 채택
+  //   0.50    85%      0%        보존율만 7%p 낮고 얻는 것이 없다
+  //
+  // 🔴 이 값이 영향을 주는 것은 **사용자가 NOTES 설정을 바꿨을 때뿐**이다. 가장 흔한
+  // 경로인 재열기(설정 동일)는 어느 값에서도 100% 였다. 올리면 막아 주는 것 없이
+  // 편집이 조용히 사라지는 쪽으로만 기운다 — 0.5 를 고르려던 내 짐작이 계측에서 틀렸다.
+  // 바꾸려면 `node tools/pitch-edit-reattach-harness.js` 를 먼저 돌릴 것.
+  reattachTau: 0.25,
+};
+if (typeof window !== "undefined") window.PE_TUNING = PE_TUNING;
+
+const peOverlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+
+// 노트가 검출기가 제안한 그대로인가. 기본값은 저장하지 않는다 — peSegmentPass 가
+// target 을 Math.round(midi) 로 **자동으로** 채우므로, 전부 저장하면 "사용자가 지정한
+// 값"과 "검출값의 반올림"을 영영 구분할 수 없다. edits[] 에 있다는 것 자체가 사용자가
+// 손댔다는 뜻이어야 한다.
+function peIsPristine(nt) {
+  return nt.target === Math.round(nt.midi) && nt.strength === 1 && nt.keepVibrato === true;
+}
+
+function peEditsFromNotes(notes) {
+  const out = [];
+  for (const nt of notes || []) {
+    if (peIsPristine(nt)) continue;
+    out.push({ t0: nt.t0, t1: nt.t1, target: nt.target, strength: nt.strength, keepVibrato: nt.keepVibrato });
+  }
+  return out;
+}
+
+// 저장된 edits[] 를 새 세그멘테이션에 다시 붙인다.
+// 원본 notes 는 건드리지 않고 새 배열을 돌려준다(React state 규칙).
+// missed = 붙을 노트를 못 찾은 편집 수. 🔴 조용히 버리면 안 된다 — 사용자는 편집이
+// 사라진 것을 모른다. 화면에 개수를 띄운다.
+function peApplyEdits(notes, edits, tau) {
+  if (!edits || !edits.length) return { notes, missed: 0 };
+  const t = Number.isFinite(tau) ? tau : PE_TUNING.reattachTau;
+  const out = notes.map((nt) => ({ ...nt }));
+  let missed = 0;
+  for (const ed of edits) {
+    const len = ed.t1 - ed.t0;
+    if (!(len > 0)) { missed++; continue; }
+    let hit = 0;
+    for (const nt of out) {
+      if (peOverlap(ed.t0, ed.t1, nt.t0, nt.t1) / len < t) continue;
+      hit++;
+      if (Number.isFinite(ed.target)) nt.target = ed.target;
+      if (Number.isFinite(ed.strength)) nt.strength = ed.strength;
+      if (typeof ed.keepVibrato === "boolean") nt.keepVibrato = ed.keepVibrato;
+    }
+    if (!hit) missed++;
+  }
+  return { notes: out, missed };
+}
+
 // Pitch classes of the project's detected key, for the "outside the key" outline (설계 §12-2).
 // The key string is the engine's own format — "C", "F#", "Am" — so minor is the trailing "m".
 const PE_MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
@@ -383,14 +455,14 @@ function WindowControls() {
 // times a second, and repainting the grid + waveform + curve at that rate to move one line
 // would be pure waste.
 function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, theme, playhead, litMidi,
-                     onSeek, onView, onRange, onPreview, onSelectNote }) {
+                     onSeek, onView, onRange, onPreview, onSelectNote, onNoteDrag }) {
   const wrapRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 0, h: 0 });
   // The wheel handler is attached imperatively (it needs passive:false to preventDefault), so
   // it reads live state through a ref instead of being torn down and rebound on every change.
   const liveRef = React.useRef(null);
-  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, notes, onSeek, onView, onRange, onSelectNote };
+  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, notes, onSeek, onView, onRange, onSelectNote, onNoteDrag };
 
   React.useEffect(() => {
     const el = wrapRef.current;
@@ -740,7 +812,33 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
     if (L.onSelectNote) {
       const t = xToTime(px), m = yToMidi(py);
       const hit = (L.notes || []).find((nt) => nt.target === m && t >= nt.t0 && t <= nt.t1);
-      if (hit) { L.onSelectNote(hit.id, e.shiftKey || e.ctrlKey || e.metaKey); return; }
+      if (hit) {
+        L.onSelectNote(hit.id, e.shiftKey || e.ctrlKey || e.metaKey);
+        // Stage D — the same press that selects also starts a vertical drag on the target
+        // pitch. Rows are whole semitones, so the delta is rounded to a row: dragging is a
+        // chromatic move, never a continuous detune (that is what `strength` is for).
+        // 🔴 The gesture reports live for the on-screen preview but commits ONCE, on mouseup —
+        // 설계 §11-2 requires one undo entry per drag, not one per mouse-move.
+        if (L.onNoteDrag) {
+          const G = geo(L);
+          const sy = e.clientY;
+          let last = 0, moved = false;
+          const move = (ev) => {
+            const d = Math.round(-(ev.clientY - sy) / Math.max(1, G.rowH));
+            if (d === last) return;
+            last = d; moved = true;
+            L.onNoteDrag(hit.id, d, false);
+          };
+          const up = () => {
+            window.removeEventListener("mousemove", move);
+            window.removeEventListener("mouseup", up);
+            if (moved) L.onNoteDrag(hit.id, last, true);
+          };
+          window.addEventListener("mousemove", move);
+          window.addEventListener("mouseup", up);
+        }
+        return;
+      }
       L.onSelectNote(null, false);
     }
     if (onSeek) onSeek(peClamp(xToTime(px), 0, clipDur));
@@ -937,6 +1035,20 @@ function PitchEditorApp() {
   // `selection` holds note ids — a Set, because Stage D selects ranges of them.
   const [division, setDivision] = React.useState(16);
   const [selection, setSelection] = React.useState(PE_NO_SEL);
+  // Stage D (설계 §4-1). `edits` is the truth the STUDIO owns and the project file keeps;
+  // the notes on screen are derived from (analysis → segmentation → these). `localUndo`
+  // is the window's own stack, in front of the studio's (설계 §11-2). `drag` is the
+  // in-flight gesture — held apart so a drag paints live without pushing an undo per pixel.
+  const [edits, setEdits] = React.useState([]);
+  const [localUndo, setLocalUndo] = React.useState([]);
+  const [drag, setDrag] = React.useState(null);
+  const editsRef = React.useRef(edits); editsRef.current = edits;
+  const selectionRef = React.useRef(selection); selectionRef.current = selection;
+  const notesRef = React.useRef([]);
+  // What we last pushed to the studio. An incoming PITCH_CLIP that matches this is our own
+  // echo, not an outside change — without this the local undo stack would be wiped by every
+  // edit the user makes.
+  const lastSentRef = React.useRef("[]");
   const [struck, setStruck] = React.useState(null);   // key flashed by a preview click
   const viewRef = React.useRef(view); viewRef.current = view;
   const infoRef = React.useRef(info); infoRef.current = info;
@@ -982,6 +1094,16 @@ function PitchEditorApp() {
         if (msg.ok && msg.info) {
           setInfo(msg.info);
           setError("");
+          // Stage D — adopt the stored edits. If they differ from what we last sent, the
+          // change came from outside this window (first load, or a studio undo/redo), and
+          // 설계 §11-2 says the local stack is dropped then: the clip may have changed under us.
+          const incoming = (msg.info.pitch && Array.isArray(msg.info.pitch.edits)) ? msg.info.pitch.edits : [];
+          const inJson = JSON.stringify(incoming);
+          if (inJson !== lastSentRef.current) {
+            lastSentRef.current = inJson;
+            setEdits(incoming);
+            setLocalUndo([]);
+          }
           // Fit the whole clip on first load, and re-fit if the clip got shorter under us
           // (a trim or an undo) so the view can never point past the end.
           const dur = msg.info.duration || 0;
@@ -1185,7 +1307,9 @@ function PitchEditorApp() {
       // same way it drops the analysis below (the clip may have changed underneath).
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
-        e.preventDefault(); peChannel.postMessage({ type: "REQUEST_UNDO" }); return;
+        e.preventDefault();
+        if (undoLocalRef.current && undoLocalRef.current()) return;   // 설계 §11-2 — local first
+        peChannel.postMessage({ type: "REQUEST_UNDO" }); return;
       }
       if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
         e.preventDefault(); peChannel.postMessage({ type: "REQUEST_REDO" }); return;
@@ -1241,7 +1365,66 @@ function PitchEditorApp() {
     () => peBuildNotes(analysis, grid, dur),
     [analysis, grid.minNoteSec, grid.gridSec, dur]
   );
-  const notes = seg.notes;
+  // Stage D — the notes the user sees are the segmentation with their edits re-attached by
+  // time overlap, and then the in-flight drag painted on top. `missed` is how many stored
+  // edits found nothing to attach to; it is surfaced in the footer rather than swallowed.
+  const applied = React.useMemo(
+    () => peApplyEdits(seg.notes, edits, PE_TUNING.reattachTau),
+    [seg, edits]
+  );
+  const notes = React.useMemo(() => {
+    if (!drag || !drag.dSemi) return applied.notes;
+    return applied.notes.map((nt) => (drag.ids.has(nt.id) ? { ...nt, target: nt.target + drag.dSemi } : nt));
+  }, [applied.notes, drag]);
+  notesRef.current = notes;
+
+  // One gesture → one local-undo entry, one message, one studio undo entry.
+  const pushEdits = React.useCallback((next) => {
+    setLocalUndo((st) => [...st.slice(-49), editsRef.current]);
+    setEdits(next);
+    lastSentRef.current = JSON.stringify(next);
+    peChannel.postMessage({ type: "SET_PITCH_EDITS", trackId, clipId, edits: next });
+  }, [trackId, clipId]);
+
+  // Turn "these notes moved by N semitones" into the stored edit list. An edit is keyed by the
+  // note's own time span, and a note dragged back to what the detector proposed drops OUT of
+  // the list — the list must only ever hold genuine departures (설계 §4-1).
+  const applyDelta = React.useCallback((ids, dSemi) => {
+    const next = editsRef.current.slice();
+    for (const nt of notesRef.current) {
+      if (!ids.has(nt.id)) continue;
+      const base = applied.notes.find((x) => x.id === nt.id) || nt;
+      const merged = { ...base, target: base.target + dSemi };
+      const i = next.findIndex((e) => Math.abs(e.t0 - nt.t0) < 1e-6 && Math.abs(e.t1 - nt.t1) < 1e-6);
+      if (peIsPristine(merged)) { if (i >= 0) next.splice(i, 1); continue; }
+      const ed = { t0: nt.t0, t1: nt.t1, target: merged.target, strength: merged.strength, keepVibrato: merged.keepVibrato };
+      if (i >= 0) next[i] = ed; else next.push(ed);
+    }
+    return next;
+  }, [applied.notes]);
+
+  const onNoteDrag = React.useCallback((id, dSemi, done) => {
+    const sel = selectionRef.current;
+    const ids = sel.has(id) ? new Set(sel) : new Set([id]);
+    if (!done) { setDrag({ ids, dSemi }); return; }
+    setDrag(null);
+    if (!dSemi) return;
+    pushEdits(applyDelta(ids, dSemi));
+  }, [applyDelta, pushEdits]);
+
+  // 설계 §11-2 — Ctrl+Z pops this first and only reaches the studio once it is empty, so the
+  // user is never sent to another window to undo what they did here, and never trapped either.
+  const undoLocal = React.useCallback(() => {
+    const st = localUndo;
+    if (!st.length) return false;
+    const prev = st[st.length - 1];
+    setLocalUndo(st.slice(0, -1));
+    setEdits(prev);
+    lastSentRef.current = JSON.stringify(prev);
+    peChannel.postMessage({ type: "SET_PITCH_EDITS", trackId, clipId, edits: prev });
+    return true;
+  }, [localUndo, trackId, clipId]);
+  const undoLocalRef = React.useRef(undoLocal); undoLocalRef.current = undoLocal;
   const scalePcs = React.useMemo(() => peScalePcs(tempo && tempo.detectedKey), [tempo && tempo.detectedKey]);
   // Ids are only unique within one segmentation, so a selection cannot outlive the notes it
   // pointed at — a re-cut (new analysis, new grid) starts from nothing selected.
@@ -1337,7 +1520,8 @@ function PitchEditorApp() {
               ? <PianoRoll info={info} analysis={analysis} notes={notes} selection={selection}
                   scalePcs={scalePcs} view={view} range={range} theme={theme}
                   playhead={transport.playhead} litMidi={litMidi} onSeek={seekTo} onView={setView}
-                  onRange={setRange} onPreview={previewKey} onSelectNote={selectNote} />
+                  onRange={setRange} onPreview={previewKey} onSelectNote={selectNote}
+                  onNoteDrag={onNoteDrag} />
               : <div className="pe-empty">Loading clip…</div>)}
         </div>
 
@@ -1403,6 +1587,14 @@ function PitchEditorApp() {
                   ? "Notes appear once the clip has been analysed."
                   : <>
                       <b>{notes.length}</b> notes · shortest <b>{Math.round(grid.minNoteSec * 1000)} ms</b><br />
+                      {applied.missed > 0 && (
+                        /* 🔴 Never swallow this. A re-cut can leave an edit with nothing to
+                           attach to, and the user has no other way to learn their work was
+                           dropped — measured at ~7% when the NOTES division changes. */
+                        <span style={{ color: "var(--red)" }}>
+                          <b>{applied.missed}</b> edit{applied.missed > 1 ? "s" : ""} could not be re-attached<br />
+                        </span>
+                      )}
                       {grid.bpm ? `1/${grid.division} at ${grid.bpm} BPM` : "no project BPM — fixed default"}
                       {/* Say when the density cap had to step in, rather than quietly handing
                           back fewer notes than the grid asked for. */}
