@@ -1945,6 +1945,43 @@
       return t;
     },
 
+    // v2.6.0 — turn an imported FILE track into a clip-editable BOUNCE track.
+    //
+    // Why this is a field flip and not a render: Phase 1 gave EVERY track the
+    // sources[]/clips[] shape, so an imported file ALREADY carries sources[0], one
+    // full-length clip and a decoded buffer. The only thing holding it read-only is the
+    // pair (kind:"file", lockedToZero:true) that _clipEditable() tests — flipping those two
+    // IS the conversion. No re-decode, no new WAV on disk, no change to what you hear.
+    //
+    // The point of it: a bounce track's clip can be copied onto an Audio In track
+    // (copyToTrackTargets filters on _clipEditable), which is how an imported vocal gets
+    // somewhere it can be comped and pitch-edited. Before this, that took a detour.
+    //
+    // 📌 The track does NOT jump anywhere on screen: ui-kit's isFileGroupTrack counts
+    // "file" AND "bounce", so it stays in the File Tracks group exactly where it was.
+    convertTrackToBounce(trackId) {
+      const track = this.tracks.find((t) => t.id === trackId);
+      if (!track) return null;
+      if (track.kind === "bounce") return track;            // already there — idempotent
+      if (track.kind && track.kind !== "file") return null;  // audioIn is not convertible
+      // 🔴 Refuse while the audio is still a placeholder. importProject hands out a silent
+      // buffer + needsAudio until reconnect finishes; baking that in would register silence
+      // as the raw source and the clip would be printed silent (the v2.4.8 / v2.5.1 shape).
+      if (track.needsAudio) return null;
+      const primary = track.sources && track.sources[0];
+      if (primary && primary.needsAudio) return null;
+
+      track.kind = "bounce";
+      track.lockedToZero = false;
+      // Restore the invariant the clip editor depends on: buffer time == timeline time.
+      // An imported file is already trivial (one clip at 0, offset 0) so this takes the
+      // _isTrivialLayout fast path — no re-render — but it also SEEDS _rawBuffers via
+      // _captureRawBuffers, which every later edit, Analyze and De-noise then read.
+      this._ensureBaked(track);
+      this.duration = Math.max(this.duration, this._projectClipDuration());
+      return track;
+    },
+
     // Merge Tracks → a Bounce track that LANDS ON THE TIMELINE next to its sources. Unlike
     // Export, it must therefore be rendered at the ORIGINAL tempo and key (v1.46.0): with
     // Vari BPM / Vari Key on, renderMix's defaults would bake the stretch and the transposition

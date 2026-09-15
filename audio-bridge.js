@@ -747,6 +747,21 @@
       return track;
     },
 
+    // v2.6.0 file → bounce conversion. A wrapper is REQUIRED even though the audio itself
+    // is unchanged: convertTrackToBounce calls _ensureBaked, which can replace track.buffer
+    // with the raw source buffer, and from here on the track is clip-editable — so the
+    // renderer's model and the engine's must not drift. Without a wrapper the DAWProxy at
+    // the bottom of this file forwards the call straight to LocalDAW and the native engine
+    // never hears about it: screen right, sound wrong, no error, fixed by a restart. That is
+    // exactly how copyClipToTrack stayed broken for four months (v2.4.1).
+    convertTrackToBounce(trackId) {
+      const track = LocalDAW.convertTrackToBounce(trackId);
+      if (this.isNative && track) {
+        syncTrackToNative(track);
+      }
+      return track;
+    },
+
     addAudioInTrack(name) {
       return LocalDAW.addAudioInTrack(name);
     },

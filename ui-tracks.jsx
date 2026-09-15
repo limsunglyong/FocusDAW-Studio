@@ -890,15 +890,33 @@ function TrackHeader({ track, idx, playbackLevel, inputLevel, inputGr = 0, recor
 // was firing a seek and moving the playhead out from under "Paste at playhead".
 function ClipContextMenu({ x, y, items, hint, onClose }) {
   const W = 232;
-  const H = items.length * 32 + (hint ? 44 : 12);
+  // v2.6.1 — every menu now ends with a line saying how to dismiss it. The file-track menu
+  // (one item, no clip selected) passed hint=null and so had NO footer at all: nothing on
+  // screen told the user it could be closed, and they had to discover Esc. Clip menus keep
+  // their own longer hint, which already ends with the same instruction.
+  const footer = hint || "Esc or click away to close";
+  const H = items.length * 32 + 44;
   const left = Math.max(8, Math.min(x, window.innerWidth - W - 8));
   const top = Math.max(8, Math.min(y, window.innerHeight - H - 8));
   useEffect(() => {
-    const close = (e) => { if (!e.target.closest("[data-clip-menu]")) onClose(); };
+    const close = (e) => {
+      // closest() lives on Element; a press can land on a non-Element target, and a stray
+      // throw here would leave the menu stuck open with no way back except Esc.
+      const t = e.target;
+      if (t && t.closest && t.closest("[data-clip-menu]")) return;
+      onClose();
+    };
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("mousedown", close);
+    // 🔴 CAPTURE, not bubble (v2.6.1). React 17+ attaches its listeners to the ROOT
+    // CONTAINER, and a synthetic stopPropagation() also stops the underlying NATIVE event
+    // there — so it never reaches a bubble-phase window listener. This menu sits over a
+    // timeline full of handlers that legitimately stop propagation (clip hit-areas, the
+    // take badge, the menu itself), and any one of them swallowed the dismiss. Capture runs
+    // before all of them, so "click anywhere else" closes the menu no matter what is under
+    // the pointer. Reported on the v2.6.0 file-track menu, which only Esc would close.
+    window.addEventListener("mousedown", close, true);
     window.addEventListener("keydown", onKey, true);
-    return () => { window.removeEventListener("mousedown", close); window.removeEventListener("keydown", onKey, true); };
+    return () => { window.removeEventListener("mousedown", close, true); window.removeEventListener("keydown", onKey, true); };
   }, [onClose]);
   return ReactDOM.createPortal(
     // stopPropagation is REQUIRED even though this is portaled: React propagates
@@ -926,9 +944,9 @@ function ClipContextMenu({ x, y, items, hint, onClose }) {
           {it.hint && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{it.hint}</span>}
         </div>
       ))}
-      {hint && <React.Fragment>
+      {footer && <React.Fragment>
         <div style={{ height: 1, background: "var(--line)", margin: "5px 6px" }} />
-        <div style={{ padding: "2px 10px 4px", fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{hint}</div>
+        <div style={{ padding: "2px 10px 4px", fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{footer}</div>
       </React.Fragment>}
     </div>,
     document.body
@@ -988,7 +1006,7 @@ function RecordingOffsetCalModal({ prev, next, recOff, moveMs, onClose }) {
   );
 }
 
-function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onSetClipGain, onDeleteClip, onCopyClip, onCopyClipToTrack, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onSetCompRegion, onClearComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
+function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, playhead, playbackLevel, inputLevel = 0, inputGr = 0, recordingActive = false, onParam, onRemove, onSeek, tool, onSplit, onJoin, onBeforeChange, onFocusFx, selected = false, onSelect, headerIndent = 0, onMuteAllFiles, onRename, selectedClipId = null, selectedClipIds = EMPTY_CLIP_IDS, nudge = null, onSelectClip, onMoveClip, onMoveClips, onTrimStart, onTrimEnd, onSetClipGain, onDeleteClip, onCopyClip, onCopyClipToTrack, onConvertToBounce, onPasteClip, onDuplicateClip, onConsolidateClips, onFlattenComp, onSetCompRegion, onClearComp, onDeselectClip, onSetTool, onSetActiveTake, onDeleteTake, countIn = null, viewScrollLeft = 0 }) {
   const laneW = Math.max(1, DAW.duration * pxPerSec);
   const phx = (playhead / DAW.duration) * laneW;
   const p = track.params;
@@ -1013,6 +1031,11 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   // only move a visual "ghost" and commit the engine edit (which re-bakes t.buffer)
   // once on mouse-up, so the buffer isn't re-baked on every mousemove.
   const clipEditable = !track.lockedToZero && (track.kind === "audioIn" || track.kind === "bounce");
+  // v2.6.0 — an imported file track has no menu of its own; it gets exactly one item, the
+  // conversion that makes it clip-editable. Legacy tracks saved before `kind` existed read
+  // as file-group too (see ui-kit isFileGroupTrack), so `!track.kind` counts here as well.
+  const canConvertToBounce = !clipEditable && !track.needsAudio
+    && (track.kind === "file" || !track.kind) && !!onConvertToBounce;
   const clipDrag = useRef(null);
   const [, bumpDrag] = useState(0);
   // clipId null = the menu was opened over empty lane space (paste target only).
@@ -1021,7 +1044,7 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   // Recording Offset Cal. confirmation modal payload: { prev, next } (ms). null = hidden.
   const [calResult, setCalResult] = useState(null);
   const openClipMenu = (e, clip) => {
-    if (!clipEditable) return;
+    if (!clipEditable && !canConvertToBounce) return;
     e.preventDefault(); e.stopPropagation();
     // Right-clicking a clip that is part of a multi-selection must KEEP that selection,
     // otherwise the menu's Delete would silently drop to a single clip.
@@ -1031,13 +1054,21 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
   // Right-click on empty lane space: offer Paste so a copied clip can be dropped
   // where there is no clip to right-click on.
   const openLaneMenu = (e) => {
-    if (!clipEditable || tool !== "select" || p.autoOn) return;
+    if (tool !== "select" || p.autoOn) return;
+    if (!clipEditable && !canConvertToBounce) return;
     if (e.target.closest("[data-clip-hit]")) return; // the clip's own handler owns this
     openClipMenu(e, null);
   };
   // Recomputed per menu open (cheap, and track names/kinds change under the user).
   const copyTargets = (clipMenu && DAW.copyToTrackTargets) ? DAW.copyToTrackTargets(track.id) : [];
   const clipMenuItems = (clip) => {
+    // File track: one item only. There are no clips to act on until it is converted, and
+    // the file lane renders no clip hit-areas, so this always arrives with clip == null.
+    if (!clipEditable) return [
+      { label: "Convert to Bounce Track",
+        title: "Make this track clip-editable so its audio can be moved, trimmed, and copied onto an Audio In track. The audio itself is not changed, and Undo reverts it.",
+        onClick: () => onConvertToBounce && onConvertToBounce(track.id) },
+    ];
     if (!clip) return [
       { label: "Paste at playhead", hint: "Ctrl+V", disabled: !DAW._clipboard,
         onClick: () => onPasteClip && onPasteClip(track.id, DAW.getPlayhead()) },
@@ -1064,8 +1095,15 @@ function TrackRow({ track, idx, pxPerSec, ampZoom, laneH, sizeLaneH = laneH, pla
     // v2.0.0 — Pitch Editor entry point. The clip's right-click menu (not a track-header
     // button) because pitch editing targets ONE CLIP, and because the 244px header has no
     // horizontal slack left (the vocal-strip FX control had to shrink to an icon for exactly
-    // this reason — see the header row below). Vocal tracks only, same gating as the strip.
-    const canPitchEdit = (track.kind === "audioIn" || track.kind === "bounce")
+    // this reason — see the header row below).
+    // v2.6.0 — Audio In ONLY. Bounce tracks used to qualify, but pitch editing is meant for a
+    // recorded vocal take, so offering it on a bounce blurred what the feature is for (user
+    // decision). ⚠️ This does NOT undo v2.5.1 — that fix seeded `_rawBuffers` on bounce tracks
+    // and unblocked THREE things: Pitch Editor, Analyze and De-noise. The latter two still run
+    // on bounce tracks from the vocal strip, so the seeding stays load-bearing.
+    // To pitch-edit imported audio: convert the file track to a bounce (v2.6.0 track menu),
+    // copy its clip onto an Audio In track, and edit it there.
+    const canPitchEdit = track.kind === "audioIn"
       && !!(window.electronAPI && window.electronAPI.openPitchEditor);
     return [
       { label: groupN > 1 ? `Deselect (${groupN} selected)` : "Deselect", hint: "Esc",

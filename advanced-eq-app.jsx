@@ -72,7 +72,9 @@ function WindowControlsAef() {
   const suppressFocus = (e) => e.preventDefault();
   return (
     <div className="window-controls" aria-label="Window controls">
-      <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => act(e, "minimize")} title="Minimize" aria-label="Minimize"><span aria-hidden="true">-</span></button>
+      {/* Minimize removed in v2.6.0: this window is a `parent:` (owned) window, so Windows gives
+          it no taskbar button, and `frame: false` leaves nothing to minimise into - it collapsed
+          to a stub bar with no way back. See electron/main.js minimizable:false. */}
       <button className="window-control" onMouseDown={suppressFocus} onClick={(e) => act(e, "maximize")} title="Maximize" aria-label="Maximize"><span aria-hidden="true">□</span></button>
       <button className="window-control close" onMouseDown={suppressFocus} onClick={(e) => act(e, "close")} title="Close" aria-label="Close"><span aria-hidden="true">×</span></button>
     </div>

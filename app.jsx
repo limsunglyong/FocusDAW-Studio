@@ -3098,6 +3098,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const handleCopyClip = useCallback((trackId, clipId) => { DAW.copyClip(trackId, clipId); }, []);
   // "Copy to track" — the destination is named by the menu, so this needs none of the
   // clipboard/paste-target guessing Ctrl+V does (and deliberately leaves the clipboard alone).
+  // v2.6.0 — file track → bounce track. One undo entry; the engine refuses (returns null)
+  // when the track is an Audio In or its audio has not been reconnected yet, and we drop the
+  // snapshot in that case so the history has no no-op entry.
+  const handleConvertToBounce = useCallback((trackId) => {
+    const savedRedo = pushUndo();
+    const t = DAW.convertTrackToBounce(trackId);
+    if (!t) { cancelUndo(savedRedo); return; }
+    force((n) => n + 1);
+  }, [pushUndo, cancelUndo]);
+
   const handleCopyClipToTrack = useCallback((trackId, clipId, destTrackId) => {
     lockTimelineZoom();
     const savedRedo = pushUndo();
@@ -4541,6 +4551,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd} onSetClipGain={handleSetClipGain}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onCopyClipToTrack={handleCopyClipToTrack}
+                  onConvertToBounce={handleConvertToBounce}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
                   onFlattenComp={handleFlattenComp}
@@ -4579,6 +4590,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   onTrimStart={handleTrimStart} onTrimEnd={handleTrimEnd} onSetClipGain={handleSetClipGain}
                   onDeleteClip={handleDeleteClip} onCopyClip={handleCopyClip}
                   onCopyClipToTrack={handleCopyClipToTrack}
+                  onConvertToBounce={handleConvertToBounce}
                   onPasteClip={handlePasteClip} onDuplicateClip={handleDuplicateClip}
                   onConsolidateClips={handleConsolidateClips}
                   onFlattenComp={handleFlattenComp}

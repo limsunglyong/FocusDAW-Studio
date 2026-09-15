@@ -1382,6 +1382,10 @@ ipcMain.handle('open-mixer', async (_, tracksCount) => {
   isMixerFullyLoaded = false;
 
   mixerWindow = new BrowserWindow({
+    // v2.6.0 - no minimise. This is a `parent:` (owned) window: Win32 gives owned
+    // windows no taskbar button, and `frame: false` leaves no frame to minimise into,
+    // so minimising stranded it as a stub bar with no way to restore it.
+    minimizable: false,
     width: requestedWidth,
     height: requestedHeight,
     useContentSize: true, // Crucial: width and height are content dimensions
@@ -1475,6 +1479,10 @@ ipcMain.handle('open-advanced-pan', async (_, target = 'pan') => {
     : null;
 
   advancedPanWindow = new BrowserWindow({
+    // v2.6.0 - no minimise. This is a `parent:` (owned) window: Win32 gives owned
+    // windows no taskbar button, and `frame: false` leaves no frame to minimise into,
+    // so minimising stranded it as a stub bar with no way to restore it.
+    minimizable: false,
     width: bounds ? bounds.width : ADVANCED_PAN_WIDTH,
     height: bounds ? bounds.height : ADVANCED_PAN_HEIGHT,
     useContentSize: true,
@@ -1541,6 +1549,10 @@ ipcMain.handle('open-vocal-strip', async (_, trackId = '') => {
   const bounds = vocalStripWinBounds ? clampMixerBounds(vocalStripWinBounds) : null;
 
   vocalStripWindow = new BrowserWindow({
+    // v2.6.0 - no minimise. This is a `parent:` (owned) window: Win32 gives owned
+    // windows no taskbar button, and `frame: false` leaves no frame to minimise into,
+    // so minimising stranded it as a stub bar with no way to restore it.
+    minimizable: false,
     width: bounds ? bounds.width : VOCAL_STRIP_WIDTH,
     height: bounds ? bounds.height : VOCAL_STRIP_HEIGHT,
     useContentSize: true,
@@ -1597,6 +1609,10 @@ ipcMain.handle('open-pitch-editor', async (_, trackId = '', clipId = '') => {
   const bounds = pitchEditorWinBounds ? clampMixerBounds(pitchEditorWinBounds) : null;
 
   pitchEditorWindow = new BrowserWindow({
+    // v2.6.0 - no minimise. This is a `parent:` (owned) window: Win32 gives owned
+    // windows no taskbar button, and `frame: false` leaves no frame to minimise into,
+    // so minimising stranded it as a stub bar with no way to restore it.
+    minimizable: false,
     width: bounds ? bounds.width : PITCH_EDITOR_WIDTH,
     height: bounds ? bounds.height : PITCH_EDITOR_HEIGHT,
     useContentSize: true,

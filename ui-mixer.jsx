@@ -1018,7 +1018,6 @@ function OutputTrack({ pxPerSec, laneH, playhead, onSeek, onOpenMixer, onBeforeC
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--dim)"; e.currentTarget.style.background = "var(--surface2)"; }}>
             MUTE Clr
           </button>
-          <span className="chip" style={{ fontSize: 9 }}>master</span>
         </div>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
