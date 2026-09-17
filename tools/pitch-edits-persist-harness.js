@@ -8,6 +8,11 @@
  *   ② edits[] 가 새 세그멘테이션에 시간 겹침으로 다시 붙는다.
  *   ③ 🔴 저장(exportProject → importProject) 을 건너 살아남는다.
  *   ④ 🔴 Undo 스냅샷(getSnapshot → applySnapshot) 을 건너 살아남는다.
+ *   ⑤ (v2.7.1) 드래그·Reset 이 편집을 다시 쓸 때 — 한 음이 쪼개진 형제 조각을 조용히 되돌리지
+ *      않고, 다른 구간에서 재부착된 편집을 두 개로 겹쳐 남기지 않는다.
+ *   ⑥ (v2.7.1 → v2.7.2) 움직인 노트 색(적색 팔레트, 테마별 선택)이 10개 테마 모두에서 배경 대비
+ *      3.0 이상이고, 곡선(--red)·기존 노트(--amber)와 거리 60 이상 떨어진다. 고정 짙은 적색은
+ *      solar 에서 배경 대비 1.21, sage 에서 곡선과 대비 1.03 이었다.
  *
  * ③④가 이 하네스의 존재 이유다 — v2.7.0 착수 조사에서 `_serializedClips` 가
  * `clip.pitch` 를 **통째로 빠뜨리고 있었다**는 것을 발견했다. _normalizeClip 은 Stage A
@@ -26,6 +31,9 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const MUTATE = process.argv.includes('--mutate');
+// v2.7.1 — 편집 모델 쪽 변이: 형제 조각 보존 루프를 빼고, 색 선택을 '첫 후보 고정'으로 바꾼다.
+// ⑤의 형제 검사 2건과 ⑥의 테마 검사가 FAIL 해야 하네스가 진짜다.
+const MUTATE_EDITS = process.argv.includes('--mutate-edits');
 
 // ── 가짜 Web Audio (bounce-source-harness.js 와 같은 최소 스텁) ─────────────
 const param = () => ({ value: 0, setValueAtTime() { return this; }, linearRampToValueAtTime() { return this; },
@@ -90,14 +98,23 @@ function loadEngine() {
 function loadEditModel() {
   const file = path.join(ROOT, 'build', 'pitch-editor-app.js');
   if (!fs.existsSync(file)) { console.error('먼저 `npm run build:renderers`.'); process.exit(2); }
-  const src = fs.readFileSync(file, 'utf8').replace(/\r/g, '');
+  let src = fs.readFileSync(file, 'utf8').replace(/\r/g, '');
+  if (MUTATE_EDITS) {
+    const before = src;
+    src = src.replace(/  for \(const nt of notes\) \{\n    if \(ids\.has\(nt\.id\) \|\| peIsPristine\(nt\)\) continue;\n[\s\S]*?\n  \}\n/, '');
+    const mid = src;
+    src = src.replace('return best || any;', 'return cands[0] || null;');
+    if (mid === before || src === mid) { console.error('편집 모델 변이 실패 — 패턴을 못 찾았다.'); process.exit(2); }
+  }
   const a = src.indexOf('const peClamp ='), b = src.indexOf('function peScalePcs');
   if (a < 0 || b < 0) { console.error('편집 모델 블록을 못 찾았다.'); process.exit(2); }
   const ctx = { Math, Array, console, JSON, Number };
   vm.createContext(ctx);
   vm.runInContext(src.slice(a, b) +
     '\nthis.peApplyEdits = peApplyEdits; this.peEditsFromNotes = peEditsFromNotes;' +
-    '\nthis.peIsPristine = peIsPristine; this.PE_TUNING = PE_TUNING;', ctx);
+    '\nthis.peIsPristine = peIsPristine; this.PE_TUNING = PE_TUNING;' +
+    '\nthis.peRewriteEdits = peRewriteEdits; this.pePickEditedColor = pePickEditedColor;' +
+    '\nthis.PE_EDITED_REDS = PE_EDITED_REDS; this.PE_EDITED_MIN_CONTRAST = PE_EDITED_MIN_CONTRAST;', ctx);
   return ctx;
 }
 
@@ -114,7 +131,7 @@ const check = (label, ok, detail) => {
 };
 
 // ══ 시작 ═══════════════════════════════════════════════════════════════════
-console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}\n`);
+console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}${MUTATE_EDITS ? '  [변이: 형제 보존 제거 · 색 고정]' : ''}\n`);
 
 const E = loadEditModel();
 
@@ -195,9 +212,74 @@ DAW.applySnapshot(snap);
 const uEd = ((DAW.tracks[0].clips[0] || {}).pitch || {}).edits || [];
 check('applySnapshot 으로 되돌아온다', uEd.length === 2, `${uEd.length}건`);
 
+// ── ⑤ 편집 다시 쓰기 (v2.7.1) ─────────────────────────────────────────────
+console.log('\n⑤ 드래그·Reset 이 편집을 다시 쓴다 (peRewriteEdits)');
+{
+  const tau = E.PE_TUNING.reattachTau;
+  // 한 음(0.5~1.1초, 원래 편집 target 65)이 NOTES 변경으로 두 조각 p1·p2 로 쪼개진 상태
+  const edits0 = [{ t0: 0.55, t1: 1.10, target: 65, strength: 1, keepVibrato: true }];
+  const raw = [
+    { id: 'p0', t0: 0.00, t1: 0.50, midi: 60.1, target: 60, strength: 1, keepVibrato: true },
+    { id: 'p1', t0: 0.55, t1: 0.82, midi: 62.2, target: 62, strength: 1, keepVibrato: true },
+    { id: 'p2', t0: 0.83, t1: 1.10, midi: 62.3, target: 62, strength: 1, keepVibrato: true },
+  ];
+  const view = E.peApplyEdits(raw, edits0, tau).notes;          // 화면: p1·p2 둘 다 65
+  // p1 만 한 칸 더 올린다
+  const up = E.peRewriteEdits(view, edits0, new Set(['p1']), (nt) => ({ ...nt, target: nt.target + 1 }), tau);
+  const after = E.peApplyEdits(raw, up, tau).notes;
+  check('끈 조각(p1)은 66', after[1].target === 66, String(after[1].target));
+  check('🔴 형제 조각(p2)은 65 그대로 — 조용히 되돌아가지 않는다', after[2].target === 65, String(after[2].target));
+  check('손대지 않은 노트(p0)는 그대로', after[0].target === 60);
+  // p1 만 Reset
+  const rs = E.peRewriteEdits(after, up, new Set(['p1']), () => null, tau);
+  const afterReset = E.peApplyEdits(raw, rs, tau).notes;
+  check('Reset 한 조각(p1)은 검출값 62', afterReset[1].target === 62, String(afterReset[1].target));
+  check('Reset 해도 형제(p2)는 65 유지', afterReset[2].target === 65, String(afterReset[2].target));
+  // 원래 음높이로 되돌리면 저장 목록에서 빠진다
+  const back = E.peRewriteEdits(view, edits0, new Set(['p1', 'p2']), (nt) => ({ ...nt, target: Math.round(nt.midi) }), tau);
+  check('검출값으로 되돌린 노트는 edits[] 에 남지 않는다', back.length === 0, JSON.stringify(back));
+  // 다른 구간에서 재부착된 편집을 다시 끌면 겹친 두 편집이 남지 않는다 (v2.7.0 의 정확-일치 결함)
+  const wide = [{ t0: 0.50, t1: 1.12, target: 64, strength: 1, keepVibrato: true }];
+  const one = [{ id: 'q', t0: 0.55, t1: 1.10, midi: 62.0, target: 62, strength: 1, keepVibrato: true }];
+  const v1 = E.peApplyEdits(one, wide, tau).notes;
+  const re = E.peRewriteEdits(v1, wide, new Set(['q']), (nt) => ({ ...nt, target: nt.target + 1 }), tau);
+  check('재부착된 편집을 다시 끌면 편집이 1건으로 정리된다', re.length === 1 && re[0].target === 65, JSON.stringify(re));
+}
+
+// ── ⑥ 움직인 노트 색 — 적색 팔레트, 10개 테마 (v2.7.2) ─────────────────────
+console.log('\n⑥ 움직인 노트 색이 모든 테마에서 눈에 띄고 곡선·기존 노트와 구분된다');
+{
+  const html = fs.readFileSync(path.join(ROOT, 'pitch-editor.html'), 'utf8');
+  const parse = (b) => { const o = {}; for (const m of b.matchAll(/--([a-z0-9-]+)\s*:\s*([^;}]+)/g)) o[m[1]] = m[2].trim(); return o; };
+  const rs = html.indexOf(':root{');
+  const root = parse(html.slice(rs, html.indexOf('}', rs)));
+  const themes = { default: root };
+  for (const m of html.matchAll(/:root\[data-theme="([a-z]+)"\]\{([^}]*)\}/g)) themes[m[1]] = Object.assign({}, themes[m[1]] || root, parse(m[2]));
+  const hex = (x) => { x = x.replace('#', ''); if (x.length === 3) x = x.split('').map((c) => c + c).join(''); return [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16)); };
+  const dist = (a, b) => Math.sqrt(a.reduce((acc, v, i) => acc + (v - b[i]) ** 2, 0));
+  const lum = (c) => { const f = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]; };
+  const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  let n = 0, wCr = Infinity, wRed = Infinity, wAmb = Infinity, nCr = '', nRed = '', nAmb = '';
+  for (const [name, t] of Object.entries(themes)) {
+    if (!t.amber || !t.bg2 || !t.red) continue;
+    const pick = E.pePickEditedColor(E.PE_EDITED_REDS, t.amber, t.red, t.bg2);
+    if (!pick) { check(name + ': 색을 고르지 못함', false); continue; }
+    n++;
+    const c = hex(pick);
+    const a = cr(c, hex(t.bg2)), dr = dist(c, hex(t.red)), da = dist(c, hex(t.amber));
+    if (a < wCr) { wCr = a; nCr = name + ' ' + pick; }
+    if (dr < wRed) { wRed = dr; nRed = name + ' ' + pick; }
+    if (da < wAmb) { wAmb = da; nAmb = name + ' ' + pick; }
+  }
+  check('테마 ' + n + '개 전부에서 색을 골랐다', n >= 10, String(n));
+  check('배경 대비 최악 ≥ ' + E.PE_EDITED_MIN_CONTRAST + ' (눈에 띈다)', wCr >= E.PE_EDITED_MIN_CONTRAST, wCr.toFixed(2) + ' (' + nCr + ')');
+  check('🔴 곡선(--red)과 거리 최악 ≥ 60 (곡선에 묻히지 않는다)', wRed >= 60, wRed.toFixed(0) + ' (' + nRed + ')');
+  check('기존 노트(--amber)와 거리 최악 ≥ 60', wAmb >= 60, wAmb.toFixed(0) + ' (' + nAmb + ')');
+}
+
 // ── 마무리 ─────────────────────────────────────────────────────────────────
 console.log(`\n${pass} PASS · ${fail} FAIL`);
-if (MUTATE) {
+if (MUTATE || MUTATE_EDITS) {
   console.log(fail > 0
     ? '\n✅ 변이 시험 통과 — 수정을 빼면 하네스가 잡아낸다.'
     : '\n🔴 변이했는데도 전건 통과 — 이 하네스는 ③④를 실제로 지키지 못한다.');

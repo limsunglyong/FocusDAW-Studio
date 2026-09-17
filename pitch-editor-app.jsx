@@ -389,6 +389,88 @@ function peApplyEdits(notes, edits, tau) {
   return { notes: out, missed };
 }
 
+// v2.7.1 — rewrite the stored edits for the notes whose ids are in `ids`. `change(note)` returns
+// the note as it should now be, or null for "back to what the detector proposed" (Reset).
+//
+// Every edit that currently LANDS on one of these notes (the same overlap rule as peApplyEdits)
+// is taken out and replaced by one keyed to the note's own span. v2.7.0 matched edits by the
+// note's exact t0/t1 instead, which missed an edit re-attached from a different span after a
+// NOTES change and left two edits fighting over one note.
+// A note OUTSIDE `ids` that shared a removed edit — one sung note cut into two pieces — gets
+// its own copy, so editing or resetting one piece never silently resets its sibling. Nothing
+// pristine is ever stored (설계 §4-1). Pure, so the harness measures exactly this code.
+function peRewriteEdits(notes, edits, ids, change, tau) {
+  const t = Number.isFinite(tau) ? tau : PE_TUNING.reattachTau;
+  const span = (nt) => ({ t0: nt.t0, t1: nt.t1, target: nt.target, strength: nt.strength, keepVibrato: nt.keepVibrato });
+  const lands = (ed, nt) => { const len = ed.t1 - ed.t0; return len > 0 && peOverlap(ed.t0, ed.t1, nt.t0, nt.t1) / len >= t; };
+  const hit = notes.filter((nt) => ids.has(nt.id));
+  const removed = edits.filter((ed) => hit.some((nt) => lands(ed, nt)));
+  const next = edits.filter((ed) => !removed.includes(ed));
+  for (const nt of notes) {
+    if (ids.has(nt.id) || peIsPristine(nt)) continue;
+    if (removed.some((ed) => lands(ed, nt))) next.push(span(nt));
+  }
+  for (const nt of hit) {
+    const after = change(nt);
+    if (after && !peIsPristine(after)) next.push(span(after));
+  }
+  return next;
+}
+
+// v2.7.1 (R2) / v2.7.2 — colour for notes the user has moved.
+//
+// v2.7.1 picked among the theme's --violet / --blue / --green. The user then asked for something
+// that stands out more — "a deep red family" (T-2.7.1-3). A FIXED deep red measured badly:
+//   · 8 of the 10 themes are dark, and a deep red is itself dark — 1.21:1 against the roll in
+//     "solar", i.e. LESS visible than what it replaced;
+//   · the detected-pitch curve is --red, and in "sage" --red is already a deep crimson (#ba1a1a)
+//     — a deep-red block there is 1.03:1 against the curve, and blocks are painted OVER it.
+// So the colour comes from a red-family PALETTE, deep to vivid, picked PER THEME at paint time:
+// among entries with at least PE_EDITED_MIN_CONTRAST against the roll background, the one
+// farthest from both that theme's --red (the curve) and --amber (untouched notes). Result over
+// the 10 themes: light "ivory" gets the deep red that was asked for, dark themes get a vivid
+// crimson, and "sage" — light, but whose curve is already deep red — gets a vivid one to stay
+// off the curve. Worst case: contrast 3.01, distance 61 from the curve, 81 from amber.
+//
+// ⚠️ Hex literals in canvas code are normally a smell here (v2.4.3: hardcoded canvas colours
+// escaped the theme pass). These are a deliberate exception: no theme defines a red-family token
+// distinct from --red, and every entry is FILTERED against the live theme tokens, so a theme
+// change still re-picks. Pure and hex-only so tools/pitch-edits-persist-harness.js checks every
+// theme with this exact code.
+const PE_EDITED_REDS = ["#8f1022", "#a3122b", "#b8142e", "#d1182f", "#e8213a", "#ff2d4a", "#ff4d6d"];
+const PE_EDITED_MIN_CONTRAST = 3.0;
+function peHexRgb(s) {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(s || "").trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+function peRelLum(c) {
+  const f = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+}
+function pePickEditedColor(cands, amber, red, bg) {
+  const A = peHexRgb(amber), R = peHexRgb(red), B = peHexRgb(bg);
+  if (!A || !R) return null;
+  const dist = (x, y) => Math.sqrt((x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2 + (x[2] - y[2]) ** 2);
+  let best = null, bestScore = -1, any = null, anyScore = -1;
+  for (const c of cands) {
+    const X = peHexRgb(c);
+    if (!X) continue;
+    const score = Math.min(dist(X, A), dist(X, R));
+    const cr = B ? (Math.max(peRelLum(X), peRelLum(B)) + 0.05) / (Math.min(peRelLum(X), peRelLum(B)) + 0.05) : 99;
+    if (score > anyScore) { any = c; anyScore = score; }
+    if (cr >= PE_EDITED_MIN_CONTRAST && score > bestScore) { best = c; bestScore = score; }
+  }
+  return best || any;
+}
+function peShade(hex, k) {
+  const c = peHexRgb(hex);
+  if (!c) return hex;
+  return "rgb(" + c.map((v) => Math.round(v * k)).join(",") + ")";
+}
+
 // Pitch classes of the project's detected key, for the "outside the key" outline (설계 §12-2).
 // The key string is the engine's own format — "C", "F#", "Am" — so minor is the trailing "m".
 const PE_MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
@@ -409,6 +491,11 @@ const peFmtCents = (c) => (c > 0 ? "+" : "") + c + "¢";
 
 // One shared empty set, so a roll with no selection does not allocate one per draw.
 const PE_NO_SEL = new Set();
+
+// v2.7.1 — which audio a pitch curve belongs to. Only these three change what was analysed:
+// De-noise and other prints register a NEW source id, a trim moves the offset or the duration.
+// Moving a clip on the timeline changes none of them — the curve is clip-relative.
+const peAudioKey = (inf) => (inf ? inf.sourceId + "|" + inf.sourceOffset + "|" + inf.duration : null);
 
 // Canvas roundRect exists in this Electron, but it throws when the radius exceeds half the
 // box — which happens on every note narrower than 6px. Clamping here keeps the caller simple.
@@ -462,7 +549,7 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
   // The wheel handler is attached imperatively (it needs passive:false to preventDefault), so
   // it reads live state through a ref instead of being torn down and rebound on every change.
   const liveRef = React.useRef(null);
-  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, notes, onSeek, onView, onRange, onSelectNote, onNoteDrag };
+  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, notes, selection, onSeek, onView, onRange, onSelectNote, onNoteDrag };
 
   React.useEffect(() => {
     const el = wrapRef.current;
@@ -562,6 +649,9 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
       keyWhite: v("--key-white", "#e6dcc6"), keyWhite2: v("--key-white-2", "#cbc0a6"),
       keyBlack: v("--key-black", "#221e18"), keyInk: v("--key-ink", "#4a4033"),
     };
+    // v2.7.2 — red family, picked per theme (see PE_EDITED_REDS for the measurements).
+    C.edited = pePickEditedColor(PE_EDITED_REDS, C.amber, C.red, C.bg) || C.amber;
+    C.editedDeep = peShade(C.edited, 0.72);
 
     const W = size.w, H = size.h;
     const rollW = Math.max(1, W - KEY_W - SB);
@@ -693,9 +783,14 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
         const isSel = sel.has(nt.id);
         const offKey = scalePcs ? !scalePcs.has(((row % 12) + 12) % 12) : false;
 
+        // A note the user has moved is filled in a different colour so it can be found again
+        // among dozens of untouched ones (사용자 요청 R2). "Moved" is exactly peIsPristine's
+        // negation — the same rule that decides what gets saved — so dragging a note back to
+        // the detected pitch also turns it back to amber.
+        const edited = !peIsPristine(nt);
         const grad = g.createLinearGradient(0, y, 0, y + nh);
-        grad.addColorStop(0, C.amber);
-        grad.addColorStop(1, C.amberDeep);
+        grad.addColorStop(0, edited ? C.edited : C.amber);
+        grad.addColorStop(1, edited ? C.editedDeep : C.amberDeep);
         // A block is only as solid as the detection behind it, so a shaky note looks shaky —
         // the same rule the curve already follows.
         g.globalAlpha = 0.45 + 0.55 * peClamp(nt.confidence, 0, 1);
@@ -813,7 +908,18 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
       const t = xToTime(px), m = yToMidi(py);
       const hit = (L.notes || []).find((nt) => nt.target === m && t >= nt.t0 && t <= nt.t1);
       if (hit) {
-        L.onSelectNote(hit.id, e.shiftKey || e.ctrlKey || e.metaKey);
+        // v2.7.1 (B1). Pressing a note that is ALREADY selected must not change the selection
+        // yet: Ctrl/Shift+press used to toggle it OFF on mousedown, so the drag that followed
+        // moved that one note alone while the rest stayed highlighted (T-2.7.0-1 ②b). A plain
+        // press on one note of a multi-selection had the same hole — it collapsed the group
+        // before the drag could carry it. The change is now deferred: if the gesture turns into
+        // a drag the whole selection moves; if it ends without moving it was a click, and the
+        // toggle / collapse is applied on mouseup — the usual DAW behaviour.
+        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+        const selNow = L.selection || PE_NO_SEL;
+        const deferSelect = selNow.has(hit.id) && (additive || selNow.size > 1);
+        if (!deferSelect) L.onSelectNote(hit.id, additive);
+        if (deferSelect && !L.onNoteDrag) L.onSelectNote(hit.id, additive);
         // Stage D — the same press that selects also starts a vertical drag on the target
         // pitch. Rows are whole semitones, so the delta is rounded to a row: dragging is a
         // chromatic move, never a continuous detune (that is what `strength` is for).
@@ -833,6 +939,7 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
             window.removeEventListener("mousemove", move);
             window.removeEventListener("mouseup", up);
             if (moved) L.onNoteDrag(hit.id, last, true);
+            else if (deferSelect) L.onSelectNote(hit.id, additive);
           };
           window.addEventListener("mousemove", move);
           window.addEventListener("mouseup", up);
@@ -1036,19 +1143,22 @@ function PitchEditorApp() {
   const [division, setDivision] = React.useState(16);
   const [selection, setSelection] = React.useState(PE_NO_SEL);
   // Stage D (설계 §4-1). `edits` is the truth the STUDIO owns and the project file keeps;
-  // the notes on screen are derived from (analysis → segmentation → these). `localUndo`
-  // is the window's own stack, in front of the studio's (설계 §11-2). `drag` is the
+  // the notes on screen are derived from (analysis → segmentation → these). `drag` is the
   // in-flight gesture — held apart so a drag paints live without pushing an undo per pixel.
+  //
+  // v2.7.1 (B2) — there is NO window-local undo stack any more. Every edit is one entry on the
+  // studio stack and Ctrl+Z / Ctrl+Y are forwarded, like every other satellite window. See
+  // 설계 §11-2 (개정 2026-09-17) for why the local stack existed and why it had to go.
   const [edits, setEdits] = React.useState([]);
-  const [localUndo, setLocalUndo] = React.useState([]);
   const [drag, setDrag] = React.useState(null);
   const editsRef = React.useRef(edits); editsRef.current = edits;
   const selectionRef = React.useRef(selection); selectionRef.current = selection;
   const notesRef = React.useRef([]);
-  // What we last pushed to the studio. An incoming PITCH_CLIP that matches this is our own
-  // echo, not an outside change — without this the local undo stack would be wiped by every
-  // edit the user makes.
-  const lastSentRef = React.useRef("[]");
+  // Identity of the audio the current curve was measured on (source · offset · duration).
+  // A studio undo/redo used to drop the curve unconditionally — correct while this window was
+  // read-only, but once notes could be edited, undoing a single note move threw away seconds of
+  // analysis (T-2.7.0-4). The curve is now dropped only when this identity actually changes.
+  const analysisKeyRef = React.useRef(null);
   const [struck, setStruck] = React.useState(null);   // key flashed by a preview click
   const viewRef = React.useRef(view); viewRef.current = view;
   const infoRef = React.useRef(info); infoRef.current = info;
@@ -1086,23 +1196,25 @@ function PitchEditorApp() {
         // replace this clip, so re-pull it on every broadcast rather than trusting the copy
         // taken when the window opened.
         requestClip();
-        // A curve measured from the old audio would sit over the new waveform and quietly
-        // lie. Drop it and let the user re-analyse.
-        setAnalysis(null);
+        // v2.7.1 — the curve is NOT dropped here any more. A curve measured from old audio
+        // would still quietly lie, so the check moved to the PITCH_CLIP reply this request
+        // produces, where it can compare the audio's identity instead of assuming it changed.
       } else if (msg.type === "PITCH_CLIP") {
         if (msg.trackId !== trackId || msg.clipId !== clipId) return;
         if (msg.ok && msg.info) {
           setInfo(msg.info);
           setError("");
-          // Stage D — adopt the stored edits. If they differ from what we last sent, the
-          // change came from outside this window (first load, or a studio undo/redo), and
-          // 설계 §11-2 says the local stack is dropped then: the clip may have changed under us.
+          // Stage D — the studio's edits are the truth (first load, a studio undo/redo, or the
+          // echo of our own send). Adopt them whenever they differ from what is on screen.
           const incoming = (msg.info.pitch && Array.isArray(msg.info.pitch.edits)) ? msg.info.pitch.edits : [];
-          const inJson = JSON.stringify(incoming);
-          if (inJson !== lastSentRef.current) {
-            lastSentRef.current = inJson;
-            setEdits(incoming);
-            setLocalUndo([]);
+          if (JSON.stringify(incoming) !== JSON.stringify(editsRef.current)) setEdits(incoming);
+          // v2.7.1 (B2) — drop the curve only if the AUDIO under it changed. De-noise makes a
+          // new source id, a trim changes offset/duration; a note-edit undo or a clip MOVE
+          // changes neither (the curve is clip-relative), so the analysis survives those.
+          const key = peAudioKey(msg.info);
+          if (analysisKeyRef.current && analysisKeyRef.current !== key) {
+            analysisKeyRef.current = null;
+            setAnalysis(null);
           }
           // Fit the whole clip on first load, and re-fit if the clip got shorter under us
           // (a trim or an undo) so the view can never point past the end.
@@ -1118,6 +1230,7 @@ function PitchEditorApp() {
         setBusy(false); setProgress(0);
         if (msg.ok && msg.analysis) {
           setAnalysis(msg.analysis);
+          analysisKeyRef.current = peAudioKey(infoRef.current);
           setNote("");
           setRange(peFitRange(msg.analysis));   // frame what was actually sung
         } else { setAnalysis(null); setNote(msg.message || "Pitch analysis failed."); }
@@ -1301,15 +1414,12 @@ function PitchEditorApp() {
       // inconvenience reported against T-2.0.2-1 ⑧. There was no design reason for it: Stage
       // A/B make no edits of their own, so nothing had asked for the binding yet.
       //
-      // Stage D adds a WINDOW-LOCAL note-edit stack IN FRONT of this: Ctrl+Z will pop that
-      // first and only fall through to the studio once it is empty, Apply (print) will push a
-      // single entry onto the studio stack, and a studio undo will drop the local stack the
-      // same way it drops the analysis below (the clip may have changed underneath).
+      // v2.7.1 — note edits live on the STUDIO stack too, so this forward is the whole story:
+      // one stack, one order, Redo included. (Stage D first shipped a window-local stack in
+      // front of this; it fought the studio stack — 설계 §11-2 개정.)
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
-        e.preventDefault();
-        if (undoLocalRef.current && undoLocalRef.current()) return;   // 설계 §11-2 — local first
-        peChannel.postMessage({ type: "REQUEST_UNDO" }); return;
+        e.preventDefault(); peChannel.postMessage({ type: "REQUEST_UNDO" }); return;
       }
       if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
         e.preventDefault(); peChannel.postMessage({ type: "REQUEST_REDO" }); return;
@@ -1378,53 +1488,50 @@ function PitchEditorApp() {
   }, [applied.notes, drag]);
   notesRef.current = notes;
 
-  // One gesture → one local-undo entry, one message, one studio undo entry.
+  // One gesture → one message → one entry on the studio undo stack.
+  // A gesture that changes nothing sends nothing: a no-op entry would eat the next Ctrl+Z and
+  // clear Redo (앱개발.md 상시 노트 "Undo 스냅샷 정합성").
   const pushEdits = React.useCallback((next) => {
-    setLocalUndo((st) => [...st.slice(-49), editsRef.current]);
+    if (JSON.stringify(next) === JSON.stringify(editsRef.current)) return;
     setEdits(next);
-    lastSentRef.current = JSON.stringify(next);
     peChannel.postMessage({ type: "SET_PITCH_EDITS", trackId, clipId, edits: next });
   }, [trackId, clipId]);
 
-  // Turn "these notes moved by N semitones" into the stored edit list. An edit is keyed by the
-  // note's own time span, and a note dragged back to what the detector proposed drops OUT of
-  // the list — the list must only ever hold genuine departures (설계 §4-1).
-  const applyDelta = React.useCallback((ids, dSemi) => {
-    const next = editsRef.current.slice();
-    for (const nt of notesRef.current) {
-      if (!ids.has(nt.id)) continue;
-      const base = applied.notes.find((x) => x.id === nt.id) || nt;
-      const merged = { ...base, target: base.target + dSemi };
-      const i = next.findIndex((e) => Math.abs(e.t0 - nt.t0) < 1e-6 && Math.abs(e.t1 - nt.t1) < 1e-6);
-      if (peIsPristine(merged)) { if (i >= 0) next.splice(i, 1); continue; }
-      const ed = { t0: nt.t0, t1: nt.t1, target: merged.target, strength: merged.strength, keepVibrato: merged.keepVibrato };
-      if (i >= 0) next[i] = ed; else next.push(ed);
-    }
-    return next;
-  }, [applied.notes]);
+  // The logic lives in peRewriteEdits (module scope) so the harness measures the same code.
+  const rewriteEdits = React.useCallback(
+    (ids, change) => peRewriteEdits(applied.notes, editsRef.current, ids, change, PE_TUNING.reattachTau),
+    [applied.notes]
+  );
 
   const onNoteDrag = React.useCallback((id, dSemi, done) => {
     const sel = selectionRef.current;
     const ids = sel.has(id) ? new Set(sel) : new Set([id]);
-    if (!done) { setDrag({ ids, dSemi }); return; }
+    if (!done) {
+      setDrag({ ids, dSemi });
+      // v2.7.1 (R1) — sound the new pitch on every semitone step, with the same tone a click
+      // on the keyboard makes. Only the GRABBED note: sounding every selected note at once is
+      // a chord, which is harder to judge by ear than the one note under the pointer.
+      const grabbed = applied.notes.find((nt) => nt.id === id);
+      if (grabbed) previewKey(grabbed.target + dSemi);
+      return;
+    }
     setDrag(null);
     if (!dSemi) return;
-    pushEdits(applyDelta(ids, dSemi));
-  }, [applyDelta, pushEdits]);
+    pushEdits(rewriteEdits(ids, (nt) => ({ ...nt, target: nt.target + dSemi })));
+  }, [applied.notes, previewKey, rewriteEdits, pushEdits]);
 
-  // 설계 §11-2 — Ctrl+Z pops this first and only reaches the studio once it is empty, so the
-  // user is never sent to another window to undo what they did here, and never trapped either.
-  const undoLocal = React.useCallback(() => {
-    const st = localUndo;
-    if (!st.length) return false;
-    const prev = st[st.length - 1];
-    setLocalUndo(st.slice(0, -1));
-    setEdits(prev);
-    lastSentRef.current = JSON.stringify(prev);
-    peChannel.postMessage({ type: "SET_PITCH_EDITS", trackId, clipId, edits: prev });
-    return true;
-  }, [localUndo, trackId, clipId]);
-  const undoLocalRef = React.useRef(undoLocal); undoLocalRef.current = undoLocal;
+  // v2.7.1 (R2) — Reset: put the selected notes back to the detected pitch. One undo entry, so
+  // Ctrl+Z brings the edits back (the user's own reason for wanting it: with Undo/Redo working,
+  // Reset is safe to press).
+  const selectedEdited = React.useMemo(
+    () => notes.some((nt) => selection.has(nt.id) && !peIsPristine(nt)),
+    [notes, selection]
+  );
+  const resetSelected = React.useCallback(() => {
+    const sel = selectionRef.current;
+    if (!sel.size) return;
+    pushEdits(rewriteEdits(sel, () => null));
+  }, [rewriteEdits, pushEdits]);
   const scalePcs = React.useMemo(() => peScalePcs(tempo && tempo.detectedKey), [tempo && tempo.detectedKey]);
   // Ids are only unique within one segmentation, so a selection cannot outlive the notes it
   // pointed at — a re-cut (new analysis, new grid) starts from nothing selected.
@@ -1632,6 +1739,13 @@ function PitchEditorApp() {
                 : selection.size > 1 ? ` · ${selection.size} notes selected`
                 : notes.length ? " · click a note to select it" : ""))}
         </span>
+        {analysis && selectedEdited && (
+          <button className="pe-zbtn" onClick={resetSelected}
+            style={{ width: "auto", padding: "0 9px", flex: "0 0 auto" }}
+            title="Return the selected notes to the detected pitch. Ctrl+Z brings the edit back.">
+            Reset
+          </button>
+        )}
         {/* Middle: WHICH rule produced the notes on screen (설계 §12-1). Without it a user who
             sang twelve notes and sees forty has no way to tell whether the grid or the singing
             is responsible. */}

@@ -1704,7 +1704,12 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const transportRef = useRef({});       // latest rule-honoring transport action fns (toolbar/keyboard/mixer)
   const [recordCount, setRecordCount] = useState(null); // 3→2→1 count-in overlay number (null = hidden)
   const [prerollLeft, setPrerollLeft] = useState(null); // seconds until punch-in (null = not pre-rolling)
-  const MAX_UNDO = 50;
+  // v2.7.1 — raised from 50 (사용자 결정 2026-09-17). Pitch-editor note edits now share this
+  // stack (설계 §11-2 개정), and a drag is one entry: at 50, a normal note-editing pass would
+  // push an earlier Merge or clip edit out of the history. Entries are light — a snapshot
+  // holds AudioBuffers by REFERENCE (v2.3.3), so the cost of depth is mainly that buffers
+  // replaced since (De-noise, re-records) stay alive until their entry falls off the end.
+  const MAX_UNDO = 200;
   const stretchPreparing = !!DAW._stretchPreviewPreparing;
   const stretchDoneSeq = DAW._stretchPreviewDoneSeq || 0;
   const fileTracks = DAW.tracks.filter(isFileGroupTrack);
@@ -2472,6 +2477,15 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         // per message: the editor coalesces a drag into a single send, so the studio stack
         // gains one step per gesture rather than one per mouse-move (설계 §11-2).
         case "SET_PITCH_EDITS": {
+          // v2.7.1 — refuse an identical list BEFORE snapshotting: a no-op entry eats the next
+          // Ctrl+Z and clears Redo (상시 노트 "Undo 스냅샷 정합성"). The editor already skips
+          // these; this is the studio holding its own line.
+          {
+            const tr = DAW.tracks.find((t) => t.id === msg.trackId);
+            const cl = tr && (tr.clips || []).find((c) => c.id === msg.clipId);
+            const cur = (cl && cl.pitch && cl.pitch.edits) || [];
+            if (JSON.stringify(cur) === JSON.stringify(msg.edits || [])) break;
+          }
           const savedRedo = pushUndo();
           const ok = DAW.setClipPitchEdits && DAW.setClipPitchEdits(msg.trackId, msg.clipId, msg.edits);
           if (!ok) { cancelUndo(savedRedo); break; }
