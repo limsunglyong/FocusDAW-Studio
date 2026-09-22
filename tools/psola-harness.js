@@ -405,6 +405,36 @@ console.log('⑩ 프린트 — 클립 구간만 보정하고 길이·오프셋�
 // ── ⑪ 슬라이스 렌더 (v2.8.1) ───────────────────────────────────────────────
 // 🔴 비동기 경로는 동기와 **같은 결과**여야 한다. 슬라이스가 결과를 바꾸면 그것은
 //    최적화가 아니라 결함이다 — 유성 구간끼리 독립이라는 전제를 지키는 검사다.
+// ── ⑫ 프린트 후 편집을 비우면 되돌아갈 수 있어야 한다 (v2.8.2, 사용자 보고) ──
+console.log('');
+console.log('⑫ 프린트한 뒤 노트를 전부 제자리로 돌리면 원본으로 돌아갈 길이 있다');
+{
+  const D = loadEngine();
+  const fb = new FakeCtx().createBuffer(1, X.length, SR);
+  fb.getChannelData(0).set(X);
+  D.tracks.length = 0;
+  const tr = D.addBounceTrack('R', fb, { fileName: 'R.wav', filePath: '/x/R.wav' });
+  const clip = tr.clips[0];
+  const an = D.analyzeClipPitch(tr.id, clip.id);
+
+  const moved = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3 + 2, strength: 1, keepVibrato: true }];
+  const sid = D.printClipPitch(tr.id, clip.id, an, moved);
+  check('먼저 프린트한다', !!sid && clip.sourceId === sid);
+  const baseId = clip.pitch.baseSourceId;
+
+  // 사용자가 Reset(또는 드래그)으로 노트를 원래 자리로 되돌린 상태 = 보정 0
+  const pristine = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3, strength: 1, keepVibrato: true }];
+  check('🔴 보정이 0 이면 렌더는 null 을 준다 (여기까지는 의도된 동작)',
+        D.printClipPitch(tr.id, clip.id, an, pristine) === null);
+  // 🔴 그 null 을 실패로 끝내면 사용자는 화면과 소리가 어긋난 채 맞출 길이 없다.
+  //    앱은 이때 revert 로 처리한다 — 그 경로가 실제로 되돌리는지 본다.
+  check('🔴 ⑫ 되돌리기가 그 자리를 메운다', D.revertClipPitch(tr.id, clip.id) === true);
+  check('오디오가 원본으로 돌아온다', clip.sourceId === baseId);
+  check('printedSourceId 가 비워진다', clip.pitch.printedSourceId === null);
+  check('편집 구조는 남는다 (다시 Apply 가능)', !!clip.pitch && clip.pitch.baseSourceId === baseId);
+}
+
+
 const asyncChecks = (async () => {
   console.log('');
   console.log('⑪ 슬라이스 렌더가 동기 렌더와 같은 결과를 낸다');

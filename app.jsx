@@ -2548,6 +2548,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
             channel.postMessage({ type: "PITCH_PRINT_PROGRESS", trackId, clipId, done, total });
           }).then((sid) => {
             if (!sid) {
+              // 🔴 v2.8.2 — 렌더할 것이 없다고 해서 언제나 실패는 아니다.
+              //
+              // 프린트된 클립에서 노트를 전부 제자리로 되돌리면(Reset 이든 드래그든) 남은
+              // 보정이 0 이 된다. 그때 Apply 의 뜻은 "오디오를 화면과 맞춰라" = **원본으로
+              // 되돌려라** 이다. 여기서 실패로 답하면 사용자는 화면과 소리가 어긋난 채
+              // 맞출 방법이 없다(사용자 보고 2026-09-22).
+              if (DAW.revertClipPitch && DAW.revertClipPitch(trackId, clipId)) {
+                force((n) => n + 1);
+                reply(true, "No corrections remain — the original take is back.");
+                return;
+              }
               cancelUndo(savedRedo);
               reply(false, "Nothing to apply — no note has been moved yet.");
               return;

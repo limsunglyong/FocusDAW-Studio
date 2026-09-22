@@ -4005,7 +4005,17 @@
         const r = this._psolaRatioAt(an, tgt, Math.round(t), sr);
         const Tout = Math.max(2, Tin / r);
         // 그레인: 입력 마크 중심 ±Tin, Hann. 출력 마크 t 를 중심으로 놓는다.
-        const L = Math.round(Tin);
+        // 🔴 반폭은 **출력 주기**로 잡는다(합성 주기 창). 고전 PSOLA 는 입력 주기(Tin)를
+        // 쓰지만, 그러면 이동이 커질수록 그레인이 출력 간격보다 길어져 같은 파형이 어긋난
+        // 채 여러 겹 쌓인다 — 그 이음매가 **원본에 없던 고역**으로 들린다.
+        //
+        // 계측(B3 기준, 고역 비중 원본=100%):
+        //        ±3     +5      +7     −5      −7
+        //   Tin   91%   116%   170%   110%   121%
+        //   Tout  91%   103%   110%    99%   113%   ← 채택
+        // 작은 교정(±3 이하)에서는 차이가 없고, 중간 이동에서 확연히 낫다. min(Tin,Tout)
+        // 은 내림에서 Tin 과 같아져 이점이 없다.
+        const L = Math.max(2, Math.round(Tout));
         const inv2L = 1 / (2 * L);
         for (let d = -L; d <= L; d++) {
           const si = marks[j] + d;

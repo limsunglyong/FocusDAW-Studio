@@ -1904,7 +1904,16 @@ function PitchEditorApp() {
     () => notes.some((nt) => !peIsPristine(nt, defs)),
     [notes, defs]
   );
-  const canApply = !!analysis && !!notes.length && anyEdit && !printing && !busy;
+  // 🔴 v2.8.2 — `anyEdit` 만 보면 구멍이 생긴다(사용자 보고 2026-09-22).
+  //
+  // Apply 로 프린트한 뒤 노트를 **전부 원래 자리로 되돌리면**(Reset 이든 드래그든)
+  // `anyEdit` 이 false 가 되어 Apply 가 꺼진다. 그런데 **오디오는 여전히 보정된 상태**다 —
+  // 화면은 "손댄 것 없음"인데 소리는 고쳐져 있고, 그 둘을 맞출 버튼이 사라진다.
+  //
+  // Apply 의 뜻은 "**오디오를 지금 화면과 맞춘다**"이다. 그러니 프린트된 상태에서는
+  // 편집이 비어도 켜져 있어야 하고, 그때의 Apply 는 원본으로 되돌리는 일이 된다
+  // (app.jsx 의 REQUEST_PITCH_PRINT 가 렌더할 것이 없으면 revert 로 처리한다).
+  const canApply = !!analysis && !!notes.length && (anyEdit || printed) && !printing && !busy;
   const applyCorrection = React.useCallback(() => {
     if (!canApply) return;
     setPrinting(true);
@@ -2256,6 +2265,7 @@ function PitchEditorApp() {
                   disabled={!canApply}
                   title={printing ? "Rendering…"
                     : !analysis ? "Analyse the clip first"
+                    : (!anyEdit && printed) ? "No corrections remain — applying puts the original take back."
                     : !anyEdit ? "Move a note first — there is nothing to apply"
                     : "Render the correction into the audio. The original take is kept and Ctrl+Z undoes it."}>
                   {printing ? (printPct > 0 ? `Applying… ${Math.round(printPct * 100)}%` : "Applying…") : "Apply"}
