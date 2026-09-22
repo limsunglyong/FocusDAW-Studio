@@ -122,6 +122,14 @@ function peTone(midi) {
 // earlier in the song is legitimately negative — and ui-kit's fmtTime renders that as
 // "-1:-5.-15". Outside the clip there is no clip position to show, so say so.
 const peFmtTime = (s) => (Number.isFinite(s) && s >= 0 ? fmtTime(s) : "--:--");
+// 🔴 HARNESS BOUNDARY — START. tools/pitch-edits-persist-harness.js lifts everything from
+// this line down to `const peCentsOff =` into a vm and measures the real code, so that whole
+// span must stay PURE: no React, no DOM, no window at module level.
+//
+// The markers are CODE, not comments — esbuild strips comments from build/pitch-editor-app.js,
+// which is what the harness actually reads. v2.7.3 moved the end marker from `function
+// peScalePcs` to `const peCentsOff =`: the new Key-snap helpers call peScalePcs, so the window
+// could no longer END at the thing they depend on. **New pure helpers go before peCentsOff.**
 const peClamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // Applied to <html> the moment a theme arrives, NOT from an effect. React runs CHILD effects
@@ -347,18 +355,48 @@ if (typeof window !== "undefined") window.PE_TUNING = PE_TUNING;
 
 const peOverlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
 
+// v2.7.3 — the clip-wide defaults. Mirrors the engine's pitchDefaults(): a project written
+// before v2.7.3 has no block and reads as the values the app shipped with, which is what it
+// was built under. 🔴 Keep the two in step — the engine clamps what is stored, this decides
+// what is DRAWN, and a disagreement shows up as notes that look edited but save as pristine.
+const PE_DEFAULTS = { strength: 1, keepVibrato: true };
+function peDefaults(d) {
+  // 🔴 Number(null) === 0 (NaN 이 아니다). 엔진의 pitchDefaults 와 같은 함정 — 그쪽 주석 참조.
+  const s = d ? Number(d.strength) : NaN;
+  return {
+    strength: Number.isFinite(s) ? peClamp(s, 0, 1) : PE_DEFAULTS.strength,
+    keepVibrato: d && d.keepVibrato !== undefined ? d.keepVibrato !== false : PE_DEFAULTS.keepVibrato,
+  };
+}
+
 // 노트가 검출기가 제안한 그대로인가. 기본값은 저장하지 않는다 — peSegmentPass 가
 // target 을 Math.round(midi) 로 **자동으로** 채우므로, 전부 저장하면 "사용자가 지정한
 // 값"과 "검출값의 반올림"을 영영 구분할 수 없다. edits[] 에 있다는 것 자체가 사용자가
 // 손댔다는 뜻이어야 한다.
-function peIsPristine(nt) {
-  return nt.target === Math.round(nt.midi) && nt.strength === 1 && nt.keepVibrato === true;
+//
+// v2.7.3 — "그대로"의 기준이 상수 1/true 가 아니라 **클립 기본값**이다. 전역 슬라이더를
+// 70% 로 내린 클립에서 70% 인 노트는 손대지 않은 것이고, 그래서 저장되지도 않고 화면에서
+// 빨개지지도 않는다. 이 한 줄이 전역 기본값을 별도 필드로 둔 이유 전부다.
+function peIsPristine(nt, defs) {
+  const d = defs || PE_DEFAULTS;
+  return nt.target === Math.round(nt.midi) && nt.strength === d.strength && nt.keepVibrato === d.keepVibrato;
 }
 
-function peEditsFromNotes(notes) {
+// v2.7.3 — 🔴 peSegmentPass stamps every FRESH note with 1 / true, because that is what the
+// detector proposes and it knows nothing about this clip. Re-stamp them with the clip's
+// defaults before the stored edits go on. Skip this and a clip whose default is 0.5 opens with
+// every note reading as "the user set this one to 1" — stored on the next save, and drawn in
+// the moved-note colour — which is precisely what keeping the defaults out of edits[] was for.
+// The stored edits are applied AFTER, so notes the user really did touch keep their own values.
+function peSeedDefaults(notes, defs) {
+  const d = defs || PE_DEFAULTS;
+  return (notes || []).map((nt) => ({ ...nt, strength: d.strength, keepVibrato: d.keepVibrato }));
+}
+
+function peEditsFromNotes(notes, defs) {
   const out = [];
   for (const nt of notes || []) {
-    if (peIsPristine(nt)) continue;
+    if (peIsPristine(nt, defs)) continue;
     out.push({ t0: nt.t0, t1: nt.t1, target: nt.target, strength: nt.strength, keepVibrato: nt.keepVibrato });
   }
   return out;
@@ -399,7 +437,7 @@ function peApplyEdits(notes, edits, tau) {
 // A note OUTSIDE `ids` that shared a removed edit — one sung note cut into two pieces — gets
 // its own copy, so editing or resetting one piece never silently resets its sibling. Nothing
 // pristine is ever stored (설계 §4-1). Pure, so the harness measures exactly this code.
-function peRewriteEdits(notes, edits, ids, change, tau) {
+function peRewriteEdits(notes, edits, ids, change, tau, defs) {
   const t = Number.isFinite(tau) ? tau : PE_TUNING.reattachTau;
   const span = (nt) => ({ t0: nt.t0, t1: nt.t1, target: nt.target, strength: nt.strength, keepVibrato: nt.keepVibrato });
   const lands = (ed, nt) => { const len = ed.t1 - ed.t0; return len > 0 && peOverlap(ed.t0, ed.t1, nt.t0, nt.t1) / len >= t; };
@@ -407,12 +445,12 @@ function peRewriteEdits(notes, edits, ids, change, tau) {
   const removed = edits.filter((ed) => hit.some((nt) => lands(ed, nt)));
   const next = edits.filter((ed) => !removed.includes(ed));
   for (const nt of notes) {
-    if (ids.has(nt.id) || peIsPristine(nt)) continue;
+    if (ids.has(nt.id) || peIsPristine(nt, defs)) continue;
     if (removed.some((ed) => lands(ed, nt))) next.push(span(nt));
   }
   for (const nt of hit) {
     const after = change(nt);
-    if (after && !peIsPristine(after)) next.push(span(after));
+    if (after && !peIsPristine(after, defs)) next.push(span(after));
   }
   return next;
 }
@@ -485,6 +523,151 @@ function peScalePcs(key) {
   return new Set(steps.map((x) => (tonic + x) % 12));
 }
 
+// v2.7.3 — Key snap. Returns the semitone in `pcs` nearest to `midi`.
+//
+// It takes a FRACTIONAL midi on purpose. `Snap all to key` feeds it the detected pitch, not
+// the rounded target: a note sung at 60.6 in C major belongs on 60 by two thirds of a
+// semitone, and rounding to 61 first would throw that away and then have to guess between
+// 60 and 62.
+//
+// `dir` settles an exact tie — the pitch sitting halfway between two scale notes, which in a
+// major key happens at every one of the five gaps. During a drag it is the direction of
+// travel, so pushing up never lands the note below where it already was and the gesture
+// cannot stall. With no direction (Snap all to key) ties go up, as Math.round does with .5.
+function peSnapToScale(midi, pcs, dir) {
+  const near = Math.round(midi);
+  if (!pcs || !pcs.size) return near;
+  let best = null, bestD = Infinity;
+  for (let m = near - 6; m <= near + 6; m++) {
+    if (!pcs.has(((m % 12) + 12) % 12)) continue;
+    const d = Math.abs(m - midi);
+    if (best === null || d < bestD - 1e-9) { best = m; bestD = d; continue; }
+    if (Math.abs(d - bestD) <= 1e-9 && (dir < 0 ? m < best : m > best)) { best = m; bestD = d; }
+  }
+  return best === null ? near : best;
+}
+
+// Where one note lands for a drag of `dSemi` rows. Chromatic is the row itself; Key pulls
+// that row to the nearest scale note. 🔴 Per note, never one shared delta: a selection of
+// several notes sits on different scale degrees, so a shared delta would drag some of them
+// out of the key the mode exists to keep them in.
+function peDragTarget(nt, dSemi, pcs) {
+  const raw = nt.target + dSemi;
+  return pcs ? peSnapToScale(raw, pcs, dSemi) : raw;
+}
+
+// ══ v2.7.5 — 분할 / 병합: 경계는 사용자가 소유한다 (설계 §4-2) ════════════════════
+//
+// edits[] 가 "이 구간의 값"을 담는다면 layout[] 은 "이 구간의 경계"를 담는다. 값은 여전히
+// 시간 겹침으로 다시 붙고(τ), 경계는 그 구간을 **통째로 대체**한다 — 사용자가 이긴다.
+//
+//   { t0, t1, cuts: [] }      → 병합. 내부 경계가 없다 = 한 음이다
+//   { t0, t1, cuts: [1.62] }  → 분할. 1.62 에서 자른다
+
+// 그 구간 안의 유성 프레임. 경계가 사용자 마음대로이므로 세그멘터의 run 을 쓸 수 없다.
+function peFramesIn(an, t0, t1) {
+  const idx = [], half = an.winSec / 2;
+  for (let k = 0; k < an.frames; k++) {
+    if (!an.voiced[k]) continue;
+    const t = k * an.hopSec + half;          // frame CENTRE, as peSegmentPass uses
+    if (t >= t0 && t <= t1) idx.push(k);
+  }
+  return idx;
+}
+
+// 한 소유 구간의 노트를 **지금 분석 결과에서** 만든다.
+// 🔴 midi·confidence 를 저장값에서 읽지 않는 것이 핵심이다(설계 §4-2). 두 음을 합쳤으면
+// 합친 구간 전체의 중앙값이 그 노트의 검출 음정이어야 하고, 그래야 peIsPristine 의
+// `target === Math.round(midi)` 판정이 계속 참을 말한다 — 아니면 "움직인 노트" 색이 거짓이 된다.
+function peSpanNotes(an, t0, t1, cuts, defs, idPrefix) {
+  const d = defs || PE_DEFAULTS;
+  const bounds = [t0].concat(cuts || []).concat([t1]);
+  const out = [];
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const a = bounds[i], b = bounds[i + 1];
+    if (!(b - a > 0)) continue;
+    const idx = peFramesIn(an, a, b);
+    if (!idx.length) continue;               // 무성뿐인 조각에는 노트가 없다
+    let csum = 0;
+    for (const k of idx) csum += an.conf[k];
+    const midi = peCoreMedian(an, idx);
+    out.push({
+      id: idPrefix + i, t0: a, t1: b,
+      midi, target: Math.round(midi),
+      strength: d.strength, keepVibrato: d.keepVibrato,
+      confidence: peClamp(csum / idx.length, 0, 1),
+    });
+  }
+  return out;
+}
+
+// 세그멘터가 낸 노트 위에 소유 구간을 덮는다. `spans` 는 실제로 덮은 구간 수 — 화면에 알린다
+// (설계 §4-2 ③). 알리지 않으면 NOTES 를 바꿔도 일부가 안 변하는 것이 고장으로 보인다.
+function peApplyLayout(notes, layout, an, defs) {
+  const src = notes || [];
+  if (!an || !layout || !layout.length) return { notes: src, spans: 0 };
+  let out = src.slice();
+  let spans = 0, seq = 0;
+  for (const sp of layout) {
+    const mine = peSpanNotes(an, sp.t0, sp.t1, sp.cuts, defs, "L" + (++seq) + "_");
+    if (!mine.length) continue;              // 유성이 없는 구간은 덮지 않는다
+    const kept = [];
+    for (const nt of out) {
+      if (nt.t1 <= sp.t0 || nt.t0 >= sp.t1) { kept.push(nt); continue; }   // 바깥 — 그대로
+      // 걸친 노트는 **잘라낸다**(설계 §4-2 ②). 남은 조각도 midi 를 다시 계산해야 정직하다.
+      // 검출기 자신의 최소 길이보다 짧은 부스러기는 버린다.
+      if (nt.t0 < sp.t0 && sp.t0 - nt.t0 >= PE_MIN_NOTE_FLOOR) {
+        const p = peSpanNotes(an, nt.t0, sp.t0, [], defs, nt.id + "a");
+        if (p.length) kept.push({ ...p[0], id: nt.id + "a" });
+      }
+      if (nt.t1 > sp.t1 && nt.t1 - sp.t1 >= PE_MIN_NOTE_FLOOR) {
+        const q = peSpanNotes(an, sp.t1, nt.t1, [], defs, nt.id + "b");
+        if (q.length) kept.push({ ...q[0], id: nt.id + "b" });
+      }
+    }
+    out = kept.concat(mine);
+    spans++;
+  }
+  // 🔴 시간 순으로 되돌린다 — Shift 구간 선택(v2.7.4)이 배열 순서를 그대로 믿는다.
+  out.sort((a, b) => a.t0 - b.t0);
+  return { notes: out, spans };
+}
+
+// 구간 하나를 소유 목록에 넣는다. 겹치는 기존 구간은 흡수해 하나로 합친다.
+//   addCut    분할이면 자른 자리, 병합이면 null
+//   dropInner 병합이면 true — 흡수한 구간의 **안쪽** 경계는 사라져야 병합이 된다.
+//             바깥에 걸친 경계는 살린다(그 부분은 이번 조작의 대상이 아니다).
+function peLayoutPut(layout, a, b, addCut, dropInner) {
+  let t0 = a, t1 = b;
+  const keep = [], cuts = [];
+  for (const sp of layout || []) {
+    if (sp.t1 <= a || sp.t0 >= b) { keep.push(sp); continue; }
+    t0 = Math.min(t0, sp.t0); t1 = Math.max(t1, sp.t1);
+    for (const c of sp.cuts || []) {
+      if (dropInner && c > a && c < b) continue;
+      cuts.push(c);
+    }
+  }
+  if (Number.isFinite(addCut)) cuts.push(addCut);
+  cuts.sort((x, y) => x - y);
+  const uniq = [];
+  for (const c of cuts) {
+    if (c <= t0 || c >= t1) continue;
+    if (uniq.length && c - uniq[uniq.length - 1] <= 1e-6) continue;
+    uniq.push(c);
+  }
+  keep.push({ t0, t1, cuts: uniq });
+  keep.sort((x, y) => x.t0 - y.t0);
+  return keep;
+}
+
+// 구간을 세그멘터에게 돌려준다 (설계 §4-2 ④ — Reset). 걸친 구간은 **통째로** 놓는다:
+// 일부만 놓아 조각을 남기면 사용자가 무엇을 소유 중인지 설명할 수 없게 된다.
+function peLayoutRelease(layout, a, b) {
+  return (layout || []).filter((sp) => sp.t1 <= a || sp.t0 >= b);
+}
+
+// 🔴 HARNESS BOUNDARY — END. peCentsOff is the first line the harness does NOT take.
 // How far off the nearest semitone the singer actually was.
 const peCentsOff = (nt) => Math.round((nt.midi - Math.round(nt.midi)) * 100);
 const peFmtCents = (c) => (c > 0 ? "+" : "") + c + "¢";
@@ -541,7 +724,7 @@ function WindowControls() {
 // The PLAYHEAD is deliberately a DOM element on top, not part of the drawing: it moves ~30
 // times a second, and repainting the grid + waveform + curve at that rate to move one line
 // would be pure waste.
-function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, theme, playhead, litMidi,
+function PianoRoll({ info, analysis, notes, selection, scalePcs, defs, view, range, theme, playhead, litMidi,
                      onSeek, onView, onRange, onPreview, onSelectNote, onNoteDrag }) {
   const wrapRef = React.useRef(null);
   const canvasRef = React.useRef(null);
@@ -787,7 +970,7 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
         // among dozens of untouched ones (사용자 요청 R2). "Moved" is exactly peIsPristine's
         // negation — the same rule that decides what gets saved — so dragging a note back to
         // the detected pitch also turns it back to amber.
-        const edited = !peIsPristine(nt);
+        const edited = !peIsPristine(nt, defs);
         const grad = g.createLinearGradient(0, y, 0, y + nh);
         grad.addColorStop(0, edited ? C.edited : C.amber);
         grad.addColorStop(1, edited ? C.editedDeep : C.amberDeep);
@@ -860,7 +1043,7 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
     g.restore();
     // `theme` is unused inside the draw, but it IS what the CSS variables above depend on —
     // it is in the dependency list to force a repaint, so do not "clean it up".
-  }, [size, info, analysis, notes, selection, scalePcs, view, range, theme, litMidi]);
+  }, [size, info, analysis, notes, selection, scalePcs, defs, view, range, theme, litMidi]);
 
   // Playhead overlay. Hidden when the transport sits outside this clip, so playback elsewhere
   // in the song does not park a misleading line at the edge of the roll.
@@ -915,11 +1098,16 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
         // before the drag could carry it. The change is now deferred: if the gesture turns into
         // a drag the whole selection moves; if it ends without moving it was a click, and the
         // toggle / collapse is applied on mouseup — the usual DAW behaviour.
-        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+        // v2.7.4 (R1) — Ctrl wins over Shift if both are held, because Ctrl asks for the
+        // smaller, more deliberate change.
+        const mode = (e.ctrlKey || e.metaKey) ? "toggle" : (e.shiftKey ? "range" : "replace");
         const selNow = L.selection || PE_NO_SEL;
-        const deferSelect = selNow.has(hit.id) && (additive || selNow.size > 1);
-        if (!deferSelect) L.onSelectNote(hit.id, additive);
-        if (deferSelect && !L.onNoteDrag) L.onSelectNote(hit.id, additive);
+        // The deferral still covers every mode that would DISTURB a selection the press might
+        // be about to drag: toggle would drop this note, range would rebuild the set, and a
+        // plain press on one note of a group would collapse it.
+        const deferSelect = selNow.has(hit.id) && (mode !== "replace" || selNow.size > 1);
+        if (!deferSelect) L.onSelectNote(hit.id, mode);
+        if (deferSelect && !L.onNoteDrag) L.onSelectNote(hit.id, mode);
         // Stage D — the same press that selects also starts a vertical drag on the target
         // pitch. Rows are whole semitones, so the delta is rounded to a row: dragging is a
         // chromatic move, never a continuous detune (that is what `strength` is for).
@@ -939,14 +1127,14 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, view, range, th
             window.removeEventListener("mousemove", move);
             window.removeEventListener("mouseup", up);
             if (moved) L.onNoteDrag(hit.id, last, true);
-            else if (deferSelect) L.onSelectNote(hit.id, additive);
+            else if (deferSelect) L.onSelectNote(hit.id, mode);
           };
           window.addEventListener("mousemove", move);
           window.addEventListener("mouseup", up);
         }
         return;
       }
-      L.onSelectNote(null, false);
+      L.onSelectNote(null, "replace");
     }
     if (onSeek) onSeek(peClamp(xToTime(px), 0, clipDur));
   };
@@ -1150,7 +1338,18 @@ function PitchEditorApp() {
   // studio stack and Ctrl+Z / Ctrl+Y are forwarded, like every other satellite window. See
   // 설계 §11-2 (개정 2026-09-17) for why the local stack existed and why it had to go.
   const [edits, setEdits] = React.useState([]);
+  // v2.7.3 — the clip-wide defaults those edits depart from. A SECOND piece of studio-owned
+  // truth, deliberately not folded into edits[]: see peIsPristine. `snapMode` is window-local
+  // by contrast — it steers the next gesture and changes nothing about the clip, so it has no
+  // business in the project file or on the undo stack.
+  const [defs, setDefs] = React.useState(PE_DEFAULTS);
+  // v2.7.5 — the spans whose BOUNDARIES the user owns (설계 §4-2). Studio-owned truth like
+  // edits and defaults; the third and last thing the project file keeps for a pitch edit.
+  const [layout, setLayout] = React.useState([]);
+  const [snapMode, setSnapMode] = React.useState("chromatic");
   const [drag, setDrag] = React.useState(null);
+  const defsRef = React.useRef(defs); defsRef.current = defs;
+  const layoutRef = React.useRef(layout); layoutRef.current = layout;
   const editsRef = React.useRef(edits); editsRef.current = edits;
   const selectionRef = React.useRef(selection); selectionRef.current = selection;
   const notesRef = React.useRef([]);
@@ -1208,6 +1407,14 @@ function PitchEditorApp() {
           // echo of our own send). Adopt them whenever they differ from what is on screen.
           const incoming = (msg.info.pitch && Array.isArray(msg.info.pitch.edits)) ? msg.info.pitch.edits : [];
           if (JSON.stringify(incoming) !== JSON.stringify(editsRef.current)) setEdits(incoming);
+          // v2.7.3 — same rule for the defaults. peDefaults() fills in for a project saved
+          // before this version, so an old clip opens as the 1 / true it was built under.
+          const inDefs = peDefaults(msg.info.pitch && msg.info.pitch.defaults);
+          const curDefs = defsRef.current;
+          if (inDefs.strength !== curDefs.strength || inDefs.keepVibrato !== curDefs.keepVibrato) setDefs(inDefs);
+          // v2.7.5 — and the owned spans. Same rule: the studio's copy is the truth.
+          const inLay = (msg.info.pitch && Array.isArray(msg.info.pitch.layout)) ? msg.info.pitch.layout : [];
+          if (JSON.stringify(inLay) !== JSON.stringify(layoutRef.current)) setLayout(inLay);
           // v2.7.1 (B2) — drop the curve only if the AUDIO under it changed. De-noise makes a
           // new source id, a trim changes offset/duration; a note-edit undo or a clip MOVE
           // changes neither (the curve is clip-relative), so the analysis survives those.
@@ -1396,14 +1603,54 @@ function PitchEditorApp() {
 
   // Click = select one; Ctrl/Shift+click = add or remove. Clicking empty roll clears, and
   // returns the SAME set when it was already empty so the roll is not repainted for nothing.
-  const selectNote = React.useCallback((id, additive) => {
-    setSelection((prev) => {
-      if (id == null) return prev.size ? PE_NO_SEL : prev;
-      if (!additive) return (prev.size === 1 && prev.has(id)) ? prev : new Set([id]);
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  // v2.7.4 (R1) — three ways to select, the way a file list or any other DAW does it.
+  // v2.7.3 and earlier had ONE: Ctrl and Shift both toggled a single note, so there was no way
+  // to take a run of notes without clicking every one of them (사용자 요청 2026-09-21).
+  //
+  //   "replace"  plain click      — this note alone, and it becomes the anchor
+  //   "toggle"   Ctrl / Cmd+click — add or remove this one, and it becomes the anchor
+  //   "range"    Shift+click      — everything from the anchor to here
+  //
+  // The anchor STAYS PUT after a range select, so shift-clicking again re-measures from the
+  // same note instead of creeping — that is what makes a range adjustable.
+  const anchorRef = React.useRef(null);
+  const selectNote = React.useCallback((id, mode) => {
+    if (id == null) {
+      // Clicking empty space clears the anchor too. Leaving it would let the next Shift+click
+      // sweep up a range measured from a note the user stopped caring about.
+      anchorRef.current = null;
+      setSelection((prev) => (prev.size ? PE_NO_SEL : prev));
+      return;
+    }
+    let m = mode;
+    if (m === "range") {
+      // notesRef is in time order (peVoicedRuns walks the clip forwards), so the range is just
+      // the slice between the two indices.
+      const all = notesRef.current || [];
+      const i = all.findIndex((nt) => nt.id === anchorRef.current);
+      const j = all.findIndex((nt) => nt.id === id);
+      if (i >= 0 && j >= 0) {
+        const lo = Math.min(i, j), hi = Math.max(i, j);
+        const next = new Set();
+        for (let k = lo; k <= hi; k++) next.add(all[k].id);
+        setSelection(next);
+        return;
+      }
+      // No usable anchor — the window just opened, or a re-cut retired the note it named.
+      // Fall back to a plain click rather than doing nothing the user can explain.
+      m = "replace";
+    }
+    if (m === "toggle") {
+      setSelection((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+      anchorRef.current = id;
+      return;
+    }
+    setSelection((prev) => ((prev.size === 1 && prev.has(id)) ? prev : new Set([id])));
+    anchorRef.current = id;
   }, []);
 
   React.useEffect(() => {
@@ -1471,6 +1718,13 @@ function PitchEditorApp() {
   // 5-minute take costs a few ms (the expensive part was the detection, already done), so
   // changing the grid re-segments instantly instead of asking for another Analyze.
   const grid = peNoteGrid(tempo, division);
+  // v2.7.3 — the project's key as a set of pitch classes. It lives up HERE, not beside the
+  // controls that offer it, because the drag preview below needs it.
+  const scalePcs = React.useMemo(() => peScalePcs(tempo && tempo.detectedKey), [tempo && tempo.detectedKey]);
+  // null = no snapping: either the user chose Chromatic, or this project has no detected key
+  // and Key mode is unreachable — the same rule that greys out MIN without a BPM (v1.46.0).
+  const snapPcs = snapMode === "key" && scalePcs ? scalePcs : null;
+
   const seg = React.useMemo(
     () => peBuildNotes(analysis, grid, dur),
     [analysis, grid.minNoteSec, grid.gridSec, dur]
@@ -1478,14 +1732,22 @@ function PitchEditorApp() {
   // Stage D — the notes the user sees are the segmentation with their edits re-attached by
   // time overlap, and then the in-flight drag painted on top. `missed` is how many stored
   // edits found nothing to attach to; it is surfaced in the footer rather than swallowed.
+  // v2.7.5 — 설계 §4-2 의 순서: 세그멘테이션 → **소유 구간 덮기** → 기본값 심기 → 값 얹기.
+  // 경계가 값보다 먼저다. 값은 시간 겹침으로 붙으므로 어떤 경계 위에서도 붙을 수 있지만,
+  // 그 반대는 성립하지 않는다.
+  const laid = React.useMemo(
+    () => peApplyLayout(seg.notes, layout, analysis, defs),
+    [seg, layout, analysis, defs]
+  );
   const applied = React.useMemo(
-    () => peApplyEdits(seg.notes, edits, PE_TUNING.reattachTau),
-    [seg, edits]
+    () => peApplyEdits(peSeedDefaults(laid.notes, defs), edits, PE_TUNING.reattachTau),
+    [laid, edits, defs]
   );
   const notes = React.useMemo(() => {
     if (!drag || !drag.dSemi) return applied.notes;
-    return applied.notes.map((nt) => (drag.ids.has(nt.id) ? { ...nt, target: nt.target + drag.dSemi } : nt));
-  }, [applied.notes, drag]);
+    return applied.notes.map((nt) => (drag.ids.has(nt.id)
+      ? { ...nt, target: peDragTarget(nt, drag.dSemi, snapPcs) } : nt));
+  }, [applied.notes, drag, snapPcs]);
   notesRef.current = notes;
 
   // One gesture → one message → one entry on the studio undo stack.
@@ -1497,9 +1759,34 @@ function PitchEditorApp() {
     peChannel.postMessage({ type: "SET_PITCH_EDITS", trackId, clipId, edits: next });
   }, [trackId, clipId]);
 
+  // v2.7.3 — the same contract for the clip-wide defaults: one gesture, one message, one undo
+  // entry, and an unchanged value sends nothing.
+  // v2.7.5 — 경계(그리고 필요하면 값까지)를 **한 메시지**로 보낸다. Reset 은 값과 소유를
+  // 함께 놓아야 하는데(설계 §4-2 ④), 메시지를 둘로 나누면 Undo 항목이 둘이 되어 §11-2 를
+  // 어긴다. 바뀐 것이 없으면 아무것도 보내지 않는 것은 pushEdits 와 같다.
+  const pushShape = React.useCallback((nextLayout, nextEdits) => {
+    const layChanged = nextLayout && JSON.stringify(nextLayout) !== JSON.stringify(layoutRef.current);
+    const edChanged = nextEdits && JSON.stringify(nextEdits) !== JSON.stringify(editsRef.current);
+    if (!layChanged && !edChanged) return;
+    if (layChanged) setLayout(nextLayout);
+    if (edChanged) setEdits(nextEdits);
+    peChannel.postMessage({
+      type: "SET_PITCH_SHAPE", trackId, clipId,
+      layout: layChanged ? nextLayout : null,
+      edits: edChanged ? nextEdits : null,
+    });
+  }, [trackId, clipId]);
+
+  const pushDefaults = React.useCallback((next) => {
+    const cur = defsRef.current;
+    if (next.strength === cur.strength && next.keepVibrato === cur.keepVibrato) return;
+    setDefs(next);
+    peChannel.postMessage({ type: "SET_PITCH_DEFAULTS", trackId, clipId, defaults: next });
+  }, [trackId, clipId]);
+
   // The logic lives in peRewriteEdits (module scope) so the harness measures the same code.
   const rewriteEdits = React.useCallback(
-    (ids, change) => peRewriteEdits(applied.notes, editsRef.current, ids, change, PE_TUNING.reattachTau),
+    (ids, change) => peRewriteEdits(applied.notes, editsRef.current, ids, change, PE_TUNING.reattachTau, defsRef.current),
     [applied.notes]
   );
 
@@ -1512,30 +1799,152 @@ function PitchEditorApp() {
       // on the keyboard makes. Only the GRABBED note: sounding every selected note at once is
       // a chord, which is harder to judge by ear than the one note under the pointer.
       const grabbed = applied.notes.find((nt) => nt.id === id);
-      if (grabbed) previewKey(grabbed.target + dSemi);
+      if (grabbed) previewKey(peDragTarget(grabbed, dSemi, snapPcs));
       return;
     }
     setDrag(null);
     if (!dSemi) return;
-    pushEdits(rewriteEdits(ids, (nt) => ({ ...nt, target: nt.target + dSemi })));
-  }, [applied.notes, previewKey, rewriteEdits, pushEdits]);
+    // 🔴 Snapped per note, not by one shared delta — see peDragTarget. A gesture that snaps
+    // every note back to where it started writes nothing: pushEdits refuses an identical list.
+    pushEdits(rewriteEdits(ids, (nt) => ({ ...nt, target: peDragTarget(nt, dSemi, snapPcs) })));
+  }, [applied.notes, previewKey, rewriteEdits, pushEdits, snapPcs]);
 
   // v2.7.1 (R2) — Reset: put the selected notes back to the detected pitch. One undo entry, so
   // Ctrl+Z brings the edits back (the user's own reason for wanting it: with Undo/Redo working,
   // Reset is safe to press).
   const selectedEdited = React.useMemo(
-    () => notes.some((nt) => selection.has(nt.id) && !peIsPristine(nt)),
-    [notes, selection]
+    () => notes.some((nt) => selection.has(nt.id) && !peIsPristine(nt, defs)),
+    [notes, selection, defs]
   );
+  //
+  // v2.7.5 — Reset 의 뜻은 "검출기가 제안한 그대로로" 하나이고, 설계 §4-2 이후로는 거기에
+  // **경계**도 들어간다: 선택이 덮는 구간의 소유를 세그멘터에게 돌려준다. 값과 소유를 한
+  // 메시지로 보내 Ctrl+Z 한 번에 둘 다 돌아오게 한다(§11-2).
+  // ⚠️ 대가 — 병합해 둔 음의 음정만 되돌리고 싶어도 병합까지 풀린다(설계 §4-2 ④에 기록).
   const resetSelected = React.useCallback(() => {
     const sel = selectionRef.current;
     if (!sel.size) return;
-    pushEdits(rewriteEdits(sel, () => null));
-  }, [rewriteEdits, pushEdits]);
-  const scalePcs = React.useMemo(() => peScalePcs(tempo && tempo.detectedKey), [tempo && tempo.detectedKey]);
+    const picked = (notesRef.current || []).filter((nt) => sel.has(nt.id));
+    const nextEdits = rewriteEdits(sel, () => null);
+    const nextLayout = picked.length
+      ? peLayoutRelease(layoutRef.current, picked[0].t0, picked[picked.length - 1].t1)
+      : layoutRef.current;
+    pushShape(nextLayout, nextEdits);
+  }, [rewriteEdits, pushShape]);
+
+  // ══ v2.7.5 — Split / Merge (설계 §4-2) ═══════════════════════════════════════════
+  //
+  // 둘 다 layout[] 에 구간 하나를 쓰는 것이 전부다. 그 구간 안 노트들의 **값은 여전히**
+  // edits[] 가 시간 겹침으로 정한다(§4-1) — 🔴 값을 여기에도 적으면 같은 값이 두 군데
+  // 살면서 한 노트를 놓고 다투게 되고, 그것이 v2.7.1 이 peRewriteEdits 를 만들어 겨우
+  // 풀어낸 결함의 모양이다.
+
+  // 분할 지점은 플레이헤드다(설계 §4-2 ⑤) — 소리를 들어 가며 음절 경계를 맞출 수 있다.
+  // 양쪽 조각이 모두 검출기 최소 길이를 넘어야 한다. 넘지 못하면 아무도 볼 수 없는 노트를
+  // 만드는 셈이므로 아예 버튼을 잠근다.
+  const canSplit = React.useMemo(() => {
+    if (!analysis || selection.size !== 1) return null;
+    const nt = notes.find((x) => selection.has(x.id));
+    const c = transport.playhead;
+    if (!nt || !Number.isFinite(c)) return null;
+    if (c - nt.t0 < PE_MIN_NOTE_FLOOR || nt.t1 - c < PE_MIN_NOTE_FLOOR) return null;
+    return { t0: nt.t0, t1: nt.t1, c };
+  }, [analysis, selection, notes, transport.playhead]);
+
+  const splitNote = React.useCallback(() => {
+    if (!canSplit) return;
+    pushShape(peLayoutPut(layoutRef.current, canSplit.t0, canSplit.t1, canSplit.c, false), null);
+  }, [canSplit, pushShape]);
+
+  // 🔴 이웃한 노트만 합친다. 선택하지 않은 노트를 사이에 두고 합치면 그 노트를 말없이
+  // 삼키게 된다 — 선택하지 않은 것은 건드리지 않는다.
+  const canMerge = React.useMemo(() => {
+    if (!analysis || selection.size < 2) return null;
+    const idx = [];
+    notes.forEach((nt, i) => { if (selection.has(nt.id)) idx.push(i); });
+    if (idx.length < 2) return null;
+    if (idx[idx.length - 1] - idx[0] !== idx.length - 1) return null;
+    return { t0: notes[idx[0]].t0, t1: notes[idx[idx.length - 1]].t1 };
+  }, [analysis, selection, notes]);
+
+  const mergeNotes = React.useCallback(() => {
+    if (!canMerge) return;
+    pushShape(peLayoutPut(layoutRef.current, canMerge.t0, canMerge.t1, null, true), null);
+  }, [canMerge, pushShape]);
+
+  // Reset 은 값이 바뀌었을 때뿐 아니라 **경계를 소유하고 있을 때도** 나와야 한다 — 병합만
+  // 해 두고 음정은 안 건드린 경우, 이것이 없으면 소유를 돌려줄 길이 없다.
+  const selectedOwned = React.useMemo(() => {
+    const picked = notes.filter((nt) => selection.has(nt.id));
+    if (!picked.length) return false;
+    const a = picked[0].t0, b = picked[picked.length - 1].t1;
+    return (layout || []).some((sp) => !(sp.t1 <= a || sp.t0 >= b));
+  }, [notes, selection, layout]);
+
+  // v2.7.3 — STRENGTH / VIBRATO. ONE control pair with TWO targets: the selected notes when
+  // something is selected, the clip default when nothing is. Two separate pairs on screen
+  // would leave the user working out which one wins; instead the label above them names the
+  // target before they touch it.
+  const setCorrection = React.useCallback((patch) => {
+    const sel = selectionRef.current;
+    if (sel.size) pushEdits(rewriteEdits(sel, (nt) => ({ ...nt, ...patch })));
+    else pushDefaults({ ...defsRef.current, ...patch });
+  }, [rewriteEdits, pushEdits, pushDefaults]);
+
+  // What those controls READ. With a selection they show the selection's own value — and when
+  // the selected notes disagree, the first one's: a slider has no "mixed" position to rest at,
+  // and inventing one would be a third state the user has no way to set.
+  const corrOf = React.useMemo(
+    () => (selection.size ? (notes.find((nt) => selection.has(nt.id)) || defs) : defs),
+    [selection, notes, defs]
+  );
+
+  // v2.7.4 (B1) — one slider drag is ONE undo entry.
+  //
+  // An <input type=range> fires onChange on every intermediate value the thumb passes, and
+  // v2.7.3 sent a message per change: dragging 100% → 50% left six entries on the studio
+  // stack, and HOW MANY depended on how fast the mouse moved (T-2.7.3-1 — the reported
+  // 100→85→70→60→55→50 is mouse sampling, not the slider's step of 5). 설계 §11-2 asks for one
+  // gesture = one entry, which the note drag has done since v2.7.1; the slider did not.
+  //
+  // So the slider paints from `pendingAmt` while the gesture is in flight and commits once it
+  // ends. 🔴 There are THREE ends, not one, and missing any of them loses the user's change:
+  //   · the pointer is released — on WINDOW, because a release outside the input never
+  //     reaches the input itself, exactly as the note drag does it;
+  //   · the arrow keys move the thumb with no pointer involved at all;
+  //   · focus leaves mid-gesture (clicking a note, say).
+  const [pendingAmt, setPendingAmt] = React.useState(null);
+  const pendingAmtRef = React.useRef(null); pendingAmtRef.current = pendingAmt;
+  const commitAmt = React.useCallback(() => {
+    const v = pendingAmtRef.current;
+    if (v === null) return;
+    setPendingAmt(null);
+    // setCorrection routes to the selection or the clip default, and both refuse a value that
+    // is already there — so a drag that wanders and comes home writes nothing.
+    setCorrection({ strength: v });
+  }, [setCorrection]);
+  const beginAmt = React.useCallback(() => {
+    const up = () => { window.removeEventListener("pointerup", up); commitAmt(); };
+    window.addEventListener("pointerup", up);
+  }, [commitAmt]);
+  // What the slider and the readout show: the in-flight value while dragging, the stored one
+  // otherwise. A selection change mid-gesture drops the pending value rather than writing it
+  // to whatever got selected instead.
+  const amtShown = pendingAmt !== null ? pendingAmt : corrOf.strength;
+  React.useEffect(() => { setPendingAmt(null); }, [selection]);
+
+  // v2.7.3 — 설계 §10-4. Explicit, never automatic: a take that arrived already corrected
+  // would leave the user unable to tell the singing from the correction.
+  // 🔴 Snapped from the DETECTED pitch, not the current target, so pressing it after a drag
+  // corrects the note rather than compounding the drag, and pressing it twice changes nothing.
+  const snapAllToKey = React.useCallback(() => {
+    if (!scalePcs || !applied.notes.length) return;
+    const ids = new Set(applied.notes.map((nt) => nt.id));
+    pushEdits(rewriteEdits(ids, (nt) => ({ ...nt, target: peSnapToScale(nt.midi, scalePcs, 0) })));
+  }, [scalePcs, applied.notes, rewriteEdits, pushEdits]);
   // Ids are only unique within one segmentation, so a selection cannot outlive the notes it
   // pointed at — a re-cut (new analysis, new grid) starts from nothing selected.
-  React.useEffect(() => { setSelection(PE_NO_SEL); }, [seg]);
+  React.useEffect(() => { setSelection(PE_NO_SEL); anchorRef.current = null; }, [seg]);
   const selNote = selection.size === 1 ? notes.find((nt) => selection.has(nt.id)) : null;
 
   // While playing, light the key the singer was actually on. It is the cheapest way to check
@@ -1625,7 +2034,7 @@ function PitchEditorApp() {
             ? <div className="pe-empty">{error}</div>
             : (info
               ? <PianoRoll info={info} analysis={analysis} notes={notes} selection={selection}
-                  scalePcs={scalePcs} view={view} range={range} theme={theme}
+                  scalePcs={scalePcs} defs={defs} view={view} range={range} theme={theme}
                   playhead={transport.playhead} litMidi={litMidi} onSeek={seekTo} onView={setView}
                   onRange={setRange} onPreview={previewKey} onSelectNote={selectNote}
                   onNoteDrag={onNoteDrag} />
@@ -1706,17 +2115,94 @@ function PitchEditorApp() {
                       {/* Say when the density cap had to step in, rather than quietly handing
                           back fewer notes than the grid asked for. */}
                       {seg.relaxed > 0 ? <><br />density cap — thresholds raised ×{seg.relaxed}</> : null}
+                      {/* 설계 §4-2 ③ — 소유 구간은 NOTES 를 바꿔도 변하지 않는다. 말해 주지
+                          않으면 화면 일부가 안 따라오는 것이 고장으로 보인다. */}
+                      {laid.spans > 0 ? <><br /><b>{laid.spans}</b> span{laid.spans > 1 ? "s" : ""} kept from your edits</> : null}
                     </>}
+              </div>
+              {/* v2.7.5 — 경계 편집은 CORRECTION 이 아니라 NOTES 에 둔다. 무엇이 한 음인지를
+                  정하는 일이고, 그것은 어떻게 보정할지보다 앞선다(설계 §4-2). */}
+              <div className="pe-row" style={{ marginTop: 9 }}>
+                <button className="pe-btn" style={{ flex: 1 }} onClick={splitNote} disabled={!canSplit}
+                  title={canSplit
+                    ? "Split the selected note at the playhead"
+                    : "Select one note and put the playhead inside it — both halves must be at least 60 ms"}>
+                  Split
+                </button>
+                <button className="pe-btn" style={{ flex: 1 }} onClick={mergeNotes} disabled={!canMerge}
+                  title={canMerge
+                    ? "Merge the selected notes into one"
+                    : "Select two or more notes that sit next to each other"}>
+                  Merge
+                </button>
+              </div>
+              <div className="pe-hint" style={{ marginTop: 7 }}>
+                Notes you split or merge keep their boundaries when the clip is analysed again.
+                <kbd>Reset</kbd> hands a note back to the detector.
               </div>
             </div>
 
             <div className="pe-sec" style={{ borderBottom: "none" }}>
               <div className="pe-sechd">CORRECTION</div>
-              {/* Enabled by the stage that gives them meaning, so a half-wired button never
-                  sits in front of the user. */}
-              <button className="pe-btn pe-wide" disabled title="Note editing lands in Stage D"
-                style={{ marginBottom: 7 }}>Snap all to key</button>
+              {/* v2.7.3 — SNAP steers the next drag. Key needs a detected key, so without one
+                  the choice is not offered at all rather than offered and then ignored — the
+                  same handling as MIN without a BPM (v1.46.0). */}
               <div className="pe-row">
+                <span className="pe-rowlbl">SNAP</span>
+                <select className="pe-select" value={scalePcs ? snapMode : "chromatic"}
+                  disabled={!analysis || !scalePcs}
+                  onChange={(e) => setSnapMode(e.target.value)}
+                  title={scalePcs
+                    ? "What a dragged note lands on — every semitone, or only notes of the project key"
+                    : "This project has no detected key, so notes can only snap to semitones"}>
+                  <option value="chromatic">Chromatic</option>
+                  <option value="key">Key{tempo && tempo.detectedKey ? " — " + tempo.detectedKey : ""}</option>
+                </select>
+              </div>
+              {/* 설계 §10-4 — explicit, never automatic. */}
+              <button className="pe-btn pe-wide" onClick={snapAllToKey}
+                disabled={!analysis || !scalePcs || !notes.length}
+                style={{ marginTop: 9, marginBottom: 9 }}
+                title={scalePcs
+                  ? "Move every note to the nearest note of the project key. One undo step."
+                  : "This project has no detected key — set or detect one in the studio first"}>
+                Snap all to key
+              </button>
+
+              {/* STRENGTH / VIBRATO. One pair, two targets — the label says which one the
+                  next move writes to (setCorrection). */}
+              <div className="pe-sechd" style={{ marginTop: 2 }}>
+                {selection.size ? `${selection.size} NOTE${selection.size > 1 ? "S" : ""} SELECTED` : "ALL NOTES"}
+              </div>
+              <div className="pe-row" title={selection.size
+                ? "How far the selected notes move toward their target pitch"
+                : "How far notes move toward their target pitch, unless a note says otherwise"}>
+                <span className="pe-rowlbl">AMT</span>
+                <input className="pe-range" type="range" min="0" max="100" step="5"
+                  value={Math.round(peClamp(amtShown, 0, 1) * 100)}
+                  disabled={!analysis || !notes.length}
+                  onPointerDown={beginAmt}
+                  onChange={(e) => setPendingAmt(+e.target.value / 100)}
+                  onKeyUp={commitAmt}
+                  onBlur={commitAmt} />
+                <span className="pe-rangeval mono">{Math.round(peClamp(amtShown, 0, 1) * 100)}%</span>
+              </div>
+              <div className="pe-row">
+                <span className="pe-rowlbl">VIB</span>
+                <button className={"pe-btn pe-wide" + (corrOf.keepVibrato ? " on" : "")}
+                  disabled={!analysis || !notes.length}
+                  onClick={() => setCorrection({ keepVibrato: !corrOf.keepVibrato })}
+                  title="Keep the singer's vibrato and glides while moving the pitch. Off flattens them.">
+                  {corrOf.keepVibrato ? "Keep vibrato" : "Flatten vibrato"}
+                </button>
+              </div>
+              {/* 🔴 Without this line the first test report is "the values go in but nothing
+                  sounds different" — which is correct behaviour, not a defect. */}
+              <div className="pe-hint" style={{ marginTop: 9 }}>
+                Amount and vibrato are stored now and applied when the correction is rendered (Apply).
+              </div>
+
+              <div className="pe-row" style={{ marginTop: 9 }}>
                 <button className="pe-btn primary" style={{ flex: 1 }} disabled
                   title="Rendering and printing land in Stage E">Apply</button>
                 <button className="pe-btn" style={{ flex: 1 }} disabled
@@ -1739,7 +2225,7 @@ function PitchEditorApp() {
                 : selection.size > 1 ? ` · ${selection.size} notes selected`
                 : notes.length ? " · click a note to select it" : ""))}
         </span>
-        {analysis && selectedEdited && (
+        {analysis && (selectedEdited || selectedOwned) && (
           <button className="pe-zbtn" onClick={resetSelected}
             style={{ width: "auto", padding: "0 9px", flex: "0 0 auto" }}
             title="Return the selected notes to the detected pitch. Ctrl+Z brings the edit back.">

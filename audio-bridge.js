@@ -772,6 +772,23 @@
       return LocalDAW.setClipPitchEdits(trackId, clipId, edits);
     },
 
+    // v2.7.3 — clip-wide pitch defaults. 🔴 A wrapper is MANDATORY even though this one adds
+    // nothing: the Proxy forwards unwrapped methods to the renderer engine alone, so a method
+    // that is missing here silently stops existing for the native engine. Same reason as
+    // setClipPitchEdits above — and, like it, NO syncTrackToNative, because neither call
+    // changes a sample. Stage E is where that stops being true: the moment a pitch edit or a
+    // default reaches the renderer, both wrappers need the sync.
+    setClipPitchDefaults(trackId, clipId, defaults) {
+      return LocalDAW.setClipPitchDefaults(trackId, clipId, defaults);
+    },
+
+    // v2.7.5 — note boundaries the user owns (설계 §4-2). Wrapper mandatory for the same reason
+    // as the two above; no syncTrackToNative for the same reason either — 🔴 Stage E changes
+    // that for all three at once.
+    setClipPitchLayout(trackId, clipId, layout) {
+      return LocalDAW.setClipPitchLayout(trackId, clipId, layout);
+    },
+
     addAudioInTrack(name) {
       return LocalDAW.addAudioInTrack(name);
     },

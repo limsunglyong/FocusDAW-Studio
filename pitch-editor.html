@@ -218,6 +218,25 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .pe-hint kbd{font-family:var(--mono);font-size:9px;color:var(--dim);background:rgba(255,255,255,.04);
   border:1px solid var(--line-strong);border-radius:3px;padding:0 3px}
 .pe-wide{width:100%;justify-content:center}
+/* v2.7.3 — a two-state button, for VIB. Same treatment the transport icons already use for
+   "this is on" (.pe-icbtn.on), so the window has one vocabulary for it rather than two. */
+.pe-btn.on{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber)}
+.pe-btn.on:hover:not(:disabled){color:var(--mixer-bar-fg);background:var(--amber)}
+/* v2.7.3 — correction amount. Styled from theme tokens only: a hardcoded hex here is exactly
+   what v2.4.3 had to go and find, and there are ten themes to be wrong in.
+   appearance:none is load-bearing — without it Chromium paints its own track and thumb and
+   the accent colour is the only thing a page can change. */
+.pe-range{flex:1 1 auto;min-width:0;height:18px;appearance:none;-webkit-appearance:none;background:transparent}
+.pe-range::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+  background:var(--line-strong);border:1px solid var(--line)}
+.pe-range::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+  margin-top:-5px;background:var(--cream-2);border:1px solid var(--line-strong);cursor:grab}
+.pe-range:hover:not(:disabled)::-webkit-slider-thumb{background:var(--amber);border-color:var(--amber)}
+.pe-range:disabled{opacity:.38}
+.pe-range:disabled::-webkit-slider-thumb{cursor:default}
+/* Fixed width so the row does not reflow as the number goes 5% → 100% — a slider whose track
+   grows and shrinks under the pointer is hard to aim. */
+.pe-rangeval{flex:0 0 34px;text-align:right;font-size:10px;color:var(--cream-2)}
 /* Stage C — the note-grid picker. A native <select> on purpose: it is one choice out of three,
    the OS list is keyboard- and screen-reader-ready for free, and the app has no custom select
    to reuse. Only the closed face is styled; the popup belongs to the platform.

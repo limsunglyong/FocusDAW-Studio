@@ -13,6 +13,54 @@
   const DURATION = DEMO_SECTIONS * DEMO_SECTION; // 16s demo loop
   const PROJECT_SCHEMA_VERSION = 2;
 
+  // v2.7.3 — the clip-wide pitch-correction defaults. `strength` and `keepVibrato` live in TWO
+  // places by design: HERE, as the value every note of the clip takes unless the user says
+  // otherwise, and in clip.pitch.edits[] for the notes that DO say otherwise.
+  //
+  // 🔴 The split is not tidiness. The editor's "is this note untouched?" test compares a note
+  // against these defaults, and two things hang off that answer: what gets written to edits[],
+  // and which notes are drawn in the "you moved this" colour (v2.7.1). Fold a global strength
+  // change into per-note entries instead and both break at once — ~300 edits on a 3-minute
+  // take, carried in every undo snapshot, and a roll where every note reads as moved.
+  //
+  // Projects written before v2.7.3 have no `defaults` block and read as the shipped values,
+  // which is exactly what they were built under.
+  // v2.7.5 — the spans whose note BOUNDARIES the user owns (설계 §4-2). A split is a span
+  // with cut points inside it; a merge is a span with none. Re-analysis throws away the new
+  // segmentation inside these and re-lays the user's boundaries instead.
+  //
+  // 🔴 Boundaries only — no target/strength/keepVibrato. Those stay in edits[], anchored by
+  // overlap. Storing values here too would put the same value in two places and let them fight
+  // over one note, which is exactly the defect pair v2.7.1 had to invent peRewriteEdits to fix.
+  function pitchLayout(list) {
+    const out = [];
+    for (const sp of Array.isArray(list) ? list : []) {
+      const t0 = Number(sp && sp.t0), t1 = Number(sp && sp.t1);
+      if (!Number.isFinite(t0) || !Number.isFinite(t1) || t1 <= t0) continue;
+      const cuts = [];
+      for (const c of Array.isArray(sp.cuts) ? sp.cuts : []) {
+        const v = Number(c);
+        // A cut on or outside the edge says nothing — the span already ends there.
+        if (Number.isFinite(v) && v > t0 && v < t1) cuts.push(v);
+      }
+      cuts.sort((a, b) => a - b);
+      out.push({ t0, t1, cuts });
+    }
+    return out;
+  }
+
+  const PITCH_DEFAULTS = { strength: 1, keepVibrato: true };
+  function pitchDefaults(d) {
+    // 🔴 `Number(d && d.strength)` 로 쓰면 안 된다 — d 가 null 일 때 Number(null) 은 NaN 이
+    // 아니라 **0** 이고, 0 은 유한하므로 아래 검사를 통과해 버린다. 그러면 defaults 를 한 번도
+    // 쓰지 않은 클립이 strength 0(= 보정 안 함)으로 열린다. 하네스 ⑦이 잡은 결함이다.
+    const s = d ? Number(d.strength) : NaN;
+    return {
+      strength: Number.isFinite(s) ? Math.min(1, Math.max(0, s)) : PITCH_DEFAULTS.strength,
+      keepVibrato: d && d.keepVibrato !== undefined ? d.keepVibrato !== false : PITCH_DEFAULTS.keepVibrato,
+    };
+  }
+
   function makeCtx() {
     const C = window.AudioContext || window.webkitAudioContext;
     return new C();
@@ -652,6 +700,14 @@
           // persisted, so reopening a project always re-analyses), whenever the NOTES
           // division changes, and again the day the segmenter itself is fixed.
           edits: Array.isArray(clip.pitch.edits) ? clip.pitch.edits.map(e => ({ ...e })) : [],
+          // v2.7.3 — the clip-wide defaults the edits are departures FROM. Kept out of
+          // edits[] on purpose: folding a global strength change into per-note entries would
+          // write one edit per note (~300 on a 3-minute take, in every snapshot) and would
+          // mark every note as "moved" on screen, which is the one signal v2.7.1 added.
+          defaults: pitchDefaults(clip.pitch.defaults),
+          // v2.7.5 — 설계 §4-2. Note BOUNDARIES the user owns (split / merge); the values in
+          // those spans still come from edits[] above.
+          layout: pitchLayout(clip.pitch.layout),
           analysis: clip.pitch.analysis ? { ...clip.pitch.analysis } : null,
         } : null,
       };
@@ -785,6 +841,8 @@
           printedSourceId: c.pitch.printedSourceId || null,
           notes: Array.isArray(c.pitch.notes) ? c.pitch.notes.map(n => ({ ...n })) : [],
           edits: Array.isArray(c.pitch.edits) ? c.pitch.edits.map(e => ({ ...e })) : [],
+          defaults: pitchDefaults(c.pitch.defaults),
+          layout: pitchLayout(c.pitch.layout),
           analysis: c.pitch.analysis ? { ...c.pitch.analysis } : null,
         } : null,
       }));
@@ -3430,6 +3488,8 @@
           // The editor re-segments from scratch on every Analyze and then re-attaches these
           // by time overlap (설계 §4-1) — they are what survives a re-cut, not the notes.
           edits: (clip.pitch.edits || []).map(x => ({ ...x })),
+          defaults: pitchDefaults(clip.pitch.defaults),
+          layout: pitchLayout(clip.pitch.layout),
           analysis: clip.pitch.analysis ? { ...clip.pitch.analysis } : null,
         } : null,
         // Vari Key/BPM never bake into timeline audio (v1.46.0 rule), so the editor analyses and
@@ -3785,8 +3845,38 @@
           keepVibrato: e.keepVibrato !== false,
         });
       }
-      if (!clip.pitch) clip.pitch = { baseSourceId: clip.sourceId || null, printedSourceId: null, notes: [], edits: [], analysis: null };
+      if (!clip.pitch) clip.pitch = { baseSourceId: clip.sourceId || null, printedSourceId: null, notes: [], edits: [], defaults: pitchDefaults(null), layout: [], analysis: null };
       clip.pitch.edits = clean;
+      return true;
+    },
+
+    // v2.7.3 — the clip-wide defaults those edits are departures FROM (설계 §4, pitchDefaults).
+    //
+    // ⚠️ Like setClipPitchEdits this changes nothing anyone can hear: strength and keepVibrato
+    // only acquire meaning when Stage E renders the correction. That is why the audio-bridge
+    // wrapper for this deliberately carries no syncTrackToNative — 🔴 Stage E must add one to
+    // both wrappers the moment a call here starts moving samples.
+    setClipPitchDefaults(trackId, clipId, defaults) {
+      const track = this.tracks.find((t) => t.id === trackId);
+      const clip = track && (track.clips || []).find((c) => c.id === clipId);
+      if (!clip) return false;
+      if (!clip.pitch) clip.pitch = { baseSourceId: clip.sourceId || null, printedSourceId: null, notes: [], edits: [], defaults: pitchDefaults(null), layout: [], analysis: null };
+      clip.pitch.defaults = pitchDefaults(defaults);
+      return true;
+    },
+
+    // v2.7.5 — the spans whose note boundaries the user owns (설계 §4-2). Split and merge write
+    // here; everything else writes to edits[].
+    //
+    // ⚠️ Still nothing audible — Stage E is what renders. Same reason as the two setters above
+    // that the audio-bridge wrappers carry no syncTrackToNative; 🔴 all three need one the day
+    // a pitch edit starts moving samples.
+    setClipPitchLayout(trackId, clipId, layout) {
+      const track = this.tracks.find((t) => t.id === trackId);
+      const clip = track && (track.clips || []).find((c) => c.id === clipId);
+      if (!clip) return false;
+      if (!clip.pitch) clip.pitch = { baseSourceId: clip.sourceId || null, printedSourceId: null, notes: [], edits: [], defaults: pitchDefaults(null), layout: [], analysis: null };
+      clip.pitch.layout = pitchLayout(layout);
       return true;
     },
 
@@ -3895,11 +3985,35 @@
     },
 
     // Are these clips a plain re-join of split-adjacent pieces? Same source, no timeline
-    // gap, and each one picks up in the source exactly where the previous ended — i.e.
-    // nothing was moved or trimmed since the split. Then merging is a single continuous
-    // source read: no new file, no re-render. Any other shape needs a fresh render,
-    // because one source-read clip cannot express "sourceA[..] then sourceB[..]".
+    // gap, each one picks up in the source exactly where the previous ended, AND they all
+    // carry the same per-clip state — i.e. nothing was moved, trimmed or re-levelled since
+    // the split. Then merging is a single continuous source read: no new file, no re-render.
+    // Any other shape needs a fresh render, because one source-read clip cannot express
+    // "sourceA[..] then sourceB[..]" — nor "this half at -6 dB and that half at 0".
+    //
+    // 🔴 v2.7.6 — the gain test used to be missing, and that was a silent audio bug, not a
+    // missed optimisation. The heal path builds ONE clip carrying ONE gain (first.gain), so
+    // healing a run whose gains differ threw the others away: joining A(0 dB)+B(−12 dB) played
+    // B at 0 dB, and joining B(−12 dB)+C(0 dB) dragged C down to −12 dB. Both were reported
+    // from the field (2026-09-22). The render path has always baked each clip's own gain in
+    // (_renderClipsToSource), so the fix is to stop calling these runs healable and let that
+    // path have them.
+    //
+    // muted / params / automation are tested for the same reason. ⚠️ They are DORMANT today —
+    // nothing in the UI sets clip.muted or clip.params, so those branches cannot fire yet.
+    // They are here so that wiring one of those features later cannot quietly reopen this bug.
+    // 🔴 But see 버그.md `B-Join-RenderIgnoresMute` first: _renderClipsToSource does not honour
+    // clip.muted, so the day clip mute becomes reachable, sending it down the render path needs
+    // that fixed in the same change.
     _isHealableRun(clips) {
+      const gainOf = (c) => (c.gain == null ? 1 : c.gain);
+      const first = clips[0];
+      for (const c of clips) {
+        if (Math.abs(gainOf(c) - gainOf(first)) > 1e-4) return false;
+        if (!!c.muted !== !!first.muted) return false;
+        if (!!c.params !== !!first.params) return false;
+        if (!!(c.automation && c.automation.length) !== !!(first.automation && first.automation.length)) return false;
+      }
       for (let i = 1; i < clips.length; i++) {
         const prev = clips[i - 1], cur = clips[i];
         if (cur.sourceId !== prev.sourceId) return false;

@@ -2492,6 +2492,45 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           force((n) => n + 1);
           break;
         }
+        // v2.7.3 — the clip-wide defaults those edits depart from. Same contract as the edits
+        // above: one message per gesture, one undo entry, and an identical value is refused
+        // before snapshotting so a slider dragged back to where it started cannot eat the
+        // next Ctrl+Z (상시 노트 "Undo 스냅샷 정합성").
+        // v2.7.5 — 설계 §4-2. Split / Merge / Reset carry BOTH the owned spans and (for Reset)
+        // the edits, in one message: two messages would be two undo entries for one gesture.
+        // A null field means "unchanged" — the editor only sends what actually moved.
+        case "SET_PITCH_SHAPE": {
+          {
+            const tr = DAW.tracks.find((t) => t.id === msg.trackId);
+            const cl = tr && (tr.clips || []).find((c) => c.id === msg.clipId);
+            if (!cl) break;
+            const p = cl.pitch || {};
+            const layChanged = msg.layout && JSON.stringify(p.layout || []) !== JSON.stringify(msg.layout);
+            const edChanged = msg.edits && JSON.stringify(p.edits || []) !== JSON.stringify(msg.edits);
+            if (!layChanged && !edChanged) break;
+          }
+          const savedRedo = pushUndo();
+          let ok = true;
+          if (msg.layout && DAW.setClipPitchLayout) ok = DAW.setClipPitchLayout(msg.trackId, msg.clipId, msg.layout) && ok;
+          if (msg.edits && DAW.setClipPitchEdits) ok = DAW.setClipPitchEdits(msg.trackId, msg.clipId, msg.edits) && ok;
+          if (!ok) { cancelUndo(savedRedo); break; }
+          force((n) => n + 1);
+          break;
+        }
+        case "SET_PITCH_DEFAULTS": {
+          {
+            const tr = DAW.tracks.find((t) => t.id === msg.trackId);
+            const cl = tr && (tr.clips || []).find((c) => c.id === msg.clipId);
+            const cur = (cl && cl.pitch && cl.pitch.defaults) || null;
+            const next = msg.defaults || null;
+            if (cur && next && cur.strength === next.strength && cur.keepVibrato === next.keepVibrato) break;
+          }
+          const savedRedo = pushUndo();
+          const ok = DAW.setClipPitchDefaults && DAW.setClipPitchDefaults(msg.trackId, msg.clipId, msg.defaults);
+          if (!ok) { cancelUndo(savedRedo); break; }
+          force((n) => n + 1);
+          break;
+        }
         case "REQUEST_PITCH_CLIP": {
           const info = DAW.clipAudioInfo ? DAW.clipAudioInfo(msg.trackId, msg.clipId, msg.buckets) : null;
           channel.postMessage({
