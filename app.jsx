@@ -2531,6 +2531,52 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           force((n) => n + 1);
           break;
         }
+        // Stage E (v2.8.1) — 보정을 오디오에 프린트한다. De-noise 와 같은 순서(설계 §6):
+        // pushUndo → 렌더 → 새 소스 등록 → 디스크 기록 → 재베이크. 실패하면 스냅샷을
+        // 버린다(v1.23.1 규칙) — 아무것도 안 바뀐 Undo 항목은 다음 Ctrl+Z 를 먹는다.
+        //
+        // 🔴 곡선은 에디터가 보낸 것을 쓴다. 엔진이 다시 분석하면 그사이 NOTES 설정이 달라
+        // **화면과 다른 노트로 프린트**할 수 있다(v2.8.0 계획).
+        case "REQUEST_PITCH_PRINT": {
+          const { trackId, clipId } = msg;
+          const reply = (ok, message) => channel.postMessage({ type: "PITCH_PRINTED", trackId, clipId, ok, message });
+          if (!DAW.printClipPitchAsync) { reply(false, "This build cannot print pitch corrections."); break; }
+          // 🔴 렌더는 슬라이스로 돈다 — 5분 클립이 5.5 s 라 동기로 하면 앱이 그만큼 언다.
+          //    Undo 스냅샷은 **시작할 때** 찍는다(작업 전 상태여야 하므로), 실패하면 버린다.
+          const savedRedo = pushUndo();
+          DAW.printClipPitchAsync(trackId, clipId, msg.analysis, msg.notes, (done, total) => {
+            channel.postMessage({ type: "PITCH_PRINT_PROGRESS", trackId, clipId, done, total });
+          }).then((sid) => {
+            if (!sid) {
+              cancelUndo(savedRedo);
+              reply(false, "Nothing to apply — no note has been moved yet.");
+              return;
+            }
+            persistConsolidated();          // <Project> Audio/Consolidated/ 에 WAV 로 남긴다
+            saveRecentProject(projectName, projectPath);
+            force((n) => n + 1);
+            reply(true, "Correction applied — printed as new audio, the original take is kept (undoable).");
+          }).catch(() => {
+            cancelUndo(savedRedo);
+            reply(false, "Rendering failed — the clip was left unchanged.");
+          });
+          break;
+        }
+        // 프린트를 되돌린다 — 오디오만 원본으로. 편집은 남으므로 바로 다시 Apply 할 수 있다.
+        case "REQUEST_PITCH_REVERT": {
+          const { trackId, clipId } = msg;
+          const reply = (ok, message) => channel.postMessage({ type: "PITCH_REVERTED", trackId, clipId, ok, message });
+          if (!DAW.revertClipPitch) { reply(false, "This build cannot revert pitch corrections."); break; }
+          const savedRedo = pushUndo();
+          if (!DAW.revertClipPitch(trackId, clipId)) {
+            cancelUndo(savedRedo);
+            reply(false, "This clip has no printed correction to revert.");
+            break;
+          }
+          force((n) => n + 1);
+          reply(true, "Reverted to the original take — your note edits are kept.");
+          break;
+        }
         case "REQUEST_PITCH_CLIP": {
           const info = DAW.clipAudioInfo ? DAW.clipAudioInfo(msg.trackId, msg.clipId, msg.buckets) : null;
           channel.postMessage({

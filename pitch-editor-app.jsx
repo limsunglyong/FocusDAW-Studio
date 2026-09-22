@@ -678,7 +678,13 @@ const PE_NO_SEL = new Set();
 // v2.7.1 — which audio a pitch curve belongs to. Only these three change what was analysed:
 // De-noise and other prints register a NEW source id, a trim moves the offset or the duration.
 // Moving a clip on the timeline changes none of them — the curve is clip-relative.
-const peAudioKey = (inf) => (inf ? inf.sourceId + "|" + inf.sourceOffset + "|" + inf.duration : null);
+// v2.8.1 — 🔴 기준은 `sourceId` 가 아니라 **분석이 실제로 읽은 오디오**, 즉 baseSourceId 다.
+// Apply 는 clip.sourceId 를 프린트 결과로 갈아 끼우는데, 분석은 언제나 base 를 본다
+// (engine `_pitchAnalysisSetup`, 설계 §2). sourceId 로 재면 Apply 할 때마다 곡선이 버려져
+// 사용자가 매번 다시 Analyze 해야 한다 — 실제로는 잰 것이 그대로인데도.
+const peAudioKey = (inf) => (inf
+  ? ((inf.pitch && inf.pitch.baseSourceId) || inf.sourceId) + "|" + inf.sourceOffset + "|" + inf.duration
+  : null);
 
 // Canvas roundRect exists in this Electron, but it throws when the radius exceeds half the
 // box — which happens on every note narrower than 6px. Clamping here keeps the caller simple.
@@ -1347,6 +1353,9 @@ function PitchEditorApp() {
   // edits and defaults; the third and last thing the project file keeps for a pitch edit.
   const [layout, setLayout] = React.useState([]);
   const [snapMode, setSnapMode] = React.useState("chromatic");
+  // v2.8.1 — Apply 가 도는 중인가. 렌더는 스튜디오 창에서 돌고 이 창은 답을 기다린다.
+  const [printing, setPrinting] = React.useState(false);
+  const [printPct, setPrintPct] = React.useState(0);
   const [drag, setDrag] = React.useState(null);
   const defsRef = React.useRef(defs); defsRef.current = defs;
   const layoutRef = React.useRef(layout); layoutRef.current = layout;
@@ -1398,6 +1407,17 @@ function PitchEditorApp() {
         // v2.7.1 — the curve is NOT dropped here any more. A curve measured from old audio
         // would still quietly lie, so the check moved to the PITCH_CLIP reply this request
         // produces, where it can compare the audio's identity instead of assuming it changed.
+      } else if (msg.type === "PITCH_PRINT_PROGRESS") {
+        if (msg.trackId !== trackId || msg.clipId !== clipId) return;
+        setPrintPct(msg.total ? msg.done / msg.total : 0);
+      } else if (msg.type === "PITCH_PRINTED" || msg.type === "PITCH_REVERTED") {
+        if (msg.trackId !== trackId || msg.clipId !== clipId) return;
+        setPrinting(false);
+        setPrintPct(0);
+        setNote(msg.message || "");
+        // 🔴 곡선은 버리지 않는다. 분석은 baseSourceId 를 읽고 그것은 프린트로 바뀌지
+        //    않는다(peAudioKey 가 그 기준이다) — 사용자가 다시 Analyze 할 이유가 없다.
+        requestClip();
       } else if (msg.type === "PITCH_CLIP") {
         if (msg.trackId !== trackId || msg.clipId !== clipId) return;
         if (msg.ok && msg.info) {
@@ -1872,6 +1892,35 @@ function PitchEditorApp() {
     pushShape(peLayoutPut(layoutRef.current, canMerge.t0, canMerge.t1, null, true), null);
   }, [canMerge, pushShape]);
 
+  // ══ v2.8.1 — Apply / Revert (설계 §6) ══════════════════════════════════════════
+  //
+  // 🔴 여기서 처음으로 소리가 바뀐다. 스튜디오가 pushUndo → 렌더 → 새 소스 → 디스크
+  // 기록 → 재베이크를 한 덩어리로 처리하므로 Ctrl+Z 한 번에 통째로 돌아온다.
+  //
+  // 곡선(analysis)을 **그대로 실어 보낸다** — 엔진이 다시 분석하면 그사이 NOTES 설정이
+  // 달라 화면과 다른 노트로 프린트할 수 있다. 사용자가 본 것이 렌더되어야 한다.
+  const printed = !!(info && info.pitch && info.pitch.printedSourceId);
+  const anyEdit = React.useMemo(
+    () => notes.some((nt) => !peIsPristine(nt, defs)),
+    [notes, defs]
+  );
+  const canApply = !!analysis && !!notes.length && anyEdit && !printing && !busy;
+  const applyCorrection = React.useCallback(() => {
+    if (!canApply) return;
+    setPrinting(true);
+    setPrintPct(0);
+    setNote("Rendering the correction…");
+    peChannel.postMessage({
+      type: "REQUEST_PITCH_PRINT", trackId, clipId,
+      analysis, notes: notesRef.current,
+    });
+  }, [canApply, analysis, trackId, clipId]);
+  const revertCorrection = React.useCallback(() => {
+    if (!printed || printing) return;
+    setPrinting(true);
+    peChannel.postMessage({ type: "REQUEST_PITCH_REVERT", trackId, clipId });
+  }, [printed, printing, trackId, clipId]);
+
   // Reset 은 값이 바뀌었을 때뿐 아니라 **경계를 소유하고 있을 때도** 나와야 한다 — 병합만
   // 해 두고 음정은 안 건드린 경우, 이것이 없으면 소유를 돌려줄 길이 없다.
   const selectedOwned = React.useMemo(() => {
@@ -2203,11 +2252,25 @@ function PitchEditorApp() {
               </div>
 
               <div className="pe-row" style={{ marginTop: 9 }}>
-                <button className="pe-btn primary" style={{ flex: 1 }} disabled
-                  title="Rendering and printing land in Stage E">Apply</button>
-                <button className="pe-btn" style={{ flex: 1 }} disabled
-                  title="Available once a correction has been printed (Stage E)">Revert</button>
+                <button className="pe-btn primary" style={{ flex: 1 }} onClick={applyCorrection}
+                  disabled={!canApply}
+                  title={printing ? "Rendering…"
+                    : !analysis ? "Analyse the clip first"
+                    : !anyEdit ? "Move a note first — there is nothing to apply"
+                    : "Render the correction into the audio. The original take is kept and Ctrl+Z undoes it."}>
+                  {printing ? (printPct > 0 ? `Applying… ${Math.round(printPct * 100)}%` : "Applying…") : "Apply"}
+                </button>
+                <button className="pe-btn" style={{ flex: 1 }} onClick={revertCorrection}
+                  disabled={!printed || printing}
+                  title={printed
+                    ? "Put the original take back. Your note edits are kept, so you can apply again."
+                    : "Available once a correction has been applied"}>
+                  Revert
+                </button>
               </div>
+              {printed && <div className="pe-hint" style={{ marginTop: 7 }}>
+                This clip plays the corrected audio. The original take is untouched — <kbd>Revert</kbd> brings it back.
+              </div>}
             </div>
 
 

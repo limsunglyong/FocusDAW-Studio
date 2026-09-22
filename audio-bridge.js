@@ -768,8 +768,41 @@
     // prints corrected audio through the normal source/bake path — which does sync. The
     // native engine has no concept of a pitch edit and would not know what to do with one.
     // ⚠️ If Stage E ever makes this call touch audio, this wrapper must grow the sync.
+    // 🔴 v2.8.1 — 여기부터 피치 편집이 **소리에 닿는다**. v2.7.x 의 세 래퍼에는 일부러
+    // syncTrackToNative 가 없었고(편집이 샘플을 바꾸지 않았으므로) 그 사정을 주석에
+    // 적어 뒀다. Stage E 가 그것을 뒤집었다 — printClipPitch 가 clip.sourceId 를 갈아
+    // 끼우므로, 네이티브가 옛 소스를 들고 있으면 **웹에서는 고쳐졌는데 네이티브(재생·
+    // Export)는 원음**인 상태가 된다. 가장 알아채기 어려운 종류의 결함이다.
+    //
+    // 세 세터에도 sync 를 붙인다. 그것들 자체는 여전히 샘플을 바꾸지 않지만, Apply 직전의
+    // 마지막 편집이 네이티브에 반영되지 않은 채 프린트되는 경로를 막는다 — 값이 이미
+    // 일치하면 sync 는 사실상 무해하다.
     setClipPitchEdits(trackId, clipId, edits) {
-      return LocalDAW.setClipPitchEdits(trackId, clipId, edits);
+      const ok = LocalDAW.setClipPitchEdits(trackId, clipId, edits);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find((t) => t.id === trackId));
+      return ok;
+    },
+
+    // Stage E — PSOLA 렌더를 클립에 프린트한다. 🔴 소리가 바뀐다 → sync 필수.
+    printClipPitch(trackId, clipId, an, notes) {
+      const sid = LocalDAW.printClipPitch(trackId, clipId, an, notes);
+      if (sid && this.isNative) syncTrackToNative(LocalDAW.tracks.find((t) => t.id === trackId));
+      return sid;
+    },
+
+    // 앱이 실제로 쓰는 것은 이쪽이다 — 5분 클립이 5.5 s 라 동기로 돌리면 그만큼 언다.
+    printClipPitchAsync(trackId, clipId, an, notes, onProgress) {
+      return LocalDAW.printClipPitchAsync(trackId, clipId, an, notes, onProgress).then((sid) => {
+        if (sid && this.isNative) syncTrackToNative(LocalDAW.tracks.find((t) => t.id === trackId));
+        return sid;
+      });
+    },
+
+    // 프린트를 되돌린다 — 오디오가 원본으로 돌아가므로 역시 sync 가 필요하다.
+    revertClipPitch(trackId, clipId) {
+      const ok = LocalDAW.revertClipPitch(trackId, clipId);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find((t) => t.id === trackId));
+      return ok;
     },
 
     // v2.7.3 — clip-wide pitch defaults. 🔴 A wrapper is MANDATORY even though this one adds
@@ -779,14 +812,18 @@
     // changes a sample. Stage E is where that stops being true: the moment a pitch edit or a
     // default reaches the renderer, both wrappers need the sync.
     setClipPitchDefaults(trackId, clipId, defaults) {
-      return LocalDAW.setClipPitchDefaults(trackId, clipId, defaults);
+      const ok = LocalDAW.setClipPitchDefaults(trackId, clipId, defaults);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find((t) => t.id === trackId));
+      return ok;
     },
 
     // v2.7.5 — note boundaries the user owns (설계 §4-2). Wrapper mandatory for the same reason
     // as the two above; no syncTrackToNative for the same reason either — 🔴 Stage E changes
     // that for all three at once.
     setClipPitchLayout(trackId, clipId, layout) {
-      return LocalDAW.setClipPitchLayout(trackId, clipId, layout);
+      const ok = LocalDAW.setClipPitchLayout(trackId, clipId, layout);
+      if (ok && this.isNative) syncTrackToNative(LocalDAW.tracks.find((t) => t.id === trackId));
+      return ok;
     },
 
     addAudioInTrack(name) {

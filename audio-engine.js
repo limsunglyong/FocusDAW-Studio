@@ -3834,6 +3834,30 @@
     // 유성 구간은 **원본 샘플 그대로** 남는다(비트 동일). 자음이 뭉개지지 않는 이유이고,
     // strength=0 이 진짜 무연산인 이유다.
 
+    // 그레인 창은 샘플마다 계산하지 않는다. 5분 클립이면 창 값이 3천만 번 넘게 필요한데,
+    // Math.cos 를 그만큼 부르는 것이 렌더 시간의 대부분이었다(실측 5분 12.3 s). 길이가
+    // 그레인마다 달라 창 배열을 재사용할 수 없으므로, **고해상도 Hann 표를 한 번 만들고
+    // 위치를 0~1 로 정규화해 찾는다.** 표가 4096 칸이면 오차는 창 값 기준 1e-6 미만이라
+    // 소리에 영향이 없다.
+    // 🔴 이름은 반드시 `_psola` 로 시작한다. 처음에 `_hann(u)` 로 썼다가 **이미 있던
+    // `_hann(N)`**(3337행 — 길이 N 짜리 창 배열을 만들어 De-noise STFT 가 쓴다)을
+    // 덮어썼다. 객체 리터럴은 나중 키가 이기므로 `this._hann(N)` 이 배열 대신 스칼라를
+    // 돌려주게 됐고, **De-noise 가 조용히 아무것도 하지 않게 됐다.**
+    // 예외도 경고도 없었다 — denoise-spectrum 하네스가 아니었으면 못 잡았다.
+    _psolaHannLUT: null,
+    _psolaHann(u) {                  // u: 0..1
+      let T = this._psolaHannLUT;
+      if (!T) {
+        T = this._psolaHannLUT = new Float32Array(4097);
+        // 🔴 u=0 → 0, u=0.5 → 1, u=1 → 0 인 **대칭** Hann 이어야 한다. 처음에 인자를 반으로
+        // 써서 단조 증가 램프를 만들었는데, 그러면 그레인 왼쪽이 눌리고 오른쪽이 살아
+        // 에폭이 번진다 — 하네스는 통과했지만 PSOLA 가 아니었다.
+        for (let i = 0; i <= 4096; i++) T[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i / 4096));
+      }
+      const i = u <= 0 ? 0 : u >= 1 ? 4096 : (u * 4096) | 0;
+      return T[i];
+    },
+
     PSOLA_MAX_SEMIS: 12,      // 이 이상은 PSOLA 가 아니라 다른 도구의 일이다
     PSOLA_EDGE_FADE: 0.004,   // 유성 구간 가장자리 크로스페이드 4 ms (De-noise 의 마이크로 페이드와 같은 값)
     PSOLA_MIN_SHIFT: 1e-4,    // 이보다 작은 반음 차이는 보정이 아니다
@@ -3982,11 +4006,12 @@
         const Tout = Math.max(2, Tin / r);
         // 그레인: 입력 마크 중심 ±Tin, Hann. 출력 마크 t 를 중심으로 놓는다.
         const L = Math.round(Tin);
+        const inv2L = 1 / (2 * L);
         for (let d = -L; d <= L; d++) {
           const si = marks[j] + d;
           const di = Math.round(t) + d - s0;
           if (si < s0 || si >= s1 || di < 0 || di >= n) continue;
-          const w = 0.5 - 0.5 * Math.cos(Math.PI * (d + L) / L);   // Hann, 길이 2L+1
+          const w = this._psolaHann((d + L) * inv2L);              // Hann, 길이 2L+1
           acc[di] += w * x[si];
           wsum[di] += w;
         }
@@ -4067,6 +4092,195 @@
         }
       }
       return out;
+    },
+
+    // ── Stage E 프린트 (설계 §6) — De-noise 와 같은 순서, 새로 만들 배관이 없다 ──
+    //
+    // 🔴 시간 기준에 함정이 있다. `an` 은 **클립의 구간만** 분석한 것이고(그래서
+    // _pitchAnalysisSetup 이 [off, off+duration) 만 본다) 프레임 0 은 **클립 소스 시각 0**,
+    // 즉 base 버퍼의 `off` 지점이다. 노트의 t0/t1 도 같은 기준이다(설계 §4).
+    // base 버퍼 전체를 그대로 _psolaRender 에 넘기면 `off` 만큼 어긋난 곳을 보정한다 —
+    // 조용히 틀리고, 파형만 봐서는 알아채기 어렵다. 그래서 **구간을 떼어 렌더하고 제자리에
+    // 다시 끼운다.**
+    //
+    // 🔴 그리고 렌더는 언제나 **baseSourceId** 에서 한다(설계 §2). 이미 프린트된 결과 위에
+    // 다시 렌더하면 아티팩트가 쌓인다. 분석도 같은 이유로 base 를 본다.
+    _clipWindow(track, clip, sourceId) {
+      const raw = this._rawBufferForSource(track, sourceId);
+      if (!raw) return null;
+      const sr = raw.sampleRate;
+      const off = clip.sourceOffset != null ? clip.sourceOffset : (clip.offset || 0);
+      const lo = Math.max(0, Math.round(off * sr));
+      const hi = Math.min(raw.length, lo + Math.round((clip.duration || 0) * sr));
+      if (hi - lo < 4) return null;
+      return { raw, sr, lo, hi };
+    },
+
+    printClipPitch(trackId, clipId, an, notes) {
+      const track = this.tracks.find(t => t.id === trackId);
+      const clip = track && (track.clips || []).find(c => c.id === clipId);
+      if (!track || !clip || !an || !an.frames) return null;
+      const baseId = (clip.pitch && clip.pitch.baseSourceId) || clip.sourceId;
+      const win = this._clipWindow(track, clip, baseId);
+      if (!win) return null;
+      const { raw, sr, lo, hi } = win;
+      const chN = raw.numberOfChannels;
+
+      // 클립 구간만 떼어 낸다 — _psolaRender 는 "프레임 0 = 버퍼 0" 을 가정한다.
+      const part = ctx.createBuffer(chN, hi - lo, sr);
+      for (let c = 0; c < chN; c++) part.getChannelData(c).set(raw.getChannelData(c).subarray(lo, hi));
+
+      const done = this._psolaRender(part, an, notes);
+      if (!done) return null;   // 보정할 것이 없다 — 프린트하지 않는다(무연산)
+
+      // 원본과 같은 길이로 되돌린다. 길이가 바뀌면 clip.sourceOffset / duration 이 전부
+      // 어긋나므로, 구간 밖은 base 그대로 두고 구간만 갈아 끼운다.
+      const out = ctx.createBuffer(chN, raw.length, sr);
+      for (let c = 0; c < chN; c++) {
+        const o = out.getChannelData(c);
+        o.set(raw.getChannelData(c));
+        o.set(done.getChannelData(c), lo);
+      }
+
+      const prev = (track.sources || []).find(s => s.id === clip.sourceId);
+      const sourceId = this._registerSource(track, {
+        id: this._sourceId(), duration: raw.length / sr,
+        sampleRate: sr, channels: chN,
+        fileName: (prev && prev.fileName) || track.name || null,
+        filePath: null, needsAudio: false,
+      }, out);
+      if (!clip.pitch) clip.pitch = { baseSourceId: baseId, printedSourceId: null, notes: [], edits: [], defaults: pitchDefaults(null), layout: [], analysis: null };
+      clip.pitch.baseSourceId = baseId;      // 🔴 원본은 바뀌지 않는다 — 재편집이 원본에서 다시 그린다
+      clip.pitch.printedSourceId = sourceId;
+      clip.sourceId = sourceId;
+      this._pendingConsolidations.push({ trackId: track.id, sourceId, suffix: "Pitched" });
+      this._ensureBaked(track);
+      return sourceId;
+    },
+
+    // ── 슬라이스 렌더 (v2.8.1) — 5분 클립이 5.5 s 다. 동기로 돌리면 그만큼 앱이 언다 ──
+    //
+    // 자르는 단위는 **유성 구간**이다. 구간끼리 독립이라 중간에 끊어도 결과가 달라지지
+    // 않고, 보통 1~2초짜리라 한 조각이 수십 ms 로 끝난다.
+    //
+    // 🔴 양보는 setTimeout 이 아니라 MessageChannel 이다(v2.4.4). Chromium 은 완전히
+    // 가려진 창의 타이머를 초당 1회로 스로틀하는데, 이 렌더는 **스튜디오 창**에서 돌고
+    // Pitch Editor 는 그 위에 뜬 자식 창이다 — setTimeout 으로 짰으면 Apply 를 누른 순간
+    // 렌더가 기어갔을 것이다. MessageChannel 은 스로틀 대상이 아니고 4 ms 클램프도 없다.
+    _psolaPrintSetup(trackId, clipId, an, notes) {
+      const track = this.tracks.find(t => t.id === trackId);
+      const clip = track && (track.clips || []).find(c => c.id === clipId);
+      if (!track || !clip || !ctx || !an || !an.frames) return null;
+      const baseId = (clip.pitch && clip.pitch.baseSourceId) || clip.sourceId;
+      const win = this._clipWindow(track, clip, baseId);
+      if (!win) return null;
+      const { raw, sr, lo, hi } = win;
+      const chN = raw.numberOfChannels;
+      const tgt = this._psolaTargetMidi(an, notes);
+      const runs = this._psolaVoicedRuns(an, sr, hi - lo).filter(([s0, s1, k0, k1]) => {
+        for (let k = k0; k <= k1; k++) {
+          if (Number.isFinite(tgt[k]) && Math.abs(tgt[k] - an.midi[k]) > this.PSOLA_MIN_SHIFT) return true;
+        }
+        return false;   // 이 구간은 손대지 않는다 — 원본 그대로 남는다
+      });
+      if (!runs.length) return null;   // 보정할 것이 없다
+      // 구간만 떼어 작업하고 마지막에 제자리로 돌려놓는다(printClipPitch 와 같은 이유).
+      const part = ctx.createBuffer(chN, hi - lo, sr);
+      const work = ctx.createBuffer(chN, hi - lo, sr);
+      for (let c = 0; c < chN; c++) {
+        part.getChannelData(c).set(raw.getChannelData(c).subarray(lo, hi));
+        work.getChannelData(c).set(part.getChannelData(c));   // 기본은 원본 그대로
+      }
+      let mono = part.getChannelData(0);
+      if (chN > 1) {
+        const m = new Float32Array(hi - lo);
+        for (let c = 0; c < chN; c++) { const d = part.getChannelData(c); for (let i = 0; i < m.length; i++) m[i] += d[i]; }
+        for (let i = 0; i < m.length; i++) m[i] /= chN;
+        mono = m;
+      }
+      return { track, clip, raw, sr, lo, hi, chN, an, tgt, runs, part, work, mono, baseId, i: 0 };
+    },
+
+    // 유성 구간 몇 개를 처리한다. 다 끝났으면 true.
+    _psolaPrintStep(st, count) {
+      const end = Math.min(st.runs.length, st.i + Math.max(1, count));
+      for (; st.i < end; st.i++) {
+        const [s0, s1] = st.runs[st.i];
+        const marks = this._psolaMarks(st.mono, st.sr, st.an, s0, s1);
+        if (!marks) continue;
+        for (let c = 0; c < st.chN; c++) {
+          this._psolaRenderRunWithMarks(st.part.getChannelData(c), st.work.getChannelData(c),
+                                        st.sr, st.an, st.tgt, s0, s1, marks);
+        }
+      }
+      return st.i >= st.runs.length;
+    },
+
+    // 작업 결과를 원본 길이로 되돌려 새 소스로 등록한다(printClipPitch 의 뒷부분과 동일).
+    _psolaPrintFinish(st) {
+      const { track, clip, raw, sr, lo, chN, baseId } = st;
+      const out = ctx.createBuffer(chN, raw.length, sr);
+      for (let c = 0; c < chN; c++) {
+        const o = out.getChannelData(c);
+        o.set(raw.getChannelData(c));
+        o.set(st.work.getChannelData(c), lo);
+      }
+      const prev = (track.sources || []).find(s => s.id === clip.sourceId);
+      const sourceId = this._registerSource(track, {
+        id: this._sourceId(), duration: raw.length / sr,
+        sampleRate: sr, channels: chN,
+        fileName: (prev && prev.fileName) || track.name || null,
+        filePath: null, needsAudio: false,
+      }, out);
+      if (!clip.pitch) clip.pitch = { baseSourceId: baseId, printedSourceId: null, notes: [], edits: [], defaults: pitchDefaults(null), layout: [], analysis: null };
+      clip.pitch.baseSourceId = baseId;
+      clip.pitch.printedSourceId = sourceId;
+      clip.sourceId = sourceId;
+      this._pendingConsolidations.push({ trackId: track.id, sourceId, suffix: "Pitched" });
+      this._ensureBaked(track);
+      return sourceId;
+    },
+
+    printClipPitchAsync(trackId, clipId, an, notes, onProgress) {
+      const st = this._psolaPrintSetup(trackId, clipId, an, notes);
+      if (!st) return Promise.resolve(null);
+      const SLICE_MS = 90;
+      const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+      // setTimeout 은 MessageChannel 이 없는 node 하네스용 폴백이다(분석 쪽과 같은 방식).
+      const chan = (typeof MessageChannel === "function") ? new MessageChannel() : null;
+      let onTick = null;
+      if (chan) {
+        chan.port1.onmessage = () => { const f = onTick; onTick = null; if (f) f(); };
+        if (chan.port1.start) chan.port1.start();
+      }
+      const yieldToLoop = (fn) => { if (!chan) { setTimeout(fn, 0); return; } onTick = fn; chan.port2.postMessage(0); };
+      const close = () => { if (chan) { try { chan.port1.close(); chan.port2.close(); } catch (_) {} } };
+      const step = () => new Promise((resolve) => {
+        yieldToLoop(() => {
+          const until = now() + SLICE_MS;
+          let done = false;
+          while (!done) { done = this._psolaPrintStep(st, 2); if (now() >= until) break; }
+          if (onProgress) { try { onProgress(st.i, st.runs.length); } catch (_) {} }
+          resolve(done);
+        });
+      });
+      const loop = () => step().then((done) => (done ? (close(), this._psolaPrintFinish(st)) : loop()));
+      return loop();
+    },
+
+    // 프린트를 되돌린다 — **오디오만**. 편집(edits · layout · defaults)은 그대로 남아
+    // 바로 다시 Apply 할 수 있다. 원본 WAV 는 애초에 손대지 않았으므로 되돌릴 것이 없다.
+    revertClipPitch(trackId, clipId) {
+      const track = this.tracks.find(t => t.id === trackId);
+      const clip = track && (track.clips || []).find(c => c.id === clipId);
+      if (!track || !clip || !clip.pitch) return false;
+      const baseId = clip.pitch.baseSourceId;
+      if (!baseId || clip.sourceId === baseId) return false;
+      if (!this._rawBufferForSource(track, baseId)) return false;
+      clip.sourceId = baseId;
+      clip.pitch.printedSourceId = null;
+      this._ensureBaked(track);
+      return true;
     },
 
     // Stage D — store the user's pitch edits on the clip (설계 §4-1).
@@ -4231,6 +4445,17 @@
         filePath: null, needsAudio: false,
       }, out);
       clip.sourceId = sourceId;
+      // 🔴 v2.8.1 — 피치 보정의 "원본"도 여기로 옮긴다.
+      //
+      // 피치 렌더는 언제나 baseSourceId 에서 한다(설계 §2 — 재편집이 아티팩트를 쌓지
+      // 않는 이유). 그런데 사용자가 **피치를 먼저 건드린 뒤 De-noise** 하면 baseSourceId
+      // 는 De-noise 이전 오디오를 가리킨 채 남고, 그 상태에서 Apply 하면 **De-noise 가
+      // 통째로 사라진다.** 잡음이 되돌아오는데 아무 경고도 없다.
+      //
+      // De-noise 한 결과가 이제 "사용자가 부른 테이크"이므로 그것을 새 원본으로 삼는다.
+      // 편집(edits · layout · defaults)은 시간 앵커라 그대로 살아남고, 다음 Analyze 가
+      // 새 원본을 다시 잰다.
+      if (clip.pitch) { clip.pitch.baseSourceId = sourceId; clip.pitch.printedSourceId = null; }
       this._pendingConsolidations.push({ trackId: track.id, sourceId, suffix: "De-noised" });
       this._ensureBaked(track);
       return sourceId;

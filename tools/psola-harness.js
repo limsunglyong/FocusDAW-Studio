@@ -332,10 +332,119 @@ console.log('⑧ 재편집 무누적 — 원본에서 다시 렌더하므로 두
   check('⑧ 한 번 보정한 결과의 오차가 기준 안', pct(e, 0.5) <= 5, pct(e, 0.5).toFixed(1) + '센트');
 }
 
-console.log(`\n${pass} PASS · ${fail} FAIL`);
-if (MUTATE) {
-  console.log(fail > 0 ? '\n✅ 변이 시험 통과 — strength 보간을 빼면 하네스가 잡아낸다.'
-                       : '\n🔴 변이했는데도 전건 통과 — 이 하네스는 보간을 지키지 못한다.');
-  process.exit(fail > 0 ? 0 : 1);
+// ── ⑩ 프린트 경로 (v2.8.1) ─────────────────────────────────────────────────
+console.log('');
+console.log('⑩ 프린트 — 클립 구간만 보정하고 길이·오프셋을 지킨다');
+{
+  const D = loadEngine();
+  // 9초짜리 소스: [무성 0.3][A3 1.2][무성 0.3][C4 1.2][무성 0.3] 뒤에 여분 무성
+  const tail = noiseSeg(Math.round(SR * 5));
+  const full = new Float32Array(X.length + tail.length);
+  full.set(X, 0); full.set(tail, X.length);
+  const fb = new FakeCtx().createBuffer(1, full.length, SR);
+  fb.getChannelData(0).set(full);
+  D.tracks.length = 0;
+  const tr = D.addBounceTrack('P', fb, { fileName: 'P.wav', filePath: '/x/P.wav' });
+  const clip = tr.clips[0];
+
+  // 🔴 클립을 **잘라** 소스 오프셋이 0 이 아니게 만든다. 여기가 함정이 있던 자리다 —
+  //    분석은 클립 구간만 보고 프레임 0 = 클립 시각 0 이므로, 소스 전체를 렌더에 넘기면
+  //    오프셋만큼 어긋난 곳을 보정한다.
+  const OFF = 0.2;
+  clip.sourceOffset = OFF; clip.offset = OFF;
+  clip.duration = (X.length / SR) - OFF;
+  clip.end = clip.start + clip.duration;
+
+  const an = D.analyzeClipPitch(tr.id, clip.id);
+  check('잘린 클립이 분석된다', !!an && an.frames > 0, an ? an.frames + ' frames' : 'none');
+
+  // 클립 시각 기준 노트(소스 시각에서 OFF 를 뺀 값)
+  const nA = { t0: T1[0] - OFF, t1: T1[1] - OFF, midi: A3, target: A3 + 2, strength: 1, keepVibrato: true };
+  const before = (tr.sources || []).length;
+  const sid = D.printClipPitch(tr.id, clip.id, an, [nA]);
+  check('프린트가 새 소스를 만든다', !!sid && (tr.sources || []).length === before + 1);
+  check('clip.sourceId 가 갈아끼워졌다', clip.sourceId === sid);
+  check('🔴 baseSourceId 는 원본 그대로', clip.pitch.baseSourceId !== sid && !!clip.pitch.baseSourceId);
+  check('printedSourceId 가 기록된다', clip.pitch.printedSourceId === sid);
+  check('디스크 기록 대기열에 올라간다', D._pendingConsolidations.some((q) => q.sourceId === sid && q.suffix === 'Pitched'));
+
+  const outRaw = tr._rawBuffers[sid];
+  check('🔴 새 소스 길이가 원본과 같다 (오프셋·duration 이 그대로 유효)',
+        outRaw && outRaw.length === full.length, outRaw ? outRaw.length + ' vs ' + full.length : 'none');
+
+  const y = outRaw.getChannelData(0);
+  // 🔴 클립 **밖**(소스 앞 0~OFF, 그리고 클립 뒤 꼬리)은 손대지 않았어야 한다.
+  let outside = 0;
+  for (let i = 0; i < Math.round(OFF * SR); i++) if (y[i] !== full[i]) outside++;
+  for (let i = X.length; i < full.length; i++) if (y[i] !== full[i]) outside++;
+  check('🔴 클립 구간 밖은 비트 동일', outside === 0, outside + ' 샘플');
+
+  // 보정이 **제자리에** 들어갔는가 — 소스 시각 기준 A3 구간이 A3+2 로 들려야 한다.
+  const re = analyse(loadEngine(), y.subarray(Math.round(OFF * SR), X.length));
+  const e = centsError(re.an, (t) => {
+    const src = t + OFF;                       // 잘라 낸 구간의 시각 → 소스 시각
+    return (src >= T1[0] + 0.1 && src <= T1[1] - 0.1) ? A3 + 2
+         : (src >= T2[0] + 0.1 && src <= T2[1] - 0.1) ? C4 : NaN;
+  });
+  check('🔴 보정이 제자리에 들어갔다 (A3 는 +2, C4 는 그대로)', pct(e, 0.5) <= 5,
+        pct(e, 0.5).toFixed(1) + '센트 (' + e.length + ' 프레임)');
+
+  // Revert
+  check('Revert 가 원본으로 되돌린다', D.revertClipPitch(tr.id, clip.id) === true);
+  check('sourceId 가 base 로', clip.sourceId === clip.pitch.baseSourceId);
+  check('printedSourceId 가 비워진다', clip.pitch.printedSourceId === null);
+  check('편집은 남는다 (다시 Apply 할 수 있다)', !!clip.pitch);
+  check('두 번 Revert 하면 아무 일도 없다', D.revertClipPitch(tr.id, clip.id) === false);
+
+  // 보정할 것이 없으면 프린트하지 않는다
+  const nFlat = { t0: T1[0] - OFF, t1: T1[1] - OFF, midi: A3, target: A3, strength: 1, keepVibrato: true };
+  check('🔴 보정할 것이 없으면 프린트하지 않는다', D.printClipPitch(tr.id, clip.id, an, [nFlat]) === null);
 }
-process.exit(fail ? 1 : 0);
+
+
+// ── ⑪ 슬라이스 렌더 (v2.8.1) ───────────────────────────────────────────────
+// 🔴 비동기 경로는 동기와 **같은 결과**여야 한다. 슬라이스가 결과를 바꾸면 그것은
+//    최적화가 아니라 결함이다 — 유성 구간끼리 독립이라는 전제를 지키는 검사다.
+const asyncChecks = (async () => {
+  console.log('');
+  console.log('⑪ 슬라이스 렌더가 동기 렌더와 같은 결과를 낸다');
+  const mk = () => {
+    const D = loadEngine();
+    const fb = new FakeCtx().createBuffer(1, X.length, SR);
+    fb.getChannelData(0).set(X);
+    D.tracks.length = 0;
+    const tr = D.addBounceTrack('S', fb, { fileName: 'S.wav', filePath: '/x/S.wav' });
+    const an = D.analyzeClipPitch(tr.id, tr.clips[0].id);
+    return { D, tr, clip: tr.clips[0], an };
+  };
+  const notes = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3 + 2, strength: 1, keepVibrato: true },
+                 { t0: T2[0], t1: T2[1], midi: C4, target: C4 - 1, strength: 0.5, keepVibrato: false }];
+
+  const a = mk(), b = mk();
+  const sidSync = a.D.printClipPitch(a.tr.id, a.clip.id, a.an, notes);
+  let seen = 0, lastTotal = 0;
+  const sidAsync = await b.D.printClipPitchAsync(b.tr.id, b.clip.id, b.an, notes, (d, t) => { seen++; lastTotal = t; });
+  check('동기·비동기 둘 다 프린트된다', !!sidSync && !!sidAsync);
+  check('진행률이 보고된다', seen > 0 && lastTotal > 0, seen + '회 · 구간 ' + lastTotal + '개');
+
+  const ys = a.tr._rawBuffers[sidSync].getChannelData(0);
+  const ya = b.tr._rawBuffers[sidAsync].getChannelData(0);
+  let diff = 0, maxd = 0;
+  for (let i = 0; i < ys.length; i++) { const d = Math.abs(ys[i] - ya[i]); if (d > 0) diff++; if (d > maxd) maxd = d; }
+  check('🔴 ⑪ 비트 단위로 동일하다', diff === 0, diff + ' 샘플 다름 (최대 ' + maxd.toExponential(1) + ')');
+
+  // 보정할 것이 없으면 비동기도 null
+  const c = mk();
+  const flat = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3, strength: 1, keepVibrato: true }];
+  check('보정할 것이 없으면 비동기도 프린트하지 않는다',
+        (await c.D.printClipPitchAsync(c.tr.id, c.clip.id, c.an, flat, null)) === null);
+
+  console.log(`\n${pass} PASS · ${fail} FAIL`);
+  if (MUTATE) {
+    console.log(fail > 0 ? '\n✅ 변이 시험 통과 — strength 보간을 빼면 하네스가 잡아낸다.'
+                         : '\n🔴 변이했는데도 전건 통과 — 이 하네스는 보간을 지키지 못한다.');
+    process.exit(fail > 0 ? 0 : 1);
+  }
+  process.exit(fail ? 1 : 0);
+})();
+
