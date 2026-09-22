@@ -3817,6 +3817,258 @@
       return this._pitchAnalysisFinish(st);
     },
 
+    // ══ Stage E — TD-PSOLA 렌더 (설계 §5-4) ════════════════════════════════════
+    //
+    // 🔴 Pitch Editor 가 처음으로 소리에 닿는 코드다. Stage A~D 는 화면과 판정만
+    // 바꿨고, 여기서부터는 틀리면 사용자의 오디오가 실제로 나빠진다.
+    //
+    // 왜 PSOLA 인가(설계 §5-4): 시간영역 피치동기 중첩가산은 **포먼트를 자연히 보존**해
+    // 보컬이 "다람쥐 소리"가 되지 않는다. 위상보코더는 트랜지언트·무성음에서 phasiness 가
+    // 크고, 리샘플은 포먼트가 함께 움직인다.
+    //
+    // ⚠️ 곡선(`an`)을 여기서 다시 분석하지 않는다 — **에디터가 보낸 것**을 쓴다. 사용자가
+    // 화면에서 본 노트와 렌더가 같은 것을 써야 하고, 재분석하면 그사이 NOTES 설정이 달라
+    // 화면과 다른 노트로 렌더할 수 있다(v2.8.0 계획).
+    //
+    // 🔴 손대지 않는 것을 손대지 않는다. 무성 구간, 노트 밖 구간, 그리고 보정량이 0 인
+    // 유성 구간은 **원본 샘플 그대로** 남는다(비트 동일). 자음이 뭉개지지 않는 이유이고,
+    // strength=0 이 진짜 무연산인 이유다.
+
+    PSOLA_MAX_SEMIS: 12,      // 이 이상은 PSOLA 가 아니라 다른 도구의 일이다
+    PSOLA_EDGE_FADE: 0.004,   // 유성 구간 가장자리 크로스페이드 4 ms (De-noise 의 마이크로 페이드와 같은 값)
+    PSOLA_MIN_SHIFT: 1e-4,    // 이보다 작은 반음 차이는 보정이 아니다
+
+    _midiToHz(m) { return 440 * Math.pow(2, (m - 69) / 12); },
+
+    // 프레임 단위 **목표 midi**. 노트 밖·무성 프레임은 NaN = "손대지 않는다".
+    //
+    //   dev     = keepVibrato ? (원 곡선 − 노트 중앙값) : 0
+    //   desired = target + dev
+    //   final   = 원 곡선 + strength × (desired − 원 곡선)
+    //
+    // strength=0 이면 final === 원 곡선이고, 그러면 아래 렌더가 그 구간을 통째로 건너뛴다.
+    _psolaTargetMidi(an, notes) {
+      const out = new Float32Array(an.frames);
+      const half = an.winSec / 2;
+      const list = (notes || []).slice().sort((a, b) => a.t0 - b.t0);
+      let ni = 0;
+      for (let k = 0; k < an.frames; k++) {
+        out[k] = NaN;
+        if (!an.voiced[k]) continue;
+        const orig = an.midi[k];
+        if (!Number.isFinite(orig)) continue;
+        const t = k * an.hopSec + half;
+        while (ni < list.length && list[ni].t1 < t) ni++;
+        const nt = list[ni];
+        if (!nt || t < nt.t0 || t > nt.t1) continue;   // 노트 밖 — 손대지 않는다
+        const dev = nt.keepVibrato === false ? 0 : (orig - nt.midi);
+        const desired = nt.target + dev;
+        const s = Number.isFinite(nt.strength) ? Math.max(0, Math.min(1, nt.strength)) : 1;
+        out[k] = orig + s * (desired - orig);
+      }
+      return out;
+    },
+
+    // 샘플 i 에서의 값. 프레임 중심 사이는 선형 보간한다 — 계단으로 두면 주기가 튀어
+    // 마크 간격이 들쭉날쭉해지고, 그것이 곧 클릭이 된다.
+    _psolaLerp(an, arr, i, sr) {
+      const x = (i / sr - an.winSec / 2) / an.hopSec;
+      const k0 = Math.floor(x);
+      if (k0 < 0) return arr[0];
+      if (k0 >= an.frames - 1) return arr[an.frames - 1];
+      const a = arr[k0], b = arr[k0 + 1];
+      if (!Number.isFinite(a)) return b;
+      if (!Number.isFinite(b)) return a;
+      return a + (b - a) * (x - k0);
+    },
+
+    // 샘플 i 의 목표 주기 배율. 1 이면 손대지 않는다.
+    _psolaRatioAt(an, tgt, i, sr) {
+      const t = this._psolaLerp(an, tgt, i, sr), o = this._psolaLerp(an, an.midi, i, sr);
+      if (!Number.isFinite(t) || !Number.isFinite(o)) return 1;
+      const d = Math.max(-this.PSOLA_MAX_SEMIS, Math.min(this.PSOLA_MAX_SEMIS, t - o));
+      return Math.pow(2, d / 12);
+    },
+
+    // 유성 프레임이 이어지는 구간을 **샘플 범위**로. 프레임 k 의 중심은 k*hop + win/2 다.
+    _psolaVoicedRuns(an, sr, len) {
+      const runs = [];
+      let k = 0;
+      while (k < an.frames) {
+        if (!an.voiced[k]) { k++; continue; }
+        let j = k;
+        while (j + 1 < an.frames && an.voiced[j + 1]) j++;
+        const s0 = Math.max(0, Math.round((k * an.hopSec + an.winSec / 2) * sr));
+        const s1 = Math.min(len, Math.round((j * an.hopSec + an.winSec / 2) * sr) + 1);
+        if (s1 - s0 > 4) runs.push([s0, s1, k, j]);
+        k = j + 1;
+      }
+      return runs;
+    },
+
+    // 피치마크(에폭) — 유성 구간에서 한 주기에 하나씩 찍는다.
+    //
+    // 🔴 피크는 **저역통과한 복사본**에서 찾는다. 원신호에서 찾으면 고차 배음의 봉우리에
+    // 마크가 끌려가 주기가 반 토막 나고, 그러면 렌더가 한 옥타브 틀린다. 1극 필터를 셋
+    // 겹쳐 −18 dB/oct 로 2·f0 을 충분히 눌렀다.
+    // ⚠️ 필터의 위상 지연은 **상수**라 무해하다 — 분석과 합성이 같은 마크를 쓰므로 함께
+    // 밀리고, 길이도 소리도 바뀌지 않는다. 영위상 필터를 쓸 이유가 없다.
+    _psolaMarks(x, sr, an, s0, s1) {
+      // 컷오프는 그 구간 f0 의 1.2 배. f0 가 없으면 마크를 찍지 않는다.
+      let fsum = 0, fn = 0;
+      for (let i = s0; i < s1; i += Math.max(1, Math.round(sr * an.hopSec))) {
+        const f = this._psolaLerp(an, an.f0, i, sr);
+        if (Number.isFinite(f) && f > 0) { fsum += f; fn++; }
+      }
+      if (!fn) return null;
+      const fc = Math.min(sr * 0.45, (fsum / fn) * 1.2);
+      const a = 1 - Math.exp(-2 * Math.PI * fc / sr);
+      const lp = new Float32Array(s1 - s0);
+      let y1 = 0, y2 = 0, y3 = 0;
+      for (let i = s0; i < s1; i++) {
+        y1 += a * (x[i] - y1); y2 += a * (y1 - y2); y3 += a * (y2 - y3);
+        lp[i - s0] = y3;
+      }
+      const at = (i) => lp[i - s0];
+      const f0At = (i) => {
+        const f = this._psolaLerp(an, an.f0, i, sr);
+        return (Number.isFinite(f) && f > 0) ? f : (fsum / fn);
+      };
+      // 첫 마크: 첫 한 주기 안의 최대
+      let T = sr / f0At(s0);
+      let hi = Math.min(s1 - 1, s0 + Math.round(T));
+      let m = s0;
+      for (let i = s0; i <= hi; i++) if (at(i) > at(m)) m = i;
+      const marks = [m];
+      // 다음 마크: 예측 위치 ±T/4 안의 최대. 창을 좁게 잡는 것이 핵심이다 —
+      // 넓히면 옆 주기의 봉우리를 집어 마크가 건너뛴다.
+      for (;;) {
+        T = sr / f0At(marks[marks.length - 1]);
+        const pred = marks[marks.length - 1] + T;
+        const w = Math.max(1, Math.round(T / 4));
+        const lo = Math.round(pred) - w, hiN = Math.round(pred) + w;
+        if (hiN >= s1 || lo <= marks[marks.length - 1]) break;
+        let n = Math.max(s0, lo);
+        for (let i = Math.max(s0, lo); i <= Math.min(s1 - 1, hiN); i++) if (at(i) > at(n)) n = i;
+        if (n <= marks[marks.length - 1]) break;
+        marks.push(n);
+      }
+      return marks.length >= 2 ? marks : null;
+    },
+
+    // 한 유성 구간을 중첩가산으로 다시 만든다.
+    //
+    // 출력 마크를 **목표 주기**로 깔고, 각 출력 마크마다 시간상 가장 가까운 입력 마크
+    // 주위의 2주기 Hann 그레인을 가져다 더한다. 길이는 건드리지 않으므로 출력 시각 →
+    // 입력 시각 매핑은 항등이다.
+    //
+    // 🔴 단순 합이 아니라 **창 합으로 나눈다**(가중 평균 OLA). 고전 PSOLA 는 hop 이
+    // 창 길이의 절반일 때만 평탄한데, 피치를 올리면 hop 이 짧아지고 내리면 길어져
+    // 그 조건이 깨진다 — 그대로 두면 올릴수록 커지고 내릴수록 물결친다. 창 합으로
+    // 나누면 배율과 무관하게 이득이 1 이 되고, 하네스 ⑦(레벨 보존)이 이것을 잰다.
+    // 🔴 마크를 인자로 받는다 — 스테레오 두 채널이 **같은 마크**를 써야 위상이 맞는다.
+    _psolaRenderRunWithMarks(x, out, sr, an, tgt, s0, s1, marks) {
+      if (!marks || marks.length < 2) return false;
+      const n = s1 - s0;
+      const acc = new Float32Array(n), wsum = new Float32Array(n);
+      const per = (j) => (j + 1 < marks.length ? marks[j + 1] - marks[j]
+                                               : marks[j] - marks[j - 1]);
+      let j = 0;
+      let t = marks[0];
+      for (;;) {
+        while (j + 1 < marks.length && Math.abs(marks[j + 1] - t) <= Math.abs(marks[j] - t)) j++;
+        const Tin = Math.max(2, per(j));
+        const r = this._psolaRatioAt(an, tgt, Math.round(t), sr);
+        const Tout = Math.max(2, Tin / r);
+        // 그레인: 입력 마크 중심 ±Tin, Hann. 출력 마크 t 를 중심으로 놓는다.
+        const L = Math.round(Tin);
+        for (let d = -L; d <= L; d++) {
+          const si = marks[j] + d;
+          const di = Math.round(t) + d - s0;
+          if (si < s0 || si >= s1 || di < 0 || di >= n) continue;
+          const w = 0.5 - 0.5 * Math.cos(Math.PI * (d + L) / L);   // Hann, 길이 2L+1
+          acc[di] += w * x[si];
+          wsum[di] += w;
+        }
+        t += Tout;
+        if (Math.round(t) >= s1) break;
+      }
+      // 창이 닿지 않은 샘플은 원본을 남긴다 — 구멍을 무음으로 두면 그것이 곧 클릭이다.
+      for (let i = 0; i < n; i++) out[s0 + i] = wsum[i] > 1e-6 ? acc[i] / wsum[i] : x[s0 + i];
+      // 🔴 구간 레벨을 원본에 맞춘다.
+      //
+      // 겹치는 그레인은 같은 파형을 서로 다른 위치에서 뜬 복사본이라, 목표 주기가 원
+      // 주기와 어긋난 만큼 **상쇄**가 생긴다(PSOLA 고유의 성질이고 이동량에 비례한다 —
+      // 계측: ±1 반음 −0.5~0.8 dB · ±3 반음 −1.0~2.9 dB). 그레인 반폭을 Tin·Tout·max·min
+      // 으로 스윕해 봤지만 **넷 다 같았다** — 창 길이의 문제가 아니다.
+      //
+      // 피치를 바꾸는 일이 음량을 바꿔서는 안 되므로, 구간마다 스칼라 이득 하나로 RMS 를
+      // 되돌린다. ⚠️ 이것은 **음량**을 고치는 것이지 상쇄 자체를 없애지 못한다 — 남는
+      // 고역 손실은 하네스 ⑨가 따로 잰다.
+      let ri = 0, ro = 0;
+      for (let i = 0; i < n; i++) { const a = x[s0 + i], b = out[s0 + i]; ri += a * a; ro += b * b; }
+      if (ro > 1e-12 && ri > 1e-12) {
+        const g = Math.sqrt(ri / ro);
+        for (let i = 0; i < n; i++) out[s0 + i] *= g;
+      }
+      // 가장자리는 원본과 크로스페이드한다. 유성/무성 경계는 마크가 끊기는 자리이고,
+      // 거기서 파형이 튀면 곧바로 들린다(하네스 ⑥).
+      const f = Math.max(1, Math.round(this.PSOLA_EDGE_FADE * sr));
+      for (let i = 0; i < f && i < n; i++) {
+        const g = i / f;
+        out[s0 + i] = x[s0 + i] * (1 - g) + out[s0 + i] * g;
+        const k = s1 - 1 - i;
+        if (k > s0) out[k] = x[k] * (1 - g) + out[k] * g;
+      }
+      return true;
+    },
+
+    // 클립 하나를 보정해 새 버퍼로 돌려준다. 원본 버퍼는 건드리지 않는다.
+    //
+    //   raw    baseSourceId 의 원본 오디오 (🔴 이미 프린트된 결과가 아니다 — 재편집이
+    //          아티팩트를 쌓지 않는 이유가 이것이다, 설계 §2)
+    //   an     에디터가 보낸 분석(f0 · voiced · midi · hopSec · winSec · frames)
+    //   notes  화면에 보이던 노트 목록(t0 · t1 · midi · target · strength · keepVibrato)
+    //
+    // ⚠️ 스테레오는 채널을 독립 처리하지 않는다 — 한 채널(모노 합)에서 뽑은 **같은
+    // 마크**를 두 채널에 쓴다. 따로 찍으면 채널 간 위상이 어긋나 중앙이 비어 들린다
+    // (설계 §5-4). Audio In 녹음은 대개 모노라 실사용 영향은 작지만 규칙은 규칙이다.
+    _psolaRender(raw, an, notes) {
+      if (!ctx || !raw || !an || !an.frames) return null;
+      const sr = raw.sampleRate, len = raw.length, chN = raw.numberOfChannels;
+      const tgt = this._psolaTargetMidi(an, notes);
+      // 보정할 것이 하나도 없으면 렌더하지 않는다 — strength=0 이 진짜 무연산이 되는 자리.
+      let any = false;
+      for (let k = 0; k < an.frames; k++) {
+        if (Number.isFinite(tgt[k]) && Math.abs(tgt[k] - an.midi[k]) > this.PSOLA_MIN_SHIFT) { any = true; break; }
+      }
+      if (!any) return null;
+      // 마크는 모노 합에서 한 번만 찍는다(위 주석).
+      let mono = raw.getChannelData(0);
+      if (chN > 1) {
+        const m = new Float32Array(len);
+        for (let c = 0; c < chN; c++) { const d = raw.getChannelData(c); for (let i = 0; i < len; i++) m[i] += d[i]; }
+        for (let i = 0; i < len; i++) m[i] /= chN;
+        mono = m;
+      }
+      const out = ctx.createBuffer(chN, len, sr);
+      for (let c = 0; c < chN; c++) out.getChannelData(c).set(raw.getChannelData(c));   // 기본은 원본 그대로
+      for (const [s0, s1, k0, k1] of this._psolaVoicedRuns(an, sr, len)) {
+        // 이 구간에 보정할 것이 있는가. 없으면 건드리지 않는다(비트 동일).
+        let touch = false;
+        for (let k = k0; k <= k1; k++) {
+          if (Number.isFinite(tgt[k]) && Math.abs(tgt[k] - an.midi[k]) > this.PSOLA_MIN_SHIFT) { touch = true; break; }
+        }
+        if (!touch) continue;
+        const marks = this._psolaMarks(mono, sr, an, s0, s1);
+        if (!marks) continue;
+        for (let c = 0; c < chN; c++) {
+          this._psolaRenderRunWithMarks(raw.getChannelData(c), out.getChannelData(c), sr, an, tgt, s0, s1, marks);
+        }
+      }
+      return out;
+    },
+
     // Stage D — store the user's pitch edits on the clip (설계 §4-1).
     //
     // What is stored is NOT the notes. Notes are derived from the analysis and are rebuilt
