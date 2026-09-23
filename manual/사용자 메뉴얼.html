@@ -333,6 +333,7 @@
         <li><a href="#automation">볼륨 오토메이션</a></li>
         <li><a href="#mixer">믹서와 마스터</a></li>
         <li><a href="#advfx">고급 이펙트</a></li>
+        <li><a href="#pitch">피치 에디터</a></li>
         <li><a href="#export">믹스다운 내보내기</a></li>
         <li><a href="#settings">설정 · 오디오 장치 · 테마</a></li>
         <li><a href="#shortcuts">단축키</a></li>
@@ -349,6 +350,7 @@
         <li><a href="#automation">Volume Automation</a></li>
         <li><a href="#mixer">Mixer &amp; Master</a></li>
         <li><a href="#advfx">Advanced Effects</a></li>
+        <li><a href="#pitch">Pitch Editor</a></li>
         <li><a href="#export">Exporting Mixdown</a></li>
         <li><a href="#settings">Settings, Audio Devices &amp; Themes</a></li>
         <li><a href="#shortcuts">Shortcuts</a></li>
@@ -2198,9 +2200,146 @@
       </div>
     </section>
 
+    <section id="pitch">
+      <div class="lang-ko">
+  <h2>11. 피치 에디터(Pitch Editor)</h2>
+            <p><strong>피치 에디터</strong>는 녹음한 보컬의 음정을 음(note) 단위로 다듬는 창입니다. 클립의 음높이를 눈으로 보고, 어긋난 음을 끌어 옮긴 뒤, 그 결과를 오디오에 구워 넣습니다. <strong>원본 녹음 파일은 절대 변하지 않습니다</strong> — 보정한 결과는 언제나 새 오디오로 따로 만들어지고, 되돌릴 수 있습니다.</p>
+
+            <p>상단 도구 막대의 <strong>Key / Vari Key</strong>가 <em>곡 전체</em>의 조성을 바꾸는 기능이라면, 피치 에디터는 <em>한 음씩</em> 고치는 기능입니다. 두 기능은 방식이 달라서, 피치 에디터는 목소리의 음색(포먼트)을 그대로 두고 음정만 옮깁니다.</p>
+
+            <h3>① 열기</h3>
+            <p><strong>Audio In 트랙</strong>의 클립을 <strong>우클릭</strong>하고 <code>Pitch Editor...</code>를 고릅니다. 스템(파일) 트랙에는 이 메뉴가 나오지 않습니다 — 보컬 테이크를 위한 기능입니다.</p>
+
+            <h3>② Analyze — 음높이 분석</h3>
+            <p>창이 열리면 우측 패널의 <strong>Analyze</strong>(또는 <kbd>Ctrl</kbd>+<kbd>R</kbd>)를 누릅니다. 부른 음높이가 <strong>빨간 곡선</strong>으로 그려지고, 그 위에 <strong>노트 블록</strong>이 얹힙니다. 블록 하나가 부른 음 하나입니다.</p>
+            <ul>
+              <li>블록 안의 글자는 검출된 <strong>음이름</strong>과 <strong>센트 편차</strong>입니다(예: <code>A3 +12¢</code>).</li>
+              <li>블록이 <strong>흐릿하면</strong> 검출 신뢰도가 낮은 구간입니다.</li>
+              <li>테두리가 <strong>점선</strong>이면 프로젝트 조성에서 벗어난 음입니다.</li>
+              <li>⚠️ 분석 결과는 저장되지 않습니다. 프로젝트를 다시 열면 <strong>Analyze를 다시</strong> 눌러야 합니다. 편집한 내용은 그대로 남아 다시 붙습니다.</li>
+            </ul>
+
+            <h3>③ 노트 고르기</h3>
+            <ul>
+              <li><strong>클릭</strong> — 그 노트만 선택</li>
+              <li><kbd>Ctrl</kbd>+<strong>클릭</strong> — 하나씩 더하거나 빼기</li>
+              <li><kbd>Shift</kbd>+<strong>클릭</strong> — 먼저 고른 노트부터 <strong>그 사이 전부</strong></li>
+              <li><kbd>Ctrl</kbd>+<kbd>A</kbd> — <strong>전체 선택</strong></li>
+              <li>빈 곳을 클릭하면 선택이 풀리고 재생 위치가 그리로 옮겨 갑니다.</li>
+            </ul>
+
+            <h3>④ 음정 옮기기 — 드래그와 SNAP</h3>
+            <p>노트를 위아래로 <strong>끌면</strong> 음정이 바뀝니다. 여러 개를 골라 두면 함께 움직입니다. 옮긴 노트는 <strong>붉은 계열</strong>로 바뀌어 한눈에 찾을 수 있습니다.</p>
+            <p>우측 <strong>SNAP</strong>이 "어디에 달라붙을지"를 정합니다.</p>
+            <ul>
+              <li><strong>Chromatic</strong> — 반음 한 칸씩(검은 건반 포함)</li>
+              <li><strong>Key</strong> — 곡의 조성에 속한 음에만. 조성이 감지되지 않았으면 고를 수 없습니다.</li>
+            </ul>
+            <p><strong>Snap all to key</strong>는 모든 노트를 한 번에 가장 가까운 조성 음으로 옮깁니다. <kbd>Ctrl</kbd>+<kbd>Z</kbd> 한 번으로 통째로 되돌아갑니다.</p>
+            <p>⚠️ <strong>6반음</strong>을 넘겨 옮기면 경고가 나타납니다. 그보다 크게 옮기면 목소리의 음색이 상하기 때문이며, 실제 보정은 6반음에서 멈춥니다.</p>
+
+            <h3>⑤ 한 음이 여러 조각으로 나뉘었을 때 — Split / Merge</h3>
+            <p>비브라토를 깊게 준 긴 음은 여러 블록으로 쪼개져 보일 수 있습니다. 그 블록들을 <kbd>Shift</kbd>+클릭으로 함께 고르고 <strong>Merge</strong>를 누르면 하나가 됩니다. 반대로 두 음이 한 블록으로 뭉쳤다면, 그 블록을 고르고 재생 위치를 경계로 옮긴 뒤 <strong>Split</strong>을 누릅니다.</p>
+            <p>🔴 <strong>이렇게 정한 경계는 사용자의 것이 됩니다</strong> — 다시 Analyze 하거나 <code>NOTES</code> 설정을 바꾸거나 프로젝트를 다시 열어도 그대로 유지됩니다. 자동 판정으로 되돌리려면 그 노트를 고르고 <strong>Reset</strong>을 누릅니다.</p>
+
+            <h3>⑥ 얼마나 고칠지 — 프리셋 · AMOUNT · VIBRATO</h3>
+            <p>선택한 노트가 있으면 <strong>그 노트들</strong>에, 없으면 <strong>클립 전체의 기본값</strong>에 적용됩니다. 어느 쪽인지는 바로 위 라벨(<code>ALL NOTES</code> 또는 <code>N NOTES SELECTED</code>)이 알려 줍니다.</p>
+            <ul>
+              <li><strong>Natural</strong> — 목표 음정 쪽으로 70%만 옮기고 비브라토는 살립니다. 가장 흔히 쓰는 값입니다.</li>
+              <li><strong>Tight</strong> — 음정에 정확히 맞추되 비브라토는 살립니다.</li>
+              <li><strong>Hard</strong> — 음정에 정확히 맞추고 비브라토도 눌러 평평하게 만듭니다.</li>
+            </ul>
+            <p><strong>AMOUNT</strong>는 그 비율을 직접 정합니다(0% = 부른 그대로, 100% = 목표에 딱 맞춤). <strong>VIBRATO</strong>는 떨림을 살릴지 누를지를 정합니다.</p>
+
+            <h3>⑦ Apply / Revert — 소리에 반영하기</h3>
+            <p>여기까지는 <strong>화면 위의 계획</strong>일 뿐 소리는 그대로입니다. <strong>Apply</strong>를 눌러야 보정이 오디오에 구워집니다. 긴 클립은 몇 초가 걸리며 진행률이 버튼에 표시되고, 끝나면 걸린 시간이 함께 나타납니다.</p>
+            <ul>
+              <li><strong>Apply</strong>는 <strong>화면과 소리가 다를 때만</strong> 켜집니다. 눌러도 달라질 것이 없으면 꺼져 있습니다.</li>
+              <li><strong>Revert</strong>는 오디오를 원래 노래로 되돌립니다. <strong>노트 편집은 그대로 남으므로</strong> 바로 다시 Apply 할 수 있습니다.</li>
+              <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> 한 번으로 Apply 전체가 되돌아갑니다.</li>
+              <li>🔴 <strong>보정은 언제나 원본 테이크에서 다시 그립니다.</strong> 그래서 여러 번 Apply 해도 잡음이 쌓이지 않습니다.</li>
+            </ul>
+            <p>만들어진 오디오는 프로젝트 폴더의 <code>Audio/Consolidated/</code>에 <code>...Pitched...</code>라는 이름으로 남습니다.</p>
+
+            <h3>⑧ 알아 두실 한계</h3>
+            <ul>
+              <li><strong>한 사람이 부른 단성 테이크</strong>가 대상입니다. 두세 사람이 겹쳐 부른 하모니는 음높이 검출의 원리적 한계를 벗어납니다.</li>
+              <li>이동은 <strong>±6반음</strong>까지가 실용 범위입니다.</li>
+              <li>보정한 클립을 나누거나 합치거나 Flatten 하면 편집 내용은 없어지고 <strong>보정된 소리만</strong> 남습니다.</li>
+            </ul>
+      </div>
+      <div class="lang-en">
+  <h2>11. Pitch Editor</h2>
+            <p>The <strong>Pitch Editor</strong> tunes a recorded vocal one note at a time. You see the pitch you sang, drag the notes that went astray, and then print the result into the audio. <strong>Your original recording is never altered</strong> — the correction is always written as new audio, and it can be undone.</p>
+
+            <p>Where <strong>Key / Vari Key</strong> in the top toolbar transposes the <em>whole song</em>, the Pitch Editor fixes <em>one note at a time</em>. The two use different methods: the Pitch Editor moves the pitch while leaving the voice's timbre (its formants) where they are.</p>
+
+            <h3>① Opening it</h3>
+            <p><strong>Right-click a clip on an Audio In track</strong> and choose <code>Pitch Editor...</code>. The menu does not appear on stem (file) tracks — this is a tool for vocal takes.</p>
+
+            <h3>② Analyze</h3>
+            <p>Press <strong>Analyze</strong> in the side panel (or <kbd>Ctrl</kbd>+<kbd>R</kbd>). The pitch you sang is drawn as a <strong>red curve</strong>, with <strong>note blocks</strong> laid on top. One block is one sung note.</p>
+            <ul>
+              <li>The text inside a block is the detected <strong>note name</strong> and its <strong>offset in cents</strong> (for example <code>A3 +12¢</code>).</li>
+              <li>A <strong>faint</strong> block means the detection was less certain there.</li>
+              <li>A <strong>dashed</strong> outline means the note sits outside the project key.</li>
+              <li>⚠️ The analysis is not saved. Reopen the project and you must press <strong>Analyze</strong> again — your edits survive and re-attach themselves.</li>
+            </ul>
+
+            <h3>③ Selecting notes</h3>
+            <ul>
+              <li><strong>Click</strong> — that note only</li>
+              <li><kbd>Ctrl</kbd>+<strong>click</strong> — add or remove one</li>
+              <li><kbd>Shift</kbd>+<strong>click</strong> — <strong>everything between</strong> the last note you picked and this one</li>
+              <li><kbd>Ctrl</kbd>+<kbd>A</kbd> — <strong>select all</strong></li>
+              <li>Clicking empty space clears the selection and moves the playhead there.</li>
+            </ul>
+
+            <h3>④ Moving pitch — dragging and SNAP</h3>
+            <p><strong>Drag</strong> a note up or down to change its pitch; a whole selection moves together. Notes you have moved turn <strong>red</strong> so you can find them again.</p>
+            <p><strong>SNAP</strong> decides what a dragged note lands on.</p>
+            <ul>
+              <li><strong>Chromatic</strong> — every semitone, black keys included</li>
+              <li><strong>Key</strong> — only notes of the project key. Unavailable when no key has been detected.</li>
+            </ul>
+            <p><strong>Snap all to key</strong> moves every note to its nearest note of the key in one step, undone by a single <kbd>Ctrl</kbd>+<kbd>Z</kbd>.</p>
+            <p>⚠️ Moving a note more than <strong>6 semitones</strong> raises a warning. Past that the timbre of the voice suffers, and the correction stops at 6 semitones when rendered.</p>
+
+            <h3>⑤ When one note arrives in pieces — Split / Merge</h3>
+            <p>A long note with deep vibrato can appear as several blocks. Select them together with <kbd>Shift</kbd>+click and press <strong>Merge</strong> to make them one. If two sung notes ended up in a single block, select it, put the playhead on the boundary, and press <strong>Split</strong>.</p>
+            <p>🔴 <strong>Boundaries you set this way become yours</strong> — they survive a new Analyze, a change of the <code>NOTES</code> setting, and reopening the project. To hand a note back to the detector, select it and press <strong>Reset</strong>.</p>
+
+            <h3>⑥ How much to correct — presets, AMOUNT, VIBRATO</h3>
+            <p>These apply to <strong>the selected notes</strong> if there is a selection, and to <strong>the whole clip's default</strong> if there is not. The label just above them (<code>ALL NOTES</code> or <code>N NOTES SELECTED</code>) says which.</p>
+            <ul>
+              <li><strong>Natural</strong> — move 70% of the way and keep the vibrato. The usual choice.</li>
+              <li><strong>Tight</strong> — land exactly on the note, vibrato kept.</li>
+              <li><strong>Hard</strong> — land exactly on the note and flatten the vibrato.</li>
+            </ul>
+            <p><strong>AMOUNT</strong> sets that proportion directly (0% = exactly as sung, 100% = exactly on the target). <strong>VIBRATO</strong> chooses whether the wobble is carried along or pressed flat.</p>
+
+            <h3>⑦ Apply / Revert</h3>
+            <p>Up to here nothing you hear has changed — the edits are a <strong>plan on screen</strong>. <strong>Apply</strong> renders them into the audio. A long clip takes a few seconds; the button shows the progress and, when it finishes, how long it took.</p>
+            <ul>
+              <li><strong>Apply</strong> is enabled <strong>only when the audio differs from what you see</strong>. If pressing it would change nothing, it stays off.</li>
+              <li><strong>Revert</strong> puts the original take back. <strong>Your note edits remain</strong>, so you can apply again straight away.</li>
+              <li>A single <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes the whole Apply.</li>
+              <li>🔴 <strong>Every correction is drawn from the original take.</strong> Applying repeatedly therefore does not pile up artefacts.</li>
+            </ul>
+            <p>The rendered audio is kept in the project folder under <code>Audio/Consolidated/</code> with <code>...Pitched...</code> in its name.</p>
+
+            <h3>⑧ Limits worth knowing</h3>
+            <ul>
+              <li>It is meant for a <strong>single voice</strong>. Two or three voices singing harmony are beyond what pitch detection can separate.</li>
+              <li><strong>±6 semitones</strong> is the practical range for a move.</li>
+              <li>Splitting, merging or flattening a corrected clip discards the edits and keeps <strong>only the corrected sound</strong>.</li>
+            </ul>
+      </div>
+    </section>
+
     <section id="export">
       <div class="lang-ko">
-  <h2>11. 믹스다운 내보내기</h2>
+  <h2>12. 믹스다운 내보내기</h2>
             <p><strong>Export</strong> 버튼 또는 <strong>Project &gt; Export...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
 
             <h3>Export 설정</h3>
@@ -2236,7 +2375,7 @@
       </div>
 
       <div class="lang-en">
-  <h2>11. Exporting Mixdown</h2>
+  <h2>12. Exporting Mixdown</h2>
             <p>Click the <strong>Export</strong> button or go to <strong>Project &gt; Export...</strong> to open the Export dialog. The dialog supports exporting in either MP3 or WAV format.</p>
 
             <h3>Export Settings</h3>
@@ -2274,7 +2413,7 @@
 
     <section id="settings">
       <div class="lang-ko">
-  <h2>12. 설정 · 오디오 장치 · 테마</h2>
+  <h2>13. 설정 · 오디오 장치 · 테마</h2>
             <p>상단 메뉴의 <strong>Settings</strong>를 누르면 설정 창이 열립니다. 왼쪽 <strong>CONTENTS</strong> 목록으로 <strong>Color Theme · Mixer Console Window · Audio Devices</strong> 세 영역을 오갈 수 있습니다.</p>
 
             <div class="figure">
@@ -2337,7 +2476,7 @@
       </div>
 
       <div class="lang-en">
-  <h2>12. Settings, Audio Devices &amp; Themes</h2>
+  <h2>13. Settings, Audio Devices &amp; Themes</h2>
             <p>Click <strong>Settings</strong> in the menu bar to open the settings window. The <strong>CONTENTS</strong> list on the left moves between <strong>Color Theme · Mixer Console Window · Audio Devices</strong>.</p>
 
             <div class="figure">
@@ -2402,7 +2541,7 @@
 
     <section id="shortcuts">
       <div class="lang-ko">
-  <h2>13. 단축키</h2>
+  <h2>14. 단축키</h2>
             <table>
               <tbody>
                 <tr><th><kbd>Space</kbd></th><td>재생 / 일시정지</td></tr>
@@ -2417,6 +2556,14 @@
                 <tr><th><kbd>Ctrl</kbd> + <kbd>Z</kbd></th><td>실행 취소</td></tr>
                 <tr><th><kbd>Ctrl</kbd> + <kbd>Y</kbd></th><td>다시 실행</td></tr>
                 <tr><th><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></th><td>다시 실행</td></tr>
+                <tr><th colspan="2" style="text-align:left;padding-top:14px">피치 에디터 창</th></tr>
+                <tr><th><kbd>Ctrl</kbd> + <kbd>R</kbd></th><td>Analyze — 음높이 분석</td></tr>
+                <tr><th><kbd>Ctrl</kbd> + <kbd>A</kbd></th><td>노트 전체 선택</td></tr>
+                <tr><th><kbd>Ctrl</kbd> + 클릭</th><td>노트를 하나씩 더하거나 빼기</td></tr>
+                <tr><th><kbd>Shift</kbd> + 클릭</th><td>먼저 고른 노트부터 구간 전체 선택</td></tr>
+                <tr><th><kbd>Ctrl</kbd> + 휠</th><td>시간축 확대 / 축소</td></tr>
+                <tr><th><kbd>Alt</kbd> + 휠</th><td>음높이 축 확대 / 축소</td></tr>
+                <tr><th><kbd>Space</kbd></th><td>재생 / 일시정지 (스튜디오와 같음)</td></tr>
               </tbody>
             </table>
 
@@ -2448,7 +2595,7 @@
       </div>
 
       <div class="lang-en">
-  <h2>13. Shortcuts</h2>
+  <h2>14. Shortcuts</h2>
             <table>
               <tbody>
                 <tr><th><kbd>Space</kbd></th><td>Play / Pause</td></tr>
@@ -2463,6 +2610,14 @@
                 <tr><th><kbd>Ctrl</kbd> + <kbd>Z</kbd></th><td>Undo</td></tr>
                 <tr><th><kbd>Ctrl</kbd> + <kbd>Y</kbd></th><td>Redo</td></tr>
                 <tr><th><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></th><td>Redo</td></tr>
+                <tr><th colspan="2" style="text-align:left;padding-top:14px">Pitch Editor window</th></tr>
+                <tr><th><kbd>Ctrl</kbd> + <kbd>R</kbd></th><td>Analyze — detect the sung pitch</td></tr>
+                <tr><th><kbd>Ctrl</kbd> + <kbd>A</kbd></th><td>Select all notes</td></tr>
+                <tr><th><kbd>Ctrl</kbd> + click</th><td>Add or remove one note</td></tr>
+                <tr><th><kbd>Shift</kbd> + click</th><td>Select everything between the last note and this one</td></tr>
+                <tr><th><kbd>Ctrl</kbd> + wheel</th><td>Zoom the time axis</td></tr>
+                <tr><th><kbd>Alt</kbd> + wheel</th><td>Zoom the pitch axis</td></tr>
+                <tr><th><kbd>Space</kbd></th><td>Play / pause (same as the studio)</td></tr>
               </tbody>
             </table>
 
@@ -2496,7 +2651,7 @@
 
     <section id="tips">
       <div class="lang-ko">
-  <h2>14. 문제 해결</h2>
+  <h2>15. 문제 해결</h2>
             <h3>오디오가 들리지 않을 때</h3>
             <ul>
               <li>트랙의 <strong>M</strong> 버튼이 켜져 있지 않은지 확인합니다.</li>
@@ -2531,7 +2686,7 @@
       </div>
 
       <div class="lang-en">
-  <h2>14. Troubleshooting</h2>
+  <h2>15. Troubleshooting</h2>
             <h3>No Sound During Playback</h3>
             <ul>
               <li>Check if the track **M** (Mute) button is turned on.</li>

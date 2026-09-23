@@ -211,7 +211,17 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .pe-sechd{font-size:8.5px;font-weight:700;letter-spacing:.13em;color:var(--muted);margin-bottom:9px}
 .pe-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .pe-row:last-child{margin-bottom:0}
-.pe-rowlbl{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--faint);width:34px;flex:0 0 34px}
+/* v2.9.0 — 34 → 52px. `AMT` 가 Amount 의 약자인데 `VIB` 와 한 쌍으로 오해됐다
+   (사용자 2026-09-22). 폭이 34px 라 전체 이름이 안 들어가서 줄였던 것이므로,
+   폭을 넓혀 `AMOUNT`·`VIBRATO` 를 그대로 쓴다. Stage F 에서 하기로 미뤄 둔 항목. */
+.pe-rowlbl{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--faint);width:52px;flex:0 0 52px}
+/* 프리셋 버튼 — 한 줄에 셋. 설계 §7 의 Natural / Tight / Hard. */
+.pe-preset{flex:1 1 0;min-width:0;padding:5px 4px;border-radius:7px;font-size:10px;font-weight:600;
+  color:var(--dim);background:rgba(255,255,255,.02);border:1px solid var(--line-strong);
+  transition:border-color .15s,color .15s,background .15s}
+.pe-preset:hover:not(:disabled){border-color:var(--amber);color:var(--cream);background:rgba(255,255,255,.04)}
+.pe-preset.on{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber)}
+.pe-preset:disabled{opacity:.38;cursor:default}
 .pe-stat{font-size:10.5px;color:var(--dim);line-height:1.6}
 .pe-stat b{color:var(--cream-2);font-weight:600}
 .pe-hint{font-size:9.5px;color:var(--faint);line-height:1.65}

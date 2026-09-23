@@ -365,6 +365,27 @@ const peOverlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0
 // 된다. 하네스가 두 파일을 함께 읽어 일치를 확인한다.
 const PE_MAX_SHIFT_SEMIS = 6;
 
+// v2.9.0 — 보정 프리셋 (설계 §7). 강도와 비브라토를 한 번에 정하는 세 갈래다.
+//
+// 이름이 값을 설명한다 — 사용자는 "0.7"이 무슨 뜻인지 모르지만 "자연스럽게"는 안다.
+// 🔴 세 개뿐인 것이 요점이다. 슬라이더가 이미 있으므로 프리셋은 **흔한 목적지**만
+// 짚어 주면 된다. 더 늘리면 고르는 일이 또 하나의 숙제가 된다.
+const PE_PRESETS = [
+  { id: "natural", label: "Natural", strength: 0.7, keepVibrato: true,
+    tip: "Move most of the way and keep the singer's vibrato — the usual choice." },
+  { id: "tight",   label: "Tight",   strength: 1.0, keepVibrato: true,
+    tip: "Land exactly on the note but keep the vibrato." },
+  { id: "hard",    label: "Hard",    strength: 1.0, keepVibrato: false,
+    tip: "Land exactly on the note and flatten the vibrato — the modern pop sound." },
+];
+// 지금 값이 어느 프리셋과 같은가. 어느 것과도 다르면 null (직접 만진 값이다).
+function peMatchPreset(strength, keepVibrato) {
+  for (const p of PE_PRESETS) {
+    if (Math.abs(p.strength - strength) < 1e-6 && p.keepVibrato === (keepVibrato !== false)) return p.id;
+  }
+  return null;
+}
+
 const PE_DEFAULTS = { strength: 1, keepVibrato: true };
 function peDefaults(d) {
   // 🔴 Number(null) === 0 (NaN 이 아니다). 엔진의 pitchDefaults 와 같은 함정 — 그쪽 주석 참조.
@@ -2021,6 +2042,13 @@ function PitchEditorApp() {
     [selection, notes, defs]
   );
 
+  // 지금 대상(선택 노트 또는 클립 기본값)의 값이 어느 프리셋과 같은가.
+  // ⚠️ `corrOf` 를 읽으므로 **그 뒤에** 있어야 한다 — 앞에 두면 TDZ 로 터진다.
+  const activePreset = React.useMemo(
+    () => peMatchPreset(corrOf.strength, corrOf.keepVibrato),
+    [corrOf]
+  );
+
   // v2.7.4 (B1) — one slider drag is ONE undo entry.
   //
   // An <input type=range> fires onChange on every intermediate value the thumb passes, and
@@ -2304,10 +2332,21 @@ function PitchEditorApp() {
               <div className="pe-sechd" style={{ marginTop: 2 }}>
                 {selection.size ? `${selection.size} NOTE${selection.size > 1 ? "S" : ""} SELECTED` : "ALL NOTES"}
               </div>
+              {/* v2.9.0 — 프리셋(설계 §7). 아래 두 컨트롤과 **같은 대상**에 쓴다 —
+                  선택이 있으면 선택 노트에, 없으면 클립 기본값에. 그래서 위 라벨 바로
+                  아래에 둔다. 지금 값과 같은 프리셋은 켜진 것으로 보인다. */}
+              <div className="pe-row" style={{ gap: 5 }}>
+                {PE_PRESETS.map((p) => (
+                  <button key={p.id} className={"pe-preset" + (activePreset === p.id ? " on" : "")}
+                    disabled={!analysis || !notes.length}
+                    onClick={() => setCorrection({ strength: p.strength, keepVibrato: p.keepVibrato })}
+                    title={p.tip}>{p.label}</button>
+                ))}
+              </div>
               <div className="pe-row" title={selection.size
                 ? "How far the selected notes move toward their target pitch"
                 : "How far notes move toward their target pitch, unless a note says otherwise"}>
-                <span className="pe-rowlbl">AMT</span>
+                <span className="pe-rowlbl">AMOUNT</span>
                 <input className="pe-range" type="range" min="0" max="100" step="5"
                   value={Math.round(peClamp(amtShown, 0, 1) * 100)}
                   disabled={!analysis || !notes.length}
@@ -2318,7 +2357,7 @@ function PitchEditorApp() {
                 <span className="pe-rangeval mono">{Math.round(peClamp(amtShown, 0, 1) * 100)}%</span>
               </div>
               <div className="pe-row">
-                <span className="pe-rowlbl">VIB</span>
+                <span className="pe-rowlbl">VIBRATO</span>
                 <button className={"pe-btn pe-wide" + (corrOf.keepVibrato ? " on" : "")}
                   disabled={!analysis || !notes.length}
                   onClick={() => setCorrection({ keepVibrato: !corrOf.keepVibrato })}

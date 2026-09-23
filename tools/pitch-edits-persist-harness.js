@@ -140,7 +140,7 @@ function loadEditModel() {
     '\nthis.PE_EDITED_REDS = PE_EDITED_REDS; this.PE_EDITED_MIN_CONTRAST = PE_EDITED_MIN_CONTRAST;' +
     '\nthis.peScalePcs = peScalePcs; this.peSnapToScale = peSnapToScale; this.peDragTarget = peDragTarget;' +
     '\nthis.peDefaults = peDefaults; this.PE_DEFAULTS = PE_DEFAULTS;' +
-    '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR; this.peShapeSig = peShapeSig;', ctx);
+    '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR; this.peShapeSig = peShapeSig; this.PE_PRESETS = PE_PRESETS; this.peMatchPreset = peMatchPreset;', ctx);
   return ctx;
 }
 
@@ -547,6 +547,35 @@ console.log('⑪ 프린트 지문은 같은 모양에 같은 값을 준다');
         E.peShapeSig([{ t0: 1.0000000001, t1: 2.0, target: 64, strength: 0.8, keepVibrato: false }], d, ly)
         === E.peShapeSig(ed1, d, ly));
   check('빈 입력도 값을 준다 (null 이 아니다)', typeof E.peShapeSig([], d, []) === 'string');
+}
+
+
+// ── ⑫ 보정 프리셋 (v2.9.0, 설계 §7) ───────────────────────────────────────
+console.log('');
+console.log('⑫ 프리셋이 설계가 정한 값을 그대로 낸다');
+{
+  const byId = {};
+  for (const p of E.PE_PRESETS) byId[p.id] = p;
+  check('프리셋이 셋이다', E.PE_PRESETS.length === 3, E.PE_PRESETS.map((p) => p.id).join(' · '));
+  // 🔴 설계 §7 이 정한 값 — 여기가 어긋나면 이름과 소리가 따로 논다.
+  check('Natural = 0.7 · 비브라토 유지', byId.natural && byId.natural.strength === 0.7 && byId.natural.keepVibrato === true);
+  check('Tight   = 1.0 · 비브라토 유지', byId.tight && byId.tight.strength === 1.0 && byId.tight.keepVibrato === true);
+  check('Hard    = 1.0 · 비브라토 미유지', byId.hard && byId.hard.strength === 1.0 && byId.hard.keepVibrato === false);
+  check('모두 이름이 있다', E.PE_PRESETS.every((p) => p.label && p.tip));
+
+  // 되짚기 — 지금 값이 어느 프리셋과 같은가
+  check('0.7/유지 → natural', E.peMatchPreset(0.7, true) === 'natural');
+  check('1.0/유지 → tight', E.peMatchPreset(1.0, true) === 'tight');
+  check('1.0/미유지 → hard', E.peMatchPreset(1.0, false) === 'hard');
+  check('🔴 어느 것과도 다르면 null (직접 만진 값)', E.peMatchPreset(0.5, true) === null);
+  check('0.7/미유지도 null (조합이 프리셋에 없다)', E.peMatchPreset(0.7, false) === null);
+
+  // 🔴 프리셋 값은 pristine 판정과도 맞아야 한다 — Tight 는 기본값과 같으므로
+  //    그것만으로는 \"손댄 노트\"가 되지 않는다.
+  const nt = { id: 'p1', t0: 0, t1: 1, midi: 60.1, target: 60, strength: 1.0, keepVibrato: true };
+  check('Tight 값은 기본값과 같아 pristine 이다', E.peIsPristine(nt, E.PE_DEFAULTS) === true);
+  const nat = { ...nt, strength: 0.7 };
+  check('Natural 은 기본값과 달라 저장된다', E.peEditsFromNotes([nat], E.PE_DEFAULTS).length === 1);
 }
 
 
