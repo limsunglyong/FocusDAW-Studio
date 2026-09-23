@@ -693,6 +693,11 @@
         pitch: clip && clip.pitch ? {
           baseSourceId: clip.pitch.baseSourceId || null,
           printedSourceId: clip.pitch.printedSourceId || null,
+          // v2.8.3 — **무엇을 프린트했는가**의 지문. 에디터가 만든 불투명한 문자열이고
+          // 엔진은 그대로 보관만 한다 — 양쪽이 각자 만들면 키 순서 하나로 어긋나므로
+          // 만드는 쪽을 하나로 두었다. 이것이 있어야 "화면과 소리가 같은가"를 물을 수
+          // 있고, Apply 를 **다를 때만** 켤 수 있다(v2.8.2 는 프린트만 되어 있으면 늘 켰다).
+          printedSig: clip.pitch.printedSig || null,
           notes: Array.isArray(clip.pitch.notes) ? clip.pitch.notes.map(n => ({ ...n })) : [],
           // Stage D (설계 §4-1). The USER's edits, anchored to a time span rather than to a
           // note id: note ids are only unique inside one segmentation run, and the
@@ -839,6 +844,7 @@
         pitch: c.pitch ? {
           baseSourceId: c.pitch.baseSourceId || null,
           printedSourceId: c.pitch.printedSourceId || null,
+          printedSig: c.pitch.printedSig || null,
           notes: Array.isArray(c.pitch.notes) ? c.pitch.notes.map(n => ({ ...n })) : [],
           edits: Array.isArray(c.pitch.edits) ? c.pitch.edits.map(e => ({ ...e })) : [],
           defaults: pitchDefaults(c.pitch.defaults),
@@ -3484,6 +3490,7 @@
         pitch: clip.pitch ? {
           baseSourceId: clip.pitch.baseSourceId || null,
           printedSourceId: clip.pitch.printedSourceId || null,
+          printedSig: clip.pitch.printedSig || null,
           notes: (clip.pitch.notes || []).map(x => ({ ...x })),
           // The editor re-segments from scratch on every Analyze and then re-attaches these
           // by time overlap (설계 §4-1) — they are what survives a re-cut, not the notes.
@@ -4126,7 +4133,7 @@
       return { raw, sr, lo, hi };
     },
 
-    printClipPitch(trackId, clipId, an, notes) {
+    printClipPitch(trackId, clipId, an, notes, sig) {
       const track = this.tracks.find(t => t.id === trackId);
       const clip = track && (track.clips || []).find(c => c.id === clipId);
       if (!track || !clip || !an || !an.frames) return null;
@@ -4162,6 +4169,7 @@
       if (!clip.pitch) clip.pitch = { baseSourceId: baseId, printedSourceId: null, notes: [], edits: [], defaults: pitchDefaults(null), layout: [], analysis: null };
       clip.pitch.baseSourceId = baseId;      // 🔴 원본은 바뀌지 않는다 — 재편집이 원본에서 다시 그린다
       clip.pitch.printedSourceId = sourceId;
+      clip.pitch.printedSig = sig || null;
       clip.sourceId = sourceId;
       this._pendingConsolidations.push({ trackId: track.id, sourceId, suffix: "Pitched" });
       this._ensureBaked(track);
@@ -4177,7 +4185,7 @@
     // 가려진 창의 타이머를 초당 1회로 스로틀하는데, 이 렌더는 **스튜디오 창**에서 돌고
     // Pitch Editor 는 그 위에 뜬 자식 창이다 — setTimeout 으로 짰으면 Apply 를 누른 순간
     // 렌더가 기어갔을 것이다. MessageChannel 은 스로틀 대상이 아니고 4 ms 클램프도 없다.
-    _psolaPrintSetup(trackId, clipId, an, notes) {
+    _psolaPrintSetup(trackId, clipId, an, notes, sig) {
       const track = this.tracks.find(t => t.id === trackId);
       const clip = track && (track.clips || []).find(c => c.id === clipId);
       if (!track || !clip || !ctx || !an || !an.frames) return null;
@@ -4208,7 +4216,7 @@
         for (let i = 0; i < m.length; i++) m[i] /= chN;
         mono = m;
       }
-      return { track, clip, raw, sr, lo, hi, chN, an, tgt, runs, part, work, mono, baseId, i: 0 };
+      return { track, clip, raw, sr, lo, hi, chN, an, tgt, runs, part, work, mono, baseId, sig: sig || null, i: 0 };
     },
 
     // 유성 구간 몇 개를 처리한다. 다 끝났으면 true.
@@ -4245,14 +4253,15 @@
       if (!clip.pitch) clip.pitch = { baseSourceId: baseId, printedSourceId: null, notes: [], edits: [], defaults: pitchDefaults(null), layout: [], analysis: null };
       clip.pitch.baseSourceId = baseId;
       clip.pitch.printedSourceId = sourceId;
+      clip.pitch.printedSig = st.sig || null;
       clip.sourceId = sourceId;
       this._pendingConsolidations.push({ trackId: track.id, sourceId, suffix: "Pitched" });
       this._ensureBaked(track);
       return sourceId;
     },
 
-    printClipPitchAsync(trackId, clipId, an, notes, onProgress) {
-      const st = this._psolaPrintSetup(trackId, clipId, an, notes);
+    printClipPitchAsync(trackId, clipId, an, notes, onProgress, sig) {
+      const st = this._psolaPrintSetup(trackId, clipId, an, notes, sig);
       if (!st) return Promise.resolve(null);
       const SLICE_MS = 90;
       const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -4289,6 +4298,7 @@
       if (!this._rawBufferForSource(track, baseId)) return false;
       clip.sourceId = baseId;
       clip.pitch.printedSourceId = null;
+      clip.pitch.printedSig = null;     // 프린트된 것이 없으니 지문도 없다
       this._ensureBaked(track);
       return true;
     },

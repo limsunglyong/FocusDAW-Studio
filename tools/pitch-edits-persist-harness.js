@@ -140,7 +140,7 @@ function loadEditModel() {
     '\nthis.PE_EDITED_REDS = PE_EDITED_REDS; this.PE_EDITED_MIN_CONTRAST = PE_EDITED_MIN_CONTRAST;' +
     '\nthis.peScalePcs = peScalePcs; this.peSnapToScale = peSnapToScale; this.peDragTarget = peDragTarget;' +
     '\nthis.peDefaults = peDefaults; this.PE_DEFAULTS = PE_DEFAULTS;' +
-    '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR;', ctx);
+    '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR; this.peShapeSig = peShapeSig;', ctx);
   return ctx;
 }
 
@@ -517,6 +517,38 @@ console.log('⑩ layout[] 이 저장·스냅샷을 건너 살아남는다');
   check('applySnapshot 으로 되돌아온다 (Undo)',
         (((D3.tracks[0].clips[0] || {}).pitch || {}).layout || []).length === 2);
 }
+
+// ── ⑪ 프린트 지문 생성기 (v2.8.3) ─────────────────────────────────────────
+// 🔴 Apply 를 "화면과 소리가 다를 때만" 켜는 근거가 이 함수다. 같은 모양에 같은 값을
+//    주지 않으면 Apply 가 영영 켜진 채(v2.8.2 의 증상) 또는 영영 꺼진 채 남는다.
+console.log('');
+console.log('⑪ 프린트 지문은 같은 모양에 같은 값을 준다');
+{
+  const ed1 = [{ t0: 1.0, t1: 2.0, target: 64, strength: 0.8, keepVibrato: false }];
+  const ed2 = [{ t0: 1.0, t1: 2.0, target: 64, strength: 0.8, keepVibrato: false }];
+  const d = { strength: 1, keepVibrato: true };
+  const ly = [{ t0: 0.5, t1: 1.5, cuts: [1.0] }];
+  check('같은 내용이면 같은 지문', E.peShapeSig(ed1, d, ly) === E.peShapeSig(ed2, d, ly));
+  check('값이 다르면 지문도 다르다',
+        E.peShapeSig(ed1, d, ly) !== E.peShapeSig([{ ...ed1[0], target: 65 }], d, ly));
+  check('강도가 다르면 지문도 다르다',
+        E.peShapeSig(ed1, d, ly) !== E.peShapeSig([{ ...ed1[0], strength: 0.5 }], d, ly));
+  check('비브라토가 다르면 지문도 다르다',
+        E.peShapeSig(ed1, d, ly) !== E.peShapeSig([{ ...ed1[0], keepVibrato: true }], d, ly));
+  check('클립 기본값이 다르면 지문도 다르다',
+        E.peShapeSig(ed1, d, ly) !== E.peShapeSig(ed1, { strength: 0.5, keepVibrato: true }, ly));
+  check('경계가 다르면 지문도 다르다',
+        E.peShapeSig(ed1, d, ly) !== E.peShapeSig(ed1, d, [{ t0: 0.5, t1: 1.5, cuts: [] }]));
+  check('🔴 빈 편집과 편집 있음이 구분된다 (되돌리기 판정의 근거)',
+        E.peShapeSig([], d, []) !== E.peShapeSig(ed1, d, ly));
+  // 🔴 부동소수 표기 흔들림에 휘둘리면 안 된다 — 같은 값인데 지문이 달라지면
+  //    Apply 가 영영 켜진 채 남고, 그것이 v2.8.2 에서 사용자가 본 증상이다.
+  check('미세한 표기 차이는 무시한다',
+        E.peShapeSig([{ t0: 1.0000000001, t1: 2.0, target: 64, strength: 0.8, keepVibrato: false }], d, ly)
+        === E.peShapeSig(ed1, d, ly));
+  check('빈 입력도 값을 준다 (null 이 아니다)', typeof E.peShapeSig([], d, []) === 'string');
+}
+
 
 // ── 마무리 ─────────────────────────────────────────────────────────────────
 console.log(`\n${pass} PASS · ${fail} FAIL`);

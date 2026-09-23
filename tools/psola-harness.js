@@ -435,6 +435,63 @@ console.log('⑫ 프린트한 뒤 노트를 전부 제자리로 돌리면 원본
 }
 
 
+// ── ⑬ 프린트 지문 — Apply 를 "다를 때만" 켜기 위한 것 (v2.8.3, 사용자 보고) ──
+console.log('');
+console.log('⑬ 무엇을 프린트했는지 기억한다 (printedSig)');
+{
+  const D = loadEngine();
+  const fb = new FakeCtx().createBuffer(1, X.length, SR);
+  fb.getChannelData(0).set(X);
+  D.tracks.length = 0;
+  const tr = D.addBounceTrack('G', fb, { fileName: 'G.wav', filePath: '/x/G.wav' });
+  const clip = tr.clips[0];
+  const an = D.analyzeClipPitch(tr.id, clip.id);
+  const moved = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3 + 2, strength: 1, keepVibrato: true }];
+
+  check('프린트 전에는 지문이 없다', !clip.pitch || !clip.pitch.printedSig);
+  const sid = D.printClipPitch(tr.id, clip.id, an, moved, 'SIG-A');
+  check('프린트가 지문을 기록한다', !!sid && clip.pitch.printedSig === 'SIG-A', String(clip.pitch.printedSig));
+
+  // 🔴 이것이 Apply 를 끄는 근거다 — 화면이 요구하는 것과 프린트된 것이 같다.
+  check('clipAudioInfo 가 에디터로 지문을 실어 보낸다',
+        ((D.clipAudioInfo(tr.id, clip.id, 50) || {}).pitch || {}).printedSig === 'SIG-A');
+
+  // 저장 왕복
+  const j = JSON.parse(JSON.stringify(D.exportProject('G')));
+  check('exportProject 에 지문이 실린다', (j.tracks[0].clips[0].pitch || {}).printedSig === 'SIG-A');
+  D.importProject(j);
+  check('importProject 후에도 남는다',
+        ((D.tracks[0].clips[0] || {}).pitch || {}).printedSig === 'SIG-A');
+
+  // 스냅샷(Undo) 왕복
+  const sn = D.getSnapshot();
+  check('getSnapshot 에 지문이 있다', ((sn.tracks[0].clips[0] || {}).pitch || {}).printedSig === 'SIG-A');
+
+}
+{
+  // ⚠️ 재프린트·Revert 는 **새 엔진**에서 본다. importProject 는 디스크에서 오디오를
+  //    다시 읽지 못하므로(하네스에는 파일이 없다) 원본 버퍼가 사라져 렌더 자체가 안 된다 —
+  //    거기서 이어 시험하면 코드가 아니라 시험이 실패한다.
+  const D2 = loadEngine();
+  const fb2 = new FakeCtx().createBuffer(1, X.length, SR);
+  fb2.getChannelData(0).set(X);
+  D2.tracks.length = 0;
+  const t2 = D2.addBounceTrack('G2', fb2, { fileName: 'G2.wav', filePath: '/x/G2.wav' });
+  const c2 = t2.clips[0];
+  const an2 = D2.analyzeClipPitch(t2.id, c2.id);
+  const m1 = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3 + 2, strength: 1, keepVibrato: true }];
+  const m2 = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3 + 3, strength: 1, keepVibrato: true }];
+  D2.printClipPitch(t2.id, c2.id, an2, m1, 'SIG-A');
+  check('첫 프린트 지문', c2.pitch.printedSig === 'SIG-A', String(c2.pitch.printedSig));
+  D2.printClipPitch(t2.id, c2.id, an2, m2, 'SIG-B');
+  check('다시 프린트하면 지문이 갱신된다 (Apply 가 다시 꺼지는 근거)',
+        c2.pitch.printedSig === 'SIG-B', String(c2.pitch.printedSig));
+  // 🔴 Revert 는 지문도 지운다 — 안 지우면 되돌린 뒤에도 Apply 가 꺼진 채 남는다
+  check('Revert 가 성공한다', D2.revertClipPitch(t2.id, c2.id) === true);
+  check('🔴 ⑬ Revert 가 지문도 지운다', c2.pitch.printedSig === null, String(c2.pitch.printedSig));
+  check('되돌린 뒤 편집은 남는다 (다시 Apply 가능)', !!c2.pitch.baseSourceId);
+}
+
 const asyncChecks = (async () => {
   console.log('');
   console.log('⑪ 슬라이스 렌더가 동기 렌더와 같은 결과를 낸다');

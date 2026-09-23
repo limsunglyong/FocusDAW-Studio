@@ -2546,7 +2546,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
           const savedRedo = pushUndo();
           DAW.printClipPitchAsync(trackId, clipId, msg.analysis, msg.notes, (done, total) => {
             channel.postMessage({ type: "PITCH_PRINT_PROGRESS", trackId, clipId, done, total });
-          }).then((sid) => {
+          }, msg.sig).then((sid) => {
             if (!sid) {
               // 🔴 v2.8.2 — 렌더할 것이 없다고 해서 언제나 실패는 아니다.
               //

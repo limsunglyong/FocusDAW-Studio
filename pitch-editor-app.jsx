@@ -667,6 +667,26 @@ function peLayoutRelease(layout, a, b) {
   return (layout || []).filter((sp) => sp.t1 <= a || sp.t0 >= b);
 }
 
+// v2.8.3 — "지금 화면이 요구하는 보정"의 지문.
+//
+// 🔴 Apply 를 **화면과 소리가 다를 때만** 켜기 위해 있다. v2.8.2 는 "프린트돼 있으면
+// 무조건 켬"이었고, 그래서 Apply 를 누른 직후에도 켜져 있었다(사용자 보고 2026-09-23:
+// *"Apply 버튼이 항상 켜져있습니다"*). 눌러도 아무 일이 없는 버튼은 켜져 있으면 안 된다.
+//
+// ⚠️ 지문을 만드는 곳은 **여기 하나**다. 엔진은 받은 문자열을 보관만 한다 — 두 창이
+// 각자 만들면 키 순서나 부동소수 표기 하나로 어긋나고, 그러면 Apply 가 영영 켜진 채
+// 남거나 영영 꺼진 채 남는다. 둘 다 v2.8.2 보다 나쁘다.
+//
+// 담는 것은 **스튜디오가 소유한 진실 셋**이다 — 값(edits) · 클립 기본값(defaults) ·
+// 경계(layout). 이 셋이 같으면 같은 소리가 나온다.
+function peShapeSig(edits, defs, layout) {
+  const n = (v) => Math.round(v * 1e6) / 1e6;        // 표기 흔들림 제거
+  const e = (edits || []).map((x) => [n(x.t0), n(x.t1), x.target, x.strength, x.keepVibrato === false ? 0 : 1]);
+  const l = (layout || []).map((s) => [n(s.t0), n(s.t1), (s.cuts || []).map(n)]);
+  const d = [defs ? defs.strength : 1, (defs && defs.keepVibrato === false) ? 0 : 1];
+  return JSON.stringify([e, d, l]);
+}
+
 // 🔴 HARNESS BOUNDARY — END. peCentsOff is the first line the harness does NOT take.
 // How far off the nearest semitone the singer actually was.
 const peCentsOff = (nt) => Math.round((nt.midi - Math.round(nt.midi)) * 100);
@@ -678,6 +698,7 @@ const PE_NO_SEL = new Set();
 // v2.7.1 — which audio a pitch curve belongs to. Only these three change what was analysed:
 // De-noise and other prints register a NEW source id, a trim moves the offset or the duration.
 // Moving a clip on the timeline changes none of them — the curve is clip-relative.
+
 // v2.8.1 — 🔴 기준은 `sourceId` 가 아니라 **분석이 실제로 읽은 오디오**, 즉 baseSourceId 다.
 // Apply 는 clip.sourceId 를 프린트 결과로 갈아 끼우는데, 분석은 언제나 base 를 본다
 // (engine `_pitchAnalysisSetup`, 설계 §2). sourceId 로 재면 Apply 할 때마다 곡선이 버려져
@@ -1691,6 +1712,20 @@ function PitchEditorApp() {
       if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
         e.preventDefault(); peChannel.postMessage({ type: "REQUEST_REDO" }); return;
       }
+      // v2.8.3 — Ctrl/Cmd+A 로 노트 전체 선택 (사용자 요청 2026-09-23).
+      //
+      // 쓰임이 분명하다: `Revert` 는 오디오만 되돌리고 **노트 편집은 그 자리에 남는다**.
+      // 그것까지 지우려면 전부 골라 `Reset` 해야 하는데, Shift+클릭으로 처음과 끝을
+      // 집는 것은 노트가 화면 밖에 있으면 번거롭다.
+      //
+      // 기준점(anchor)은 **마지막 노트**로 둔다 — 전체 선택 뒤 Shift+클릭하면 거기서부터
+      // 범위를 좁히는 것이 자연스럽다.
+      if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        const all = notesRef.current || [];
+        if (all.length) selectAllNotes();
+        return;
+      }
       // Ctrl/Cmd+R runs the analysis. The button lives in the side panel, so folding the
       // panel used to make the window's most-used action unreachable — the user hit this
       // while testing the v2.4.4 progress overlay, which exists precisely for the folded
@@ -1904,16 +1939,25 @@ function PitchEditorApp() {
     () => notes.some((nt) => !peIsPristine(nt, defs)),
     [notes, defs]
   );
-  // 🔴 v2.8.2 — `anyEdit` 만 보면 구멍이 생긴다(사용자 보고 2026-09-22).
+  // Apply 의 뜻은 "**오디오를 지금 화면과 맞춘다**"이다. 그러므로 켜지는 조건은 하나 —
+  // **화면과 소리가 다른가.**
   //
-  // Apply 로 프린트한 뒤 노트를 **전부 원래 자리로 되돌리면**(Reset 이든 드래그든)
-  // `anyEdit` 이 false 가 되어 Apply 가 꺼진다. 그런데 **오디오는 여전히 보정된 상태**다 —
-  // 화면은 "손댄 것 없음"인데 소리는 고쳐져 있고, 그 둘을 맞출 버튼이 사라진다.
+  // 이 자리를 두 번 틀렸다(둘 다 사용자 보고):
+  //   v2.8.1  `anyEdit` 만 봤다 → 프린트 뒤 노트를 전부 되돌리면 버튼이 꺼져, 화면은
+  //           "손댄 것 없음"인데 소리는 고쳐진 채로 **맞출 길이 없었다.**
+  //   v2.8.2  `anyEdit || printed` 로 고쳤다 → 이번엔 프린트된 뒤로 **영영 켜져 있었다.**
+  //           누를 때마다 같은 결과를 다시 굽는다(파일도 매번 새로 생긴다).
   //
-  // Apply 의 뜻은 "**오디오를 지금 화면과 맞춘다**"이다. 그러니 프린트된 상태에서는
-  // 편집이 비어도 켜져 있어야 하고, 그때의 Apply 는 원본으로 되돌리는 일이 된다
-  // (app.jsx 의 REQUEST_PITCH_PRINT 가 렌더할 것이 없으면 revert 로 처리한다).
-  const canApply = !!analysis && !!notes.length && (anyEdit || printed) && !printing && !busy;
+  // 두 번 다 **버튼의 뜻이 아니라 구현 상태를 조건으로 썼다.** 뜻에서 출발하면 답은
+  // 하나다 — 지금 화면이 요구하는 보정(`curSig`)과 **실제로 프린트된 것**(`printedSig`)이
+  // 다를 때만 켠다. 그러면 자연히:
+  //   · 노트를 옮기면 켜지고, Apply 하면 꺼진다
+  //   · 프린트 뒤 전부 되돌리면 다시 켜지고(지문이 달라진다), 누르면 원본으로 돌아간다
+  //   · 아무것도 안 한 상태에서는 꺼져 있다
+  const curSig = React.useMemo(() => peShapeSig(edits, defs, layout), [edits, defs, layout]);
+  const printedSig = (info && info.pitch && info.pitch.printedSig) || null;
+  const shapeDiffers = curSig !== printedSig;
+  const canApply = !!analysis && !!notes.length && shapeDiffers && (anyEdit || printed) && !printing && !busy;
   const applyCorrection = React.useCallback(() => {
     if (!canApply) return;
     setPrinting(true);
@@ -1922,8 +1966,10 @@ function PitchEditorApp() {
     peChannel.postMessage({
       type: "REQUEST_PITCH_PRINT", trackId, clipId,
       analysis, notes: notesRef.current,
+      // 이 프린트가 무엇을 담았는지 — 스튜디오가 그대로 보관한다(peShapeSig 주석).
+      sig: curSig,
     });
-  }, [canApply, analysis, trackId, clipId]);
+  }, [canApply, analysis, trackId, clipId, curSig]);
   const revertCorrection = React.useCallback(() => {
     if (!printed || printing) return;
     setPrinting(true);
@@ -2002,6 +2048,14 @@ function PitchEditorApp() {
   }, [scalePcs, applied.notes, rewriteEdits, pushEdits]);
   // Ids are only unique within one segmentation, so a selection cannot outlive the notes it
   // pointed at — a re-cut (new analysis, new grid) starts from nothing selected.
+  // v2.8.3 — 노트 전체 선택(Ctrl+A). selectNote 와 같은 기준점 규칙을 따른다.
+  const selectAllNotes = React.useCallback(() => {
+    const all = notesRef.current || [];
+    if (!all.length) return;
+    setSelection(new Set(all.map((nt) => nt.id)));
+    anchorRef.current = all[all.length - 1].id;
+  }, []);
+
   React.useEffect(() => { setSelection(PE_NO_SEL); anchorRef.current = null; }, [seg]);
   const selNote = selection.size === 1 ? notes.find((nt) => selection.has(nt.id)) : null;
 
@@ -2265,6 +2319,7 @@ function PitchEditorApp() {
                   disabled={!canApply}
                   title={printing ? "Rendering…"
                     : !analysis ? "Analyse the clip first"
+                    : !shapeDiffers && printed ? "The audio already matches these notes."
                     : (!anyEdit && printed) ? "No corrections remain — applying puts the original take back."
                     : !anyEdit ? "Move a note first — there is nothing to apply"
                     : "Render the correction into the audio. The original take is kept and Ctrl+Z undoes it."}>

@@ -791,8 +791,8 @@
     },
 
     // 앱이 실제로 쓰는 것은 이쪽이다 — 5분 클립이 5.5 s 라 동기로 돌리면 그만큼 언다.
-    printClipPitchAsync(trackId, clipId, an, notes, onProgress) {
-      return LocalDAW.printClipPitchAsync(trackId, clipId, an, notes, onProgress).then((sid) => {
+    printClipPitchAsync(trackId, clipId, an, notes, onProgress, sig) {
+      return LocalDAW.printClipPitchAsync(trackId, clipId, an, notes, onProgress, sig).then((sid) => {
         if (sid && this.isNative) syncTrackToNative(LocalDAW.tracks.find((t) => t.id === trackId));
         return sid;
       });
