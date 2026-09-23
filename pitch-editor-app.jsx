@@ -359,6 +359,12 @@ const peOverlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0
 // before v2.7.3 has no block and reads as the values the app shipped with, which is what it
 // was built under. 🔴 Keep the two in step — the engine clamps what is stored, this decides
 // what is DRAWN, and a disagreement shows up as notes that look edited but save as pristine.
+// v2.8.4 — PSOLA 가 음색을 지킬 수 있는 이동량의 한계. 🔴 엔진의 `PSOLA_MAX_SEMIS` 와
+// **같은 값이어야 한다** — 엔진은 이 값으로 실제 렌더를 자르고, 여기서는 그 사실을
+// 사용자에게 알린다. 두 값이 어긋나면 "경고 없이 잘리거나" "자르지도 않으면서 경고"가
+// 된다. 하네스가 두 파일을 함께 읽어 일치를 확인한다.
+const PE_MAX_SHIFT_SEMIS = 6;
+
 const PE_DEFAULTS = { strength: 1, keepVibrato: true };
 function peDefaults(d) {
   // 🔴 Number(null) === 0 (NaN 이 아니다). 엔진의 pitchDefaults 와 같은 함정 — 그쪽 주석 참조.
@@ -1377,6 +1383,10 @@ function PitchEditorApp() {
   // v2.8.1 — Apply 가 도는 중인가. 렌더는 스튜디오 창에서 돌고 이 창은 답을 기다린다.
   const [printing, setPrinting] = React.useState(false);
   const [printPct, setPrintPct] = React.useState(0);
+  // v2.8.4 — 마지막 Apply 가 얼마나 걸렸는가. 분석의 `analysed in n.n s` 와 같은 자리에
+  // 같은 방식으로 적는다 — 시간이 궁금해질 기능에는 시간을 찍어 둬야 다음 보고가
+  // 어림값이 되지 않는다.
+  const [printMs, setPrintMs] = React.useState(null);
   const [drag, setDrag] = React.useState(null);
   const defsRef = React.useRef(defs); defsRef.current = defs;
   const layoutRef = React.useRef(layout); layoutRef.current = layout;
@@ -1435,6 +1445,7 @@ function PitchEditorApp() {
         if (msg.trackId !== trackId || msg.clipId !== clipId) return;
         setPrinting(false);
         setPrintPct(0);
+        setPrintMs(msg.ok && Number.isFinite(msg.elapsedMs) ? msg.elapsedMs : null);
         setNote(msg.message || "");
         // 🔴 곡선은 버리지 않는다. 분석은 baseSourceId 를 읽고 그것은 프린트로 바뀌지
         //    않는다(peAudioKey 가 그 기준이다) — 사용자가 다시 Analyze 할 이유가 없다.
@@ -1954,6 +1965,12 @@ function PitchEditorApp() {
   //   · 노트를 옮기면 켜지고, Apply 하면 꺼진다
   //   · 프린트 뒤 전부 되돌리면 다시 켜지고(지문이 달라진다), 누르면 원본으로 돌아간다
   //   · 아무것도 안 한 상태에서는 꺼져 있다
+  // v2.8.4 — 상한을 넘는 이동이 섞여 있는가. **막지 않고 알린다** — 사용자가 하려는
+  // 일을 막는 대신, 그 구간에서 음색이 변한다는 것을 미리 말해 준다.
+  const overShift = React.useMemo(
+    () => notes.filter((nt) => Math.abs(nt.target - nt.midi) > PE_MAX_SHIFT_SEMIS).length,
+    [notes]
+  );
   const curSig = React.useMemo(() => peShapeSig(edits, defs, layout), [edits, defs, layout]);
   const printedSig = (info && info.pitch && info.pitch.printedSig) || null;
   const shapeDiffers = curSig !== printedSig;
@@ -1962,6 +1979,7 @@ function PitchEditorApp() {
     if (!canApply) return;
     setPrinting(true);
     setPrintPct(0);
+    setPrintMs(null);
     setNote("Rendering the correction…");
     peChannel.postMessage({
       type: "REQUEST_PITCH_PRINT", trackId, clipId,
@@ -2308,6 +2326,10 @@ function PitchEditorApp() {
                   {corrOf.keepVibrato ? "Keep vibrato" : "Flatten vibrato"}
                 </button>
               </div>
+              {overShift > 0 && <div className="pe-hint" style={{ marginTop: 9, color: "var(--red)" }}>
+                <b>{overShift}</b> note{overShift > 1 ? "s" : ""} move more than {PE_MAX_SHIFT_SEMIS} semitones.
+                Beyond that the tone changes — the move is limited to {PE_MAX_SHIFT_SEMIS} when rendered.
+              </div>}
               {/* 🔴 Without this line the first test report is "the values go in but nothing
                   sounds different" — which is correct behaviour, not a defect. */}
               <div className="pe-hint" style={{ marginTop: 9 }}>
@@ -2335,6 +2357,7 @@ function PitchEditorApp() {
               </div>
               {printed && <div className="pe-hint" style={{ marginTop: 7 }}>
                 This clip plays the corrected audio. The original take is untouched — <kbd>Revert</kbd> brings it back.
+                {printMs !== null && <><br />applied in {(printMs / 1000).toFixed(1)} s</>}
               </div>}
             </div>
 

@@ -13,6 +13,19 @@
   const DURATION = DEMO_SECTIONS * DEMO_SECTION; // 16s demo loop
   const PROJECT_SCHEMA_VERSION = 2;
 
+  // v2.8.4 — **빈 프로젝트**에만 쓰는 표시용 최소 길이.
+  //
+  // 🔴 `DURATION`(데모 루프 16초)과 갈라놓는 것이 이 상수의 존재 이유다. 둘은 뜻이
+  // 다른데 한 상수가 두 역할을 하다가 결함이 됐다 — `_projectClipDuration()` 이
+  // `Math.max(DURATION, …)` 으로 돌려주는 바람에 **11.9초 클립을 실어도 타임라인이
+  // 16초**가 됐다(B-Project-MinDuration). 그 하한은 설계가 아니라 v0.16.16 에서
+  // 이미 고쳤던 결함이 v1.17.15 의 새 함수로 되살아난 것이었다.
+  //
+  // 이제 하한은 **아무것도 없을 때만** 쓴다. 클립이 하나라도 있으면 길이는 내용이
+  // 정한다. 값이 16인 것은 빈 화면의 눈금이 예전과 같아 보이게 하려는 것뿐이고,
+  // 데모 길이와는 무관하다 — 바꾸고 싶으면 여기만 바꾸면 된다.
+  const PROJECT_MIN_SEC = 16;
+
   // v2.7.3 — the clip-wide pitch-correction defaults. `strength` and `keepVibrato` live in TWO
   // places by design: HERE, as the value every note of the clip takes unless the user says
   // otherwise, and in clip.pitch.edits[] for the notes that DO say otherwise.
@@ -860,7 +873,9 @@
         const bufferEnd = (t.buffer && !t.needsAudio) ? t.buffer.duration : 0;
         return Math.max(m, clipEnd, bufferEnd);
       }, 0);
-      return Math.max(DURATION, maxClipEnd);
+      // 🔴 하한은 **내용이 아무것도 없을 때만**. 클립이 있으면 그 끝이 곧 길이다.
+      //    여기에 DURATION 을 섞던 것이 B-Project-MinDuration 의 원인이었다.
+      return maxClipEnd > 0 ? maxClipEnd : PROJECT_MIN_SEC;
     },
     _displayName(fileName) {
       return (fileName || "").replace(/\.(mp3|wav|aiff?|m4a|ogg|flac)$/i, "");
@@ -1299,7 +1314,9 @@
       // track.buffer the timeline-indexed layout (leading silence + take) so native gets it
       // right. A take at 0 stays trivial here and keeps the cheap filePath fast-path.
       this._ensureBaked(track);
-      this.duration = limitEnd ? Math.max(limitEnd, this._projectClipDuration()) : Math.max(this.duration, start + decoded.buffer.duration);
+      // limitEnd 는 펀치 구간의 끝 — 녹음이 그보다 짧아도 구간만큼은 남겨 둔다.
+      // 그 밖에는 내용이 길이를 정한다(방금 붙인 클립이 이미 clips 에 있다).
+      this.duration = limitEnd ? Math.max(limitEnd, this._projectClipDuration()) : this._projectClipDuration();
       this._applyMix();
       this._startHotAddedTrack(track);
       return track;
@@ -1371,7 +1388,7 @@
       this._applyPinnedSelections(track, pinnedSelections, punchTakeId);
       this._reindexClips(track);
       this._ensureBaked(track);
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       this._applyMix();
       this._startHotAddedTrack(track);
       return track;
@@ -1445,7 +1462,7 @@
 
       this._normalizeTrackLayout(track);   // keep take numbering/pruning on the shared path
       this._ensureBaked(track);
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       this._applyMix();
       this._startHotAddedTrack(track);
       return track;
@@ -1539,7 +1556,7 @@
       this._normalizeTrackLayout(track);
       this._applyPinnedSelections(track, pinnedSelections, track.activeTakeId);
       this._ensureBaked(track);
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       this._applyMix();
       this._startHotAddedTrack(track);
       return track;
@@ -1888,12 +1905,15 @@
       const cacheKey = this._decodedCacheKeyForBuffer(name, arrayBuffer, options);
       const decoded = await this._decodeAudio(arrayBuffer, cacheKey);
       const buffer = decoded.buffer;
-      if (this.tracks.some(t => t.isDemo)) {
-        this.duration = Math.max(this.duration, buffer.duration);
-      } else {
-        const maxExisting = this.tracks.reduce((m, t) => Math.max(m, (t.buffer && !t.needsAudio) ? t.buffer.duration : 0), 0);
-        this.duration = Math.max(maxExisting, buffer.duration);
-      }
+      // v2.8.4 — 여기 있던 `isDemo` 갈래를 지웠다.
+      //
+      // v0.16.16 이 "5초 파일을 실어도 8초가 된다"를 고치려고 넣은 것인데, 🔴 **이미
+      // 죽은 코드였다** — 아래에서 `this.duration = this._projectClipDuration()` 이 곧바로
+      // 덮어쓰고, 그 함수가 `Math.max(DURATION, …)` 로 하한을 도로 씌웠다. 그래서 수정이
+      // 있으나 마나였고 증상이 되살아나 있었다(B-Project-MinDuration).
+      //
+      // 이제 하한이 없으니 길이는 내용이 정한다. **데모 트랙 보존도 저절로 된다** —
+      // 데모 버퍼가 16초이므로 `_projectClipDuration()` 이 그것을 그대로 센다.
       const filePath = options.filePath || null;
       const displayName = options.displayName || this._displayName(name);
       const reconnectTrackId = options.reconnectTrackId || null;
@@ -1924,7 +1944,7 @@
       const color = palette[this.tracks.length % palette.length];
       const t = this._addTrack({ name: displayName, type: "audio", color, buffer, peaks: decoded.peaks, fileName: name, filePath, params: options.params });
       t._forceNativeTemp = !!options.forceNativeTemp;
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       this._startHotAddedTrack(t);
       return t;
     },
@@ -1965,12 +1985,15 @@
       const fileName = file.name;
       const name = this._displayName(fileName);
       const filePath = file.path || null;
-      if (this.tracks.some(t => t.isDemo)) {
-        this.duration = Math.max(this.duration, buffer.duration);
-      } else {
-        const maxExisting = this.tracks.reduce((m, t) => Math.max(m, (t.buffer && !t.needsAudio) ? t.buffer.duration : 0), 0);
-        this.duration = Math.max(maxExisting, buffer.duration);
-      }
+      // v2.8.4 — 여기 있던 `isDemo` 갈래를 지웠다.
+      //
+      // v0.16.16 이 "5초 파일을 실어도 8초가 된다"를 고치려고 넣은 것인데, 🔴 **이미
+      // 죽은 코드였다** — 아래에서 `this.duration = this._projectClipDuration()` 이 곧바로
+      // 덮어쓰고, 그 함수가 `Math.max(DURATION, …)` 로 하한을 도로 씌웠다. 그래서 수정이
+      // 있으나 마나였고 증상이 되살아나 있었다(B-Project-MinDuration).
+      //
+      // 이제 하한이 없으니 길이는 내용이 정한다. **데모 트랙 보존도 저절로 된다** —
+      // 데모 버퍼가 16초이므로 `_projectClipDuration()` 이 그것을 그대로 센다.
       // Browser File objects usually do not expose absolute paths. Without an exact
       // path, keep imports as new tracks instead of guessing by file name.
       const ph = this.tracks.find(t => t.needsAudio && filePath && t.filePath === filePath);
@@ -1985,7 +2008,7 @@
       const palette = ["#e8b04b", "#d98a55", "#9bbf7a", "#c98fb0", "#7fb0c4", "#cf6f5c"];
       const color = palette[this.tracks.length % palette.length];
       const t = this._addTrack({ name, type: "audio", color, buffer, peaks: decoded.peaks, fileName, filePath });
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       this._startHotAddedTrack(t);
       return t;
     },
@@ -2022,7 +2045,7 @@
         sources: [source],
         clips: [this._normalizeClip({ start: 0, end: buffer.duration, offset: 0 }, sourceId, buffer.duration)],
       });
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       this._startHotAddedTrack(t);
       return t;
     },
@@ -2060,7 +2083,7 @@
       // _isTrivialLayout fast path — no re-render — but it also SEEDS _rawBuffers via
       // _captureRawBuffers, which every later edit, Analyze and De-noise then read.
       this._ensureBaked(track);
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       return track;
     },
 
@@ -2093,7 +2116,7 @@
     clearTracks() {
       this.stop();
       this.tracks.length = 0;
-      this.duration = DURATION;
+      this.duration = PROJECT_MIN_SEC;
       this.loopRange = null;
       this.repeatPlayEnabled = false;
       this._spectrum = null; this._specCache = {};
@@ -2138,7 +2161,7 @@
     clearTracksKeepMaster() {
       this.stop();
       this.tracks.length = 0;
-      this.duration = DURATION;
+      this.duration = PROJECT_MIN_SEC;
       this.loopRange = null;
       this.repeatPlayEnabled = false;
       this._spectrum = null; this._specCache = {};
@@ -3004,7 +3027,9 @@
         const order = new Map(snapTracks.map((st, i) => [st.id, i]));
         this.tracks.sort((a, b) => (order.get(a.id) ?? 999999) - (order.get(b.id) ?? 999999));
       }
-      this.duration = Math.max(snap.duration || DURATION, this._projectClipDuration());
+      // 스냅샷의 길이가 아니라 **복원된 내용**이 길이를 정한다 — 클립을 지우고 Undo 하면
+      // 길이도 함께 돌아와야 하고, 그 근거는 clips 다.
+      this.duration = this._projectClipDuration();
       this._applyMix();
       if (this.isPlaying) this._scheduleAutomationSoon();
     },
@@ -3014,7 +3039,9 @@
       this.stop();
       this.tracks.length = 0;
       this._spectrum = null; this._specCache = {};
-      this.duration = json.duration || DURATION;
+      // 임포트 도중 길이를 읽는 코드가 있어 일단 채워 두지만, 마지막에 내용으로 다시
+      // 계산한다(아래). 🔴 저장된 길이를 그대로 믿으면 옛 프로젝트의 16초 하한이 따라온다.
+      this.duration = json.duration || PROJECT_MIN_SEC;
       // Restore the Repeat region, but open with Repeat OFF: a project that starts
       // looping a region the moment it opens would be a surprise, and the region is
       // right there to switch on. Projects saved before v1.24.1 have no loopRange
@@ -3115,7 +3142,7 @@
         }
         this._normalizeTrackLayout(track);
       });
-      this.duration = Math.max(this.duration, this._projectClipDuration());
+      this.duration = this._projectClipDuration();
       this._applyMix();
     },
 
@@ -3865,7 +3892,18 @@
       return T[i];
     },
 
-    PSOLA_MAX_SEMIS: 12,      // 이 이상은 PSOLA 가 아니라 다른 도구의 일이다
+    // v2.8.4 — 12 → **6**. 이동량을 여기서 자른다(막지는 않는다 — 에디터가 경고만 한다).
+    //
+    // 근거 ① **계측**(B3 기준, 고역 비중 원본=100% — 100 에서 멀수록 음색이 상한다):
+    //     ±3 이하 89~91% · +5 103% · +7 110% · +9 93% · +12 56%
+    //   ±5 까지는 건강하고 +7 부터 벌어지며, ±12 는 한계 밖이다(내림 −12 는 음정이
+    //   아예 내려가지 않는다). 사용자가 보고한 "거칠어진다"가 이 구간이다.
+    //
+    // 근거 ② 🔴 **앱이 이미 같은 판단을 내려 뒀다** — Vari Key(SoundTouch)는 네이티브가
+    //   `setKeyShift` 에서 **±6 으로 강제 클램프**한다(juce_skeleton AudioEngine.cpp).
+    //   "꽤 쓸 만했다"고 평가받은 그 기능도 ±6 안에서만 쓸 수 있었던 것이다.
+    //   같은 선을 쓰면 앱 전체가 일관된다.
+    PSOLA_MAX_SEMIS: 6,
     PSOLA_EDGE_FADE: 0.004,   // 유성 구간 가장자리 크로스페이드 4 ms (De-noise 의 마이크로 페이드와 같은 값)
     PSOLA_MIN_SHIFT: 1e-4,    // 이보다 작은 반음 차이는 보정이 아니다
 

@@ -2539,7 +2539,16 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
         // **화면과 다른 노트로 프린트**할 수 있다(v2.8.0 계획).
         case "REQUEST_PITCH_PRINT": {
           const { trackId, clipId } = msg;
-          const reply = (ok, message) => channel.postMessage({ type: "PITCH_PRINTED", trackId, clipId, ok, message });
+          // v2.8.4 — 소요 시간을 함께 돌려준다. 분석에는 `analysed in n.n s` 가 있는데
+          // Apply 에는 없어서, 얼마나 걸리는지 물으면 어림값으로 답할 수밖에 없었다
+          // (T-2.8.1-5 의 "약 1초30 정도"). 재는 수단이 있어야 보고가 정확해진다.
+          // ⚠️ `reply` 가 이 값을 읽으므로 **그보다 먼저** 선언해야 한다 — 뒤에 두면
+          //    아래 이른 실패 경로에서 TDZ 로 터진다.
+          const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+          const printT0 = now();
+          const reply = (ok, message) => channel.postMessage({
+            type: "PITCH_PRINTED", trackId, clipId, ok, message, elapsedMs: now() - printT0,
+          });
           if (!DAW.printClipPitchAsync) { reply(false, "This build cannot print pitch corrections."); break; }
           // 🔴 렌더는 슬라이스로 돈다 — 5분 클립이 5.5 s 라 동기로 하면 앱이 그만큼 언다.
           //    Undo 스냅샷은 **시작할 때** 찍는다(작업 전 상태여야 하므로), 실패하면 버린다.

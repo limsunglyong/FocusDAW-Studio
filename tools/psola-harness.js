@@ -492,6 +492,45 @@ console.log('⑬ 무엇을 프린트했는지 기억한다 (printedSig)');
   check('되돌린 뒤 편집은 남는다 (다시 Apply 가능)', !!c2.pitch.baseSourceId);
 }
 
+// ── ⑭ 이동량 상한 (v2.8.4) ────────────────────────────────────────────────
+console.log('');
+console.log('⑭ 이동량 상한이 엔진과 에디터에서 같은 값이다');
+{
+  const D = loadEngine();
+  // 에디터 쪽 상수는 소스에서 직접 읽는다 — 이 하네스는 편집 모델을 로드하지 않는다.
+  const es = fs.readFileSync(ROOT + '/pitch-editor-app.js'.replace('/pitch-editor-app.js', '/pitch-editor-app.jsx'), 'utf8');
+  const m = /const PE_MAX_SHIFT_SEMIS = (\d+);/.exec(es);
+  check('에디터에 상한 상수가 있다', !!m, m ? m[1] : 'none');
+  const peMax = m ? Number(m[1]) : NaN;
+  check('🔴 엔진 PSOLA_MAX_SEMIS 와 에디터 PE_MAX_SHIFT_SEMIS 가 같다',
+        D.PSOLA_MAX_SEMIS === peMax, '엔진 ' + D.PSOLA_MAX_SEMIS + ' vs 에디터 ' + peMax);
+  check('상한이 6 이다 (Vari Key 의 ±6 과 같은 선)', D.PSOLA_MAX_SEMIS === 6, String(D.PSOLA_MAX_SEMIS));
+
+  // 🔴 상한을 넘겨 달라고 해도 렌더는 거기서 자른다.
+  const fb = new FakeCtx().createBuffer(1, X.length, SR);
+  fb.getChannelData(0).set(X);
+  D.tracks.length = 0;
+  const tr = D.addBounceTrack('M', fb, { fileName: 'M.wav', filePath: '/x/M.wav' });
+  const an = D.analyzeClipPitch(tr.id, tr.clips[0].id);
+  const far = [{ t0: T1[0], t1: T1[1], midi: A3, target: A3 + 12, strength: 1, keepVibrato: true }];
+  const out = D._psolaRender(fb, an, far);
+  check('상한 밖 요청도 렌더는 된다', !!out);
+  if (out) {
+    const re = analyse(loadEngine(), out.getChannelData(0)).an;
+    const v = [];
+    for (let k = 0; k < re.frames; k++) {
+      if (!re.voiced[k]) continue;
+      const t = k * re.hopSec + re.winSec / 2;
+      if (t >= T1[0] + 0.2 && t <= T1[1] - 0.2) v.push(re.midi[k]);
+    }
+    v.sort((a, b) => a - b);
+    const got = v[v.length >> 1];
+    check('🔴 +12 를 요청해도 +6 까지만 간다', Math.abs(got - (A3 + 6)) < 0.2,
+          '목표 ' + (A3 + 12) + ' 요청 → ' + got.toFixed(2) + ' (상한 ' + (A3 + 6) + ')');
+  }
+}
+
+
 const asyncChecks = (async () => {
   console.log('');
   console.log('⑪ 슬라이스 렌더가 동기 렌더와 같은 결과를 낸다');
