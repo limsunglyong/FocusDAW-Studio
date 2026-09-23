@@ -89,9 +89,29 @@
     maybeActivateNativeOutput();
   }
 
+  // 아직 네이티브로 밀지 못한 트랙이 있는가. 🔴 v2.9.1 — 핸드오버가 일찍 터지던 원인.
+  //
+  // v2.4.8 이 "오디오가 아직 손에 없는 트랙은 건너뛴다"를 넣으면서(재연결 전의 상대
+  // 경로를 밀면 엔진이 `File not found` 를 낸다) 그 트랙들은 **`pendingNativeLoads` 에
+  // 아예 들어가지 않게 됐다.** 그런데 핸드오버 게이트는 그 집합만 봤다 — 보낼 것이
+  // 남았는데도 "보낸 것이 다 끝났다"며 통과해, 재연결이 도는 중에 네이티브로 넘어가고
+  // **웹 엔진이 음소거됐다.** 늦게 도착하는 트랙은 그동안 소리가 나지 않는다.
+  //
+  // 증상이 잘 안 보였던 이유: 열고 나서 잠깐이라도 기다리면 재연결이 끝난다. **프로젝트를
+  // 열자마자 Play 를 누를 때**만 드러나고, 창이 가장 긴 것은 디코딩이 느린 96 kHz PC 다.
+  //
+  // 그래서 게이트를 "보낸 것이 끝났는가"가 아니라 **"보낼 것이 남았는가"** 로 바꾼다.
+  // ⚠️ 영구 대기는 없다 — 파일이 진짜 없어 재연결이 영영 안 끝나도 15초 폴백
+  // (`armHandoverFallback`)이 강제로 넘긴다. 그것이 v2.4.8 이전의 동작이기도 하다.
+  function nativeLoadsOutstanding() {
+    if (pendingNativeLoads.size > 0) return true;
+    const tracks = (LocalDAW && LocalDAW.tracks) || [];
+    return tracks.some((t) => t && !t.recording && !trackAudioReady(t));
+  }
+
   function maybeActivateNativeOutput() {
     if (!Bridge.isNative || nativeOutputActive) return;
-    if (pendingNativeLoads.size > 0) return;
+    if (nativeLoadsOutstanding()) return;
     activateNativeOutput();
   }
 
