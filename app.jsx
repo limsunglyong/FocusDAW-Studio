@@ -1631,6 +1631,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
 
   const [showExport, setShowExport] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [confirmNew, setConfirmNew] = useState(false);   // v2.10.0 (R-6)
   const [flattenConfirm, setFlattenConfirm] = useState(null);
   const [laneH, setLaneH] = useState(96);
   const [dragOver, setDragOver] = useState(false);
@@ -4264,7 +4265,19 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     };
   }, [toggleRecording]);
 
+  // v2.10.0 (R-6) — File ▸ New Project 가 말없이 전부 지우던 것을 막는다.
+  //
+  // Edit ▸ Delete all tracks 는 처음부터 확인을 받았는데(되돌릴 수 없으니), New Project 는
+  // **그보다 더 많은 것을 지우면서** 확인이 없었다: 트랙뿐 아니라 프로젝트 이름·경로·
+  // Undo 이력까지 간다. 저장 여부를 보지 않는 이유는 사용자 결정이다 — "트랙이 하나라도
+  // 있으면 묻는다"(2026-09-29). 방금 저장했더라도 되돌릴 수 없는 것은 마찬가지이고,
+  // 저장 여부를 조건에 넣으면 "저장했으니 괜찮다"는 잘못된 안심을 주게 된다.
+  const confirmNewProject = () => {
+    if (DAW.tracks.length === 0) { newProject(); return; }   // 빈 프로젝트는 지울 것이 없다
+    setConfirmNew(true);
+  };
   const newProject = () => {
+    setConfirmNew(false);
     const nextName = DEFAULT_PROJECT_NAME;
     DAW.clearTracks();
     if (onRenameProject) onRenameProject(nextName);
@@ -4346,7 +4359,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   // expose menu actions to parent
   useEffect(() => {
     registerHandlers({
-      onNew: newProject,
+      onNew: confirmNewProject,
       onImport: pickAudioFiles,
       onImportFolder: pickAudioFolder,
       onLoadDemo: loadDemo,
@@ -4365,7 +4378,7 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onDeleteAllTracks: requestDeleteAllTracks,
       onCleanUpUnused: cleanUpUnusedRecordings,
     });
-  }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, newProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks, cleanUpUnusedRecordings]);
+  }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, confirmNewProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks, cleanUpUnusedRecordings]);
 
   const param = (id) => (k, v) => {
     const targetTrack = DAW.tracks.find((track) => track.id === id);
@@ -4862,6 +4875,35 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
                   {mergeTracksBusy ? "Rendering..." : "Create Bounce"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* v2.10.0 (R-6) — New Project 확인. Delete all tracks 모달과 같은 틀을 쓴다: 두
+          창이 하는 일이 거의 같은데 모양이 다르면 사용자가 매번 다시 읽어야 한다. */}
+      {confirmNew && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(8,6,4,.6)", backdropFilter: "blur(3px)", display: "grid", placeItems: "center" }}
+          onMouseDown={() => setConfirmNew(false)}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ width: 420, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="plus" size={18} style={{ color: "var(--amber)" }} />
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Start a new project</span>
+            </div>
+            <div style={{ padding: "18px 20px", fontSize: 13, lineHeight: 1.5, color: "var(--cream-2)" }}>
+              This project has <b>{DAW.tracks.length}</b> {DAW.tracks.length === 1 ? "track" : "tracks"}.
+              Starting a new project removes them along with the project name and
+              the undo history, and <b>cannot be undone</b>. Save first if you want to keep this project.
+            </div>
+            <div style={{ padding: "0 20px 18px", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button className="btn" onClick={() => setConfirmNew(false)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "var(--surface2)", color: "var(--cream-2)", fontSize: 12.5, fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button className="btn" onClick={newProject}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--amber)", background: "var(--amber)", color: "var(--mixer-bar-fg)", fontSize: 12.5, fontWeight: 600 }}>
+                New project
+              </button>
             </div>
           </div>
         </div>

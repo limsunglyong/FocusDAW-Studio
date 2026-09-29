@@ -43,6 +43,9 @@ const MUTATE_DEFAULTS = process.argv.includes('--mutate-defaults');
 const MUTATE_LAYOUT = process.argv.includes('--mutate-layout');
 // v2.9.3 — 드래그 한계를 무력화한다(peClampDrag 가 받은 폭을 그대로 돌려준다). ⑬이 FAIL 해야 정상.
 const MUTATE_LIMIT = process.argv.includes('--mutate-limit');
+const MUTATE_CTX = process.argv.includes('--mutate-ctx');   // v2.10.0 (R-3)
+const MUTATE_WRAP = process.argv.includes('--mutate-wrap');  // v2.10.2 (B-PE-LastClipWrap)
+const MUTATE_SNAPLIMIT = process.argv.includes('--mutate-snaplimit'); // v2.10.3 (Key 스냅 경고)
 
 // ── 가짜 Web Audio (bounce-source-harness.js 와 같은 최소 스텁) ─────────────
 const param = () => ({ value: 0, setValueAtTime() { return this; }, linearRampToValueAtTime() { return this; },
@@ -128,6 +131,27 @@ function loadEditModel() {
     src = src.replace('const src = notes || [];', 'const src = notes || []; if (1) return { notes: src, spans: 0 };');
     if (src === before) { console.error('변이 실패 — peApplyLayout 진입부를 못 찾았다.'); process.exit(2); }
   }
+  if (MUTATE_SNAPLIMIT) {
+    const before = src;
+    // 옛 판정으로 되돌린다: 산술 한계에 **정확히** 닿았을 때만 경고. Key 스냅에서 한계
+    // 안쪽의 조성 음에 갇히는 경우를 놓친다.
+    src = src.replace('if (nt.target >= hi || nt.target <= lo) return true;',
+                      'if (1) return nt.target === hi || nt.target === lo;');
+    if (src === before) { console.error('변이 실패 — peAtShiftLimit 을 못 찾았다.'); process.exit(2); }
+  }
+  if (MUTATE_WRAP) {
+    const before = src;
+    // 옛 판정으로 되돌린다: "끝에 닿았는가". 되감긴 플레이헤드(음수)는 못 잡는다.
+    src = src.replace('return Number.isFinite(pRel) && dur > 0 && pRel >= -1e-3 && pRel < dur - 1e-3;',
+                      'return Number.isFinite(pRel) && dur > 0 && pRel < dur - 1e-3;');
+    if (src === before) { console.error('변이 실패 — peInsideClip 을 못 찾았다.'); process.exit(2); }
+  }
+  if (MUTATE_CTX) {
+    const before = src;
+    // 선택 안을 우클릭해도 그 노트 하나만 대상이 되게 만든다 = 여러 개에 적용이 불가능해진다.
+    src = src.replace('if (sel.has(noteId)) return { ids: new Set(sel), retarget: false };', '');
+    if (src === before) { console.error('변이 실패 — peContextTarget 을 못 찾았다.'); process.exit(2); }
+  }
   if (MUTATE_LIMIT) {
     const before = src;
     src = src.replace('function peClampDrag(notes, dSemi) {','function peClampDrag(notes, dSemi) { if (1) return dSemi;');
@@ -148,7 +172,7 @@ function loadEditModel() {
     '\nthis.peScalePcs = peScalePcs; this.peSnapToScale = peSnapToScale; this.peDragTarget = peDragTarget;' +
     '\nthis.peDefaults = peDefaults; this.PE_DEFAULTS = PE_DEFAULTS;' +
     '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR; this.peShapeSig = peShapeSig; this.PE_PRESETS = PE_PRESETS; this.peMatchPreset = peMatchPreset;' +
-    '\nthis.peShiftRange = peShiftRange; this.peClampDrag = peClampDrag; this.peAtShiftLimit = peAtShiftLimit; this.PE_MAX_SHIFT_SEMIS = PE_MAX_SHIFT_SEMIS;', ctx);
+    '\nthis.peShiftRange = peShiftRange; this.peClampDrag = peClampDrag; this.peAtShiftLimit = peAtShiftLimit; this.PE_MAX_SHIFT_SEMIS = PE_MAX_SHIFT_SEMIS; this.peContextTarget = peContextTarget; this.peInsideClip = peInsideClip; this.peShouldStopAtClip = peShouldStopAtClip; this.peTimeCells = peTimeCells;', ctx);
   return ctx;
 }
 
@@ -165,7 +189,7 @@ const check = (label, ok, detail) => {
 };
 
 // ══ 시작 ═══════════════════════════════════════════════════════════════════
-console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}${MUTATE_EDITS ? '  [변이: 형제 보존 제거 · 색 고정]' : ''}${MUTATE_DEFAULTS ? '  [변이: defaults 직렬화 제거]' : ''}${MUTATE_LAYOUT ? '  [변이: 소유 구간 스플라이스 무력화]' : ''}${MUTATE_LIMIT ? '  [변이: 드래그 한계 제거]' : ''}\n`);
+console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}${MUTATE_EDITS ? '  [변이: 형제 보존 제거 · 색 고정]' : ''}${MUTATE_DEFAULTS ? '  [변이: defaults 직렬화 제거]' : ''}${MUTATE_LAYOUT ? '  [변이: 소유 구간 스플라이스 무력화]' : ''}${MUTATE_LIMIT ? '  [변이: 드래그 한계 제거]' : ''}${MUTATE_CTX ? '  [변이: 우클릭이 선택을 무시]' : ''}${MUTATE_WRAP ? '  [변이: 되감김을 못 보는 옛 판정]' : ''}${MUTATE_SNAPLIMIT ? '  [변이: 산술 한계만 보는 옛 경고]' : ''}\n`);
 
 const E = loadEditModel();
 
@@ -633,9 +657,337 @@ console.log('⑬ 드래그는 부른 음높이에서 ±6 에서 멈추고, 묶�
 }
 
 
+// ── ⑭ 우클릭이 무엇을 대상으로 삼는가 (v2.10.0 R-3) ─────────────────────────
+//
+// 메뉴 자체는 제스처라 하네스가 못 본다. 잴 수 있는 것은 **대상 판정**이고, 그것이 이
+// 기능의 전부다: 선택 안을 우클릭하면 선택 전체, 선택 밖을 우클릭하면 그 하나.
+console.log('\n⑭ 우클릭 대상 판정 (설계 — DAW 관례)');
+{
+  const sel3 = new Set(['a', 'b', 'c']);
+  const inSel = E.peContextTarget('b', sel3);
+  check('🔴 선택 안을 우클릭하면 선택 전체가 대상', inSel.ids.size === 3 && !inSel.retarget,
+    inSel.ids.size + '개, retarget=' + inSel.retarget);
+  const outSel = E.peContextTarget('z', sel3);
+  check('🔴 선택 밖을 우클릭하면 그 노트만 대상이고 선택을 옮긴다',
+    outSel.ids.size === 1 && outSel.ids.has('z') && outSel.retarget,
+    outSel.ids.size + '개, retarget=' + outSel.retarget);
+  const none = E.peContextTarget('q', new Set());
+  check('선택이 없으면 우클릭한 노트 하나', none.ids.size === 1 && none.ids.has('q') && none.retarget);
+  check('노트가 아닌 곳은 대상이 없다', E.peContextTarget(null, sel3).ids === null);
+  // 원본 Set 을 돌려주면 메뉴가 열린 동안 선택이 바뀌면 대상도 따라 바뀐다 — 사본이어야 한다.
+  const copy = E.peContextTarget('a', sel3);
+  sel3.add('d');
+  check('대상은 선택의 **사본** (메뉴가 열린 뒤 선택이 바뀌어도 대상은 그대로)',
+    copy.ids.size === 3 && !copy.ids.has('d'), copy.ids.size + '개');
+}
+
+// ── ⑮ 배선 구조 검사 — R-3 · R-5 (v2.10.0) ─────────────────────────────────
+//
+// 판정이 옳아도 배선이 없으면 아무 일도 안 난다. 여기서는 build 산출물의 **구조**만 본다
+// (native-handover 하네스가 게이트에 쓴 것과 같은 낮춘 형태).
+console.log('\n⑮ 배선 — 우클릭 메뉴와 0 키가 실제로 연결되어 있다');
+{
+  const ed = fs.readFileSync(path.join(ROOT, 'build', 'pitch-editor-app.js'), 'utf8');
+  check('롤에 onContextMenu 가 붙어 있다', /onContextMenu:\s*onCtx/.test(ed));
+  check('우클릭이 peContextTarget 을 거친다', ed.includes('peContextTarget(noteId'));
+  // ⚠️ v2.6.1 에서 같은 실수를 했다 — 버블 단계로 걸면 아래에서 stopPropagation 하는
+  // 핸들러에 가려 메뉴가 안 닫힌 채로 남는다.
+  check('🔴 바깥 클릭 리스너가 캡처 단계다', /addEventListener\("mousedown",\s*close,\s*true\)/.test(ed));
+  check('🔴 Escape 도 캡처 단계 — 메뉴만 닫고 창은 안 닫는다',
+    /addEventListener\("keydown",\s*onKey,\s*true\)/.test(ed));
+  check('📌 상태줄 Reset 버튼은 남아 있다', ed.includes('onClick: resetSelected'));
+  check('메뉴의 Reset 은 붙들고 있던 집합에 적용된다', ed.includes('resetIds(ctx.ids)'));
+  // R-5 — NumLock 이 꺼져 있으면 숫자패드 0 은 `Insert` 로 온다. code 쪽이 진짜 판정이다.
+  check('🔴 0 키를 code === "Numpad0" 로도 받는다 (NumLock 꺼짐)', ed.includes('"Numpad0"'));
+  check('0 키가 클립 맨 앞으로 보낸다', /seekTo\(0\)/.test(ed));
+  check('입력 칸 안에서는 0 을 가로채지 않는다',
+    ed.includes('"TEXTAREA"') && ed.includes('isContentEditable'));
+}
+
+// ── ⑯ R-4 — 시간 표시 칩이 테마 토큰만 쓴다 ────────────────────────────────
+//
+// 하드코딩한 색을 쓰면 밝은 테마(ivory·sage)에서 글자가 사라진다. 여기서 확인하는 것은
+// "이미 열 가지 테마에서 증명된 .pe-badge 와 **같은 토큰 세 벌**을 쓴다" 는 것이다.
+console.log('\n⑯ 전송 시간 표시 (R-4)');
+{
+  const css = fs.readFileSync(path.join(ROOT, 'pitch-editor.html'), 'utf8');
+  const rule = (name) => {
+    const i = css.indexOf('.' + name + '{');
+    return i < 0 ? null : css.slice(i, css.indexOf('}', i));
+  };
+  const time = rule('pe-time');
+  check('.pe-time 규칙이 있다', !!time);
+  if (time) {
+    // 🔴 글자색은 --amber 가 **아니다**. 계측이 반증했다: amber 글자를 amber-soft 배경에
+    // 얹으면 ivory 에서 대비 2.18 로, 큰 글씨 기준선(3.0)에도 못 미친다. 배경 알파를 올리면
+    // 배경이 글자색으로 수렴하므로 더 나빠진다(0.6 에서 1.46). amber 는 **칩의 색**으로만
+    // 두고 글자는 본문색(--cream, 최악 6.03)을 쓴다 — 시인성을 높이라는 요청 그대로다.
+    check('🔴 글자색이 배경과 같은 계열이 아니다', /color:var\(--cream\)/.test(time), time);
+    check('🔴 하드코딩한 색이 없다', !/#[0-9a-fA-F]{3,8}/.test(time));
+    check('둥근 상자다', /border-radius:/.test(time));
+    // v2.10.1 — 사용자 지정: Saira Condensed, 현재 시간 ExtraLight 200, 전체 길이 Thin 100
+    // 에 현재 시간의 60~70% 크기.
+    check('🔴 Saira Condensed 를 쓴다', /font-family:"Saira Condensed"/.test(time), time);
+    const cur = rule('pe-time-cur'), tot = rule('pe-time-total');
+    const px = (r) => { const m = r && /font-size:([0-9.]+)px/.exec(r); return m ? parseFloat(m[1]) : NaN; };
+    const wt = (r) => { const m = r && /font-weight:([0-9]+)/.exec(r); return m ? parseInt(m[1], 10) : NaN; };
+    check('현재 시간이 ExtraLight 200', wt(cur) === 200, String(wt(cur)));
+    check('전체 길이가 Thin 100', wt(tot) === 100, String(wt(tot)));
+    check('현재 시간이 예전(11.5px)보다 훨씬 크다', px(cur) >= 20, String(px(cur)));
+    const ratio = px(tot) / px(cur);
+    check('🔴 전체 길이가 현재 시간의 60~70%', ratio >= 0.6 && ratio <= 0.7, (ratio * 100).toFixed(0) + '%');
+  }
+  // 🔴 토큰 이름이 색을 보장하지 않는다(v2.4.4 — navy 는 --amber 와 --surface3 가 같은 색).
+  // amber-soft 는 amber 를 ~16% 알파로 얹은 것이므로, **툴바 배경(--bg) 위에 합성한 뒤**
+  // 글자(--amber)와의 대비를 재야 진짜 값이 나온다.
+  {
+    const parse = (b) => { const o = {}; for (const m of b.matchAll(/--([a-z0-9-]+)\s*:\s*([^;}]+)/g)) o[m[1]] = m[2].trim(); return o; };
+    const rs = css.indexOf(':root{');
+    const root = parse(css.slice(rs, css.indexOf('}', rs)));
+    const themes = { default: root };
+    for (const m of css.matchAll(/:root\[data-theme="([a-z]+)"\]\{([^}]*)\}/g)) themes[m[1]] = Object.assign({}, themes[m[1]] || root, parse(m[2]));
+    const hex = (x) => { x = x.replace('#', ''); if (x.length === 3) x = x.split('').map((c) => c + c).join(''); return [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16)); };
+    const rgba = (v) => { const m = /rgba?\(([^)]+)\)/.exec(v); if (!m) return null; const p = m[1].split(',').map((x) => parseFloat(x)); return { c: p.slice(0, 3), a: p.length > 3 ? p[3] : 1 }; };
+    const over = (fg, a, bg) => fg.map((v, i) => v * a + bg[i] * (1 - a));
+    const lum = (c) => { const g = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * g[0] + 0.7152 * g[1] + 0.0722 * g[2]; };
+    const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    let n = 0, worst = Infinity, worstName = '', worstBox = Infinity, worstBoxName = '';
+    for (const [name, t] of Object.entries(themes)) {
+      if (!t.amber || !t['amber-soft'] || !t.bg || !t.cream) continue;
+      const soft = rgba(t['amber-soft']);
+      if (!soft) { check(name + ': --amber-soft 를 못 읽었다', false, t['amber-soft']); continue; }
+      n++;
+      const bg = hex(t.bg);
+      const box = over(soft.c, soft.a, bg);            // 칩 배경 = amber-soft over --bg
+      const text = cr(hex(t.cream), box);              // 글자 대비 (--cream)
+      const edge = cr(box, bg);                        // 칩이 툴바에서 떨어져 보이는가
+      if (text < worst) { worst = text; worstName = name; }
+      if (edge < worstBox) { worstBox = edge; worstBoxName = name; }
+    }
+    check('테마 ' + n + '개에서 칩 색을 계산했다', n >= 10, String(n));
+    // 본문 기준선 4.5 를 쓴다 — 15px 은 WCAG large text(18.66px bold) 에 못 미치고,
+    // 애초에 이 요청은 "시인성을 더욱 높인다" 였으므로 낮춘 기준선을 쓸 이유가 없다.
+    check('🔴 글자 대비 최악 >= 4.5 (본문 기준선)', worst >= 4.5, worst.toFixed(2) + ' (' + worstName + ')');
+    check('칩 배경이 툴바 배경과 구분된다 (대비 >= 1.05)', worstBox >= 1.05, worstBox.toFixed(3) + ' (' + worstBoxName + ')');
+  }
+  check('🔴 Saira Condensed 100/200 을 실제로 불러온다', /Saira\+Condensed:wght@100;200/.test(css));
+  // 툴바 가운데 = 3칸 그리드. spacer 두 개로는 **가운데가 아니었다**(T-2.10.0-3 사용자 판정):
+  // flex 여백은 좌우 내용의 폭 차이만큼 밀린다.
+  const ed = fs.readFileSync(path.join(ROOT, 'build', 'pitch-editor-app.js'), 'utf8');
+  const bar = rule('pe-toolbar');
+  check('🔴 툴바가 3칸 그리드다', !!bar && /display:grid/.test(bar) && /grid-template-columns:minmax\(0,1fr\) auto minmax\(0,1fr\)/.test(bar), bar);
+  check('왼쪽 칸이 긴 파일 이름에 밀리지 않는다 (min-width:0 · overflow)',
+    /\.pe-tbar-left\{[^}]*min-width:0[^}]*overflow:hidden/.test(css));
+  // 좌 · 중 · 우 세 칸이 이 **순서대로** 있어야 가운데 칸이 가운데에 온다.
+  const iL = ed.indexOf('"pe-tbar-left"'), iT = ed.indexOf('"pe-time"'), iR = ed.indexOf('"pe-tbar-right"');
+  check('🔴 좌 → 시간 → 우 순서다', iL >= 0 && iT > iL && iR > iT, iL + ' / ' + iT + ' / ' + iR);
+  check('시간이 현재와 전체 두 벌로 나뉘어 있다',
+    ed.includes('"pe-time-cur"') && ed.includes('"pe-time-total"'));
+  // 🔴 전체 길이는 **클립 길이**여야 한다. 곡 전체 길이를 쓰면 요청과 정반대가 된다.
+  check('🔴 전체 길이가 클립 길이(info.duration)다',
+    /pe-time-total[^]{0,120}info\.duration/.test(ed), '클립 상대시간');
+}
+
+// ── ⑰ R-6 — New Project 가 확인을 거친다 ────────────────────────────────────
+//
+// Delete all tracks 는 처음부터 확인을 받았는데 New Project 는 **더 많은 것을 지우면서**
+// 확인이 없었다(트랙 + 이름 + 경로 + Undo 이력).
+console.log('\n⑰ New Project 확인 (R-6)');
+{
+  const app = fs.readFileSync(path.join(ROOT, 'build', 'app.js'), 'utf8');
+  check('🔴 File ▸ New Project 가 곧장 newProject 로 가지 않는다',
+    /onNew:\s*confirmNewProject/.test(app), '메뉴 배선');
+  // ⚠️ esbuild 가 중괄호를 펴서 다시 쓰므로 원문 한 줄과의 문자열 일치로는 못 본다.
+  const gi = app.indexOf('const confirmNewProject');
+  const cg = gi < 0 ? '' : app.slice(gi, gi + 300);
+  check('트랙이 하나라도 있으면 묻는다',
+    cg.includes('DAW.tracks.length === 0') && cg.includes('newProject()') && cg.includes('setConfirmNew(true)'),
+    gi < 0 ? 'confirmNewProject 가 없다' : '게이트 본문');
+  check('확인 모달이 있다', app.includes('confirmNew &&') && app.includes('Start a new project'));
+  check('모달의 실행 버튼이 newProject 를 부른다', /onClick:\s*newProject/.test(app));
+  check('되돌릴 수 없다고 말한다', app.includes('cannot be undone'));
+  // 화면 문구는 영어다 (프로젝트 규칙).
+  const i = app.indexOf('Start a new project');
+  const seg = app.slice(i, i + 700);
+  let han = 0;
+  for (const ch of seg) { const c = ch.codePointAt(0); if (c >= 0xac00 && c <= 0xd7a3) han++; }
+  check('🔴 모달 문구에 한글이 없다 (UI 는 영어)', han === 0, han + '자');
+}
+
+
+// ── ⑱ 클립 밖으로 나간 재생을 멈춘다 (v2.10.2 B-PE-LastClipWrap) ───────────
+//
+// 🔴 사용자 보고: 곡 끝에 붙은 **마지막 클립**에서 재생이 안 멈추고 곡이 처음부터 다시
+// 돌았다. 옛 판정은 "끝에 닿았는가"였는데, 엔진의 getPlayhead() 는 곡 루프가 켜져 있으면
+// (기본값) `raw % duration` 을 돌려주므로 **닿는 순간이 33 ms 폴링에 안 걸린다.**
+console.log('\n⑱ 클립을 벗어난 재생 정지 (B-PE-LastClipWrap)');
+{
+  const D = 60;                                  // 클립 길이 60 초
+  check('클립 안이면 안이라고 한다', E.peInsideClip(0, D) && E.peInsideClip(30, D));
+  check('끝은 안이 아니다 (여기서 멈춰야 한다)', !E.peInsideClip(D, D) && !E.peInsideClip(D - 0.0005, D));
+  check('클립 앞은 안이 아니다', !E.peInsideClip(-1, D));
+  check('값이 없으면 판정하지 않는다', !E.peInsideClip(NaN, D) && !E.peInsideClip(5, 0));
+
+  // ▶ 직후 한 틱: 아직 SEEK 가 반영되지 않아 "재생 중 + 바깥" 이 관측된다.
+  check('🔴 아직 들어온 적 없으면 멈추지 않는다 (▶ 직후 오탐 방지)',
+    !E.peShouldStopAtClip(-120, D, false));
+  check('들어왔다가 끝을 지나면 멈춘다', E.peShouldStopAtClip(D, D, true));
+  check('들어와 있는 동안에는 안 멈춘다', !E.peShouldStopAtClip(30, D, true));
+
+  // 🔴 이 사건이 결함 그 자체다. 곡 300 초, 마지막 클립 240~300 초.
+  // 곡 끝에서 엔진이 0 으로 되감으면 getPlayhead() 는 0 → 클립 상대시간은 -240.
+  {
+    const songDur = 300, clipStart = 240, clipDur = 60;
+    const rel = (songTime) => songTime - clipStart;
+    let entered = false, stops = 0;
+    // 재생 경과를 흉내낸다: 클립 시작 → 끝 직전 → **되감김(0)** → 그 뒤로도 계속.
+    for (const songTime of [240, 260, 290, 299.99, 0, 0.5, 1.0]) {
+      const p = rel(songTime);
+      if (E.peInsideClip(p, clipDur)) { entered = true; continue; }
+      if (E.peShouldStopAtClip(p, clipDur, entered)) { stops++; break; }
+    }
+    check('🔴 되감긴 마지막 클립에서 정지가 **일어난다**', stops === 1, stops + '회');
+    // 옛 판정이었다면? p = -240 이므로 p >= dur 이 성립하지 않아 영원히 안 멈춘다.
+    const oldWouldStop = [240, 260, 290, 299.99, 0, 0.5, 1.0]
+      .some((t) => { const p = rel(t); return Number.isFinite(p) && clipDur > 0 && p >= clipDur - 1e-3; });
+    check('🔴 옛 판정("끝에 닿았는가")이었다면 못 잡았다', !oldWouldStop, String(oldWouldStop));
+  }
+
+  // 중간 클립은 예전에도 정상이었다 — 고치면서 깨지지 않았는지 본다.
+  {
+    const clipStart = 60, clipDur = 60;
+    let entered = false, stops = 0;
+    for (const songTime of [60, 90, 119.99, 120.5]) {
+      const p = songTime - clipStart;
+      if (E.peInsideClip(p, clipDur)) { entered = true; continue; }
+      if (E.peShouldStopAtClip(p, clipDur, entered)) { stops++; break; }
+    }
+    check('중간 클립도 끝에서 한 번 멈춘다 (회귀 아님)', stops === 1, stops + '회');
+  }
+
+  // 배선 구조 검사.
+  const ed = fs.readFileSync(path.join(ROOT, 'build', 'pitch-editor-app.js'), 'utf8');
+  check('자동 정지가 peInsideClip 을 거친다', ed.includes('peInsideClip(transport.playhead'));
+  check('🔴 진입 래치가 있다 (▶ 직후 오탐 방지)', ed.includes('enteredClipRef'));
+  check('▶ 도 같은 판정을 쓴다 (경계가 두 벌이 아니다)',
+    /peInsideClip\(t\.playhead/.test(ed));
+  check('스튜디오가 시작한 재생은 여전히 건드리지 않는다', ed.includes('ownPlayRef'));
+  check('CLIP 루프 중에는 여전히 건너뛴다', /clipLoop \|\| !info\) return/.test(ed));
+}
+
+// ── ⑲ 시간 표시의 글자 칸 (v2.10.2 보완 요청 2) ────────────────────────────
+//
+// 숫자가 바뀔 때 좌우로 흔들리지 않으려면 **글자마다 같은 폭의 칸**이 있어야 한다.
+// CSS 의 tabular-nums 는 글꼴이 tnum 표를 가질 때만 듣는다 — 그것에 기대지 않는다.
+console.log('\n⑲ 시간 표시가 흔들리지 않는다 (보완 요청 2)');
+{
+  const cells = E.peTimeCells('3:01.06');
+  check('글자 수만큼 칸이 나온다', cells.length === 7, String(cells.length));
+  check('숫자와 구분자를 나눈다',
+    cells.filter((c) => c.dig).length === 5 && cells.filter((c) => !c.dig).length === 2);
+  check('구분자는 : 와 .', cells.filter((c) => !c.dig).map((c) => c.ch).join('') === ':.');
+  check('빈 값도 죽지 않는다', E.peTimeCells(null).length === 0 && E.peTimeCells('--:--').length === 5);
+  const css = fs.readFileSync(path.join(ROOT, 'pitch-editor.html'), 'utf8');
+  const rule = (n) => { const i = css.indexOf('.' + n + '{'); return i < 0 ? null : css.slice(i, css.indexOf('}', i)); };
+  const dig = rule('pe-dig');
+  check('🔴 숫자 칸의 폭이 고정이다', !!dig && /width:[0-9.]+em/.test(dig) && /display:inline-block/.test(dig), dig);
+  check('폭이 em 이라 두 크기에서 함께 맞는다', !!dig && /width:[0-9.]+em/.test(dig));
+  check('구분자는 좁은 칸을 따로 쓴다', !!rule('pe-pun'));
+  // 보완 요청 1 — 전체 길이를 약 80% 로 연하게.
+  const tot = rule('pe-time-total');
+  const op = tot && /opacity:([0-9.]+)/.exec(tot);
+  check('🔴 전체 길이가 약 80% 로 연하다', !!op && Math.abs(parseFloat(op[1]) - 0.8) < 0.06, op && op[1]);
+}
+
+
+// ── ⑳ ±6 경고가 Key 스냅에서도 뜬다 (v2.10.3, 사용자 보고) ──────────────────
+//
+// 🔴 옛 판정은 "target 이 산술 한계(hi/lo)와 **같은가**" 였다. C major 에서 hi = 66(F#)은
+// 조성 밖이라 스냅이 거기로 보내지 않는다 — 노트는 65(F)에서 서고, 더 끌어도 꼼짝 않는데
+// 경고가 안 떴다. 이제는 드래그와 **같은 계산**으로 "한 칸 더 끌면 움직이나"를 묻는다.
+console.log('\n⑳ ±6 한계 경고 (Key 스냅 포함)');
+{
+  const N = (midi, target) => ({ id: 'a', t0: 0, t1: 1, midi, target: target == null ? Math.round(midi) : target });
+  const C = E.peScalePcs('C');
+  check('peScalePcs 로 C 조성을 만들 수 있다', !!C);
+
+  // Chromatic 은 예전에도 옳았다 — 무회귀 확인.
+  check('Chromatic: 산술 한계에서 경고', E.peAtShiftLimit(N(60.5, 66), null) && E.peAtShiftLimit(N(60.5, 55), null));
+  check('Chromatic: 한계 안에서는 경고 없음', !E.peAtShiftLimit(N(60.5, 65), null));
+  check('Chromatic: 5.5 반음도 한계면 경고', E.peAtShiftLimit(N(60.5, 66), null), '60.5 → 66 = +5.5');
+
+  if (C) {
+    // 🔴 결함 그 자체: 66(F#)은 조성 밖이라 65(F)에서 갇힌다.
+    const stuck = N(60.0, 65);
+    const moved = E.peDragTarget(stuck, E.peClampDrag([stuck], 1), C);
+    check('🔴 Key C: 65 에서 더 못 올라간다 (전제)', moved === 65, String(moved));
+    check('🔴 Key C: 그 노트에 경고가 뜬다', E.peAtShiftLimit(stuck, C), '옛 판정은 놓쳤다');
+    // 아직 여유가 있는 노트에는 뜨면 안 된다.
+    check('Key C: 아직 올라갈 수 있으면 경고 없음', !E.peAtShiftLimit(N(60.0, 62), C));
+    check('Key C: 손대지 않은 노트는 경고 없음', !E.peAtShiftLimit(N(60.0), C) && !E.peAtShiftLimit(N(67.3), C));
+  }
+
+  // ⚠️ Array.filter 는 두 번째 인자로 **인덱스**를 넘긴다 — 그대로 넘기면 snapPcs 자리에
+  // 숫자가 들어가 판정이 뒤집힌다. 배선에서 막는다.
+  const ed = fs.readFileSync(path.join(ROOT, 'build', 'pitch-editor-app.js'), 'utf8');
+  check('🔴 filter 에 함수를 그대로 넘기지 않는다', !/filter\(peAtShiftLimit\)/.test(ed));
+  check('경고 집계가 snapPcs 를 넘긴다', /peAtShiftLimit\(nt, snapPcs\)/.test(ed));
+
+  // 전수 스윕: 놓침도 오탐도 0 이어야 한다.
+  {
+    let miss = 0, falsePos = 0;
+    const keys = ['C', 'G', 'F', 'Am', 'Em'];
+    for (const kn of [null, ...keys]) {
+      const snap = kn ? E.peScalePcs(kn) : null;
+      if (kn && !snap) continue;
+      for (let pc = 0; pc < 12; pc++) {
+        for (const fr of [0, 0.25, 0.5, 0.75]) {
+          const midi = 60 + pc + fr;
+          const { lo, hi } = E.peShiftRange({ midi });
+          for (let target = lo; target <= hi; target++) {
+            const nt = N(midi, target);
+            const canUp = E.peDragTarget(nt, E.peClampDrag([nt], 1), snap) !== target;
+            const canDn = E.peDragTarget(nt, E.peClampDrag([nt], -1), snap) !== target;
+            const outStuck = (target > midi && !canUp) || (target < midi && !canDn) || target >= hi || target <= lo;
+            const warn = E.peAtShiftLimit(nt, snap);
+            if (outStuck && !warn) miss++;
+            if (!outStuck && warn) falsePos++;
+          }
+        }
+      }
+    }
+    check('🔴 전수 스윕 — 못 움직이는데 경고 없는 경우 0건', miss === 0, String(miss));
+    check('🔴 전수 스윕 — 움직이는데 경고 뜨는 경우 0건', falsePos === 0, String(falsePos));
+  }
+}
+
+// ── ㉑ 우클릭 메뉴가 실제로 눌린다 · Reset 이 소리까지 되돌린다 (v2.10.3) ────
+//
+// 🔴 사용자 보고: 우클릭 메뉴의 Reset 이 아무 일도 안 했다. 원인은 **바깥 클릭 리스너가
+// 메뉴 자신을 죽인 것** — 캡처 단계 mousedown 이 버튼보다 먼저 뛰어 메뉴를 떼어 내므로
+// 이어지는 click 이 발생하지 않는다. 캡처 단계로 거는 것만으로는 절반이었다.
+console.log('\n㉑ 우클릭 메뉴가 눌리고, Reset 이 소리까지 되돌린다');
+{
+  const ed = fs.readFileSync(path.join(ROOT, 'build', 'pitch-editor-app.js'), 'utf8');
+  check('🔴 바깥 클릭 리스너가 **메뉴 안**을 예외로 둔다',
+    /ctxRef\.current\.contains\(e\.target\)/.test(ed), '없으면 메뉴 항목이 눌리지 않는다');
+  check('메뉴에 ref 가 달려 있다', /ref:\s*ctxRef/.test(ed));
+  check('리스너는 여전히 캡처 단계다 (v2.6.1)', /addEventListener\("mousedown",\s*close,\s*true\)/.test(ed));
+  // Reset → 자동 반영.
+  check('Reset 이 자동 반영 표식을 남긴다', /autoPrintRef\.current = true/.test(ed));
+  check('🔴 아무것도 안 남으면 Apply 가 아니라 Revert 다',
+    /anyEdit && !\(layout && layout\.length\)[^]{0,60}revertCorrection\(\)/.test(ed),
+    'Apply 는 보정 0 으로 PSOLA 를 다시 돌린다');
+  check('편집이 남아 있으면 Apply 한다', /autoPrintRef[^]{0,400}applyCorrection\(\)/.test(ed));
+  check('프린트된 적 없으면 아무것도 안 한다 (오디오가 이미 원본)',
+    /autoPrintRef[^]{0,300}!printed\) return/.test(ed));
+  check('앞의 작업이 도는 중에는 미룬다', /autoPrintRef[^]{0,200}printing \|\| busy\) return/.test(ed));
+}
+
+
 // ── 마무리 ─────────────────────────────────────────────────────────────────
 console.log(`\n${pass} PASS · ${fail} FAIL`);
-if (MUTATE || MUTATE_EDITS || MUTATE_DEFAULTS || MUTATE_LAYOUT || MUTATE_LIMIT) {
+if (MUTATE || MUTATE_EDITS || MUTATE_DEFAULTS || MUTATE_LAYOUT || MUTATE_LIMIT || MUTATE_CTX || MUTATE_WRAP || MUTATE_SNAPLIMIT) {
   console.log(fail > 0
     ? '\n✅ 변이 시험 통과 — 수정을 빼면 하네스가 잡아낸다.'
     : '\n🔴 변이했는데도 전건 통과 — 이 하네스는 ③④를 실제로 지키지 못한다.');

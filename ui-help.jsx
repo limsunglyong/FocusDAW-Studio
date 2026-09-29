@@ -679,7 +679,7 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">New Project</th><td className="manual-td">현재 세션을 <strong>완전히</strong> 비우고 새 프로젝트를 시작합니다(트랙과 마스터 이펙트가 모두 초기화됩니다).</td></tr>
+                      <tr><th className="manual-th">New Project</th><td className="manual-td">현재 세션을 <strong>완전히</strong> 비우고 새 프로젝트를 시작합니다(트랙과 마스터 이펙트가 모두 초기화됩니다). 트랙이 하나라도 있으면 <strong>먼저 확인 창이 뜹니다</strong> — 되돌릴 수 없으므로, 방금 저장했더라도 한 번 묻습니다.</td></tr>
                       <tr><th className="manual-th">Open Project…</th><td className="manual-td">저장된 <code className="manual-code">.focus</code> 프로젝트 파일을 엽니다. 항목 위에 마우스를 올리면 <strong>최근 목록</strong>이 옆으로 펼쳐집니다(아래 참고).</td></tr>
                       <tr><th className="manual-th">Save Project</th><td className="manual-td">현재 상태를 <code className="manual-code">.focus</code> 파일로 저장합니다. 트랙 설정, 마스터 설정, 오토메이션, 클립·테이크 정보가 함께 저장됩니다. 아직 저장한 적이 없으면 저장 위치를 묻습니다.</td></tr>
                       <tr><th className="manual-th">Save As…</th><td className="manual-td">새 위치·새 이름으로 저장합니다. 이때 <strong>프로젝트가 소유한 오디오를 함께 모아 갑니다</strong>(아래 “프로젝트 통째로 옮기기” 참고).</td></tr>
@@ -740,7 +740,7 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <table className="manual-table">
                     <tbody>
-                      <tr><th className="manual-th">New Project</th><td className="manual-td">Clears the session <strong>completely</strong> and starts fresh (both tracks and master effects are reset).</td></tr>
+                      <tr><th className="manual-th">New Project</th><td className="manual-td">Clears the session <strong>completely</strong> and starts fresh (both tracks and master effects are reset). If the project has any tracks, it <strong>asks for confirmation first</strong> — this cannot be undone, so it asks even right after a save.</td></tr>
                       <tr><th className="manual-th">Open Project…</th><td className="manual-td">Opens an existing <code className="manual-code">.focus</code> file. Hovering the item slides out a <strong>recent list</strong> (see below).</td></tr>
                       <tr><th className="manual-th">Save Project</th><td className="manual-td">Saves the current state to a <code className="manual-code">.focus</code> file — track parameters, master effects, automation, and clip/take information. If the project has never been saved, you are asked where to put it.</td></tr>
                       <tr><th className="manual-th">Save As…</th><td className="manual-td">Saves to a new name/location and <strong>gathers the audio this project owns</strong> alongside it (see "Moving a whole project" below).</td></tr>
@@ -2316,6 +2316,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">상단 도구 막대의 <strong>Key / Vari Key</strong>가 <em>곡 전체</em>의 조성을 바꾸는 기능이라면, 피치 에디터는 <em>한 음씩</em> 고치는 기능입니다. 두 기능은 방식이 달라서, 피치 에디터는 목소리의 음색(포먼트)을 그대로 두고 음정만 옮깁니다.</p>
                   <h3 className="manual-h3">① 열기</h3>
                   <p className="manual-p"><strong>Audio In 트랙</strong>의 클립을 <strong>우클릭</strong>하고 <code className="manual-code">Pitch Editor...</code>를 고릅니다. 스템(파일) 트랙에는 이 메뉴가 나오지 않습니다 — 보컬 테이크를 위한 기능입니다.</p>
+                  <p className="manual-p">창 위쪽 가운데의 시간 표시는 <strong>현재 위치 / 클립 전체 길이</strong>이고, <strong>둘 다 이 클립 기준</strong>입니다. 곡의 한가운데에 놓인 10초짜리 클립이라면 왼쪽은 <code className="manual-code">0:00.00</code>부터 <code className="manual-code">0:10.00</code>까지 움직이고 오른쪽은 늘 <code className="manual-code">0:10.00</code>입니다 — 곡 전체의 시간이 아닙니다. <kbd className="manual-kbd">0</kbd>을 누르면 클립 맨 앞으로 돌아갑니다.</p>
                   <h3 className="manual-h3">② Analyze — 음높이 분석</h3>
                   <p className="manual-p">창이 열리면 우측 패널의 <strong>Analyze</strong>(또는 <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>)를 누릅니다. 부른 음높이가 <strong>빨간 곡선</strong>으로 그려지고, 그 위에 <strong>노트 블록</strong>이 얹힙니다. 블록 하나가 부른 음 하나입니다.</p>
                   <ul className="manual-ul">
@@ -2339,7 +2340,10 @@ function HelpDialog({ onClose, standalone = false }) {
                       <li className="manual-li"><strong>Chromatic</strong> — 반음 한 칸씩(검은 건반 포함)</li>
                       <li className="manual-li"><strong>Key</strong> — 곡의 조성에 속한 음에만. 조성이 감지되지 않았으면 고를 수 없습니다.</li>
                   </ul>
+                  <p className="manual-p"><strong>Key</strong>를 고르면 왼쪽 건반의 조성에 속한 음마다 <strong>&bull;</strong>이 찍혀, 어느 칸으로 달라붙을지 끌기 전에 보입니다. <strong>Chromatic</strong>에서는 아무 음으로나 갈 수 있으므로 점이 사라집니다. 건반 행이 너무 얇으면(축소했을 때) 점은 생략됩니다.</p>
                   <p className="manual-p"><strong>Snap all to key</strong>는 모든 노트를 한 번에 가장 가까운 조성 음으로 옮깁니다. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 한 번으로 통째로 되돌아갑니다.</p>
+                  <p className="manual-p">옮긴 노트를 되돌리려면 <strong>노트를 우클릭</strong>하고 <strong>Reset to detected</strong>를 누릅니다. 여러 개를 골라 둔 상태에서 <strong>그중 하나를</strong> 우클릭하면 <strong>고른 전부</strong>가 되돌아가고, 선택에 없는 노트를 우클릭하면 선택이 그 노트로 옮겨 가 그것만 되돌아갑니다. 상태줄 오른쪽의 <strong>Reset</strong> 버튼도 그대로 쓸 수 있습니다 — 두 방법은 똑같이 동작합니다.</p>
+                  <p className="manual-p">🔴 <strong>이미 Apply 한 클립이라면 Reset 이 소리까지 되돌립니다.</strong> 손으로 Apply 를 다시 누를 필요가 없습니다. 남은 보정이 있으면 그것만 다시 구워지고, 되돌릴 것이 하나도 남지 않으면 원래 녹음 그대로 복원됩니다. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 로 되돌릴 수 있습니다.</p>
                   <p className="manual-p">⚠️ 노트는 <strong>부른 음높이에서 6반음</strong>까지만 옮겨집니다. 한계에 닿으면 더 끌어도 움직이지 않고 경고가 나타납니다 — 그보다 크게 옮기면 목소리의 음색이 상하기 때문입니다. 한계는 화면의 칸이 아니라 실제로 부른 음높이에서 세므로, 조금 높거나 낮게 부른 노트는 한쪽으로 5칸에서 멈출 수 있습니다. 여러 노트를 함께 끌면 <strong>가장 먼저 한계에 닿는 노트에서 모두 함께</strong> 멈춰 선율 모양이 유지됩니다.</p>
                   <h3 className="manual-h3">⑤ 한 음이 여러 조각으로 나뉘었을 때 — Split / Merge</h3>
                   <p className="manual-p">비브라토를 깊게 준 긴 음은 여러 블록으로 쪼개져 보일 수 있습니다. 그 블록들을 <kbd className="manual-kbd">Shift</kbd>+클릭으로 함께 고르고 <strong>Merge</strong>를 누르면 하나가 됩니다. 반대로 두 음이 한 블록으로 뭉쳤다면, 그 블록을 고르고 재생 위치를 경계로 옮긴 뒤 <strong>Split</strong>을 누릅니다.</p>
@@ -2375,6 +2379,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">Where <strong>Key / Vari Key</strong> in the top toolbar transposes the <em>whole song</em>, the Pitch Editor fixes <em>one note at a time</em>. The two use different methods: the Pitch Editor moves the pitch while leaving the voice's timbre (its formants) where they are.</p>
                   <h3 className="manual-h3">① Opening it</h3>
                   <p className="manual-p"><strong>Right-click a clip on an Audio In track</strong> and choose <code className="manual-code">Pitch Editor...</code>. The menu does not appear on stem (file) tracks — this is a tool for vocal takes.</p>
+                  <p className="manual-p">The readout at the top centre of the window is <strong>current position / clip length</strong>, and <strong>both are relative to this clip</strong>. For a 10-second clip sitting in the middle of the song, the left number runs from <code className="manual-code">0:00.00</code> to <code className="manual-code">0:10.00</code> and the right one always reads <code className="manual-code">0:10.00</code> — neither is a position in the song. Press <kbd className="manual-kbd">0</kbd> to jump back to the start of the clip.</p>
                   <h3 className="manual-h3">② Analyze</h3>
                   <p className="manual-p">Press <strong>Analyze</strong> in the side panel (or <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>). The pitch you sang is drawn as a <strong>red curve</strong>, with <strong>note blocks</strong> laid on top. One block is one sung note.</p>
                   <ul className="manual-ul">
@@ -2398,7 +2403,10 @@ function HelpDialog({ onClose, standalone = false }) {
                       <li className="manual-li"><strong>Chromatic</strong> — every semitone, black keys included</li>
                       <li className="manual-li"><strong>Key</strong> — only notes of the project key. Unavailable when no key has been detected.</li>
                   </ul>
+                  <p className="manual-p">With <strong>Key</strong> selected, a <strong>&bull;</strong> appears on every key of the keyboard gutter that belongs to the project key, so you can see where a note will land before you drag it. In <strong>Chromatic</strong> the dots disappear, because a note may go anywhere. They are omitted when the rows are too thin to show them.</p>
                   <p className="manual-p"><strong>Snap all to key</strong> moves every note to its nearest note of the key in one step, undone by a single <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd>.</p>
+                  <p className="manual-p">To put a moved note back, <strong>right-click it</strong> and choose <strong>Reset to detected</strong>. Right-clicking <strong>one note of a selection</strong> resets the <strong>whole selection</strong>; right-clicking a note outside it moves the selection there and resets that one note. The <strong>Reset</strong> button at the right of the status bar does exactly the same thing.</p>
+                  <p className="manual-p">🔴 <strong>On a clip you have already applied, Reset also puts the sound back</strong> — you do not have to press Apply again. Whatever correction is left is re-rendered, and if nothing is left the original recording is restored. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> undoes it.</p>
                   <p className="manual-p">⚠️ A note moves at most <strong>6 semitones from the pitch you sang</strong>. At that limit it stops following the mouse and a warning appears — a larger move would spoil the timbre of the voice. The limit is counted from the sung pitch, not the grid row, so a note sung slightly sharp or flat may stop at 5 rows in one direction. When several notes are dragged together, <strong>they all stop as soon as the first one reaches its limit</strong>, so the shape of the melody is kept.</p>
                   <h3 className="manual-h3">⑤ When one note arrives in pieces — Split / Merge</h3>
                   <p className="manual-p">A long note with deep vibrato can appear as several blocks. Select them together with <kbd className="manual-kbd">Shift</kbd>+click and press <strong>Merge</strong> to make them one. If two sung notes ended up in a single block, select it, put the playhead on the boundary, and press <strong>Split</strong>.</p>
@@ -2665,6 +2673,8 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + 휠</th><td className="manual-td">시간축 확대 / 축소</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Alt</kbd> + 휠</th><td className="manual-td">음높이 축 확대 / 축소</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지 (스튜디오와 같음)</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">0</kbd> (숫자패드 <kbd className="manual-kbd">0</kbd>/<kbd className="manual-kbd">Ins</kbd> 포함)</th><td className="manual-td">플레이헤드를 <strong>클립 맨 앞</strong>으로 (스튜디오는 곡의 0초, 여기는 이 클립의 시작)</td></tr>
+                      <tr><th className="manual-th">노트 <strong>우클릭</strong></th><td className="manual-td">메뉴에서 <strong>Reset to detected</strong> — 고른 노트를 검출된 음높이로 되돌림</td></tr>
                     </tbody>
                   </table>
 
@@ -2719,6 +2729,8 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + wheel</th><td className="manual-td">Zoom the time axis</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Alt</kbd> + wheel</th><td className="manual-td">Zoom the pitch axis</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / pause (same as the studio)</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">0</kbd> (incl. numpad <kbd className="manual-kbd">0</kbd>/<kbd className="manual-kbd">Ins</kbd>)</th><td className="manual-td">Move the playhead to the <strong>start of the clip</strong> (the studio goes to 0 s of the song; here it is this clip's start)</td></tr>
+                      <tr><th className="manual-th"><strong>Right-click</strong> a note</th><td className="manual-td"><strong>Reset to detected</strong> from the menu — put the chosen notes back to the detected pitch</td></tr>
                     </tbody>
                   </table>
 

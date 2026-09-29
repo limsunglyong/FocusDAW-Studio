@@ -365,6 +365,58 @@ const peOverlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0
 // 된다. 하네스가 두 파일을 함께 읽어 일치를 확인한다.
 const PE_MAX_SHIFT_SEMIS = 6;
 
+// v2.10.2 — 시간 문자열을 **글자 칸**으로 쪼갠다(사용자 보완 요청 2 — 숫자가 바뀔 때
+// 좌우로 흔들리지 않게). 숫자는 같은 폭의 칸에 가운데 정렬하고, 구분자는 좁은 칸을 쓴다.
+// 🔴 CSS 의 tabular-nums 에 기대지 않는 이유: 그것은 **글꼴이 tnum 표를 가질 때만**
+// 듣는다. 어느 글꼴이 오든 흔들리지 않게 하려면 칸을 우리가 정해야 한다.
+function peTimeCells(str) {
+  const out = [];
+  const s = String(str == null ? "" : str);
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    out.push({ ch, dig: ch >= "0" && ch <= "9" });
+  }
+  return out;
+}
+
+// ══ v2.10.2 — 재생이 아직 클립 안에 있는가 (버그 B-PitchEditor-LastClipWrap) ══════
+//
+// 🔴 "클립 끝에 닿았는가" 로는 **마지막 클립을 못 잡는다.** 엔진의 `getPlayhead()` 는
+// 루프가 켜져 있으면(기본값 `loopEnabled: true`) `raw % duration` 을 돌려준다. 마지막
+// 클립은 끝이 곡 끝과 같으므로, `playhead >= clipEnd` 가 성립하는 구간은 되감기기 전의
+// **1 ms 남짓**뿐이다 — 33 ms 폴링으로는 사실상 도달할 수 없다. 그 사이 엔진이 0 으로
+// 되감고 다시 재생하므로, 사용자에게는 "곡이 처음으로 돌아가 계속 재생" 으로 보인다.
+//
+// 그래서 묻는 것을 바꾼다 — **"끝에 닿았나" 가 아니라 "아직 안에 있나".** 되감긴 뒤의
+// 플레이헤드는 클립 시작보다 **한참 앞**(음수 상대시간)이므로 곧바로 잡힌다.
+// 📌 [[gate-on-what-remains]] 과 같은 모양의 결함이다: 집합에 "안 들어가는 경우" 를
+// 묻지 않았고, 여기서는 그 경우가 **되감기**였다.
+function peInsideClip(pRel, dur) {
+  return Number.isFinite(pRel) && dur > 0 && pRel >= -1e-3 && pRel < dur - 1e-3;
+}
+
+// 떠났으면 멈춘다 — 단, **한 번이라도 들어온 뒤**여야 한다. ▶ 는 SEEK 와 PLAY 를 두
+// 메시지로 보내고 이 창의 트랜스포트 상태는 33 ms 늦으므로, 그 사이 "재생 중 + 아직
+// 바깥" 이 한 번 관측된다. 걸러 내지 않으면 누르자마자 스스로 멈춘다.
+function peShouldStopAtClip(pRel, dur, entered) {
+  return !!entered && !peInsideClip(pRel, dur);
+}
+
+// v2.10.0 (R-3) — 우클릭이 무엇을 대상으로 삼는가.
+//
+// DAW 관례: **선택 안의 노트를 우클릭하면 선택 전체**가 대상이고, **선택 밖의 노트를
+// 우클릭하면 그 노트 하나만** 대상이 되며 선택도 그리로 옮겨 간다. 사용자가 여러 개를
+// 골라 두고 그중 하나를 우클릭했을 때 선택이 무너지면 "여러 개에 적용"이 불가능해진다.
+//
+// 순수 함수로 둔 이유는 하네스가 이 판정을 직접 재기 위해서다 — 메뉴 자체는 제스처라
+// 하네스가 못 보지만, **무엇이 대상이 되는가**는 잴 수 있다.
+function peContextTarget(noteId, selection) {
+  const sel = selection || new Set();
+  if (noteId == null) return { ids: null, retarget: false };
+  if (sel.has(noteId)) return { ids: new Set(sel), retarget: false };
+  return { ids: new Set([noteId]), retarget: true };
+}
+
 // v2.9.0 — 보정 프리셋 (설계 §7). 강도와 비브라토를 한 번에 정하는 세 갈래다.
 //
 // 이름이 값을 설명한다 — 사용자는 "0.7"이 무슨 뜻인지 모르지만 "자연스럽게"는 안다.
@@ -620,9 +672,27 @@ function peClampDrag(notes, dSemi) {
 }
 
 // v2.9.3 (R-1) — 한계에 닿아 그 방향으로 더 갈 수 없는 노트인가(경고용).
-function peAtShiftLimit(nt) {
+// v2.10.3 — 🔴 **산술 한계에 닿았는지로 물으면 Key 스냅에서 놓친다**(사용자 보고).
+// C major 에서 hi = 66(F#)은 조성 밖이라 스냅이 절대 거기로 보내지 않는다. 노트는 65(F)
+// 에서 서고, 더 끌어도 꼼짝하지 않는데 `target === hi` 가 아니므로 경고가 안 떴다.
+// 계측(스윕 12음 × 두 모드)에서 **위로 끄는 모든 Key 스냅 경우**가 이 구멍에 빠졌다.
+//
+// 그래서 묻는 것을 바꾼다 — "한계에 닿았나" 가 아니라 **"한 칸 더 끌면 움직이나"**.
+// 판정을 드래그와 **같은 계산**(peClampDrag → peDragTarget)으로 하므로, 드래그가 멈추는
+// 곳과 경고가 뜨는 곳이 어긋날 수 없다.
+//
+// 📌 B-PE-LastClipWrap 과 같은 모양이다: 관심 있는 경우가 **결코 만족하지 못하는 조건**으로
+// 게이트를 걸었다.
+function peAtShiftLimit(nt, snapPcs) {
   const { lo, hi } = peShiftRange(nt);
-  return nt.target === hi || nt.target === lo;
+  if (nt.target >= hi || nt.target <= lo) return true;
+  if (!snapPcs) return false;                       // Chromatic 은 산술 한계가 곧 벽이다
+  const stuck = (dir) => peDragTarget(nt, peClampDrag([nt], dir), snapPcs) === nt.target;
+  // ⚠️ **바깥쪽으로** 못 가는 것만 한계다. 손대지 않은 노트도 스냅 때문에 한쪽으로 못 갈
+  // 수 있는데(조성 밖 음에서 시작한 경우), 그것은 "한계"가 아니라 조성의 성질이다.
+  if (nt.target > nt.midi && stuck(1)) return true;
+  if (nt.target < nt.midi && stuck(-1)) return true;
+  return false;
 }
 
 // ══ v2.7.5 — 분할 / 병합: 경계는 사용자가 소유한다 (설계 §4-2) ════════════════════
@@ -764,6 +834,11 @@ const peFmtCents = (c) => (c > 0 ? "+" : "") + c + "¢";
 // One shared empty set, so a roll with no selection does not allocate one per draw.
 const PE_NO_SEL = new Set();
 
+// v2.10.0 (R-3) — 우클릭 메뉴가 창 밖으로 넘치는지 볼 때 쓰는 대략의 크기. CSS 의
+// min-width(168) + padding 과 맞춰 둔 값이고, 정확할 필요는 없다 — 메뉴를 창 안으로
+// 끌어들이기 위한 여유값일 뿐이다. 항목이 늘면 CTX_H 를 같이 올릴 것.
+const CTX_W = 176, CTX_H = 74;
+
 // v2.7.1 — which audio a pitch curve belongs to. Only these three change what was analysed:
 // De-noise and other prints register a NEW source id, a trim moves the offset or the duration.
 // Moving a clip on the timeline changes none of them — the curve is clip-relative.
@@ -820,15 +895,15 @@ function WindowControls() {
 // The PLAYHEAD is deliberately a DOM element on top, not part of the drawing: it moves ~30
 // times a second, and repainting the grid + waveform + curve at that rate to move one line
 // would be pure waste.
-function PianoRoll({ info, analysis, notes, selection, scalePcs, defs, view, range, theme, playhead, litMidi,
-                     onSeek, onView, onRange, onPreview, onSelectNote, onNoteDrag }) {
+function PianoRoll({ info, analysis, notes, selection, scalePcs, snapPcs, defs, view, range, theme, playhead, litMidi,
+                     onSeek, onView, onRange, onPreview, onSelectNote, onNoteDrag, onNoteContext }) {
   const wrapRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 0, h: 0 });
   // The wheel handler is attached imperatively (it needs passive:false to preventDefault), so
   // it reads live state through a ref instead of being torn down and rebound on every change.
   const liveRef = React.useRef(null);
-  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, notes, selection, onSeek, onView, onRange, onSelectNote, onNoteDrag };
+  liveRef.current = { view, range, size, dur: (info && info.duration) || 0, notes, selection, onSeek, onView, onRange, onSelectNote, onNoteDrag, onNoteContext };
 
   React.useEffect(() => {
     const el = wrapRef.current;
@@ -1124,7 +1199,28 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, defs, view, ran
       // Label every C, and every white key once the rows are tall enough to read one. Bold,
       // dark ink, right-aligned against the key's edge — sized with the row so a tall row gets
       // a readable label instead of a fixed 8px one.
+      // v2.10.0 (R-2) — SNAP 이 Key 일 때, **조성에 속한 음의 건반**에 점을 찍는다.
+      //
+      // 🔴 `scalePcs` 가 아니라 `snapPcs` 를 본다. 둘은 다르다 — `scalePcs` 는 조성이
+      // 감지돼 있으면 늘 채워져 있고 노트의 점선 테두리(조성 밖 표시)에 쓰인다. 반면
+      // 이 점은 "여기로 끌면 달라붙는다"는 뜻이므로 **Chromatic 일 때 찍으면 거짓말**이
+      // 된다. 그래서 스냅 모드를 반영한 `snapPcs`(Chromatic 이면 null)를 따로 받는다.
+      //
+      // 색은 라벨과 같은 규칙을 쓴다 — 흰 건반엔 어두운 잉크, 검은 건반엔 밝은 색,
+      // 눌린 건반엔 amber 위의 색. 이미 10개 테마에서 읽히는 조합이라 새 색을 고르지 않는다.
       const label = lit || (m % 12 === 0) || (!black && rowH >= 13);
+      // ⚠️ 검은 건반은 짧아서(0.62 × KEY_W) 오른쪽 정렬 라벨이 가운데까지 들어온다 —
+      // 그 위에 점을 찍으면 겹친다. 검은 건반에 라벨이 나오는 경우는 **눌렸을 때**뿐이고,
+      // 눌린 건반은 이미 amber 로 확실히 구분되므로 그때는 점을 생략한다. 흰 건반은
+      // 폭이 넉넉해서(라벨이 x≈33 부터, 점은 x=27) 겹치지 않는다.
+      if (snapPcs && rowH >= 6 && !(black && label) && snapPcs.has(((m % 12) + 12) % 12)) {
+        const r = Math.min(2.2, Math.max(1.1, rowH * 0.16));
+        g.fillStyle = lit ? C.onAmber : (black ? C.keyWhite : C.keyInk);
+        g.beginPath();
+        // 가로는 건반 가운데, 세로는 위쪽 — 라벨이 세로 중앙이라 서로 비키게 둔다.
+        g.arc((black ? kw : KEY_W) * 0.5, y + Math.max(r + 1, rowH * 0.26), r, 0, Math.PI * 2);
+        g.fill();
+      }
       if (label && rowH >= 7) {
         g.fillStyle = lit ? C.onAmber : (black ? C.keyWhite : C.keyInk);
         g.font = "700 " + Math.min(9, Math.max(7, rowH - 4)) + 'px "Space Mono", ui-monospace, monospace';
@@ -1139,7 +1235,7 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, defs, view, ran
     g.restore();
     // `theme` is unused inside the draw, but it IS what the CSS variables above depend on —
     // it is in the dependency list to force a repaint, so do not "clean it up".
-  }, [size, info, analysis, notes, selection, scalePcs, defs, view, range, theme, litMidi]);
+  }, [size, info, analysis, notes, selection, scalePcs, snapPcs, defs, view, range, theme, litMidi]);
 
   // Playhead overlay. Hidden when the transport sits outside this clip, so playback elsewhere
   // in the song does not park a misleading line at the edge of the roll.
@@ -1235,6 +1331,22 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, defs, view, ran
     if (onSeek) onSeek(peClamp(xToTime(px), 0, clipDur));
   };
 
+  // v2.10.0 (R-3) — 우클릭. **어느 노트를 눌렀는가만** 보고하고, 그것이 무엇을 대상으로
+  // 삼는지는 부모가 peContextTarget 으로 정한다 — 히트 판정은 여기(기하)에만 있고 선택
+  // 규칙은 저기(상태)에만 있어야, 같은 규칙이 두 군데서 갈라지지 않는다.
+  const onCtx = (e) => {
+    const rect = wrapRef.current.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    // 🔴 기본 메뉴는 언제나 막는다. 룰러·건반·스크롤바 어디서든 브라우저 메뉴가 뜨면
+    // 앱 안에서 웹 페이지의 맨살이 보인다.
+    e.preventDefault();
+    const L = liveRef.current;
+    if (!L.onNoteContext || px < KEY_W || px > size.w - SB || py < RULER_H) return;
+    const t = xToTime(px), m = yToMidi(py);
+    const hit = (L.notes || []).find((nt) => nt.target === m && t >= nt.t0 && t <= nt.t1);
+    if (hit) L.onNoteContext(hit.id, e.clientX, e.clientY);
+  };
+
   // The vertical thumb maps its pixel delta back through the same ratio that sized it.
   const dragBar = (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -1255,7 +1367,7 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, defs, view, ran
   const vPos = peClamp((PITCH_MAX - range.hi) / total, 0, 1);
 
   return (
-    <div className="pe-roll" ref={wrapRef} onMouseDown={onDown}>
+    <div className="pe-roll" ref={wrapRef} onMouseDown={onDown} onContextMenu={onCtx}>
       <canvas ref={canvasRef} />
       {phX !== null && phX >= KEY_W && phX <= size.w - SB &&
         <div className="pe-playhead" style={{ left: phX }} />}
@@ -1469,6 +1581,12 @@ function PitchEditorApp() {
   const stoppedOnOpen = React.useRef(false);
   // "Did playback start from THIS window?" — see the auto-stop effect for why it matters.
   const ownPlayRef = React.useRef(false);
+  // v2.10.2 — 이 재생에서 플레이헤드가 **한 번이라도 클립 안에 있었는가**. ▶ 직후의
+  // "재생 중 + 아직 바깥" 한 틱을 걸러 내는 래치다(peShouldStopAtClip 의 주석).
+  const enteredClipRef = React.useRef(false);
+  // v2.10.3 — Reset 이 "소리도 되돌려라" 를 남기는 표식. 선언이 쓰는 곳보다 뒤에 있으면
+  // 안 되므로 다른 ref 들과 함께 둔다(v2.9.0 에서 TDZ 로 두 번 데였다).
+  const autoPrintRef = React.useRef(false);
   const wasPlayingRef = React.useRef(false);
   const clipLoopRef = React.useRef(false); clipLoopRef.current = clipLoop;
   const struckTimer = React.useRef(null);
@@ -1616,12 +1734,12 @@ function PitchEditorApp() {
   // impossible to resume from the middle.
   const playPause = React.useCallback(() => {
     const t = transportRef.current, clip = infoRef.current;
-    if (!t.isPlaying) ownPlayRef.current = true;      // this window is starting playback
-    if (!t.isPlaying && clip) {
-      const p = t.playhead;
-      if (!Number.isFinite(p) || p < 0 || p > (clip.duration || 0)) {
-        peChannel.postMessage({ type: "REQUEST_SEEK", t: clip.start || 0 });
-      }
+    if (!t.isPlaying) { ownPlayRef.current = true; enteredClipRef.current = false; }
+    // v2.10.2 — "안에 있는가" 는 peInsideClip 하나로 본다. 예전에는 여기(`p > duration`)와
+    // 자동 정지(`p >= duration - 1e-3`)가 **경계를 다르게** 썼고, 그 틈에서 시작하면 곧장
+    // 멈출 재생을 시작하게 된다.
+    if (!t.isPlaying && clip && !peInsideClip(t.playhead, clip.duration || 0)) {
+      peChannel.postMessage({ type: "REQUEST_SEEK", t: clip.start || 0 });
     }
     peChannel.postMessage({ type: "REQUEST_PLAY_PAUSE" });
   }, []);
@@ -1662,15 +1780,19 @@ function PitchEditorApp() {
   // Skipped when CLIP loop is on — there the engine wraps at the same boundary, which is the
   // whole point of the toggle.
   React.useEffect(() => {
-    if (!transport.isPlaying && wasPlayingRef.current) ownPlayRef.current = false;
+    if (!transport.isPlaying && wasPlayingRef.current) { ownPlayRef.current = false; enteredClipRef.current = false; }
     wasPlayingRef.current = transport.isPlaying;
     if (!transport.isPlaying || !ownPlayRef.current || clipLoop || !info) return;
     const d = info.duration || 0;
-    const p = transport.playhead;
-    if (!d || !Number.isFinite(p) || p < d - 1e-3) return;
+    // v2.10.2 — 🔴 "끝에 닿았나" 가 아니라 "아직 안에 있나" 를 본다. 마지막 클립은 끝이 곡
+    // 끝과 같아서 `getPlayhead()` 가 `raw % duration` 으로 **되감긴 값**을 돌려주고, 닿는
+    // 순간이 33 ms 폴링에 걸리지 않는다(peInsideClip 의 주석).
+    if (peInsideClip(transport.playhead, d)) { enteredClipRef.current = true; return; }
+    if (!peShouldStopAtClip(transport.playhead, d, enteredClipRef.current)) return;
     // Through stop(), so the end of the clip leaves the transport exactly where ■ would —
     // two ways to reach the same state must not park the playhead in two different places.
     ownPlayRef.current = false;   // one stop per run, not one per 33 ms poll until it takes
+    enteredClipRef.current = false;
     stopRef.current();
   }, [transport.isPlaying, transport.playhead, clipLoop, info]);
 
@@ -1809,6 +1931,22 @@ function PitchEditorApp() {
       if (mod && e.key.toLowerCase() === "r") {
         e.preventDefault(); runAnalyze(); return;
       }
+      // v2.10.0 (R-5) — `0` 은 플레이헤드를 **클립 맨 앞**으로. Stop 과 다르다: Stop 은
+      // 재생을 멈추고, 이것은 재생 중이든 아니든 위치만 옮긴다 — 한 구절을 반복해 들으며
+      // 다듬을 때 쓰는 키다(다른 DAW 들의 관례).
+      //
+      // 🔴 세 가지를 모두 받는다. NumLock 이 켜져 있으면 숫자패드 0 은 `key === "0"` 이지만,
+      // **꺼져 있으면 `Insert` 로 온다** — `code === "Numpad0"` 는 두 경우 모두 같으므로
+      // 그것이 진짜 판정이고, `key` 쪽은 상단 숫자열을 위한 것이다.
+      if (!mod && !e.altKey && !e.shiftKey && (e.key === "0" || e.code === "Numpad0" || e.code === "Digit0")) {
+        // ⚠️ 입력 칸 안에서는 그냥 0 이다. BPM·이름 칸에 0 을 못 치게 되면 버그다.
+        const el = document.activeElement;
+        const tag = el && el.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el && el.isContentEditable)) return;
+        e.preventDefault();
+        seekTo(0);
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         if (window.electronAPI) window.electronAPI.winAction("close"); else window.close();
@@ -1824,7 +1962,7 @@ function PitchEditorApp() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [playPause, runAnalyze]);
+  }, [playPause, runAnalyze, seekTo]);
 
   const dur = (info && info.duration) || 0;
   const zoomTime = (factor) => {
@@ -1957,16 +2095,92 @@ function PitchEditorApp() {
   // **경계**도 들어간다: 선택이 덮는 구간의 소유를 세그멘터에게 돌려준다. 값과 소유를 한
   // 메시지로 보내 Ctrl+Z 한 번에 둘 다 돌아오게 한다(§11-2).
   // ⚠️ 대가 — 병합해 둔 음의 음정만 되돌리고 싶어도 병합까지 풀린다(설계 §4-2 ④에 기록).
-  const resetSelected = React.useCallback(() => {
-    const sel = selectionRef.current;
-    if (!sel.size) return;
+  // v2.10.0 (R-3) — 대상을 **인자로** 받는다. 우클릭 메뉴는 선택 밖의 노트를 대상으로 삼을
+  // 수 있고(peContextTarget), setSelection 은 비동기라 그 직후 selectionRef 를 읽으면 아직
+  // 옛 선택이 들어 있다 — 그래서 메뉴는 자기가 정한 집합을 직접 넘긴다.
+  const resetIds = React.useCallback((idsIn) => {
+    const sel = idsIn || selectionRef.current;
+    if (!sel || !sel.size) return;
     const picked = (notesRef.current || []).filter((nt) => sel.has(nt.id));
     const nextEdits = rewriteEdits(sel, () => null);
     const nextLayout = picked.length
       ? peLayoutRelease(layoutRef.current, picked[0].t0, picked[picked.length - 1].t1)
       : layoutRef.current;
     pushShape(nextLayout, nextEdits);
+    // v2.10.3 (사용자 요청) — Reset 은 **소리까지** 되돌린다. 예전에는 화면의 노트만
+    // 제자리로 가고 오디오는 보정된 채였으므로, 사용자가 Apply 를 한 번 더 눌러야 했다.
+    // 여기서 곧장 부르지 못하는 이유: pushShape 가 방금 건 state 가 아직 반영되지 않아
+    // canApply 가 옛 값이다. 표식만 남기고 **다음 렌더의 효과**에서 처리한다.
+    autoPrintRef.current = true;
   }, [rewriteEdits, pushShape]);
+
+  // 📌 상태줄 Reset 버튼은 남긴다(요청 R-3) — 우클릭을 모르는 사용자에게도 길이 있어야 한다.
+  const resetSelected = React.useCallback(() => resetIds(null), [resetIds]);
+
+  // ══ v2.10.0 (R-3) — 노트 우클릭 메뉴 ════════════════════════════════════════════
+  //
+  // { x, y, ids } — 화면 좌표와 **그때 정해진 대상**. ids 를 여기 붙들어 두는 것이 핵심이다:
+  // 메뉴가 열려 있는 동안 선택이 바뀌어도 사용자가 우클릭한 그것에 적용된다.
+  const [ctx, setCtx] = React.useState(null);
+  const ctxRef = React.useRef(null);   // v2.10.3 — 바깥 클릭 판정에 쓰는 메뉴의 DOM
+
+  const openCtx = React.useCallback((noteId, x, y) => {
+    const { ids, retarget } = peContextTarget(noteId, selectionRef.current);
+    if (!ids || !ids.size) return;
+    // 선택 밖을 우클릭했으면 선택도 그리로 옮긴다 — 메뉴가 무엇에 적용될지 보이게 하려면
+    // 화면의 선택 테두리와 대상이 같아야 한다.
+    if (retarget) selectNote(noteId, "replace");
+    setCtx({ x, y, ids });
+  }, [selectNote]);
+
+  // ⚠️ v2.6.1 에서 같은 실수를 했다 — 리스너를 **캡처 단계**로 걸어야 한다. 버블 단계로 걸면
+  // 아래쪽에서 stopPropagation 하는 핸들러(롤의 드래그, 패널의 슬라이더)에 가려 메뉴가 안
+  // 닫힌 채로 남는다.
+  React.useEffect(() => {
+    if (!ctx) return;
+    // 🔴 v2.10.3 — **메뉴 안의 mousedown 은 닫지 않는다.** v2.10.0 은 캡처 단계로만 걸고
+    // 끝냈는데(v2.6.1 의 교훈), 캡처 단계는 버튼 자신보다 **먼저** 뛴다. mousedown 에서
+    // 메뉴를 닫으면 React 가 버튼을 떼어 내므로 이어지는 mouseup 이 갈 곳이 없어지고
+    // **click 이 아예 발생하지 않는다** — 사용자에게는 "눌러도 아무 일도 안 남" 으로 보인다.
+    //
+    // 📌 규칙: 바깥 클릭으로 닫는 리스너는 **자기 자신을 예외로 두어야** 한다. 캡처 단계로
+    // 거는 것만으로는 절반이다.
+    const close = (e) => {
+      if (e && e.target && ctxRef.current && ctxRef.current.contains(e.target)) return;
+      setCtx(null);
+    };
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      // 🔴 메뉴가 열려 있을 때 Escape 는 **메뉴만** 닫는다. 막지 않으면 아래의 창 단축키가
+      // 이어서 받아 창까지 닫힌다.
+      e.preventDefault(); e.stopPropagation();
+      setCtx(null);
+    };
+    window.addEventListener("mousedown", close, true);
+    window.addEventListener("wheel", close, true);
+    window.addEventListener("blur", close);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("mousedown", close, true);
+      window.removeEventListener("wheel", close, true);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [ctx]);
+
+  // 노트가 다시 잘리면(분석·MIN 변경) 붙들고 있던 id 는 더 이상 없는 노트를 가리킨다.
+  React.useEffect(() => { setCtx(null); }, [seg]);
+
+  // Reset 이 할 일이 있는가 — 상태줄 버튼과 **같은 두 가지 조건**(값이 바뀌었거나 경계를
+  // 소유하고 있거나)을, 선택이 아니라 메뉴가 붙들고 있는 집합에 대해 본다.
+  const ctxResettable = React.useMemo(() => {
+    if (!ctx) return false;
+    const picked = notes.filter((nt) => ctx.ids.has(nt.id));
+    if (!picked.length) return false;
+    if (picked.some((nt) => !peIsPristine(nt, defs))) return true;
+    const a = picked[0].t0, b = picked[picked.length - 1].t1;
+    return (layout || []).some((sp) => !(sp.t1 <= a || sp.t0 >= b));
+  }, [ctx, notes, defs, layout]);
 
   // ══ v2.7.5 — Split / Merge (설계 §4-2) ═══════════════════════════════════════════
   //
@@ -2043,7 +2257,12 @@ function PitchEditorApp() {
   );
   // v2.9.3 (R-1) — 이제 드래그가 한계에서 멈추므로 위 경고는 v2.9.3 이전에 저장된 편집에만
   // 뜬다. 새로 알릴 것은 "한계에 닿아 더 못 간다"는 사실이고, 그것은 **닿은 순간** 뜬다.
-  const atLimit = React.useMemo(() => notes.filter(peAtShiftLimit).length, [notes]);
+  // ⚠️ `notes.filter(peAtShiftLimit)` 로 쓰면 안 된다 — Array.filter 가 두 번째 인자로
+  // **인덱스**를 넘기므로 그것이 snapPcs 자리에 들어간다.
+  const atLimit = React.useMemo(
+    () => notes.filter((nt) => peAtShiftLimit(nt, snapPcs)).length,
+    [notes, snapPcs]
+  );
   const curSig = React.useMemo(() => peShapeSig(edits, defs, layout), [edits, defs, layout]);
   const printedSig = (info && info.pitch && info.pitch.printedSig) || null;
   const shapeDiffers = curSig !== printedSig;
@@ -2066,6 +2285,23 @@ function PitchEditorApp() {
     setPrinting(true);
     peChannel.postMessage({ type: "REQUEST_PITCH_REVERT", trackId, clipId });
   }, [printed, printing, trackId, clipId]);
+
+  // v2.10.3 — Reset 이 남긴 표식을 처리한다(사용자 요청: "reset 수행시 ... 자동으로 Apply").
+  //
+  // 🔴 **아무 편집도 안 남았으면 Apply 가 아니라 Revert 다.** 둘 다 "원래 소리" 로 끝나지만
+  // 가는 길이 다르다 — Apply 는 보정이 0 인 채로 **PSOLA 를 통째로 다시 돌리고**(원본과
+  // 비트 단위로 같지 않으며 B-PSOLA-Quality 의 거칠어짐을 그대로 받는다), Revert 는
+  // baseSourceId 를 그대로 되돌려 놓는다 — 정확하고 즉시다.
+  //
+  // 프린트된 적이 없으면 할 일이 없다. 오디오는 이미 원본이다.
+  React.useEffect(() => {
+    if (!autoPrintRef.current) return;
+    if (printing || busy) return;        // 앞의 작업이 끝나면 이 효과가 다시 뛴다
+    autoPrintRef.current = false;
+    if (!printed) return;
+    if (!anyEdit && !(layout && layout.length)) { revertCorrection(); return; }
+    if (canApply) applyCorrection();
+  }, [printed, anyEdit, layout, canApply, printing, busy, applyCorrection, revertCorrection]);
 
   // Reset 은 값이 바뀌었을 때뿐 아니라 **경계를 소유하고 있을 때도** 나와야 한다 — 병합만
   // 해 두고 음정은 안 건드린 경우, 이것이 없으면 소유를 돌려줄 길이 없다.
@@ -2185,41 +2421,56 @@ function PitchEditorApp() {
           zoom, analysis and correction moved to the side panel — because this row wrapped onto
           a second line as soon as the window was narrowed, eating the roll's height. */}
       <div className="pe-toolbar">
-        <button className={"pe-icbtn" + (transport.isPlaying ? " on" : "")} onClick={playPause}
-          disabled={!info} title={transport.isPlaying ? "Pause (Space)" : "Play from the clip (Space)"}>
-          {transport.isPlaying
-            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
-            : <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z" /></svg>}
-        </button>
-        <button className="pe-icbtn" onClick={stop} disabled={!info} title="Stop and return to the start of the clip">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="1.5" /></svg>
-        </button>
-        {/* CLIP loop: borrows the studio's Repeat region for the length of this clip, and hands
-            it back when switched off or when the window closes. */}
-        <button className={"pe-btn" + (clipLoop ? " primary" : "")} onClick={toggleClipLoop} disabled={!info}
-          title={clipLoop
-            ? "Playback is looping this clip — the studio's own Repeat region is restored when you switch this off"
-            : "Loop playback over this clip only (temporarily takes over the studio's Repeat region)"}
-          style={{ padding: "6px 10px", fontSize: 10 }}>
-          CLIP
-        </button>
-        {/* Clip-relative, and blank when the transport is somewhere else in the song — the
-            same condition that hides the playhead line, so the two never disagree. */}
-        <span className="mono pe-time">{peFmtTime(transport.playhead)}</span>
-
-        <div className="pe-clipname">
-          <b>{info ? (info.fileName || info.trackName || "Clip") : "—"}</b>
-          <span className="pe-clipmeta">
-            {info ? `${peFmtTime(info.duration)} · ${info.sampleRate} Hz · ${info.channels === 1 ? "mono" : `${info.channels} ch`}` : ""}
-          </span>
+        <div className="pe-tbar-left">
+          <button className={"pe-icbtn" + (transport.isPlaying ? " on" : "")} onClick={playPause}
+            disabled={!info} title={transport.isPlaying ? "Pause (Space)" : "Play from the clip (Space)"}>
+            {transport.isPlaying
+              ? <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+              : <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z" /></svg>}
+          </button>
+          <button className="pe-icbtn" onClick={stop} disabled={!info} title="Stop and return to the start of the clip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="1.5" /></svg>
+          </button>
+          {/* CLIP loop: borrows the studio's Repeat region for the length of this clip, and hands
+              it back when switched off or when the window closes. */}
+          <button className={"pe-btn" + (clipLoop ? " primary" : "")} onClick={toggleClipLoop} disabled={!info}
+            title={clipLoop
+              ? "Playback is looping this clip — the studio's own Repeat region is restored when you switch this off"
+              : "Loop playback over this clip only (temporarily takes over the studio's Repeat region)"}
+            style={{ padding: "6px 10px", fontSize: 10 }}>
+            CLIP
+          </button>
+          <div className="pe-clipname">
+            <b>{info ? (info.fileName || info.trackName || "Clip") : "—"}</b>
+            <span className="pe-clipmeta">
+              {info ? `${peFmtTime(info.duration)} · ${info.sampleRate} Hz · ${info.channels === 1 ? "mono" : `${info.channels} ch`}` : ""}
+            </span>
         </div>
-        <div className="pe-spacer" />
-        <button className={"pe-icbtn" + (sideOpen ? " on" : "")} onClick={() => setSideOpen((o) => !o)}
-          title={sideOpen ? "Hide the panel" : "Show the panel"}>
-          <svg width="13" height="13" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" fill="none">
-            <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" />
-          </svg>
-        </button>
+        </div>
+
+        {/* v2.10.1 — 가운데 칸. 🔴 spacer 두 개로는 **가운데가 아니었다**(T-2.10.0-3):
+            flex 여백은 좌우 내용의 폭 차이만큼 밀리므로, 왼쪽이 무거운 이 툴바에서는
+            오른쪽으로 쏠린다. 3칸 그리드(`1fr auto 1fr`)여야 가운데 칸이 **창의** 가운데에
+            선다 — 사용자가 요청한 "3칸짜리 table" 이 정확히 이 뜻이다.
+
+            표시는 `현재 / 전체`이고 **둘 다 클립 상대시간**이다. 곡의 한가운데에 놓인
+            10초짜리 클립이면 왼쪽은 0:00~0:10, 오른쪽은 늘 0:10 이다. */}
+        <div className="pe-time">
+          <span className="pe-time-cur">{peTimeCells(peFmtTime(transport.playhead)).map((c, i) =>
+            <span key={i} className={c.dig ? "pe-dig" : "pe-pun"}>{c.ch}</span>)}</span>
+          <span className="pe-time-sep">/</span>
+          <span className="pe-time-total">{peTimeCells(peFmtTime(info ? info.duration : NaN)).map((c, i) =>
+            <span key={i} className={c.dig ? "pe-dig" : "pe-pun"}>{c.ch}</span>)}</span>
+        </div>
+
+        <div className="pe-tbar-right">
+          <button className={"pe-icbtn" + (sideOpen ? " on" : "")} onClick={() => setSideOpen((o) => !o)}
+            title={sideOpen ? "Hide the panel" : "Show the panel"}>
+            <svg width="13" height="13" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" fill="none">
+              <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="pe-body">
@@ -2244,10 +2495,10 @@ function PitchEditorApp() {
             ? <div className="pe-empty">{error}</div>
             : (info
               ? <PianoRoll info={info} analysis={analysis} notes={notes} selection={selection}
-                  scalePcs={scalePcs} defs={defs} view={view} range={range} theme={theme}
+                  scalePcs={scalePcs} snapPcs={snapPcs} defs={defs} view={view} range={range} theme={theme}
                   playhead={transport.playhead} litMidi={litMidi} onSeek={seekTo} onView={setView}
                   onRange={setRange} onPreview={previewKey} onSelectNote={selectNote}
-                  onNoteDrag={onNoteDrag} />
+                  onNoteDrag={onNoteDrag} onNoteContext={openCtx} />
               : <div className="pe-empty">Loading clip…</div>)}
         </div>
 
@@ -2495,6 +2746,25 @@ function PitchEditorApp() {
           ? <span className="pe-badge">VARI KEY {tempo.keyShift > 0 ? "+" : ""}{tempo.keyShift} — editing the original pitch</span>
           : <span>{tempo && tempo.detectedKey ? `Key ${tempo.detectedKey}` : ""}</span>}
       </div>
+
+      {/* v2.10.0 (R-3) — 노트 우클릭 메뉴. position:fixed 이므로 clientX/clientY 를 그대로
+          쓴다. 창 오른쪽·아래로 넘치면 마우스 반대쪽으로 붙인다 — 넘친 채로 두면 메뉴의
+          항목이 잘려 눌리지 않는다. */}
+      {ctx &&
+        <div className="pe-ctx" ref={ctxRef} onContextMenu={(e) => e.preventDefault()}
+          style={{
+            left: Math.min(ctx.x, Math.max(0, window.innerWidth - CTX_W - 6)),
+            top: Math.min(ctx.y, Math.max(0, window.innerHeight - CTX_H - 6)),
+          }}>
+          <div className="pe-ctxhd">{ctx.ids.size === 1 ? "1 NOTE" : `${ctx.ids.size} NOTES`}</div>
+          <button className="pe-ctxitem" disabled={!ctxResettable}
+            onClick={() => { resetIds(ctx.ids); setCtx(null); }}
+            title={ctxResettable
+              ? "Return these notes to the detected pitch. Ctrl+Z brings the edit back."
+              : "These notes are already as the detector proposed them."}>
+            <span>Reset to detected</span>
+          </button>
+        </div>}
     </div>
   );
 }

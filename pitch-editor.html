@@ -7,7 +7,9 @@
 <link rel="icon" type="image/png" href="assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<!-- v2.10.1 — Saira Condensed 100/200 은 전송 시간 표시 전용이다(사용자 지정). 웨이트를
+     둘만 받는 이유는 이 창에서 쓰는 곳이 거기뿐이기 때문이다. -->
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Saira+Condensed:wght@100;200&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
 :root{
   --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;
@@ -137,8 +139,14 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 
 /* Toolbar — Stage A shows the controls disabled so the shape of the feature is visible,
    but nothing here can change audio yet (analysis lands in Stage B, printing in Stage E). */
-.pe-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;
+/* v2.10.1 — 3칸 그리드. 🔴 flex + spacer 로는 가운데가 **안 맞는다**(T-2.10.0-3): 여백이
+   좌우 내용의 폭 차이만큼 밀린다. `1fr auto 1fr` 이라야 가운데 칸이 창의 가운데에 선다.
+   좌우 칸은 `minmax(0,1fr)` 로 두어 긴 파일 이름이 가운데 칸을 밀어내지 못하게 한다. */
+.pe-toolbar{flex:0 0 auto;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;gap:8px;padding:9px 12px;
   background:var(--bg);border-bottom:1px solid var(--line)}
+.pe-tbar-left{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+.pe-tbar-right{display:flex;align-items:center;gap:8px;justify-content:flex-end}
 .pe-clipname{display:flex;align-items:baseline;gap:8px;min-width:0;margin-right:4px}
 .pe-clipname b{font-size:12.5px;font-weight:600;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
 .pe-clipmeta{font-size:10px;color:var(--faint);white-space:nowrap}
@@ -148,13 +156,40 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .pe-btn:disabled{opacity:.38;cursor:default}
 .pe-btn.primary{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber)}
 .pe-btn.primary:disabled{opacity:.32}
-.pe-spacer{flex:1 1 auto}
 .pe-icbtn{width:28px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--dim);
   background:rgba(255,255,255,.02);border:1px solid var(--line-strong);flex:0 0 auto}
 .pe-icbtn:hover:not(:disabled){border-color:var(--amber);color:var(--cream)}
 .pe-icbtn.on{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber)}
 .pe-icbtn:disabled{opacity:.38;cursor:default}
-.pe-time{font-size:11.5px;color:var(--cream-2);min-width:54px;text-align:center;flex:0 0 auto}
+/* v2.10.0 (R-4) — 전송 시간 표시. 툴바 **가운데**(양옆 spacer)에 두고, 칩 모양은 이미
+   증명된 .pe-badge 의 처리를 그대로 쓴다 — amber-soft 바탕 / amber-deep 테두리이므로 열
+   가지 테마에서 따로 손댈 것이 없다. 🔴 하드코딩한 색을 쓰면 밝은 테마(ivory·sage)에서
+   글자가 사라진다. 숫자가 바뀌어도 폭이 흔들리지 않게 tabular-nums 를 쓴다. */
+/* v2.10.1 — `현재 / 전체`, 둘 다 **클립 상대시간**이다(사용자 지정). 곡의 한가운데에 놓인
+   10초 클립이면 왼쪽은 0:00~0:10, 오른쪽은 늘 0:10 이다.
+
+   글자색은 --amber 가 **아니다**. 계측이 그 안을 반증했다(v2.10.0): amber 글자를
+   amber-soft 배경에 얹으면 ivory 에서 대비 2.18 로, 큰 글씨 기준선 3.0 에도 못 미친다.
+   amber 는 칩의 색으로만 두고 글자는 본문색(--cream, 최악 6.03)을 쓴다.
+
+   ⚠️ 가는 웨이트(100/200)는 얇아서 대비 여유가 더 필요하다 — 토큰을 바꾸지 않는 이유다. */
+.pe-time{display:flex;align-items:baseline;justify-content:center;gap:7px;
+  font-family:"Saira Condensed",var(--ui),sans-serif;font-variant-numeric:tabular-nums;
+  color:var(--cream);background:var(--amber-soft);border:1px solid var(--amber-deep);
+  padding:3px 15px;border-radius:9px;min-width:150px}
+.pe-time-cur{font-size:26px;font-weight:200;letter-spacing:.01em;line-height:1.1}
+/* 전체 길이는 현재 시간의 약 65% — 읽히되 현재 시간을 이기지 않는다(사용자 지정 60~70%). */
+.pe-time-total{font-size:17px;font-weight:100;letter-spacing:.01em;line-height:1.1;opacity:.8}
+.pe-time-sep{font-size:17px;font-weight:100;color:var(--dim);line-height:1.1}
+
+/* v2.10.2 — 🔴 숫자가 좌우로 흔들리지 않게 **글자 칸을 고정**한다(사용자 보완 요청 2).
+   `font-variant-numeric:tabular-nums` 만으로는 보장되지 않는다 — 글꼴이 tnum 표를
+   갖고 있어야 하고, Saira Condensed 가 그것을 주는지는 이 앱이 정할 수 없는 일이다.
+   그래서 숫자 한 글자마다 **같은 폭의 칸**을 주고 가운데 정렬한다. 폭은 `em` 이라
+   26px 쪽과 17px 쪽이 각자 알아서 맞는다. 구분자(`:` `.`)는 좁은 칸을 따로 쓴다 —
+   숫자와 같은 폭을 주면 글자 사이가 벌어져 읽기 나빠진다. */
+.pe-dig{display:inline-block;width:.56em;text-align:center}
+.pe-pun{display:inline-block;width:.26em;text-align:center}
 .pe-zoomgrp{display:flex;align-items:center;gap:3px;padding:2px 5px;border-radius:8px;
   border:1px solid var(--line);background:rgba(255,255,255,.015);flex:0 0 auto}
 .pe-zoomlbl{font-size:8.5px;font-weight:700;letter-spacing:.1em;color:var(--faint);margin-right:2px}
@@ -164,6 +199,17 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 .pe-zbtn:disabled{opacity:.3;cursor:default}
 .pe-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;font-size:10px;font-weight:700;
   letter-spacing:.05em;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-deep)}
+/* v2.10.0 (R-3) — 우클릭 메뉴. position:fixed 로 띄우므로 롤의 overflow 에 잘리지 않는다.
+   z-index 는 플레이헤드(6)보다 위여야 한다. */
+.pe-ctx{position:fixed;z-index:60;min-width:168px;padding:4px;border-radius:9px;
+  background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 10px 28px rgba(0,0,0,.45)}
+.pe-ctxitem{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;
+  padding:7px 10px;border-radius:6px;font-family:inherit;font-size:11px;font-weight:600;
+  color:var(--cream);background:transparent;border:0;text-align:left;cursor:pointer}
+.pe-ctxitem:hover:not(:disabled){background:var(--amber-soft);color:var(--amber)}
+.pe-ctxitem:disabled{opacity:.35;cursor:default}
+.pe-ctxkey{font-size:9.5px;font-weight:600;letter-spacing:.04em;color:var(--faint)}
+.pe-ctxhd{padding:6px 10px 5px;font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--faint)}
 .pe-stagetag{font-size:9.5px;font-weight:700;letter-spacing:.1em;color:var(--muted);
   padding:4px 8px;border-radius:6px;border:1px dashed var(--line-strong)}
 
