@@ -41,6 +41,8 @@ const MUTATE_DEFAULTS = process.argv.includes('--mutate-defaults');
 // v2.7.5 — 소유 구간 스플라이스를 무력화한다(경계를 덮지 않고 세그멘터 결과를 그대로 둔다).
 // ⑨가 FAIL 해야 정상.
 const MUTATE_LAYOUT = process.argv.includes('--mutate-layout');
+// v2.9.3 — 드래그 한계를 무력화한다(peClampDrag 가 받은 폭을 그대로 돌려준다). ⑬이 FAIL 해야 정상.
+const MUTATE_LIMIT = process.argv.includes('--mutate-limit');
 
 // ── 가짜 Web Audio (bounce-source-harness.js 와 같은 최소 스텁) ─────────────
 const param = () => ({ value: 0, setValueAtTime() { return this; }, linearRampToValueAtTime() { return this; },
@@ -126,6 +128,11 @@ function loadEditModel() {
     src = src.replace('const src = notes || [];', 'const src = notes || []; if (1) return { notes: src, spans: 0 };');
     if (src === before) { console.error('변이 실패 — peApplyLayout 진입부를 못 찾았다.'); process.exit(2); }
   }
+  if (MUTATE_LIMIT) {
+    const before = src;
+    src = src.replace('function peClampDrag(notes, dSemi) {','function peClampDrag(notes, dSemi) { if (1) return dSemi;');
+    if (src === before) { console.error('변이 실패 — peClampDrag 진입부를 못 찾았다.'); process.exit(2); }
+  }
   // v2.7.3 — 끝 경계가 `function peScalePcs` 에서 `const peCentsOff =` 로 옮겨졌다.
   // Key 스냅 함수가 peScalePcs 를 쓰므로, 의존하는 것에서 창이 끝날 수 없었다.
   // ⚠️ 경계는 반드시 코드다 — esbuild 가 build 산출물에서 주석을 지운다.
@@ -140,7 +147,8 @@ function loadEditModel() {
     '\nthis.PE_EDITED_REDS = PE_EDITED_REDS; this.PE_EDITED_MIN_CONTRAST = PE_EDITED_MIN_CONTRAST;' +
     '\nthis.peScalePcs = peScalePcs; this.peSnapToScale = peSnapToScale; this.peDragTarget = peDragTarget;' +
     '\nthis.peDefaults = peDefaults; this.PE_DEFAULTS = PE_DEFAULTS;' +
-    '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR; this.peShapeSig = peShapeSig; this.PE_PRESETS = PE_PRESETS; this.peMatchPreset = peMatchPreset;', ctx);
+    '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR; this.peShapeSig = peShapeSig; this.PE_PRESETS = PE_PRESETS; this.peMatchPreset = peMatchPreset;' +
+    '\nthis.peShiftRange = peShiftRange; this.peClampDrag = peClampDrag; this.peAtShiftLimit = peAtShiftLimit; this.PE_MAX_SHIFT_SEMIS = PE_MAX_SHIFT_SEMIS;', ctx);
   return ctx;
 }
 
@@ -157,7 +165,7 @@ const check = (label, ok, detail) => {
 };
 
 // ══ 시작 ═══════════════════════════════════════════════════════════════════
-console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}${MUTATE_EDITS ? '  [변이: 형제 보존 제거 · 색 고정]' : ''}${MUTATE_DEFAULTS ? '  [변이: defaults 직렬화 제거]' : ''}${MUTATE_LAYOUT ? '  [변이: 소유 구간 스플라이스 무력화]' : ''}\n`);
+console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}${MUTATE_EDITS ? '  [변이: 형제 보존 제거 · 색 고정]' : ''}${MUTATE_DEFAULTS ? '  [변이: defaults 직렬화 제거]' : ''}${MUTATE_LAYOUT ? '  [변이: 소유 구간 스플라이스 무력화]' : ''}${MUTATE_LIMIT ? '  [변이: 드래그 한계 제거]' : ''}\n`);
 
 const E = loadEditModel();
 
@@ -579,9 +587,55 @@ console.log('⑫ 프리셋이 설계가 정한 값을 그대로 낸다');
 }
 
 
+// ── ⑬ 이동량 한계에서 드래그가 멈춘다 (v2.9.3, R-1) ─────────────────────────────
+console.log('');
+console.log('⑬ 드래그는 부른 음높이에서 ±6 에서 멈추고, 묶음은 함께 선다');
+{
+  const N = (id, midi, target) => ({ id, t0: 0, t1: 1, midi, target: target === undefined ? Math.round(midi) : target, strength: 1, keepVibrato: true });
+  check('상한 상수는 6 (엔진 PSOLA_MAX_SEMIS 와 같음 — psola 하네스가 대조)', E.PE_MAX_SHIFT_SEMIS === 6);
+  // 🔴 안 ② — 소수 midi 기준. 60.6 → 55..66 (처음 칸 61 에서 위로 5칸).
+  const r = E.peShiftRange(N('a', 60.6));
+  check('60.6 의 범위는 55..66', r.lo === 55 && r.hi === 66, r.lo + '..' + r.hi);
+  const r0 = E.peShiftRange(N('b', 60));
+  check('정수 60 은 54..66 (경계 포함)', r0.lo === 54 && r0.hi === 66, r0.lo + '..' + r0.hi);
+  // 한 노트
+  check('한 노트 +12 → +5 에서 멈춤 (60.6 → 66)', E.peClampDrag([N('a', 60.6)], 12) === 5);
+  check('한 노트 −12 → −6 에서 멈춤 (61 → 55)', E.peClampDrag([N('a', 60.6)], -12) === -6);
+  check('한계 안의 폭은 그대로', E.peClampDrag([N('a', 60.6)], 3) === 3 && E.peClampDrag([N('a', 60.6)], -2) === -2);
+  check('이동 없음은 0', E.peClampDrag([N('a', 60.6)], 0) === 0);
+  for (const m of [48.2, 55.5, 60, 60.49, 60.51, 71.9]) {
+    const nt = N('x', m), up = E.peClampDrag([nt], 30), dn = E.peClampDrag([nt], -30);
+    check(`🔴 ${m}: 끝까지 끌어도 |target−midi| ≤ 6`,
+          Math.abs(nt.target + up - m) <= 6 + 1e-9 && Math.abs(nt.target + dn - m) <= 6 + 1e-9,
+          (nt.target + up) + ' / ' + (nt.target + dn));
+  }
+  // 안 ① — 묶음 정지: 먼저 닿는 노트에서 전체가 선다 → 음정 간격 유지
+  const g = [N('a', 60.0, 63), N('b', 64.0)];   // a 는 이미 +3 옮겨져 있다
+  const d = E.peClampDrag(g, 10);
+  check('🔴 묶음은 가장 먼저 닿는 노트(a, 여유 3)에서 함께 멈춘다', d === 3, String(d));
+  check('묶음의 간격이 유지된다', (g[1].target + d) - (g[0].target + d) === g[1].target - g[0].target);
+  check('아래로는 b 의 여유(6)와 a 의 여유(9) 중 작은 쪽', E.peClampDrag(g, -20) === -6);
+  // 옛 파일 — 이미 한계 밖(+12)
+  const old = N('o', 60, 72);
+  check('한계 밖 노트는 바깥으로 더 못 간다', E.peClampDrag([old], 3) === 0);
+  check('한계 밖 노트도 안쪽으로는 돌아온다', E.peClampDrag([old], -8) === -8);
+  // Key 스냅이 한계를 넘지 않는다 — C major, 60.6 의 hi=66 (F#, 조성 밖) → 65 (F)
+  const C = E.peScalePcs('C') || E.peScalePcs('C major');
+  if (C) {
+    const t = E.peDragTarget(N('a', 60.6, 64), 2, C);     // raw 66 → 스냅하면 67(G) 이 될 수 있다
+    check('🔴 Key 스냅이 한계(66) 밖으로 끌어내지 않는다', t <= 66 && C.has(((t % 12) + 12) % 12), String(t));
+  } else {
+    check('peScalePcs 로 C 조성을 만들 수 있다', false, 'peScalePcs 의 입력 형식 확인 필요');
+  }
+  // 경고
+  check('한계에 닿은 노트만 경고 대상', E.peAtShiftLimit(N('a', 60.6, 66)) && E.peAtShiftLimit(N('a', 60.6, 55)) && !E.peAtShiftLimit(N('a', 60.6, 65)));
+  check('손대지 않은 노트는 경고 대상이 아니다', !E.peAtShiftLimit(N('a', 60.6)) && !E.peAtShiftLimit(N('b', 60.5)));
+}
+
+
 // ── 마무리 ─────────────────────────────────────────────────────────────────
 console.log(`\n${pass} PASS · ${fail} FAIL`);
-if (MUTATE || MUTATE_EDITS || MUTATE_DEFAULTS || MUTATE_LAYOUT) {
+if (MUTATE || MUTATE_EDITS || MUTATE_DEFAULTS || MUTATE_LAYOUT || MUTATE_LIMIT) {
   console.log(fail > 0
     ? '\n✅ 변이 시험 통과 — 수정을 빼면 하네스가 잡아낸다.'
     : '\n🔴 변이했는데도 전건 통과 — 이 하네스는 ③④를 실제로 지키지 못한다.');

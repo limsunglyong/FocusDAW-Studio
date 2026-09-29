@@ -580,7 +580,49 @@ function peSnapToScale(midi, pcs, dir) {
 // out of the key the mode exists to keep them in.
 function peDragTarget(nt, dSemi, pcs) {
   const raw = nt.target + dSemi;
-  return pcs ? peSnapToScale(raw, pcs, dSemi) : raw;
+  if (!pcs) return raw;
+  const snapped = peSnapToScale(raw, pcs, dSemi);
+  const { lo, hi } = peShiftRange(nt);
+  // v2.9.3 (R-1) — Key 스냅이 한계 밖으로 끌어내지 않게 한다. 한계 안에서 드래그 방향 쪽
+  // 가장 먼 조성 음, 없으면 제자리. 이미 한계 밖에 있던 노트(v2.9.3 이전 파일)는 건드리지
+  // 않는다 — 안쪽으로 되돌리는 드래그는 peClampDrag 가 허락한다.
+  if ((snapped >= lo && snapped <= hi) || nt.target < lo || nt.target > hi) return snapped;
+  const up = snapped > hi, step = up ? -1 : 1;
+  for (let m = up ? hi : lo; m !== nt.target; m += step) {
+    if (pcs.has(((m % 12) + 12) % 12)) return m;
+  }
+  return nt.target;
+}
+
+// v2.9.3 (R-1) — 한 노트가 설 수 있는 칸의 범위. 🔴 **부른 음높이(`midi`, 소수)에서 ±6** —
+// 엔진 `PSOLA_MAX_SEMIS` 가 자르는 기준과 같다(사용자 결정 2026-09-29 안 ②). 그래서 60.6 으로
+// 부른 노트는 55~66, 곧 처음 칸(61)에서 위로 5칸·아래로 6칸이다. 칸 기준으로 세면 렌더가
+// 최대 반음 절반 모자라 음정이 틀린다.
+function peShiftRange(nt) {
+  return {
+    lo: Math.ceil(nt.midi - PE_MAX_SHIFT_SEMIS - 1e-9),
+    hi: Math.floor(nt.midi + PE_MAX_SHIFT_SEMIS + 1e-9),
+  };
+}
+
+// v2.9.3 (R-1) — 드래그 폭을 한계 안으로 좁힌다. **묶음이 함께 멈춘다**(사용자 결정 안 ①):
+// 가장 먼저 한계에 닿는 노트에서 전체가 서므로 노트 사이 음정(선율 모양)이 유지된다.
+// 이미 한계 밖인 노트는 바깥쪽으로 더 못 가고(여유 0), 안쪽으로는 돌아올 수 있다.
+function peClampDrag(notes, dSemi) {
+  if (!dSemi || !notes || !notes.length) return dSemi || 0;
+  let room = dSemi > 0 ? Infinity : -Infinity;
+  for (const nt of notes) {
+    const { lo, hi } = peShiftRange(nt);
+    room = dSemi > 0 ? Math.min(room, Math.max(0, hi - nt.target))
+                     : Math.max(room, Math.min(0, lo - nt.target));
+  }
+  return dSemi > 0 ? Math.min(dSemi, room) : Math.max(dSemi, room);
+}
+
+// v2.9.3 (R-1) — 한계에 닿아 그 방향으로 더 갈 수 없는 노트인가(경고용).
+function peAtShiftLimit(nt) {
+  const { lo, hi } = peShiftRange(nt);
+  return nt.target === hi || nt.target === lo;
 }
 
 // ══ v2.7.5 — 분할 / 병합: 경계는 사용자가 소유한다 (설계 §4-2) ════════════════════
@@ -1877,10 +1919,16 @@ function PitchEditorApp() {
     [applied.notes]
   );
 
+  const dragSemiRef = React.useRef(0);
   const onNoteDrag = React.useCallback((id, dSemi, done) => {
     const sel = selectionRef.current;
     const ids = sel.has(id) ? new Set(sel) : new Set([id]);
+    // v2.9.3 (R-1) — 한계에서 멈춘다. 끄는 손은 계속 가도 노트는 서 있다.
+    dSemi = peClampDrag(applied.notes.filter((nt) => ids.has(nt.id)), dSemi);
     if (!done) {
+      // 한계에 서 있는 동안은 손이 몇 칸을 더 가도 같은 음이다 — 다시 울리지 않는다.
+      if (dragSemiRef.current === dSemi) return;
+      dragSemiRef.current = dSemi;
       setDrag({ ids, dSemi });
       // v2.7.1 (R1) — sound the new pitch on every semitone step, with the same tone a click
       // on the keyboard makes. Only the GRABBED note: sounding every selected note at once is
@@ -1889,6 +1937,7 @@ function PitchEditorApp() {
       if (grabbed) previewKey(peDragTarget(grabbed, dSemi, snapPcs));
       return;
     }
+    dragSemiRef.current = 0;
     setDrag(null);
     if (!dSemi) return;
     // 🔴 Snapped per note, not by one shared delta — see peDragTarget. A gesture that snaps
@@ -1986,12 +2035,15 @@ function PitchEditorApp() {
   //   · 노트를 옮기면 켜지고, Apply 하면 꺼진다
   //   · 프린트 뒤 전부 되돌리면 다시 켜지고(지문이 달라진다), 누르면 원본으로 돌아간다
   //   · 아무것도 안 한 상태에서는 꺼져 있다
-  // v2.8.4 — 상한을 넘는 이동이 섞여 있는가. **막지 않고 알린다** — 사용자가 하려는
-  // 일을 막는 대신, 그 구간에서 음색이 변한다는 것을 미리 말해 준다.
+  // v2.8.4 — 상한을 넘는 이동이 섞여 있는가. v2.8.4 는 "막지 않고 알린다" 였고, v2.9.3(R-1)
+  // 부터는 드래그가 한계에서 멈추므로(peClampDrag) 이것은 **그 전에 저장된 편집**에만 뜬다.
   const overShift = React.useMemo(
     () => notes.filter((nt) => Math.abs(nt.target - nt.midi) > PE_MAX_SHIFT_SEMIS).length,
     [notes]
   );
+  // v2.9.3 (R-1) — 이제 드래그가 한계에서 멈추므로 위 경고는 v2.9.3 이전에 저장된 편집에만
+  // 뜬다. 새로 알릴 것은 "한계에 닿아 더 못 간다"는 사실이고, 그것은 **닿은 순간** 뜬다.
+  const atLimit = React.useMemo(() => notes.filter(peAtShiftLimit).length, [notes]);
   const curSig = React.useMemo(() => peShapeSig(edits, defs, layout), [edits, defs, layout]);
   const printedSig = (info && info.pitch && info.pitch.printedSig) || null;
   const shapeDiffers = curSig !== printedSig;
@@ -2365,6 +2417,10 @@ function PitchEditorApp() {
                   {corrOf.keepVibrato ? "Keep vibrato" : "Flatten vibrato"}
                 </button>
               </div>
+              {atLimit > 0 && <div className="pe-hint" style={{ marginTop: 9, color: "var(--red)" }}>
+                <b>{atLimit}</b> note{atLimit > 1 ? "s are" : " is"} at the {PE_MAX_SHIFT_SEMIS}-semitone limit and cannot move further.
+                A larger move would change the tone of the voice.
+              </div>}
               {overShift > 0 && <div className="pe-hint" style={{ marginTop: 9, color: "var(--red)" }}>
                 <b>{overShift}</b> note{overShift > 1 ? "s" : ""} move more than {PE_MAX_SHIFT_SEMIS} semitones.
                 Beyond that the tone changes — the move is limited to {PE_MAX_SHIFT_SEMIS} when rendered.

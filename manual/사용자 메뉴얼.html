@@ -1886,7 +1886,7 @@
               <tbody>
                 <tr><th>Graphic EQ · FFT</th><td>스펙트럼 배경 위에 EQ 곡선을 표시합니다. 각 밴드 포인트를 드래그해 -12dB부터 +12dB까지 조절합니다.</td></tr>
                 <tr><th>Level meter</th><td>주파수 대역별 레벨 미터를 표시합니다. EQ 포인트 오버레이도 함께 조작할 수 있습니다.</td></tr>
-                <tr><th>EQ PRESET</th><td>Reset(Flat), Pop, Classic, Hip Hop 프리셋을 바로 적용합니다. 정밀 편집은 오른쪽 <strong>ADVANCED</strong> 버튼으로 큰 Equalizer 창을 엽니다(7장 참조).</td></tr>
+                <tr><th>EQ PRESET</th><td>Reset(Flat), Pop, Classic, Hip Hop 프리셋을 바로 적용합니다. 정밀 편집은 오른쪽 <strong>ADVANCED</strong> 버튼으로 큰 Equalizer 창을 엽니다(<strong>10장</strong>).</td></tr>
                 <tr><th>OUTPUT EFFECTS</th><td>최종 출력(마스터 버스)에 적용하는 다섯 가지 효과입니다. 각 슬라이더로 0~100% 전송량을 조절하며, 켜진 효과는 아이콘에 색이 들어오고 오른쪽에 퍼센트가 표시됩니다.</td></tr>
               </tbody>
             </table>
@@ -1973,7 +1973,7 @@
               <tbody>
                 <tr><th>Graphic EQ / FFT</th><td>Displays the EQ curve over a real-time FFT spectrum background. Drag points to adjust gain from -12dB to +12dB.</td></tr>
                 <tr><th>Level meters</th><td>Displays real-time level bars for each frequency range alongside EQ controls.</td></tr>
-                <tr><th>EQ PRESETS</th><td>Instantly applies preset curves: Reset (Flat), Pop, Classic, and Hip Hop. The <strong>ADVANCED</strong> button opens the large Equalizer window (see ch.7).</td></tr>
+                <tr><th>EQ PRESETS</th><td>Instantly applies preset curves: Reset (Flat), Pop, Classic, and Hip Hop. The <strong>ADVANCED</strong> button opens the large Equalizer window (<strong>ch. 10</strong>).</td></tr>
                 <tr><th>OUTPUT EFFECTS</th><td>Five effects applied to the final master bus. Each slider sets the 0–100% send amount; active effects light up and show their percentage on the right.</td></tr>
               </tbody>
             </table>
@@ -2236,7 +2236,7 @@
               <li><strong>Key</strong> — 곡의 조성에 속한 음에만. 조성이 감지되지 않았으면 고를 수 없습니다.</li>
             </ul>
             <p><strong>Snap all to key</strong>는 모든 노트를 한 번에 가장 가까운 조성 음으로 옮깁니다. <kbd>Ctrl</kbd>+<kbd>Z</kbd> 한 번으로 통째로 되돌아갑니다.</p>
-            <p>⚠️ <strong>6반음</strong>을 넘겨 옮기면 경고가 나타납니다. 그보다 크게 옮기면 목소리의 음색이 상하기 때문이며, 실제 보정은 6반음에서 멈춥니다.</p>
+            <p>⚠️ 노트는 <strong>부른 음높이에서 6반음</strong>까지만 옮겨집니다. 한계에 닿으면 더 끌어도 움직이지 않고 경고가 나타납니다 — 그보다 크게 옮기면 목소리의 음색이 상하기 때문입니다. 한계는 화면의 칸이 아니라 실제로 부른 음높이에서 세므로, 조금 높거나 낮게 부른 노트는 한쪽으로 5칸에서 멈출 수 있습니다. 여러 노트를 함께 끌면 <strong>가장 먼저 한계에 닿는 노트에서 모두 함께</strong> 멈춰 선율 모양이 유지됩니다.</p>
 
             <h3>⑤ 한 음이 여러 조각으로 나뉘었을 때 — Split / Merge</h3>
             <p>비브라토를 깊게 준 긴 음은 여러 블록으로 쪼개져 보일 수 있습니다. 그 블록들을 <kbd>Shift</kbd>+클릭으로 함께 고르고 <strong>Merge</strong>를 누르면 하나가 됩니다. 반대로 두 음이 한 블록으로 뭉쳤다면, 그 블록을 고르고 재생 위치를 경계로 옮긴 뒤 <strong>Split</strong>을 누릅니다.</p>
@@ -2303,7 +2303,7 @@
               <li><strong>Key</strong> — only notes of the project key. Unavailable when no key has been detected.</li>
             </ul>
             <p><strong>Snap all to key</strong> moves every note to its nearest note of the key in one step, undone by a single <kbd>Ctrl</kbd>+<kbd>Z</kbd>.</p>
-            <p>⚠️ Moving a note more than <strong>6 semitones</strong> raises a warning. Past that the timbre of the voice suffers, and the correction stops at 6 semitones when rendered.</p>
+            <p>⚠️ A note moves at most <strong>6 semitones from the pitch you sang</strong>. At that limit it stops following the mouse and a warning appears — a larger move would spoil the timbre of the voice. The limit is counted from the sung pitch, not the grid row, so a note sung slightly sharp or flat may stop at 5 rows in one direction. When several notes are dragged together, <strong>they all stop as soon as the first one reaches its limit</strong>, so the shape of the melody is kept.</p>
 
             <h3>⑤ When one note arrives in pieces — Split / Merge</h3>
             <p>A long note with deep vibrato can appear as several blocks. Select them together with <kbd>Shift</kbd>+click and press <strong>Merge</strong> to make them one. If two sung notes ended up in a single block, select it, put the playhead on the boundary, and press <strong>Split</strong>.</p>

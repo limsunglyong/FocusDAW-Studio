@@ -49,10 +49,11 @@ function HelpDialog({ onClose, standalone = false }) {
     { id: "automation", label: "8. 볼륨 오토메이션" },
     { id: "mixer", label: "9. 믹서와 마스터" },
     { id: "advfx", label: "10. 고급 이펙트" },
-    { id: "export", label: "11. 믹스다운 내보내기" },
-    { id: "settings", label: "12. 설정 · 오디오 장치 · 테마" },
-    { id: "shortcuts", label: "13. 단축키" },
-    { id: "tips", label: "14. 문제 해결" },
+    { id: "pitch", label: "11. 피치 에디터" },
+    { id: "export", label: "12. 믹스다운 내보내기" },
+    { id: "settings", label: "13. 설정 · 오디오 장치 · 테마" },
+    { id: "shortcuts", label: "14. 단축키" },
+    { id: "tips", label: "15. 문제 해결" },
   ] : [
     { id: "overview", label: "1. App Overview" },
     { id: "start", label: "2. Start & Projects" },
@@ -64,10 +65,11 @@ function HelpDialog({ onClose, standalone = false }) {
     { id: "automation", label: "8. Volume Automation" },
     { id: "mixer", label: "9. Mixer & Master" },
     { id: "advfx", label: "10. Advanced Effects" },
-    { id: "export", label: "11. Exporting Mixdown" },
-    { id: "settings", label: "12. Settings, Audio Devices & Themes" },
-    { id: "shortcuts", label: "13. Shortcuts" },
-    { id: "tips", label: "14. Troubleshooting" },
+    { id: "pitch", label: "11. Pitch Editor" },
+    { id: "export", label: "12. Exporting Mixdown" },
+    { id: "settings", label: "13. Settings, Audio Devices & Themes" },
+    { id: "shortcuts", label: "14. Shortcuts" },
+    { id: "tips", label: "15. Troubleshooting" },
   ];
 
   const scrollTo = (id) => {
@@ -463,7 +465,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">⑩ Key 표시기</th><td className="manual-td">감지·지정된 원곡 키와 이조된 재생 키를 표시합니다. 클릭하면 Key 패널이 열립니다(<strong>7장</strong>).</td></tr>
                       <tr><th className="manual-th">⑪ Vari Key 스위치</th><td className="manual-td">켜야 지정한 반음 오프셋이 실시간 재생에 적용됩니다(기본 꺼짐).</td></tr>
                       <tr><th className="manual-th">⑫ Mixer</th><td className="manual-td">별도 창의 믹서 콘솔을 엽니다(<kbd className="manual-kbd">F3</kbd>).</td></tr>
-                      <tr><th className="manual-th">⑬ Export</th><td className="manual-td">믹스다운 내보내기 창을 엽니다(<strong>11장</strong>).</td></tr>
+                      <tr><th className="manual-th">⑬ Export</th><td className="manual-td">믹스다운 내보내기 창을 엽니다(<strong>12장</strong>).</td></tr>
                       <tr><th className="manual-th">⑭ 트랜스포트</th><td className="manual-td">처음으로 · 정지 · 재생/일시정지 · <strong>Repeat</strong> · <strong>메트로놈</strong> · <strong>프리롤</strong> · <strong>Punch</strong> · <strong>Record</strong> 버튼입니다(<strong>4장 · 5장</strong>).</td></tr>
                       <tr><th className="manual-th">⑮ 시간 표시</th><td className="manual-td">현재 재생 위치와 프로젝트 전체 길이입니다.</td></tr>
                       <tr><th className="manual-th">⑯ 프로젝트 이름</th><td className="manual-td">클릭하면 그 자리에서 이름을 고칠 수 있습니다. 창 아래 상태 표시줄에도 같은 이름이 나옵니다.</td></tr>
@@ -487,7 +489,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/screens-v2/01-05-help-menu.png" alt="Help 메뉴" className="manual-img" />
                     <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong>(이 문서), <strong>Release Notes</strong>(버전별 변경 사항), <strong>Check for Updates</strong>(새 버전 확인·설치), <strong>About</strong>.</div>
                   </div>
-                  <p className="manual-p"><strong>Settings</strong> 메뉴는 색상 테마, 믹서 창 초기화, 오디오 장치 설정을 담고 있습니다(<strong>12장</strong>).</p>
+                  <p className="manual-p"><strong>Settings</strong> 메뉴는 색상 테마, 믹서 창 초기화, 오디오 장치 설정을 담고 있습니다(<strong>13장</strong>).</p>
 
                   <h3 className="manual-h3">트랙 크기 — S · M · L</h3>
                   <p className="manual-p">상단의 <strong>TRACK SIZE</strong>로 트랙 행 높이를 바꿉니다. 높이가 커질수록 헤더에 더 많은 컨트롤이 펼쳐지므로, <strong>오토메이션 Curve나 Audio In 트랙의 녹음 컨트롤을 다룰 때는 M 또는 L</strong>을 쓰는 것이 편합니다.</p>
@@ -574,7 +576,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">⑩ Key indicator</th><td className="manual-td">The detected/assigned original key and the transposed playback key. Click to open the Key panel (<strong>ch. 7</strong>).</td></tr>
                       <tr><th className="manual-th">⑪ Vari Key switch</th><td className="manual-td">Must be on for the semitone offset to apply during playback (off by default).</td></tr>
                       <tr><th className="manual-th">⑫ Mixer</th><td className="manual-td">Opens the mixer console in its own window (<kbd className="manual-kbd">F3</kbd>).</td></tr>
-                      <tr><th className="manual-th">⑬ Export</th><td className="manual-td">Opens the mixdown export dialog (<strong>ch. 11</strong>).</td></tr>
+                      <tr><th className="manual-th">⑬ Export</th><td className="manual-td">Opens the mixdown export dialog (<strong>ch. 12</strong>).</td></tr>
                       <tr><th className="manual-th">⑭ Transport</th><td className="manual-td">Return to start · Stop · Play/Pause · <strong>Repeat</strong> · <strong>Metronome</strong> · <strong>Pre-roll</strong> · <strong>Punch</strong> · <strong>Record</strong> (<strong>ch. 4 &amp; 5</strong>).</td></tr>
                       <tr><th className="manual-th">⑮ Time display</th><td className="manual-td">Current playhead position and total project length.</td></tr>
                       <tr><th className="manual-th">⑯ Project name</th><td className="manual-td">Click to rename in place. The same name appears in the status bar at the bottom.</td></tr>
@@ -598,7 +600,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/screens-v2/01-05-help-menu.png" alt="Help menu" className="manual-img" />
                     <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong> (this document), <strong>Release Notes</strong>, <strong>Check for Updates</strong> (download and install a new version), <strong>About</strong>.</div>
                   </div>
-                  <p className="manual-p">The <strong>Settings</strong> menu holds color themes, the mixer-window reset, and audio device setup (<strong>ch. 12</strong>).</p>
+                  <p className="manual-p">The <strong>Settings</strong> menu holds color themes, the mixer-window reset, and audio device setup (<strong>ch. 13</strong>).</p>
 
                   <h3 className="manual-h3">Track size — S · M · L</h3>
                   <p className="manual-p"><strong>TRACK SIZE</strong> at the top changes the row height. Taller rows expose more header controls, so use <strong>M or L</strong> when working with automation curves or the Audio In recording controls.</p>
@@ -667,7 +669,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h3 className="manual-h3">앱 설치와 실행</h3>
                   <p className="manual-p">받으신 설치 파일(<code className="manual-code">FocusDAW-Studio-Setup-x.y.z.exe</code>)을 실행하면 설치가 진행되고, 바탕화면과 시작 메뉴에 <strong>FocusDAW Studio</strong> 아이콘이 만들어집니다. 이후에는 이 아이콘으로 앱을 실행합니다.</p>
                   <p className="manual-p">앱을 켜면 <strong>마지막에 작업하던 세션이 자동으로 복원</strong>됩니다. 저장하지 않고 종료했더라도 이어서 작업할 수 있습니다(아래 <strong>RECENT PROJECT</strong> 참고). 완전히 새로 시작하려면 <strong>Project ▸ New Project</strong>를 사용하세요.</p>
-                  <div className="manual-note">처음 실행할 때 소리가 나지 않으면 <strong>Settings ▸ 오디오 장치</strong>에서 출력 장치가 현재 쓰는 장치로 지정되어 있는지 확인하세요(<strong>12장</strong>). 녹음을 하려면 입력 장치도 함께 지정합니다.</div>
+                  <div className="manual-note">처음 실행할 때 소리가 나지 않으면 <strong>Settings ▸ 오디오 장치</strong>에서 출력 장치가 현재 쓰는 장치로 지정되어 있는지 확인하세요(<strong>13장</strong>). 녹음을 하려면 입력 장치도 함께 지정합니다.</div>
 
                   <h3 className="manual-h3">상단 Project 메뉴</h3>
                   <div className="manual-figure">
@@ -728,7 +730,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h3 className="manual-h3">Installing and launching</h3>
                   <p className="manual-p">Run the installer you received (<code className="manual-code">FocusDAW-Studio-Setup-x.y.z.exe</code>). It adds a <strong>FocusDAW Studio</strong> shortcut to the desktop and the Start menu — launch the app from there.</p>
                   <p className="manual-p">On start-up the app <strong>restores the session you last worked on</strong>, even if you closed it without saving (see <strong>RECENT PROJECT</strong> below). Use <strong>Project ▸ New Project</strong> when you want a clean slate instead.</p>
-                  <div className="manual-note">If you hear nothing on first launch, check that the output device under <strong>Settings ▸ Audio device</strong> is the one you are actually using (<strong>ch. 12</strong>). Recording additionally needs an input device selected there.</div>
+                  <div className="manual-note">If you hear nothing on first launch, check that the output device under <strong>Settings ▸ Audio device</strong> is the one you are actually using (<strong>ch. 13</strong>). Recording additionally needs an input device selected there.</div>
 
                   <h3 className="manual-h3">Top "Project" Menu</h3>
                   <div className="manual-figure">
@@ -1439,7 +1441,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
                   <div className="manual-note">만들어진 <strong>Bounce 트랙</strong>은 Audio In 트랙과 마찬가지로 <strong>클립 편집</strong>과 <strong>보컬 채널 스트립(FX)</strong>을 쓸 수 있습니다. 원본을 <strong>Keep + Mute</strong>로 두면 나중에 다시 펼쳐 볼 수 있으므로 가장 안전합니다.</div>
-                  <div className="manual-note"><strong>바운스는 언제나 원본 BPM · Key로 렌더링됩니다.</strong> Vari BPM이나 Vari Key를 켜 둔 채 병합해도 결과물의 길이와 음정이 달라지지 않아, 타임라인에서 원본 트랙과 정확히 겹칩니다. 템포·조성 변경은 <strong>실시간 재생과 Export</strong>에만 적용된다고 기억하세요(<strong>6장 · 7장 · 11장</strong>).</div>
+                  <div className="manual-note"><strong>바운스는 언제나 원본 BPM · Key로 렌더링됩니다.</strong> Vari BPM이나 Vari Key를 켜 둔 채 병합해도 결과물의 길이와 음정이 달라지지 않아, 타임라인에서 원본 트랙과 정확히 겹칩니다. 템포·조성 변경은 <strong>실시간 재생과 Export</strong>에만 적용된다고 기억하세요(<strong>6장 · 7장 · 12장</strong>).</div>
 
                   <h3 className="manual-h3">Edit 메뉴 — 모든 트랙 삭제 (Delete all tracks) <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">상단 <strong>Edit</strong> 메뉴의 Undo / Redo 아래에 <strong>Delete all tracks</strong> 항목이 있습니다. 현재 불러온 <strong>오디오 트랙만 모두 비우고</strong>, 마스터(프로젝트 전체)에 걸어 둔 <strong>이펙트 설정은 그대로 유지</strong>합니다. 같은 이펙트 체인(마스터 EQ·리버브·에코·Ambience·페이드 등)을 유지한 채 다른 스템 세트로 교체할 때 유용합니다.</p>
@@ -1565,7 +1567,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     </tbody>
                   </table>
                   <div className="manual-note">A <strong>Bounce track</strong> supports <strong>clip editing</strong> and the <strong>Vocal Channel Strip (FX)</strong>, just like an Audio In track. Leaving the originals on <strong>Keep + Mute</strong> is the safest choice — you can always unfold them again later.</div>
-                  <div className="manual-note"><strong>Bounces always render at the original BPM and key.</strong> Merging with Vari BPM or Vari Key switched on does not change the result's length or pitch, so it lines up exactly with the tracks it came from. Tempo and key changes apply to <strong>realtime playback and Export only</strong> (<strong>ch. 6 · 7 · 11</strong>).</div>
+                  <div className="manual-note"><strong>Bounces always render at the original BPM and key.</strong> Merging with Vari BPM or Vari Key switched on does not change the result's length or pitch, so it lines up exactly with the tracks it came from. Tempo and key changes apply to <strong>realtime playback and Export only</strong> (<strong>ch. 6 · 7 · 12</strong>).</div>
 
                   <h3 className="manual-h3">Edit Menu — Delete all tracks <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">The top <strong>Edit</strong> menu offers <strong>Delete all tracks</strong> below Undo / Redo. It clears <strong>all loaded audio tracks at once while keeping the master (project-wide) effect settings intact</strong> — handy when you want to swap in a different set of stems but keep the same effect chain (master EQ, reverb, echo, Ambience, fades, etc.).</p>
@@ -1986,7 +1988,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <tbody>
                       <tr><th className="manual-th">Graphic EQ · FFT</th><td className="manual-td">스펙트럼 배경 위에 EQ 곡선을 표시합니다. 각 밴드 포인트를 드래그해 -12dB부터 +12dB까지 조절합니다.</td></tr>
                       <tr><th className="manual-th">Level meter</th><td className="manual-td">주파수 대역별 레벨 미터를 표시합니다. EQ 포인트 오버레이도 함께 조작할 수 있습니다.</td></tr>
-                      <tr><th className="manual-th">EQ PRESET</th><td className="manual-td">Reset(Flat), Pop, Classic, Hip Hop 프리셋을 바로 적용합니다. 정밀 편집은 오른쪽 <strong>ADVANCED</strong> 버튼으로 큰 Equalizer 창을 엽니다(7장 참조).</td></tr>
+                      <tr><th className="manual-th">EQ PRESET</th><td className="manual-td">Reset(Flat), Pop, Classic, Hip Hop 프리셋을 바로 적용합니다. 정밀 편집은 오른쪽 <strong>ADVANCED</strong> 버튼으로 큰 Equalizer 창을 엽니다(<strong>10장</strong>).</td></tr>
                       <tr><th className="manual-th">OUTPUT EFFECTS</th><td className="manual-td">최종 출력(마스터 버스)에 적용하는 다섯 가지 효과입니다. 각 슬라이더로 0~100% 전송량을 조절하며, 켜진 효과는 아이콘에 색이 들어오고 오른쪽에 퍼센트가 표시됩니다.</td></tr>
                     </tbody>
                   </table>
@@ -2073,7 +2075,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <tbody>
                       <tr><th className="manual-th">Graphic EQ / FFT</th><td className="manual-td">Displays the EQ curve over a real-time FFT spectrum background. Drag points to adjust gain from -12dB to +12dB.</td></tr>
                       <tr><th className="manual-th">Level meters</th><td className="manual-td">Displays real-time level bars for each frequency range alongside EQ controls.</td></tr>
-                      <tr><th className="manual-th">EQ PRESETS</th><td className="manual-td">Instantly applies preset curves: Reset (Flat), Pop, Classic, and Hip Hop. The <strong>ADVANCED</strong> button opens the large Equalizer window (see ch.7).</td></tr>
+                      <tr><th className="manual-th">EQ PRESETS</th><td className="manual-td">Instantly applies preset curves: Reset (Flat), Pop, Classic, and Hip Hop. The <strong>ADVANCED</strong> button opens the large Equalizer window (<strong>ch. 10</strong>).</td></tr>
                       <tr><th className="manual-th">OUTPUT EFFECTS</th><td className="manual-td">Five effects applied to the final master bus. Each slider sets the 0–100% send amount; active effects light up and show their percentage on the right.</td></tr>
                     </tbody>
                   </table>
@@ -2304,11 +2306,135 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 10. 믹스다운 내보내기 / Exporting Mixdown */}
+            {/* 11. 피치 에디터 / Pitch Editor — v2.9.2: HTML 메뉴얼(v2.9.0)과 같은 본문. */}
+            {/* 🔴 메뉴얼은 두 벌이다 — manual/사용자 메뉴얼.html 과 이 파일. 한쪽만 고치면 앱 안에서는 안 보인다. */}
+            <section id="pitch" className="manual-section">
+              {lang === "ko" ? (
+                <>
+                  <h2 className="manual-h2">11. 피치 에디터(Pitch Editor)</h2>
+                  <p className="manual-p"><strong>피치 에디터</strong>는 녹음한 보컬의 음정을 음(note) 단위로 다듬는 창입니다. 클립의 음높이를 눈으로 보고, 어긋난 음을 끌어 옮긴 뒤, 그 결과를 오디오에 구워 넣습니다. <strong>원본 녹음 파일은 절대 변하지 않습니다</strong> — 보정한 결과는 언제나 새 오디오로 따로 만들어지고, 되돌릴 수 있습니다.</p>
+                  <p className="manual-p">상단 도구 막대의 <strong>Key / Vari Key</strong>가 <em>곡 전체</em>의 조성을 바꾸는 기능이라면, 피치 에디터는 <em>한 음씩</em> 고치는 기능입니다. 두 기능은 방식이 달라서, 피치 에디터는 목소리의 음색(포먼트)을 그대로 두고 음정만 옮깁니다.</p>
+                  <h3 className="manual-h3">① 열기</h3>
+                  <p className="manual-p"><strong>Audio In 트랙</strong>의 클립을 <strong>우클릭</strong>하고 <code className="manual-code">Pitch Editor...</code>를 고릅니다. 스템(파일) 트랙에는 이 메뉴가 나오지 않습니다 — 보컬 테이크를 위한 기능입니다.</p>
+                  <h3 className="manual-h3">② Analyze — 음높이 분석</h3>
+                  <p className="manual-p">창이 열리면 우측 패널의 <strong>Analyze</strong>(또는 <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>)를 누릅니다. 부른 음높이가 <strong>빨간 곡선</strong>으로 그려지고, 그 위에 <strong>노트 블록</strong>이 얹힙니다. 블록 하나가 부른 음 하나입니다.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li">블록 안의 글자는 검출된 <strong>음이름</strong>과 <strong>센트 편차</strong>입니다(예: <code className="manual-code">A3 +12¢</code>).</li>
+                      <li className="manual-li">블록이 <strong>흐릿하면</strong> 검출 신뢰도가 낮은 구간입니다.</li>
+                      <li className="manual-li">테두리가 <strong>점선</strong>이면 프로젝트 조성에서 벗어난 음입니다.</li>
+                      <li className="manual-li">⚠️ 분석 결과는 저장되지 않습니다. 프로젝트를 다시 열면 <strong>Analyze를 다시</strong> 눌러야 합니다. 편집한 내용은 그대로 남아 다시 붙습니다.</li>
+                  </ul>
+                  <h3 className="manual-h3">③ 노트 고르기</h3>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>클릭</strong> — 그 노트만 선택</li>
+                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<strong>클릭</strong> — 하나씩 더하거나 빼기</li>
+                      <li className="manual-li"><kbd className="manual-kbd">Shift</kbd>+<strong>클릭</strong> — 먼저 고른 노트부터 <strong>그 사이 전부</strong></li>
+                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">A</kbd> — <strong>전체 선택</strong></li>
+                      <li className="manual-li">빈 곳을 클릭하면 선택이 풀리고 재생 위치가 그리로 옮겨 갑니다.</li>
+                  </ul>
+                  <h3 className="manual-h3">④ 음정 옮기기 — 드래그와 SNAP</h3>
+                  <p className="manual-p">노트를 위아래로 <strong>끌면</strong> 음정이 바뀝니다. 여러 개를 골라 두면 함께 움직입니다. 옮긴 노트는 <strong>붉은 계열</strong>로 바뀌어 한눈에 찾을 수 있습니다.</p>
+                  <p className="manual-p">우측 <strong>SNAP</strong>이 "어디에 달라붙을지"를 정합니다.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>Chromatic</strong> — 반음 한 칸씩(검은 건반 포함)</li>
+                      <li className="manual-li"><strong>Key</strong> — 곡의 조성에 속한 음에만. 조성이 감지되지 않았으면 고를 수 없습니다.</li>
+                  </ul>
+                  <p className="manual-p"><strong>Snap all to key</strong>는 모든 노트를 한 번에 가장 가까운 조성 음으로 옮깁니다. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 한 번으로 통째로 되돌아갑니다.</p>
+                  <p className="manual-p">⚠️ 노트는 <strong>부른 음높이에서 6반음</strong>까지만 옮겨집니다. 한계에 닿으면 더 끌어도 움직이지 않고 경고가 나타납니다 — 그보다 크게 옮기면 목소리의 음색이 상하기 때문입니다. 한계는 화면의 칸이 아니라 실제로 부른 음높이에서 세므로, 조금 높거나 낮게 부른 노트는 한쪽으로 5칸에서 멈출 수 있습니다. 여러 노트를 함께 끌면 <strong>가장 먼저 한계에 닿는 노트에서 모두 함께</strong> 멈춰 선율 모양이 유지됩니다.</p>
+                  <h3 className="manual-h3">⑤ 한 음이 여러 조각으로 나뉘었을 때 — Split / Merge</h3>
+                  <p className="manual-p">비브라토를 깊게 준 긴 음은 여러 블록으로 쪼개져 보일 수 있습니다. 그 블록들을 <kbd className="manual-kbd">Shift</kbd>+클릭으로 함께 고르고 <strong>Merge</strong>를 누르면 하나가 됩니다. 반대로 두 음이 한 블록으로 뭉쳤다면, 그 블록을 고르고 재생 위치를 경계로 옮긴 뒤 <strong>Split</strong>을 누릅니다.</p>
+                  <p className="manual-p">🔴 <strong>이렇게 정한 경계는 사용자의 것이 됩니다</strong> — 다시 Analyze 하거나 <code className="manual-code">NOTES</code> 설정을 바꾸거나 프로젝트를 다시 열어도 그대로 유지됩니다. 자동 판정으로 되돌리려면 그 노트를 고르고 <strong>Reset</strong>을 누릅니다.</p>
+                  <h3 className="manual-h3">⑥ 얼마나 고칠지 — 프리셋 · AMOUNT · VIBRATO</h3>
+                  <p className="manual-p">선택한 노트가 있으면 <strong>그 노트들</strong>에, 없으면 <strong>클립 전체의 기본값</strong>에 적용됩니다. 어느 쪽인지는 바로 위 라벨(<code className="manual-code">ALL NOTES</code> 또는 <code className="manual-code">N NOTES SELECTED</code>)이 알려 줍니다.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>Natural</strong> — 목표 음정 쪽으로 70%만 옮기고 비브라토는 살립니다. 가장 흔히 쓰는 값입니다.</li>
+                      <li className="manual-li"><strong>Tight</strong> — 음정에 정확히 맞추되 비브라토는 살립니다.</li>
+                      <li className="manual-li"><strong>Hard</strong> — 음정에 정확히 맞추고 비브라토도 눌러 평평하게 만듭니다.</li>
+                  </ul>
+                  <p className="manual-p"><strong>AMOUNT</strong>는 그 비율을 직접 정합니다(0% = 부른 그대로, 100% = 목표에 딱 맞춤). <strong>VIBRATO</strong>는 떨림을 살릴지 누를지를 정합니다.</p>
+                  <h3 className="manual-h3">⑦ Apply / Revert — 소리에 반영하기</h3>
+                  <p className="manual-p">여기까지는 <strong>화면 위의 계획</strong>일 뿐 소리는 그대로입니다. <strong>Apply</strong>를 눌러야 보정이 오디오에 구워집니다. 긴 클립은 몇 초가 걸리며 진행률이 버튼에 표시되고, 끝나면 걸린 시간이 함께 나타납니다.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>Apply</strong>는 <strong>화면과 소리가 다를 때만</strong> 켜집니다. 눌러도 달라질 것이 없으면 꺼져 있습니다.</li>
+                      <li className="manual-li"><strong>Revert</strong>는 오디오를 원래 노래로 되돌립니다. <strong>노트 편집은 그대로 남으므로</strong> 바로 다시 Apply 할 수 있습니다.</li>
+                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 한 번으로 Apply 전체가 되돌아갑니다.</li>
+                      <li className="manual-li">🔴 <strong>보정은 언제나 원본 테이크에서 다시 그립니다.</strong> 그래서 여러 번 Apply 해도 잡음이 쌓이지 않습니다.</li>
+                  </ul>
+                  <p className="manual-p">만들어진 오디오는 프로젝트 폴더의 <code className="manual-code">Audio/Consolidated/</code>에 <code className="manual-code">...Pitched...</code>라는 이름으로 남습니다.</p>
+                  <h3 className="manual-h3">⑧ 알아 두실 한계</h3>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>한 사람이 부른 단성 테이크</strong>가 대상입니다. 두세 사람이 겹쳐 부른 하모니는 음높이 검출의 원리적 한계를 벗어납니다.</li>
+                      <li className="manual-li">이동은 <strong>±6반음</strong>까지가 실용 범위입니다.</li>
+                      <li className="manual-li">보정한 클립을 나누거나 합치거나 Flatten 하면 편집 내용은 없어지고 <strong>보정된 소리만</strong> 남습니다.</li>
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <h2 className="manual-h2">11. Pitch Editor</h2>
+                  <p className="manual-p">The <strong>Pitch Editor</strong> tunes a recorded vocal one note at a time. You see the pitch you sang, drag the notes that went astray, and then print the result into the audio. <strong>Your original recording is never altered</strong> — the correction is always written as new audio, and it can be undone.</p>
+                  <p className="manual-p">Where <strong>Key / Vari Key</strong> in the top toolbar transposes the <em>whole song</em>, the Pitch Editor fixes <em>one note at a time</em>. The two use different methods: the Pitch Editor moves the pitch while leaving the voice's timbre (its formants) where they are.</p>
+                  <h3 className="manual-h3">① Opening it</h3>
+                  <p className="manual-p"><strong>Right-click a clip on an Audio In track</strong> and choose <code className="manual-code">Pitch Editor...</code>. The menu does not appear on stem (file) tracks — this is a tool for vocal takes.</p>
+                  <h3 className="manual-h3">② Analyze</h3>
+                  <p className="manual-p">Press <strong>Analyze</strong> in the side panel (or <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>). The pitch you sang is drawn as a <strong>red curve</strong>, with <strong>note blocks</strong> laid on top. One block is one sung note.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li">The text inside a block is the detected <strong>note name</strong> and its <strong>offset in cents</strong> (for example <code className="manual-code">A3 +12¢</code>).</li>
+                      <li className="manual-li">A <strong>faint</strong> block means the detection was less certain there.</li>
+                      <li className="manual-li">A <strong>dashed</strong> outline means the note sits outside the project key.</li>
+                      <li className="manual-li">⚠️ The analysis is not saved. Reopen the project and you must press <strong>Analyze</strong> again — your edits survive and re-attach themselves.</li>
+                  </ul>
+                  <h3 className="manual-h3">③ Selecting notes</h3>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>Click</strong> — that note only</li>
+                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<strong>click</strong> — add or remove one</li>
+                      <li className="manual-li"><kbd className="manual-kbd">Shift</kbd>+<strong>click</strong> — <strong>everything between</strong> the last note you picked and this one</li>
+                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">A</kbd> — <strong>select all</strong></li>
+                      <li className="manual-li">Clicking empty space clears the selection and moves the playhead there.</li>
+                  </ul>
+                  <h3 className="manual-h3">④ Moving pitch — dragging and SNAP</h3>
+                  <p className="manual-p"><strong>Drag</strong> a note up or down to change its pitch; a whole selection moves together. Notes you have moved turn <strong>red</strong> so you can find them again.</p>
+                  <p className="manual-p"><strong>SNAP</strong> decides what a dragged note lands on.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>Chromatic</strong> — every semitone, black keys included</li>
+                      <li className="manual-li"><strong>Key</strong> — only notes of the project key. Unavailable when no key has been detected.</li>
+                  </ul>
+                  <p className="manual-p"><strong>Snap all to key</strong> moves every note to its nearest note of the key in one step, undone by a single <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd>.</p>
+                  <p className="manual-p">⚠️ A note moves at most <strong>6 semitones from the pitch you sang</strong>. At that limit it stops following the mouse and a warning appears — a larger move would spoil the timbre of the voice. The limit is counted from the sung pitch, not the grid row, so a note sung slightly sharp or flat may stop at 5 rows in one direction. When several notes are dragged together, <strong>they all stop as soon as the first one reaches its limit</strong>, so the shape of the melody is kept.</p>
+                  <h3 className="manual-h3">⑤ When one note arrives in pieces — Split / Merge</h3>
+                  <p className="manual-p">A long note with deep vibrato can appear as several blocks. Select them together with <kbd className="manual-kbd">Shift</kbd>+click and press <strong>Merge</strong> to make them one. If two sung notes ended up in a single block, select it, put the playhead on the boundary, and press <strong>Split</strong>.</p>
+                  <p className="manual-p">🔴 <strong>Boundaries you set this way become yours</strong> — they survive a new Analyze, a change of the <code className="manual-code">NOTES</code> setting, and reopening the project. To hand a note back to the detector, select it and press <strong>Reset</strong>.</p>
+                  <h3 className="manual-h3">⑥ How much to correct — presets, AMOUNT, VIBRATO</h3>
+                  <p className="manual-p">These apply to <strong>the selected notes</strong> if there is a selection, and to <strong>the whole clip's default</strong> if there is not. The label just above them (<code className="manual-code">ALL NOTES</code> or <code className="manual-code">N NOTES SELECTED</code>) says which.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>Natural</strong> — move 70% of the way and keep the vibrato. The usual choice.</li>
+                      <li className="manual-li"><strong>Tight</strong> — land exactly on the note, vibrato kept.</li>
+                      <li className="manual-li"><strong>Hard</strong> — land exactly on the note and flatten the vibrato.</li>
+                  </ul>
+                  <p className="manual-p"><strong>AMOUNT</strong> sets that proportion directly (0% = exactly as sung, 100% = exactly on the target). <strong>VIBRATO</strong> chooses whether the wobble is carried along or pressed flat.</p>
+                  <h3 className="manual-h3">⑦ Apply / Revert</h3>
+                  <p className="manual-p">Up to here nothing you hear has changed — the edits are a <strong>plan on screen</strong>. <strong>Apply</strong> renders them into the audio. A long clip takes a few seconds; the button shows the progress and, when it finishes, how long it took.</p>
+                  <ul className="manual-ul">
+                      <li className="manual-li"><strong>Apply</strong> is enabled <strong>only when the audio differs from what you see</strong>. If pressing it would change nothing, it stays off.</li>
+                      <li className="manual-li"><strong>Revert</strong> puts the original take back. <strong>Your note edits remain</strong>, so you can apply again straight away.</li>
+                      <li className="manual-li">A single <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> undoes the whole Apply.</li>
+                      <li className="manual-li">🔴 <strong>Every correction is drawn from the original take.</strong> Applying repeatedly therefore does not pile up artefacts.</li>
+                  </ul>
+                  <p className="manual-p">The rendered audio is kept in the project folder under <code className="manual-code">Audio/Consolidated/</code> with <code className="manual-code">...Pitched...</code> in its name.</p>
+                  <h3 className="manual-h3">⑧ Limits worth knowing</h3>
+                  <ul className="manual-ul">
+                      <li className="manual-li">It is meant for a <strong>single voice</strong>. Two or three voices singing harmony are beyond what pitch detection can separate.</li>
+                      <li className="manual-li"><strong>±6 semitones</strong> is the practical range for a move.</li>
+                      <li className="manual-li">Splitting, merging or flattening a corrected clip discards the edits and keeps <strong>only the corrected sound</strong>.</li>
+                  </ul>
+                </>
+              )}
+            </section>
+
+            {/* 12. 믹스다운 내보내기 / Exporting Mixdown */}
             <section id="export" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">11. 믹스다운 내보내기</h2>
+                  <h2 className="manual-h2">12. 믹스다운 내보내기</h2>
                   <p className="manual-p"><strong>Export</strong> 버튼 또는 <strong>Project &gt; Export...</strong> 메뉴를 누르면 Export mixdown 창이 열립니다. 실제 내보내기 창에서는 MP3와 WAV 중 하나를 고를 수 있습니다.</p>
 
                   <h3 className="manual-h3">Export 설정</h3>
@@ -2344,7 +2470,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">11. Exporting Mixdown</h2>
+                  <h2 className="manual-h2">12. Exporting Mixdown</h2>
                   <p className="manual-p">Click the <strong>Export</strong> button or go to <strong>Project &gt; Export...</strong> to open the Export dialog. The dialog supports exporting in either MP3 or WAV format.</p>
 
                   <h3 className="manual-h3">Export Settings</h3>
@@ -2385,7 +2511,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="settings" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">12. 설정 · 오디오 장치 · 테마</h2>
+                  <h2 className="manual-h2">13. 설정 · 오디오 장치 · 테마</h2>
                   <p className="manual-p">상단 메뉴의 <strong>Settings</strong>를 누르면 설정 창이 열립니다. 왼쪽 <strong>CONTENTS</strong> 목록으로 <strong>Color Theme · Mixer Console Window · Audio Devices</strong> 세 영역을 오갈 수 있습니다.</p>
 
                   <div className="manual-figure">
@@ -2448,7 +2574,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">12. Settings, Audio Devices &amp; Themes</h2>
+                  <h2 className="manual-h2">13. Settings, Audio Devices &amp; Themes</h2>
                   <p className="manual-p">Click <strong>Settings</strong> in the menu bar to open the settings window. The <strong>CONTENTS</strong> list on the left moves between <strong>Color Theme · Mixer Console Window · Audio Devices</strong>.</p>
 
                   <div className="manual-figure">
@@ -2512,11 +2638,11 @@ function HelpDialog({ onClose, standalone = false }) {
               )}
             </section>
 
-            {/* 13. 단축키 / Shortcuts */}
+            {/* 14. 단축키 / Shortcuts */}
             <section id="shortcuts" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">13. 단축키</h2>
+                  <h2 className="manual-h2">14. 단축키</h2>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지</td></tr>
@@ -2531,6 +2657,14 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">실행 취소</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Y</kbd></th><td className="manual-td">다시 실행</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">다시 실행</td></tr>
+                      <tr><th className="manual-th" colSpan={2} style={{ textAlign: "left", paddingTop: 14 }}>피치 에디터 창</th></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">R</kbd></th><td className="manual-td">Analyze — 음높이 분석</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">A</kbd></th><td className="manual-td">노트 전체 선택</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + 클릭</th><td className="manual-td">노트를 하나씩 더하거나 빼기</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + 클릭</th><td className="manual-td">먼저 고른 노트부터 구간 전체 선택</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + 휠</th><td className="manual-td">시간축 확대 / 축소</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Alt</kbd> + 휠</th><td className="manual-td">음높이 축 확대 / 축소</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지 (스튜디오와 같음)</td></tr>
                     </tbody>
                   </table>
 
@@ -2562,7 +2696,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">13. Shortcuts</h2>
+                  <h2 className="manual-h2">14. Shortcuts</h2>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / Pause</td></tr>
@@ -2577,6 +2711,14 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">Undo</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Y</kbd></th><td className="manual-td">Redo</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Shift</kbd> + <kbd className="manual-kbd">Z</kbd></th><td className="manual-td">Redo</td></tr>
+                      <tr><th className="manual-th" colSpan={2} style={{ textAlign: "left", paddingTop: 14 }}>Pitch Editor window</th></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">R</kbd></th><td className="manual-td">Analyze — detect the sung pitch</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">A</kbd></th><td className="manual-td">Select all notes</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + click</th><td className="manual-td">Add or remove one note</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + click</th><td className="manual-td">Select everything between the last note and this one</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + wheel</th><td className="manual-td">Zoom the time axis</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Alt</kbd> + wheel</th><td className="manual-td">Zoom the pitch axis</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / pause (same as the studio)</td></tr>
                     </tbody>
                   </table>
 
@@ -2613,7 +2755,7 @@ function HelpDialog({ onClose, standalone = false }) {
             <section id="tips" className="manual-section">
               {lang === "ko" ? (
                 <>
-                  <h2 className="manual-h2">14. 문제 해결</h2>
+                  <h2 className="manual-h2">15. 문제 해결</h2>
                   <h3 className="manual-h3">오디오가 들리지 않을 때</h3>
                   <ul className="manual-ul">
                     <li className="manual-li">트랙의 <strong>M</strong> 버튼이 켜져 있지 않은지 확인합니다.</li>
@@ -2629,10 +2771,10 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">원본 오디오 파일의 위치가 바뀌었을 가능성이 큽니다. <strong>같은 파일을 그 트랙 위로 끌어다 놓거나</strong> 다시 가져오면 앱이 파일 이름·경로 기준으로 재연결합니다. 프로젝트를 통째로 옮길 때는 <strong>Save As…</strong>로 저장하면 녹음·바운스가 함께 모아져 안전합니다(<strong>2장</strong>).</p>
 
                   <h3 className="manual-h3">녹음한 소리가 반주보다 늦게(또는 빠르게) 들릴 때</h3>
-                  <p className="manual-p"><strong>Settings ▸ Audio Devices ▸ Recording offset</strong>을 확인하세요. 기본값인 <strong>Auto</strong>가 대부분 맞지만, 어긋난다면 Auto를 끄고 ms 값을 직접 조정하거나, 귀로 맞춘 클립에서 오른쪽 클릭 ▸ <strong>Recording Offset Cal.</strong>로 그 값을 전역 설정에 반영하세요(<strong>12장</strong>).</p>
+                  <p className="manual-p"><strong>Settings ▸ Audio Devices ▸ Recording offset</strong>을 확인하세요. 기본값인 <strong>Auto</strong>가 대부분 맞지만, 어긋난다면 Auto를 끄고 ms 값을 직접 조정하거나, 귀로 맞춘 클립에서 오른쪽 클릭 ▸ <strong>Recording Offset Cal.</strong>로 그 값을 전역 설정에 반영하세요(<strong>13장</strong>).</p>
 
                   <h3 className="manual-h3">녹음 중 소리가 끊기거나 지직거릴 때</h3>
-                  <p className="manual-p">버퍼가 너무 작거나 드라이버 모드가 불안정한 경우입니다. <strong>Buffer를 키우고</strong>, 모드를 <strong>Shared</strong>로 되돌려 보세요. 지연을 낮출수록 안정성은 떨어집니다(<strong>12장</strong>).</p>
+                  <p className="manual-p">버퍼가 너무 작거나 드라이버 모드가 불안정한 경우입니다. <strong>Buffer를 키우고</strong>, 모드를 <strong>Shared</strong>로 되돌려 보세요. 지연을 낮출수록 안정성은 떨어집니다(<strong>13장</strong>).</p>
 
                   <h3 className="manual-h3">Record 버튼이 눌리지 않을 때</h3>
                   <p className="manual-p"><strong>ARM된 Audio In 트랙이 없기 때문</strong>입니다. 녹음할 트랙의 <strong>ARM</strong> 버튼을 먼저 켜세요. <strong>Punch</strong> 버튼이 눌리지 않는다면 <strong>Repeat 구간이 없기 때문</strong>이고, <strong>메트로놈</strong>이 눌리지 않는다면 <strong>프로젝트 BPM이 아직 없기 때문</strong>입니다(<strong>4장 · 6장</strong>).</p>
@@ -2648,7 +2790,7 @@ function HelpDialog({ onClose, standalone = false }) {
                 </>
               ) : (
                 <>
-                  <h2 className="manual-h2">14. Troubleshooting</h2>
+                  <h2 className="manual-h2">15. Troubleshooting</h2>
                   <h3 className="manual-h3">No Sound During Playback</h3>
                   <ul className="manual-ul">
                     <li className="manual-li">Check if the track **M** (Mute) button is turned on.</li>
@@ -2664,10 +2806,10 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">The source audio has been moved or deleted. <strong>Drop the same file onto that track</strong>, or re-import it, and the app reconnects by name/path. When moving a project as a whole, save it with <strong>Save As…</strong> so its recordings and bounces travel with it (<strong>ch. 2</strong>).</p>
 
                   <h3 className="manual-h3">Recordings land late (or early) against the backing</h3>
-                  <p className="manual-p">Check <strong>Settings ▸ Audio Devices ▸ Recording offset</strong>. The default <strong>Auto</strong> is right in most cases; otherwise turn Auto off and adjust the millisecond value, or align one clip by ear and use right-click ▸ <strong>Recording Offset Cal.</strong> to fold that into the global setting (<strong>ch. 12</strong>).</p>
+                  <p className="manual-p">Check <strong>Settings ▸ Audio Devices ▸ Recording offset</strong>. The default <strong>Auto</strong> is right in most cases; otherwise turn Auto off and adjust the millisecond value, or align one clip by ear and use right-click ▸ <strong>Recording Offset Cal.</strong> to fold that into the global setting (<strong>ch. 13</strong>).</p>
 
                   <h3 className="manual-h3">Dropouts or crackles while recording</h3>
-                  <p className="manual-p">The buffer is too small, or the driver mode is unstable on your system. <strong>Raise the Buffer</strong> and switch the mode back to <strong>Shared</strong> — lower latency always trades away stability (<strong>ch. 12</strong>).</p>
+                  <p className="manual-p">The buffer is too small, or the driver mode is unstable on your system. <strong>Raise the Buffer</strong> and switch the mode back to <strong>Shared</strong> — lower latency always trades away stability (<strong>ch. 13</strong>).</p>
 
                   <h3 className="manual-h3">The Record button will not press</h3>
                   <p className="manual-p">There is <strong>no armed Audio In track</strong> — press <strong>ARM</strong> on the track you want to record. Likewise, <strong>Punch</strong> is disabled without a <strong>Repeat region</strong>, and the <strong>metronome</strong> is disabled until the project has a <strong>BPM</strong> (<strong>ch. 4 &amp; 6</strong>).</p>
