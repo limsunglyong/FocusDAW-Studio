@@ -46,6 +46,7 @@ const MUTATE_LIMIT = process.argv.includes('--mutate-limit');
 const MUTATE_CTX = process.argv.includes('--mutate-ctx');   // v2.10.0 (R-3)
 const MUTATE_WRAP = process.argv.includes('--mutate-wrap');  // v2.10.2 (B-PE-LastClipWrap)
 const MUTATE_SNAPLIMIT = process.argv.includes('--mutate-snaplimit'); // v2.10.3 (Key 스냅 경고)
+const MUTATE_RESETAUDIO = process.argv.includes('--mutate-resetaudio'); // v2.10.4 (Reset 이 소리까지)
 
 // ── 가짜 Web Audio (bounce-source-harness.js 와 같은 최소 스텁) ─────────────
 const param = () => ({ value: 0, setValueAtTime() { return this; }, linearRampToValueAtTime() { return this; },
@@ -131,6 +132,12 @@ function loadEditModel() {
     src = src.replace('const src = notes || [];', 'const src = notes || []; if (1) return { notes: src, spans: 0 };');
     if (src === before) { console.error('변이 실패 — peApplyLayout 진입부를 못 찾았다.'); process.exit(2); }
   }
+  if (MUTATE_RESETAUDIO) {
+    const before = src;
+    // 모양이 비었을 때 revert 대신 print 를 고르게 만든다 = 보정 0 으로 PSOLA 를 다시 돌린다.
+    src = src.replace('return hasShape ? "print" : "revert";', 'return "print";');
+    if (src === before) { console.error('변이 실패 — pePostResetAction 을 못 찾았다.'); process.exit(2); }
+  }
   if (MUTATE_SNAPLIMIT) {
     const before = src;
     // 옛 판정으로 되돌린다: 산술 한계에 **정확히** 닿았을 때만 경고. Key 스냅에서 한계
@@ -172,7 +179,7 @@ function loadEditModel() {
     '\nthis.peScalePcs = peScalePcs; this.peSnapToScale = peSnapToScale; this.peDragTarget = peDragTarget;' +
     '\nthis.peDefaults = peDefaults; this.PE_DEFAULTS = PE_DEFAULTS;' +
     '\nthis.PE_MIN_NOTE_FLOOR = PE_MIN_NOTE_FLOOR; this.peShapeSig = peShapeSig; this.PE_PRESETS = PE_PRESETS; this.peMatchPreset = peMatchPreset;' +
-    '\nthis.peShiftRange = peShiftRange; this.peClampDrag = peClampDrag; this.peAtShiftLimit = peAtShiftLimit; this.PE_MAX_SHIFT_SEMIS = PE_MAX_SHIFT_SEMIS; this.peContextTarget = peContextTarget; this.peInsideClip = peInsideClip; this.peShouldStopAtClip = peShouldStopAtClip; this.peTimeCells = peTimeCells;', ctx);
+    '\nthis.peShiftRange = peShiftRange; this.peClampDrag = peClampDrag; this.peAtShiftLimit = peAtShiftLimit; this.PE_MAX_SHIFT_SEMIS = PE_MAX_SHIFT_SEMIS; this.peContextTarget = peContextTarget; this.pePostResetAction = pePostResetAction; this.peLayoutRelease = peLayoutRelease; this.peInsideClip = peInsideClip; this.peShouldStopAtClip = peShouldStopAtClip; this.peTimeCells = peTimeCells;', ctx);
   return ctx;
 }
 
@@ -189,7 +196,7 @@ const check = (label, ok, detail) => {
 };
 
 // ══ 시작 ═══════════════════════════════════════════════════════════════════
-console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}${MUTATE_EDITS ? '  [변이: 형제 보존 제거 · 색 고정]' : ''}${MUTATE_DEFAULTS ? '  [변이: defaults 직렬화 제거]' : ''}${MUTATE_LAYOUT ? '  [변이: 소유 구간 스플라이스 무력화]' : ''}${MUTATE_LIMIT ? '  [변이: 드래그 한계 제거]' : ''}${MUTATE_CTX ? '  [변이: 우클릭이 선택을 무시]' : ''}${MUTATE_WRAP ? '  [변이: 되감김을 못 보는 옛 판정]' : ''}${MUTATE_SNAPLIMIT ? '  [변이: 산술 한계만 보는 옛 경고]' : ''}\n`);
+console.log(`\nStage D 편집 모델·지속 회귀선${MUTATE ? '  [변이: _serializedClips 의 pitch 제거]' : ''}${MUTATE_EDITS ? '  [변이: 형제 보존 제거 · 색 고정]' : ''}${MUTATE_DEFAULTS ? '  [변이: defaults 직렬화 제거]' : ''}${MUTATE_LAYOUT ? '  [변이: 소유 구간 스플라이스 무력화]' : ''}${MUTATE_LIMIT ? '  [변이: 드래그 한계 제거]' : ''}${MUTATE_CTX ? '  [변이: 우클릭이 선택을 무시]' : ''}${MUTATE_WRAP ? '  [변이: 되감김을 못 보는 옛 판정]' : ''}${MUTATE_SNAPLIMIT ? '  [변이: 산술 한계만 보는 옛 경고]' : ''}${MUTATE_RESETAUDIO ? '  [변이: 빈 모양에도 print]' : ''}\n`);
 
 const E = loadEditModel();
 
@@ -973,21 +980,80 @@ console.log('\n㉑ 우클릭 메뉴가 눌리고, Reset 이 소리까지 되돌�
     /ctxRef\.current\.contains\(e\.target\)/.test(ed), '없으면 메뉴 항목이 눌리지 않는다');
   check('메뉴에 ref 가 달려 있다', /ref:\s*ctxRef/.test(ed));
   check('리스너는 여전히 캡처 단계다 (v2.6.1)', /addEventListener\("mousedown",\s*close,\s*true\)/.test(ed));
-  // Reset → 자동 반영.
-  check('Reset 이 자동 반영 표식을 남긴다', /autoPrintRef\.current = true/.test(ed));
-  check('🔴 아무것도 안 남으면 Apply 가 아니라 Revert 다',
-    /anyEdit && !\(layout && layout\.length\)[^]{0,60}revertCorrection\(\)/.test(ed),
-    'Apply 는 보정 0 으로 PSOLA 를 다시 돌린다');
-  check('편집이 남아 있으면 Apply 한다', /autoPrintRef[^]{0,400}applyCorrection\(\)/.test(ed));
-  check('프린트된 적 없으면 아무것도 안 한다 (오디오가 이미 원본)',
-    /autoPrintRef[^]{0,300}!printed\) return/.test(ed));
-  check('앞의 작업이 도는 중에는 미룬다', /autoPrintRef[^]{0,200}printing \|\| busy\) return/.test(ed));
+  // Reset → 소리 맞추기. 📌 v2.10.4 에서 구현이 바뀌었으므로 상세 검사는 ㉒ 에 있다.
+  check('Reset 이 소리 맞추기를 걸어 둔다', /setPendingPrint\(\{/.test(ed));
+}
+
+
+// ── ㉒ Reset 뒤 소리를 맞추는 판정 (v2.10.4, 사용자 보고) ────────────────────
+//
+// 🔴 사용자 보고: 노트 4개(하나는 손대지 않음) 를 모두 골라 Reset 하면 노트는 돌아가는데
+// **소리가 안 돌아왔다.** 편집된 3개만 고르면 정상이었다.
+//
+// ⚠️ 먼저 **두 선택이 같은 결과를 내는지 쟀다** — edits · layout · 이후 화면 상태가 모두
+// 같았다. 즉 선택 내용은 원인이 아니었고, 문제는 **그 다음 단계**였다: 판정이 파생 상태와
+// ref 표식에 걸려 있어 **조용히 아무 일도 안 하는 길이 셋** 있었다.
+console.log('\n㉒ Reset 뒤 소리 맞추기 (B-PE-ResetAudioSilent)');
+{
+  const SIG_A = '[[["0.5","1"]],[1,1],[]]';      // 프린트된 모양
+  const SIG_EMPTY = '[[],[1,1],[]]';             // 전부 Reset 한 모양
+
+  check('프린트된 적 없으면 할 일 없음', E.pePostResetAction(SIG_EMPTY, null, false, false) === 'none');
+  check('이미 그 소리면 할 일 없음', E.pePostResetAction(SIG_A, SIG_A, true, true) === 'none');
+  check('🔴 모양이 하나도 안 남았으면 revert', E.pePostResetAction(SIG_EMPTY, SIG_A, true, false) === 'revert',
+    E.pePostResetAction(SIG_EMPTY, SIG_A, true, false));
+  check('보정이 남았으면 다시 굽는다', E.pePostResetAction(SIG_A, '[[],[1,1],[]]', true, true) === 'print');
+
+  // 🔴 사용자가 마주친 사건: 전부 Reset → 남은 모양 없음 → revert 여야 한다.
+  {
+    const notes4 = [
+      { id: 'n1', t0: 0.0, t1: 0.5, midi: 65.05, target: 65, strength: 1, keepVibrato: true },
+      { id: 'n2', t0: 0.5, t1: 1.0, midi: 65.10, target: 66, strength: 1, keepVibrato: true },
+      { id: 'n3', t0: 1.0, t1: 1.5, midi: 66.90, target: 68, strength: 1, keepVibrato: true },
+      { id: 'n4', t0: 1.5, t1: 2.0, midi: 64.95, target: 66, strength: 1, keepVibrato: true },
+    ];
+    const edits0 = [
+      { t0: 0.5, t1: 1.0, target: 66, strength: 1, keepVibrato: true },
+      { t0: 1.0, t1: 1.5, target: 68, strength: 1, keepVibrato: true },
+      { t0: 1.5, t1: 2.0, target: 66, strength: 1, keepVibrato: true },
+    ];
+    const defs = E.PE_DEFAULTS;
+    const printedSig = E.peShapeSig(edits0, defs, []);
+    const run = (ids) => {
+      const sel = new Set(ids);
+      const picked = notes4.filter((nt) => sel.has(nt.id));
+      const nextEdits = E.peRewriteEdits(notes4, edits0, sel, () => null, E.PE_TUNING.reattachTau, defs);
+      const nextLayout = picked.length ? E.peLayoutRelease([], picked[0].t0, picked[picked.length - 1].t1) : [];
+      const sig = E.peShapeSig(nextEdits, defs, nextLayout);
+      const hasShape = !!(nextEdits.length || nextLayout.length);
+      return { sig, act: E.pePostResetAction(sig, printedSig, true, hasShape) };
+    };
+    const only3 = run(['n2', 'n3', 'n4']);          // 사용자: 정상이었다
+    const all4  = run(['n1', 'n2', 'n3', 'n4']);    // 사용자: 소리가 안 돌아왔다
+    check('🔴 손대지 않은 노트를 끼워 골라도 결과가 같다', only3.sig === all4.sig && only3.act === all4.act,
+      only3.act + ' / ' + all4.act);
+    check('🔴 둘 다 revert 를 고른다 (소리가 원래대로)', only3.act === 'revert' && all4.act === 'revert');
+  }
+
+  // 배선 — 조용히 넘어가는 길이 없어야 한다.
+  const ed = fs.readFileSync(path.join(ROOT, 'build', 'pitch-editor-app.js'), 'utf8');
+  check('🔴 표식(ref)이 아니라 값(state)으로 이어진다',
+    ed.includes('setPendingPrint') && !/autoPrintRef/.test(ed), 'ref 는 렌더를 일으키지 않는다');
+  check('Reset 이 만든 모양을 그대로 싣는다', /setPendingPrint\(\{ edits: nextEdits, layout: nextLayout \}\)/.test(ed));
+  check('🔴 작업 중이면 값을 **남겨 둔 채** 물러난다',
+    /if \(printing \|\| busy\) return;\s*const want = pendingPrint/.test(ed), 'v2.10.3 은 여기서 표식을 지웠다');
+  check('판정이 pePostResetAction 하나를 거친다', ed.includes('pePostResetAction(sig'));
+  check('🔴 파생 상태가 아니라 클립이 담은 것을 본다', /inf\.pitch\.printedSourceId/.test(ed) && /inf\.pitch\.printedSig/.test(ed));
+  check('🔴 canApply · revertCorrection 의 조용한 가드를 타지 않는다',
+    !/pendingPrint[^]{0,900}canApply/.test(ed) && !/pendingPrint[^]{0,900}revertCorrection\(\)/.test(ed));
+  check('구울 수 없으면 말은 한다 (분석 없음)',
+    ed.includes('Press Analyze, then Apply'), '조용히 넘어가면 화면과 소리가 어긋난 채 남는다');
 }
 
 
 // ── 마무리 ─────────────────────────────────────────────────────────────────
 console.log(`\n${pass} PASS · ${fail} FAIL`);
-if (MUTATE || MUTATE_EDITS || MUTATE_DEFAULTS || MUTATE_LAYOUT || MUTATE_LIMIT || MUTATE_CTX || MUTATE_WRAP || MUTATE_SNAPLIMIT) {
+if (MUTATE || MUTATE_EDITS || MUTATE_DEFAULTS || MUTATE_LAYOUT || MUTATE_LIMIT || MUTATE_CTX || MUTATE_WRAP || MUTATE_SNAPLIMIT || MUTATE_RESETAUDIO) {
   console.log(fail > 0
     ? '\n✅ 변이 시험 통과 — 수정을 빼면 하네스가 잡아낸다.'
     : '\n🔴 변이했는데도 전건 통과 — 이 하네스는 ③④를 실제로 지키지 못한다.');

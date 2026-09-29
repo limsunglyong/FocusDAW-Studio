@@ -402,6 +402,31 @@ function peShouldStopAtClip(pRel, dur, entered) {
   return !!entered && !peInsideClip(pRel, dur);
 }
 
+// ══ v2.10.4 — Reset 뒤에 소리를 어떻게 맞출 것인가 ═══════════════════════════════
+//
+// 🔴 v2.10.3 은 이 판정을 **파생 상태**(canApply · anyEdit · layout)와 **ref 표식**에
+// 걸었고, 그래서 **조용히 아무 일도 안 하는 길이 셋** 있었다:
+//   ① 효과가 `printing || busy` 로 빠져나가면서 표식을 남겨 둔다 → 다음에 엉뚱한 때 뛴다
+//   ② `revertCorrection()` 이 `!printed` 로 조용히 되돌아간다
+//   ③ `canApply` 가 false 면 `applyCorrection()` 이 불리지도 않는다
+// 셋 다 화면에는 아무 표시가 없다 — 사용자에게는 "노트는 돌아갔는데 소리는 그대로" 다.
+//
+// 그래서 판정을 **값 하나로** 내린다. 들어가는 것은 Reset 이 방금 만든 모양의 지문과
+// 클립이 실제로 담고 있는 것뿐이고, 나오는 것은 할 일 하나다.
+//
+//   "none"   프린트된 적이 없거나, 이미 그 소리다 — 할 일 없음
+//   "revert" 되돌릴 모양이 하나도 안 남았다 — baseSourceId 로 되돌린다
+//   "print"  아직 보정이 남았다 — 그 모양으로 다시 굽는다
+//
+// ⚠️ **모양이 비었으면 print 가 아니라 revert 다.** 둘 다 "원래 소리" 로 끝나지만 print 는
+// 보정 0 인 채로 PSOLA 를 통째로 다시 돌린다 — 원본과 비트 단위로 같지 않고
+// B-PSOLA-Quality 의 거칠어짐을 그대로 받는다. revert 는 정확하고 즉시다.
+function pePostResetAction(sig, printedSig, isPrinted, hasShape) {
+  if (!isPrinted) return "none";                  // 오디오가 이미 원본이다
+  if (sig === (printedSig || null)) return "none";  // 이미 그 소리가 나고 있다
+  return hasShape ? "print" : "revert";
+}
+
 // v2.10.0 (R-3) — 우클릭이 무엇을 대상으로 삼는가.
 //
 // DAW 관례: **선택 안의 노트를 우클릭하면 선택 전체**가 대상이고, **선택 밖의 노트를
@@ -1584,9 +1609,15 @@ function PitchEditorApp() {
   // v2.10.2 — 이 재생에서 플레이헤드가 **한 번이라도 클립 안에 있었는가**. ▶ 직후의
   // "재생 중 + 아직 바깥" 한 틱을 걸러 내는 래치다(peShouldStopAtClip 의 주석).
   const enteredClipRef = React.useRef(false);
-  // v2.10.3 — Reset 이 "소리도 되돌려라" 를 남기는 표식. 선언이 쓰는 곳보다 뒤에 있으면
-  // 안 되므로 다른 ref 들과 함께 둔다(v2.9.0 에서 TDZ 로 두 번 데였다).
-  const autoPrintRef = React.useRef(false);
+  // v2.10.4 — Reset 이 남기는 것은 **표식이 아니라 값**이다: `{ edits, layout }`.
+  //
+  // 🔴 ref 였던 것을 state 로 바꾼 이유가 핵심이다. ref 를 바꿔도 렌더가 일어나지 않으므로,
+  // 효과가 다시 뛸지는 **다른 의존성이 마침 바뀌었는가**에 달려 있었다 — 즉 Reset 의 성패가
+  // 무관한 상태 변화에 얹혀 있었다. state 면 Reset 이 곧 렌더이고 효과는 반드시 한 번 뛴다.
+  //
+  // 값을 담는 이유: 효과가 뛸 때 파생 상태(anyEdit · canApply)가 무엇이든, **Reset 이 만든
+  // 모양**을 그대로 쓴다. 판정과 대상이 같은 순간의 것이어야 어긋나지 않는다.
+  const [pendingPrint, setPendingPrint] = React.useState(null);
   const wasPlayingRef = React.useRef(false);
   const clipLoopRef = React.useRef(false); clipLoopRef.current = clipLoop;
   const struckTimer = React.useRef(null);
@@ -2107,11 +2138,13 @@ function PitchEditorApp() {
       ? peLayoutRelease(layoutRef.current, picked[0].t0, picked[picked.length - 1].t1)
       : layoutRef.current;
     pushShape(nextLayout, nextEdits);
-    // v2.10.3 (사용자 요청) — Reset 은 **소리까지** 되돌린다. 예전에는 화면의 노트만
-    // 제자리로 가고 오디오는 보정된 채였으므로, 사용자가 Apply 를 한 번 더 눌러야 했다.
-    // 여기서 곧장 부르지 못하는 이유: pushShape 가 방금 건 state 가 아직 반영되지 않아
-    // canApply 가 옛 값이다. 표식만 남기고 **다음 렌더의 효과**에서 처리한다.
-    autoPrintRef.current = true;
+    // v2.10.3 (사용자 요청) — Reset 은 **소리까지** 되돌린다. 화면의 노트만 제자리로 가고
+    // 오디오는 보정된 채로 남으면, 사용자가 Apply 를 한 번 더 눌러야 한다.
+    //
+    // v2.10.4 — 여기서 곧장 보내지 않는 이유는 **노트**다. 프린트는 `notesRef.current` 를
+    // 실어 보내는데 그것은 아직 Reset 이전 값이다. 같은 배치에서 setEdits 와 이 state 가
+    // 함께 걸리므로, 효과가 뛰는 렌더에서는 둘 다 새 값이다.
+    setPendingPrint({ edits: nextEdits, layout: nextLayout });
   }, [rewriteEdits, pushShape]);
 
   // 📌 상태줄 Reset 버튼은 남긴다(요청 R-3) — 우클릭을 모르는 사용자에게도 길이 있어야 한다.
@@ -2295,13 +2328,39 @@ function PitchEditorApp() {
   //
   // 프린트된 적이 없으면 할 일이 없다. 오디오는 이미 원본이다.
   React.useEffect(() => {
-    if (!autoPrintRef.current) return;
-    if (printing || busy) return;        // 앞의 작업이 끝나면 이 효과가 다시 뛴다
-    autoPrintRef.current = false;
-    if (!printed) return;
-    if (!anyEdit && !(layout && layout.length)) { revertCorrection(); return; }
-    if (canApply) applyCorrection();
-  }, [printed, anyEdit, layout, canApply, printing, busy, applyCorrection, revertCorrection]);
+    if (!pendingPrint) return;
+    // 앞의 작업이 도는 중이면 **값을 그대로 둔 채** 물러난다 — printing 이 풀리면 이 효과가
+    // 다시 뛴다. v2.10.3 은 여기서 표식을 지워 버려 그대로 잊혔다.
+    if (printing || busy) return;
+    const want = pendingPrint;
+    setPendingPrint(null);
+
+    // 🔴 파생 상태가 아니라 **클립이 실제로 담고 있는 것**을 본다.
+    const inf = infoRef.current;
+    const isPrinted = !!(inf && inf.pitch && inf.pitch.printedSourceId);
+    const printedSigNow = (inf && inf.pitch && inf.pitch.printedSig) || null;
+    const sig = peShapeSig(want.edits, defsRef.current, want.layout);
+    const hasShape = !!((want.edits && want.edits.length) || (want.layout && want.layout.length));
+    const act = pePostResetAction(sig, printedSigNow, isPrinted, hasShape);
+    if (act === "none") return;
+
+    if (act === "revert") {
+      setPrinting(true);
+      peChannel.postMessage({ type: "REQUEST_PITCH_REVERT", trackId, clipId });
+      return;
+    }
+    // act === "print". ⚠️ 분석이 없으면 구울 수 없다 — 그때는 **말은 한다.** 조용히 넘어가면
+    // 화면과 소리가 어긋난 채로 남고, 그것이 이 결함의 모양이었다.
+    if (!analysis) { setNote("Press Analyze, then Apply, to put this change into the audio."); return; }
+    setPrinting(true);
+    setPrintPct(0);
+    setPrintMs(null);
+    setNote("Rendering the correction…");
+    peChannel.postMessage({
+      type: "REQUEST_PITCH_PRINT", trackId, clipId,
+      analysis, notes: notesRef.current, sig,
+    });
+  }, [pendingPrint, printing, busy, analysis, trackId, clipId]);
 
   // Reset 은 값이 바뀌었을 때뿐 아니라 **경계를 소유하고 있을 때도** 나와야 한다 — 병합만
   // 해 두고 음정은 안 건드린 경우, 이것이 없으면 소유를 돌려줄 길이 없다.
