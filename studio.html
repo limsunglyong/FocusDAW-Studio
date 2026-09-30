@@ -5,20 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FocusDAW Studio</title>
 <link rel="icon" type="image/png" href="assets/logo.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400&family=Orbitron:wght@400&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-<!-- Key read-out fonts (separate links so a missing family can't break the line above) -->
-<link href="https://fonts.googleapis.com/css2?family=Elms+Sans&display=swap" rel="stylesheet" />
-<link href="https://fonts.googleapis.com/css2?family=Tai+Heritage+Pro&display=swap" rel="stylesheet" />
-<!-- Output FX project-name watermark (v2.5.5, weight normalised in v2.5.6). Google Sans Flex
+<!-- 폰트는 전부 로컬이다(v2.11.0) — 받는 목록은 tools/fetch-fonts.js 의 FAMILIES 한 곳에 있다.
+     Output FX project-name watermark (v2.5.5, weight normalised in v2.5.6): Google Sans Flex
      carries NO Hangul/CJK subset, so Latin resolves there and Korean falls through to Nanum
      Myeongjo per character - the EN/KO split needs no conditional.
      Weight 400 ONLY, and it must stay in lockstep with the fontWeight on the watermark div:
-     Google Sans Flex is variable (wght 1-1000), so asking for a weight the CSS does not use
-     is dead download, while USING a weight not asked for makes the browser synthesise it.
-     Both families are SIL OFL 1.1 (google/fonts ofl/). -->
-<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400&family=Nanum+Myeongjo:wght@400&display=swap" rel="stylesheet" />
+     Google Sans Flex is variable (wght 1-1000), and USING a weight that was not fetched makes
+     the browser synthesise it. Both families are SIL OFL 1.1 (google/fonts ofl/). -->
+<link rel="stylesheet" href="assets/fonts/fonts.css" />
 <style>
 :root{
   --bg:#1b1712; --bg2:#221d17; --surface:#2a2520; --surface2:#332e27; --surface3:#3d362d;

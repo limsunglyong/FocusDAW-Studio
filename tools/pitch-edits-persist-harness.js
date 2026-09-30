@@ -777,7 +777,19 @@ console.log('\n⑯ 전송 시간 표시 (R-4)');
     check('🔴 글자 대비 최악 >= 4.5 (본문 기준선)', worst >= 4.5, worst.toFixed(2) + ' (' + worstName + ')');
     check('칩 배경이 툴바 배경과 구분된다 (대비 >= 1.05)', worstBox >= 1.05, worstBox.toFixed(3) + ' (' + worstBoxName + ')');
   }
-  check('🔴 Saira Condensed 100/200 을 실제로 불러온다', /Saira\+Condensed:wght@100;200/.test(css));
+  // v2.11.0 — 폰트가 로컬(assets/fonts/fonts.css)로 옮겨졌다. 창이 그 CSS 를 읽고, CSS 에
+  // 100 · 200 두 웨이트가 모두 있고, 가리키는 파일이 실제로 있는지를 본다.
+  {
+    const fcss = fs.readFileSync(path.join(ROOT, 'assets', 'fonts', 'fonts.css'), 'utf8');
+    const faces = [...fcss.matchAll(/@font-face\s*\{[^}]*\}/g)].map(m => m[0])
+      .filter(b => /font-family:\s*'Saira Condensed'/.test(b));
+    const has = (w) => faces.some(b => new RegExp('font-weight:\\s*' + w + ';').test(b));
+    const files = faces.map(b => /url\(([^)]+)\)/.exec(b)[1]);
+    const missing = files.filter(f => !fs.existsSync(path.join(ROOT, 'assets', 'fonts', f)));
+    check('🔴 Saira Condensed 100/200 을 실제로 불러온다 (로컬)',
+      /href="assets\/fonts\/fonts\.css"/.test(css) && has(100) && has(200) && files.length > 0 && !missing.length,
+      missing.length ? 'missing ' + missing.join(', ') : faces.length + ' faces');
+  }
   // 툴바 가운데 = 3칸 그리드. spacer 두 개로는 **가운데가 아니었다**(T-2.10.0-3 사용자 판정):
   // flex 여백은 좌우 내용의 폭 차이만큼 밀린다.
   const ed = fs.readFileSync(path.join(ROOT, 'build', 'pitch-editor-app.js'), 'utf8');

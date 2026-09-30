@@ -2334,7 +2334,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <li className="manual-li">빈 곳을 클릭하면 선택이 풀리고 재생 위치가 그리로 옮겨 갑니다.</li>
                   </ul>
                   <h3 className="manual-h3">④ 음정 옮기기 — 드래그와 SNAP</h3>
-                  <p className="manual-p">노트를 위아래로 <strong>끌면</strong> 음정이 바뀝니다. 여러 개를 골라 두면 함께 움직입니다. 옮긴 노트는 <strong>붉은 계열</strong>로 바뀌어 한눈에 찾을 수 있습니다.</p>
+                  <p className="manual-p">노트를 위아래로 <strong>끌면</strong> 음정이 바뀝니다. 여러 개를 골라 두면 함께 움직입니다. 옮긴 노트는 <strong>붉은 계열</strong>로 바뀌어 한눈에 찾을 수 있습니다. 음정을 옮기면 <strong>원래 있던 자리에 회색 막대</strong>가 남아, 어디서 얼마나 옮겼는지 바로 보입니다.</p>
                   <p className="manual-p">우측 <strong>SNAP</strong>이 "어디에 달라붙을지"를 정합니다.</p>
                   <ul className="manual-ul">
                       <li className="manual-li"><strong>Chromatic</strong> — 반음 한 칸씩(검은 건반 포함)</li>
@@ -2397,7 +2397,7 @@ function HelpDialog({ onClose, standalone = false }) {
                       <li className="manual-li">Clicking empty space clears the selection and moves the playhead there.</li>
                   </ul>
                   <h3 className="manual-h3">④ Moving pitch — dragging and SNAP</h3>
-                  <p className="manual-p"><strong>Drag</strong> a note up or down to change its pitch; a whole selection moves together. Notes you have moved turn <strong>red</strong> so you can find them again.</p>
+                  <p className="manual-p"><strong>Drag</strong> a note up or down to change its pitch; a whole selection moves together. Notes you have moved turn <strong>red</strong> so you can find them again. A <strong>grey bar</strong> stays where a moved note used to be, so you can see at a glance how far it went.</p>
                   <p className="manual-p"><strong>SNAP</strong> decides what a dragged note lands on.</p>
                   <ul className="manual-ul">
                       <li className="manual-li"><strong>Chromatic</strong> — every semitone, black keys included</li>

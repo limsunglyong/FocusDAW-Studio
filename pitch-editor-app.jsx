@@ -1107,6 +1107,33 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, snapPcs, defs, 
       g.globalAlpha = 1;
     }
 
+    // v2.11.0 — where a moved note USED to be: a grey bar on the detected row (사용자 제안). A
+    // label like "A3 → B3" does not fit a short note; a bar is readable at any width, and it
+    // points back to the original without reading anything. Only the PITCH counts as moved
+    // here — a note whose Amount or Vibrato changed still sits on its own row, so it gets none.
+    // Drawn BEFORE the curve: the curve runs right through this row (it is what was sung), and
+    // a grey slab painted over it would hide exactly the evidence the bar is pointing at.
+    if (notes && notes.length) {
+      const nh = Math.max(3, Math.min(rowH - 2, 26));
+      for (const nt of notes) {
+        if (nt.t1 < t0 || nt.t0 > t0 + tDur) continue;
+        const orig = Math.round(nt.midi);
+        if (nt.target === orig || orig < mLo || orig > mHi) continue;
+        const x0 = xOf(nt.t0);
+        const w = Math.max(2, xOf(nt.t1) - x0);
+        const y = yOf(orig) + (rowH - nh) / 2;
+        const rad = Math.min(3, nh / 2, w / 2);
+        g.globalAlpha = 0.28;
+        g.fillStyle = C.muted;
+        peRoundRect(g, x0, y, w, nh, rad); g.fill();
+        g.globalAlpha = 0.6;
+        g.lineWidth = 1;
+        g.strokeStyle = C.muted;
+        peRoundRect(g, x0 + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, nh - 1), rad); g.stroke();
+        g.globalAlpha = 1;
+      }
+    }
+
     // Stage B — the detected pitch curve. Voiced runs are stroked as continuous segments and
     // unvoiced gaps genuinely break the line: a curve that bridged a breath would invent pitch
     // that is not there. Confidence drives opacity, so shaky detections look shaky.
@@ -1212,15 +1239,48 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, snapPcs, defs, 
     const whiteFace = g.createLinearGradient(0, 0, KEY_W, 0);
     whiteFace.addColorStop(0, C.keyWhite2);
     whiteFace.addColorStop(1, C.keyWhite);
+    // Faces in two passes — white, then black ON TOP (v2.11.0, 참조 디자인: 우측 라운드 +
+    // 그림자). The shadow falls onto the neighbouring white rows, so the sharps must be painted
+    // after every white key or the next white row would cover it. Labels and dots come in the
+    // third loop below, after both, so neither pass can paint over them.
+    for (let m = mLo; m <= mHi; m++) {
+      if (isBlackKey(m)) continue;
+      const y = yOf(m);
+      g.fillStyle = litMidi === m ? C.amber : whiteFace;
+      g.fillRect(0, y, KEY_W, Math.max(1, rowH - 1));
+      g.fillStyle = "rgba(0,0,0,.35)";
+      g.fillRect(0, y, KEY_W, 1);                // key separation, independent of the theme
+    }
+    g.save();
+    // Shadow colour is fixed, like the separator above: a key's shadow is a shadow in every
+    // theme, and the face tokens (--key-*) are already theme-independent for the same reason.
+    g.shadowColor = "rgba(0,0,0,.45)";
+    // 참조 디자인 §3c 그대로: box-shadow 2px 1px 3px rgba(0,0,0,.45), border-radius 0 3px 3px 0.
+    g.shadowBlur = 3;
+    g.shadowOffsetX = 2;
+    g.shadowOffsetY = 1;
+    for (let m = mLo; m <= mHi; m++) {
+      if (!isBlackKey(m)) continue;
+      const y = yOf(m), h = Math.max(1, rowH - 1);
+      const kw = KEY_W * 0.62;                   // sharps sit short, like the real thing
+      const r = Math.max(0, Math.min(3, h / 2 - 0.5, kw / 4));   // right corners only
+      g.fillStyle = litMidi === m ? C.amber : C.keyBlack;
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(kw - r, y);
+      g.arcTo(kw, y, kw, y + r, r);
+      g.lineTo(kw, y + h - r);
+      g.arcTo(kw, y + h, kw - r, y + h, r);
+      g.lineTo(0, y + h);
+      g.closePath();
+      g.fill();
+    }
+    g.restore();
     for (let m = mLo; m <= mHi; m++) {
       const y = yOf(m);
       const black = isBlackKey(m);
-      const kw = black ? KEY_W * 0.62 : KEY_W;   // sharps sit short, like the real thing
+      const kw = black ? KEY_W * 0.62 : KEY_W;
       const lit = litMidi === m;                 // sounding, or under the playhead
-      g.fillStyle = lit ? C.amber : (black ? C.keyBlack : whiteFace);
-      g.fillRect(0, y, kw, Math.max(1, rowH - 1));
-      g.fillStyle = "rgba(0,0,0,.35)";
-      g.fillRect(0, y, kw, 1);                   // key separation, independent of the theme
       // Label every C, and every white key once the rows are tall enough to read one. Bold,
       // dark ink, right-aligned against the key's edge — sized with the row so a tall row gets
       // a readable label instead of a fixed 8px one.
