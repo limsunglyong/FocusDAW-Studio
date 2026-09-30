@@ -1243,13 +1243,30 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, snapPcs, defs, 
     // 그림자). The shadow falls onto the neighbouring white rows, so the sharps must be painted
     // after every white key or the next white row would cover it. Labels and dots come in the
     // third loop below, after both, so neither pass can paint over them.
+    //
+    // v2.11.1 — 🔴 흰 건반이 검은 건반 **뒤까지** 이어진다(실제 피아노 모양). 전에는 검은
+    // 건반 행의 오른쪽이 `--surface` 였는데, 어두운 테마 8개에서 그 색이 검은 건반과 사실상
+    // 같았다(대비 1.09~1.76, T-2.11.0-2 사용자 보고). 이제 검은 건반 둘레는 모든 테마에서
+    // 흰 건반 면이다(대비 11.5 이상 — 밝은 테마가 원래 그랬다).
+    //
+    // 그래서 흰 건반의 경계도 실제 피아노처럼 **이웃 검은 건반의 가운데 높이**에 선다.
+    // 검은 건반이 사이에 없는 E–F · B–C 만 행 경계다. 켜진(amber) 흰 건반도 그 모양을 따른다.
+    const half = rowH / 2;
+    const whiteTop = (m) => (isBlackKey(m + 1) ? yOf(m + 1) + half : yOf(m));
+    const whiteBot = (m) => (isBlackKey(m - 1) ? yOf(m - 1) + half : yOf(m) + rowH);
+    const spanTop = Math.max(RULER_H, yOf(mHi)), spanBot = Math.min(H, yOf(mLo) + rowH);
+    g.fillStyle = whiteFace;
+    g.fillRect(0, spanTop, KEY_W, Math.max(0, spanBot - spanTop));
     for (let m = mLo; m <= mHi; m++) {
       if (isBlackKey(m)) continue;
-      const y = yOf(m);
-      g.fillStyle = litMidi === m ? C.amber : whiteFace;
-      g.fillRect(0, y, KEY_W, Math.max(1, rowH - 1));
+      const top = whiteTop(m);
+      if (litMidi === m) {
+        g.fillStyle = C.amber;
+        g.fillRect(0, top, KEY_W, Math.max(1, whiteBot(m) - top));
+      }
+      // Each key draws only its TOP edge, so a boundary is never drawn twice.
       g.fillStyle = "rgba(0,0,0,.35)";
-      g.fillRect(0, y, KEY_W, 1);                // key separation, independent of the theme
+      g.fillRect(0, top, KEY_W, 1);              // key separation, independent of the theme
     }
     g.save();
     // Shadow colour is fixed, like the separator above: a key's shadow is a shadow in every
