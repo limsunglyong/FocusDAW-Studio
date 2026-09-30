@@ -2186,6 +2186,60 @@ static std::string runOnMessageThread(std::function<std::string()> fn, const std
 }
 #endif
 
+static std::string diagEscape(const std::string& v)
+{
+    std::string out;
+    for (char c : v)
+    {
+        if (c == '"' || c == '\\') { out += '\\'; out += c; }
+        else if ((unsigned char)c < 0x20) out += ' ';
+        else out += c;
+    }
+    return out;
+}
+
+std::string AudioEngine::getDiagnosticsJson(const std::string& requestId)
+{
+    std::ostringstream j;
+    std::lock_guard<std::mutex> lock(engineMutex);
+    j << "{\"event\":\"diagnostics\",\"requestId\":\"" << diagEscape(requestId) << "\""
+      << ",\"playing\":" << (playing ? "true" : "false")
+      << ",\"playheadSeconds\":" << playheadSeconds
+      << ",\"registry\":[";
+    for (size_t i = 0; i < tracks.size(); ++i)
+    {
+        const auto& t = tracks[i];
+        if (i) j << ",";
+        j << "{\"id\":\"" << diagEscape(t.id) << "\",\"mute\":" << (t.mute ? "true" : "false")
+          << ",\"solo\":" << (t.solo ? "true" : "false") << ",\"volume\":" << t.volume
+          << ",\"filePath\":\"" << diagEscape(t.filePath) << "\"}";
+    }
+    j << "],\"installed\":[";
+#if USE_JUCE
+    {
+        const juce::ScopedLock sl(tracksLock);
+        for (size_t i = 0; i < juceTracks.size(); ++i)
+        {
+            const auto& t = juceTracks[i];
+            if (i) j << ",";
+            const bool hasTransport = t->transportSource != nullptr;
+            j << "{\"id\":\"" << diagEscape(t->id) << "\""
+              << ",\"mute\":" << (t->mute.load() ? "true" : "false")
+              << ",\"solo\":" << (t->solo.load() ? "true" : "false")
+              << ",\"soloActive\":" << (t->soloActive.load() ? "true" : "false")
+              << ",\"volume\":" << t->volume
+              << ",\"level\":" << t->currentMagnitude.load()
+              << ",\"transportPlaying\":" << (hasTransport && t->transportSource->isPlaying() ? "true" : "false")
+              << ",\"position\":" << (hasTransport ? t->transportSource->getCurrentPosition() : -1.0)
+              << ",\"length\":" << (hasTransport ? t->transportSource->getLengthInSeconds() : -1.0)
+              << "}";
+        }
+    }
+#endif
+    j << "]}";
+    return j.str();
+}
+
 std::string AudioEngine::getAudioDevicesJson()
 {
 #if USE_JUCE

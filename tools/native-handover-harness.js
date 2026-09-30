@@ -58,6 +58,8 @@ console.log('① trackAudioReady — 이 트랙을 지금 밀어도 되는가');
         ready({ recording: true, sources: [] }) === false);
   check('🔴 여분 Take 하나라도 재연결 전이면 아직 아니다',
         ready({ sources: [{ filePath: '/a.wav' }, { needsAudio: true, filePath: '/b.wav' }] }) === false);
+  check('🔴 v2.11.4 — 플래그가 남아도 원본 버퍼가 이미 있으면 준비된 것이다 (hydrateSource 경합 안전망)',
+        ready({ sources: [{ filePath: '/a.wav' }, { id: 's2', needsAudio: true, filePath: '/b.wav' }], _rawBuffers: { s2: {} } }) === true);
   check('filePath 없는 placeholder 는 막지 않는다 (밀 것이 없다)',
         ready({ sources: [{ needsAudio: true }] }) === true);
   check('sources 가 없어도 통과한다', ready({}) === true);

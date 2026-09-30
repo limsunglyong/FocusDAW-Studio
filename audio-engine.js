@@ -74,6 +74,31 @@
     };
   }
 
+  // v2.11.2 — 트랙의 소스 중 **지금 쓰이는 것**의 id. 소스를 가리키는 길은 셋뿐이다:
+  // 주 소스(sources[0], 트랙 자체의 파일) · 클립의 sourceId(테이크·comp 도 결국 클립을
+  // 거친다) · 클립 pitch 의 baseSourceId / printedSourceId(Revert 와 재편집이 쓴다).
+  //
+  // 왜 필요한가 — Pitch Editor 의 Apply 는 새 보정본을 소스로 **추가**하고, 옛 보정본은
+  // Undo 가 되살릴 수 있어 목록에 남긴다. 그 목록이 저장 파일로 그대로 나가 재열기마다 전부
+  // 읽혔다(사용자 보고: Audio In 소스 19개 중 17개가 아무도 안 쓰는 옛 보정본, 42 MB × 17).
+  // Clean Up Unused Recordings 도 "목록에 있으면 쓰는 중" 으로 판정해 영영 못 지웠다.
+  //
+  // 🔴 Undo 스냅샷에는 쓰지 않는다 — 스냅샷의 옛 소스는 Undo 가 실제로 되살리는 것이다.
+  // 쓰는 곳은 저장(exportProject) · 열기(importProject) · Clean Up 판정뿐이다.
+  function liveSourceIds(sources, clips) {
+    const ids = new Set();
+    const s0 = sources && sources[0];
+    if (s0 && s0.id) ids.add(s0.id);
+    for (const c of (clips || [])) {
+      if (!c) continue;
+      if (c.sourceId) ids.add(c.sourceId);
+      const p = c.pitch;
+      if (p && p.baseSourceId) ids.add(p.baseSourceId);
+      if (p && p.printedSourceId) ids.add(p.printedSourceId);
+    }
+    return ids;
+  }
+
   function makeCtx() {
     const C = window.AudioContext || window.webkitAudioContext;
     return new C();
@@ -819,6 +844,9 @@
       }
       return track;
     },
+    // v2.11.2 — app.jsx 의 Clean Up 판정이 스냅샷의 트랙에도 같은 규칙을 쓰도록 연다(읽기 전용).
+    liveSourceIds(sources, clips) { return liveSourceIds(sources, clips); },
+
     _serializedSources(track) {
       this._normalizeTrackLayout(track);
       return (track.sources || []).map(s => ({
@@ -1963,10 +1991,20 @@
       const decoded = await this._decodeAudio(arrayBuffer, cacheKey);
       track._rawBuffers = track._rawBuffers || {};
       track._rawBuffers[sourceId] = decoded.buffer;
-      src.needsAudio = false;
-      src.duration = decoded.buffer.duration;
-      src.sampleRate = decoded.buffer.sampleRate;
-      src.channels = decoded.buffer.numberOfChannels;
+      // 🔴 v2.11.4 — RE-RESOLVE the source after the await (the same trap persistConsolidated-
+      // Sources fell into in v1.37.0). _normalizeTrackLayout rebuilds track.sources as fresh
+      // COPIES on every serialize/snapshot — autosave alone runs it every 1.5 s — and decoding a
+      // long take takes longer than that. Writing to `src` then lands on an orphan: the live
+      // source stays needsAudio forever, the bridge's trackAudioReady never passes, and the
+      // track is NEVER sent to the native engine. The web engine still plays it (the raw buffer
+      // is keyed by id), so it sounds fine until the handover mutes the web output — then only
+      // that track goes silent (user report 2026-09-30, Audio In 1, caught by the diagnostics).
+      const liveTrack = this.tracks.find(t => t.id === trackId) || track;
+      const live = (liveTrack.sources || []).find(s => s.id === sourceId) || src;
+      live.needsAudio = false;
+      live.duration = decoded.buffer.duration;
+      live.sampleRate = decoded.buffer.sampleRate;
+      live.channels = decoded.buffer.numberOfChannels;
       this._ensureBaked(track);
       this._applyMix();
       this._startHotAddedTrack(track);
@@ -2844,7 +2882,13 @@
           isDemo: !!t.isDemo,
           fileName: t.fileName || null,
           filePath: t.filePath || null,
-          sources: this._serializedSources(t),
+          // v2.11.2 — 쓰이지 않는 소스는 파일에 적지 않는다(liveSourceIds). 메모리의 목록은
+          // 그대로 두므로 Undo 는 영향이 없다.
+          sources: (() => {
+            const clips = this._serializedClips(t);
+            const live = liveSourceIds(t.sources, clips);
+            return this._serializedSources(t).filter(s => live.has(s.id));
+          })(),
           params: {
             ...t.params,
             automation: t.params.automation.map(p => ({ ...p })),
@@ -3109,13 +3153,22 @@
         // on the reported Audio In track), which is why this is computed per source and not
         // from isAudioPlaceholder. _normalizeTrackLayout re-stamps sources[0] from the track
         // flag and leaves the extras alone.
-        const sources = Array.isArray(td.sources) && td.sources.length
+        let sources = Array.isArray(td.sources) && td.sources.length
           ? td.sources.map(s => ({ ...s, needsAudio: !td.isDemo && !!s.filePath }))
           : null;
         const primaryId = sources && sources[0] && sources[0].id;
         const clips = Array.isArray(td.clips)
           ? td.clips.map(c => ({ ...c, sourceId: c.sourceId || primaryId }))
           : null;
+        // v2.11.2 — 쓰이지 않는 소스는 **열 때 목록에서 뺀다.** 열린 직후 Undo 기록은 비어
+        // 있으므로 되살릴 길이 없다. 🔴 "건너뛰고 안 읽기"로는 안 된다 — 브리지의
+        // trackAudioReady 는 needsAudio 인 소스가 하나라도 남으면 그 트랙을 네이티브에
+        // 보내지 않는다. 목록에 남겨 두면 트랙이 영영 네이티브로 넘어가지 않는다.
+        // v2.11.1 이전에 저장된 프로젝트(옛 보정본이 쌓인 것)가 여기서 정리된다.
+        if (sources && clips) {
+          const live = liveSourceIds(sources, clips);
+          sources = sources.filter(s => live.has(s.id));
+        }
         const track = this._addTrack({
           name: td.name, type: td.type, color: td.color, buffer,
           kind: td.kind || "file",
@@ -3332,8 +3385,15 @@
         // Already on disk (e.g. a redo re-queued it) — nothing to write.
         if (src.filePath) { saved++; continue; }
         try {
-          const base = this._displayName(src.fileName || track.name || "Consolidated");
-          const res = await saveFn(raw, `${base} (${item.suffix || "Consolidated"}).wav`);
+          // v2.11.2 — 새 보정본의 이름은 **직전 보정본**의 이름에서 온다. 그대로 쓰면
+          // "0 Lead Vocals (Pitched) 3 (Pitched) (Pitched)" 처럼 꼬리가 쌓인다. **같은 종류의**
+          // 꼬리(+ 저장 쪽이 붙이는 중복 번호)만 떼고 새로 붙인다 — 다른 종류는 남긴다:
+          // "(De-noised)" 위의 보정본이면 이름이 그 사실을 계속 말해야 한다.
+          const suffix = item.suffix || "Consolidated";
+          const esc = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const tail = new RegExp("(\\s\\(" + esc + "\\)(?:\\s\\d+)?)+$");
+          const base = this._displayName(src.fileName || track.name || "Consolidated").replace(tail, "") || "Consolidated";
+          const res = await saveFn(raw, `${base} (${suffix}).wav`);
           if (res && res.path) {
             // RE-RESOLVE the source after the await. _normalizeTrackLayout rebuilds
             // track.sources as fresh COPIES ([primary, ...slice(1).map(s => ({...s}))]) and

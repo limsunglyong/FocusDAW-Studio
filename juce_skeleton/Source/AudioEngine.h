@@ -2056,6 +2056,11 @@ public:
     // ready-to-broadcast "audioDevices" event; setAudioDevice returns an error
     // string ("" = success). Empty type/name select the system defaults.
     std::string getAudioDevicesJson();
+    // v2.11.3 — Help ▸ Copy Audio Diagnostics. A ready-to-broadcast "diagnostics" event with
+    // what the engine ACTUALLY holds per track (registry + installed JUCE track: mute / solo /
+    // soloActive / level / transport). The renderer puts it next to its own view of the same
+    // tracks, so a "the UI says unmuted but it is silent" report shows which side disagrees.
+    std::string getDiagnosticsJson(const std::string& requestId);
     std::string setAudioDevice(const std::string& typeName, const std::string& deviceName);
     // outputName sets the output endpoint in the SAME setup call so a device-type
     // switch (e.g. into Exclusive Mode) can never leave the output on a stale/wrong

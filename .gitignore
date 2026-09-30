@@ -12,3 +12,6 @@ third_party/JUCE/
 
 # Pitch Editor 시험용 합성 오디오 (tools/make-pitch-test-audio.js 로 재생성)
 test-audio/
+
+# 사용자 진단 로그 (Help ▸ Copy Audio Diagnostics 캡처) — 커밋하지 않는다
+logs/

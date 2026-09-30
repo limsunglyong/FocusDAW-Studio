@@ -597,6 +597,11 @@ void WebSocketServer::clientLoop(void* socketHandle)
         {
             audioEngine.clearAllMuteSolo();
         }
+        else if (cmd == "dumpState")
+        {
+            // v2.11.3 — Help ▸ Copy Audio Diagnostics.
+            broadcast(audioEngine.getDiagnosticsJson(getJsonStringVal(frameText, "requestId")));
+        }
         else if (cmd == "setProjectBpm")
         {
             double bpm = getJsonDoubleVal(frameText, "bpm");

@@ -174,6 +174,13 @@
     handoverFallbackTimer = setTimeout(() => {
       if (Bridge.isNative && !nativeOutputActive) {
         console.warn("[AudioBridge] trackLoaded events stalled; activating native output anyway.");
+        // v2.11.4 — name what the forced handover leaves behind. Any track not yet in the
+        // native engine goes SILENT the moment the web output is muted below; until now that
+        // left no trace (B-AudioIn-SilentAfterMuteClr looked like a Mute problem for weeks).
+        const behind = ((LocalDAW && LocalDAW.tracks) || [])
+          .filter((t) => t && !t.recording && (pendingNativeLoads.has(t.id) || !trackAudioReady(t)))
+          .map((t) => (t.name || t.id) + (pendingNativeLoads.has(t.id) ? "(load pending)" : "(not ready)"));
+        diagPush("⚠", { event: "forcedHandover", tracksLeftSilent: behind.join(", ") || "none" });
         pendingNativeLoads.clear();
         activateNativeOutput();
       }
@@ -223,6 +230,59 @@
         return Math.max(LocalDAW.loopRange.start, Math.min(raw, LocalDAW.loopRange.end));
       }
       return LocalDAW.loopEnabled ? (raw % LocalDAW.duration) : Math.min(raw, LocalDAW.duration);
+    },
+
+    // v2.11.3 — Help ▸ Copy Audio Diagnostics: the renderer's view of every track next to
+    // what the native engine actually holds, plus the recent command/event log. Plain text,
+    // meant to be pasted into a bug report as-is.
+    async getAudioDiagnostics() {
+      let native = null;
+      if (this.isNative && socket && socket.readyState === WebSocket.OPEN) {
+        const requestId = "d" + Date.now();
+        native = await new Promise((resolve) => {
+          const to = setTimeout(() => { diagWaiters.delete(requestId); resolve(null); }, 1500);
+          diagWaiters.set(requestId, (m) => { clearTimeout(to); resolve(m); });
+          sendToNative({ command: "dumpState", requestId });
+        });
+      }
+      const L = [];
+      const b = (v) => (v ? "Y" : "-");
+      const num = (v, d = 2) => (Number.isFinite(v) ? Number(v).toFixed(d) : "?");
+      L.push("FocusDAW Audio Diagnostics");
+      L.push("app v" + (window.APP_VERSION || "?") + " · " + new Date().toISOString());
+      L.push("engine: " + (this.isNative ? "native" : "web") + " · connection=" + connectionState
+        + " · nativeOutputActive=" + nativeOutputActive + " · pendingNativeLoads=[" + [...pendingNativeLoads].join(",") + "]");
+      L.push("web: playing=" + !!LocalDAW.isPlaying + " · duration=" + num(LocalDAW.duration)
+        + (native ? " · native: playing=" + native.playing + " playhead=" + num(native.playheadSeconds) : " · native: (no reply)"));
+      L.push("");
+      const reg = new Map(((native && native.registry) || []).map((t) => [t.id, t]));
+      const inst = new Map(((native && native.installed) || []).map((t) => [t.id, t]));
+      const uiAnySolo = LocalDAW.tracks.some((t) => t.params && t.params.solo);
+      const nAnySolo = [...inst.values()].some((t) => t.solo);
+      L.push("TRACKS   (UI = renderer · REG = native registry · NAT = installed native track)");
+      LocalDAW.tracks.forEach((t, i) => {
+        const p = t.params || {};
+        const uiAudible = !(p.mute || (uiAnySolo && !p.solo));
+        const r = reg.get(t.id), n = inst.get(t.id);
+        const nAudible = n ? !(n.mute || (n.soloActive && !n.solo)) : null;
+        const flag = native && (nAudible !== uiAudible || !n || (n && (n.mute !== !!p.mute || n.solo !== !!p.solo))) ? "  ⚠ MISMATCH" : "";
+        L.push((i + 1) + ". " + (t.name || "?") + "  [" + t.id + " · " + (t.kind || "file") + "]" + flag);
+        L.push("   UI : mute=" + b(p.mute) + " solo=" + b(p.solo) + " vol=" + num(p.volume) + " audible=" + b(uiAudible)
+          + " · needsAudio=" + b(t.needsAudio) + " buffer=" + b(t.buffer) + " ready=" + b(trackAudioReady(t))
+          + " recording=" + b(t.recording) + " arm=" + b(p.arm) + " · sources=" + (t.sources || []).length + " clips=" + (t.clips || []).length
+          + " · meter=" + num(nativeState.trackLevels[t.id] || 0, 3));
+        L.push("   REG: " + (r ? "mute=" + b(r.mute) + " solo=" + b(r.solo) + " vol=" + num(r.volume) + " file=" + String(r.filePath || "").split(/[\\/]/).pop() : "(not registered)"));
+        L.push("   NAT: " + (n ? "mute=" + b(n.mute) + " solo=" + b(n.solo) + " soloActive=" + b(n.soloActive) + " audible=" + b(nAudible)
+          + " vol=" + num(n.volume) + " level=" + num(n.level, 3) + " transport=" + (n.transportPlaying ? "playing" : "stopped")
+          + " pos=" + num(n.position) + "/" + num(n.length) : "(not installed)"));
+      });
+      const extra = [...inst.keys()].filter((id) => !LocalDAW.tracks.some((t) => t.id === id));
+      if (extra.length) L.push("⚠ installed in native but not in the UI: " + extra.join(", "));
+      if (native) L.push("native anySolo=" + nAnySolo + " · UI anySolo=" + uiAnySolo);
+      L.push("");
+      L.push("RECENT NATIVE TRAFFIC (oldest first · ms since app start · → sent · ← received · ✗ not sent)");
+      diagLog.slice(-600).forEach((e) => L.push(String(e.t).padStart(9) + "  " + e.dir + "  " + e.text));
+      return L.join("\n");
     },
 
     getTrackLevel(id) {
@@ -1439,7 +1499,41 @@
   function sendToNative(obj) {
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(obj));
+      diagPush("→", obj);
+    } else {
+      // Silently dropped until now — the log is the only place a command that never left
+      // shows up (a "the UI changed but the engine didn't" report needs exactly this).
+      diagPush("✗ not sent", obj);
     }
+  }
+
+  // v2.11.3 — Help ▸ Copy Audio Diagnostics. A ring of the recent traffic with the native
+  // engine, so a report of "Audio In went silent after Mute / MUTE CLR" carries what was
+  // actually sent and received in the seconds before it — not just the end state.
+  // High-rate traffic (meters, playhead, recording peaks) is left out: it would push the
+  // interesting commands out of the ring within a second.
+  const DIAG_MAX = 1500;
+  const diagLog = [];
+  const diagT0 = Date.now();
+  const DIAG_QUIET_EVENTS = new Set(["levels", "playbackPosition", "recordingPeaks", "exportProgress"]);
+  const diagWaiters = new Map();
+  function diagSummary(o) {
+    if (!o || typeof o !== "object") return String(o);
+    const parts = [];
+    for (const k of ["command", "event", "trackId", "key", "value", "ok", "pending", "startSeconds", "songLength", "enabled", "position", "requestId", "tracksLeftSilent"]) {
+      if (o[k] === undefined) continue;
+      let v = o[k];
+      if (typeof v === "number") v = Math.round(v * 1000) / 1000;
+      if (typeof v === "object") v = JSON.stringify(v).slice(0, 60);
+      parts.push(k === "command" || k === "event" ? String(v) : k + "=" + v);
+    }
+    if (o.filePath) parts.push("file=" + String(o.filePath).split(/[\\/]/).pop());
+    return parts.join(" ");
+  }
+  function diagPush(dir, obj) {
+    if (obj && obj.event && DIAG_QUIET_EVENTS.has(obj.event)) return;
+    diagLog.push({ t: Date.now() - diagT0, dir, text: diagSummary(obj) });
+    if (diagLog.length > DIAG_MAX) diagLog.splice(0, diagLog.length - DIAG_MAX);
   }
 
   // Mirror the web engine's master-FX bypass on the native engine: push neutral
@@ -1539,6 +1633,12 @@
   // Handle incoming status messages from the JUCE C++ engine
   function handleNativeMessage(msg) {
     if (!msg || !msg.event) return;
+    diagPush("←", msg);
+    if (msg.event === "diagnostics") {
+      const w = diagWaiters.get(msg.requestId);
+      if (w) { diagWaiters.delete(msg.requestId); w(msg); }
+      return;
+    }
 
     if (msg.event === "playbackPosition") {
       // Drop a stale "stopped" frame the 100ms timer captured BEFORE our play
@@ -1791,7 +1891,12 @@
   // (addFileBuffer / hydrateSource → syncTrackToNative), so skipping here loses nothing.
   function trackAudioReady(track) {
     if (!track || track.needsAudio || track.recording) return false;
-    return !(track.sources || []).some((s) => s && s.needsAudio && s.filePath);
+    // v2.11.4 — a source whose decoded audio is already in hand is ready whatever its flag
+    // says. The flag is metadata on an object that serialization keeps replacing; the raw
+    // buffer is the fact. Without this, one lost flag write kept a track out of the native
+    // engine for the whole session (hydrateSource, fixed at the source in the same version).
+    const raws = track._rawBuffers || {};
+    return !(track.sources || []).some((s) => s && s.needsAudio && s.filePath && !raws[s.id]);
   }
 
   // Helper to synchronize a newly added track to JUCE C++ engine

@@ -271,7 +271,7 @@ function recentDateLabel(ms) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onSaveAs, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onCleanUpUnused, onHelpManual, onHelpReleaseNotes, onCheckUpdates, onHelpAbout }) {
+function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoadDemo, onExport, onSave, onSaveAs, onOpenProject, onOpenRecentProject, onSettings, onAdvancedAmbience, onAdvancedPan, onAdvancedEq, onUndo, onRedo, canUndo, canRedo, onDeleteAllTracks, onCleanUpUnused, onHelpManual, onHelpReleaseNotes, onCheckUpdates, onHelpAbout, onCopyAudioDiagnostics }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   useEffect(() => setDraft(projectName), [projectName]);
@@ -340,6 +340,9 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { label: "Manual", icon: "book", onClick: onHelpManual },
     { label: "Release Notes", icon: "info", onClick: onHelpReleaseNotes },
     { label: "Check for Updates", icon: "download", onClick: onCheckUpdates },
+    { sep: true },
+    { label: "Copy Audio Diagnostics", icon: "info", onClick: onCopyAudioDiagnostics },
+    { sep: true },
     { label: "About", icon: "info", onClick: onHelpAbout },
   ];
   return (
@@ -3060,11 +3063,17 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
   const collectReferencedPaths = useCallback(() => {
     const refs = new Set();
     const add = (fp) => { if (fp) refs.add(resolveSourcePath(fp, projectPath)); };
+    // v2.11.2 — a source counts only if something USES it (liveSourceIds: the primary, a
+    // clip, or a clip's pitch original/print). "It is in the list" was the old test, and
+    // Pitch Editor prints never leave the list — so every superseded print was "in use"
+    // forever and could never be cleaned up (user report: 17 × 42 MB). Snapshots are
+    // judged by THEIR OWN clips, so a print an undo can bring back is still protected.
     const scanTracks = (tracks) => {
       for (const t of (tracks || [])) {
         add(t.filePath);
         if (t._nativePath) refs.add(t._nativePath); // stamped absolute path (reconnect)
-        for (const s of (t.sources || [])) add(s.filePath);
+        const live = DAW.liveSourceIds(t.sources, t.clips);
+        for (const s of (t.sources || [])) if (live.has(s.id)) add(s.filePath);
       }
     };
     scanTracks(DAW.tracks);
@@ -3072,6 +3081,24 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     for (const snap of redoStack.current) scanTracks(snap && snap.tracks);
     return [...refs];
   }, [projectPath]);
+
+  // v2.11.3 — Help ▸ Copy Audio Diagnostics. The renderer's and the native engine's view of
+  // every track side by side, plus the recent native traffic, copied as text for a bug report
+  // ("Audio In goes silent after Mute / MUTE CLR" could not be reproduced from the code).
+  const copyAudioDiagnostics = useCallback(async () => {
+    let text = "";
+    try { text = await DAW.getAudioDiagnostics(); }
+    catch (e) { text = "Diagnostics failed: " + (e && e.message ? e.message : String(e)); }
+    try {
+      await navigator.clipboard.writeText(text);
+      showAppNotice("Audio diagnostics copied",
+        "Paste it into your report. It lists each track as the app and the audio engine see it, plus the recent engine traffic.", "info");
+    } catch (e) {
+      console.log(text);
+      showAppNotice("Could not copy to the clipboard",
+        "The diagnostics were written to the developer console instead.", "warning");
+    }
+  }, [showAppNotice]);
 
   const cleanUpUnusedRecordings = useCallback(async () => {
     if (!window.electronAPI || !window.electronAPI.scanUnusedRecordings) return;
@@ -3422,16 +3449,29 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     }
     const demoItemForTrack = (track) => builtInDemoByName && builtInDemoByName.get(track.fileName || track.name);
     const missing = DAW.tracks.filter((t) => t.needsAudio && (t.filePath || demoItemForTrack(t)));
-    if (!missing.length) return;
+    // v2.11.2 — also run when only EXTRA sources wait: an Audio In track's primary has no
+    // path, so a project whose audio is all Audio In takes/prints used to return here and
+    // never read them.
+    const hasExtras = DAW.tracks.some((t) => (t.sources || []).slice(1).some((s) => s.needsAudio && s.filePath));
+    if (!missing.length && !hasExtras) return;
     // Sources we couldn't read, surfaced to the user in a themed modal when the run finishes.
     const failures = [];
-    setLoading({ active: true, total: missing.length, done: 0, label: "Reconnecting audio..." });
+    // Counted up front so the bar runs 0 → 100 % once across both phases (primaries, then
+    // extra sources) instead of restarting when the second phase begins.
+    const extrasAll = [];
+    for (const track of DAW.tracks) {
+      for (const src of (track.sources || []).slice(1)) {
+        if (src.needsAudio && src.filePath) extrasAll.push({ track, src });
+      }
+    }
+    const grandTotal = missing.length + extrasAll.length;
+    setLoading({ active: true, total: grandTotal, done: 0, label: "Reconnecting audio..." });
     for (let i = 0; i < missing.length; i++) {
       if (superseded()) return;
       const track = missing[i];
       const demoItem = demoItemForTrack(track);
       const sourcePath = track.filePath || (demoItem && demoItem.path) || null;
-      setLoading({ active: true, total: missing.length, done: i, label: basenameFromPath(sourcePath) || track.name });
+      setLoading({ active: true, total: grandTotal, done: i, label: basenameFromPath(sourcePath) || track.name });
       try {
         const abs = resolveSourcePath(sourcePath, base);
         const ab = await window.electronAPI.readAudioFile(abs);
@@ -3454,23 +3494,26 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
     // WAV. addFileBuffer above only reconnects the PRIMARY (sources[0]); reload every
     // additional Take's audio too, or the active lane (if it's a non-primary Take) bakes
     // to silence on reopen.
-    for (const track of DAW.tracks) {
-      const extras = (track.sources || []).slice(1).filter((s) => s.needsAudio && s.filePath);
-      for (const src of extras) {
+    //
+    // v2.11.2 — this phase used to leave the progress label on the LAST primary file, so a
+    // slow extras phase looked like that one file loading slowly (user report: "Misc-1.wav"
+    // sat on screen while 17 old pitch prints were read). Name each file as it is read.
+    for (let k = 0; k < extrasAll.length; k++) {
+      const { track, src } = extrasAll[k];
+      if (superseded()) return;
+      setLoading({ active: true, total: grandTotal, done: missing.length + k, label: basenameFromPath(src.filePath) || track.name });
+      try {
+        const abs = resolveSourcePath(src.filePath, base);
+        const ab = await window.electronAPI.readAudioFile(abs);
         if (superseded()) return;
-        try {
-          const abs = resolveSourcePath(src.filePath, base);
-          const ab = await window.electronAPI.readAudioFile(abs);
-          if (superseded()) return;
-          await DAW.hydrateSource(track.id, src.id, ab, { filePath: src.filePath });
-        } catch (err) {
-          console.warn("Failed to reconnect take audio:", src.filePath, err);
-          failures.push({ name: (track.name || basenameFromPath(src.filePath)), filePath: src.filePath });
-        }
+        await DAW.hydrateSource(track.id, src.id, ab, { filePath: src.filePath });
+      } catch (err) {
+        console.warn("Failed to reconnect take audio:", src.filePath, err);
+        failures.push({ name: (track.name || basenameFromPath(src.filePath)), filePath: src.filePath });
       }
     }
     if (superseded()) return;
-    setLoading({ active: true, total: missing.length, done: missing.length, label: "Finalizing..." });
+    setLoading({ active: true, total: grandTotal, done: grandTotal, label: "Finalizing..." });
     setTimeout(() => setLoading(null), 220);
     // One modal for the whole load, listing every source that couldn't be found.
     if (failures.length) setMissingAudio({ items: failures });
@@ -4377,8 +4420,9 @@ function Studio({ projectName, projectNameRef, projectPath, startupReady, regist
       onRedo: redo,
       onDeleteAllTracks: requestDeleteAllTracks,
       onCleanUpUnused: cleanUpUnusedRecordings,
+      onCopyAudioDiagnostics: copyAudioDiagnostics,
     });
-  }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, confirmNewProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks, cleanUpUnusedRecordings]);
+  }, [registerHandlers, saveProject, saveProjectAs, openProjectFile, loadProjectJson, pickAudioFiles, pickAudioFolder, loadDemo, confirmNewProject, openAdvancedAmbience, openAdvancedPan, openAdvancedEq, undo, redo, requestDeleteAllTracks, cleanUpUnusedRecordings, copyAudioDiagnostics]);
 
   const param = (id) => (k, v) => {
     const targetTrack = DAW.tracks.find((track) => track.id === id);
@@ -5234,7 +5278,8 @@ function App() {
         onHelpManual={openHelpManual}
         onHelpReleaseNotes={() => setShowReleaseNotes(true)}
         onCheckUpdates={() => checkForUpdates(true)}
-        onHelpAbout={() => setShowAbout(true)} />
+        onHelpAbout={() => setShowAbout(true)}
+        onCopyAudioDiagnostics={() => H.current.onCopyAudioDiagnostics && H.current.onCopyAudioDiagnostics()} />
       <Studio projectName={projectName} projectNameRef={projectNameRef} projectPath={projectPath} startupReady={startupReady}
         registerHandlers={registerHandlers}
         onRenameProject={renameProject}
