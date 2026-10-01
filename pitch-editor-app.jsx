@@ -1473,6 +1473,13 @@ function PianoRoll({ info, analysis, notes, selection, scalePcs, snapPcs, defs, 
       <canvas ref={canvasRef} />
       {phX !== null && phX >= KEY_W && phX <= size.w - SB &&
         <div className="pe-playhead" style={{ left: phX }} />}
+      {/* v2.12.0 — 보정 컨트롤이 어디에 쓰는지(사이드 패널의 ALL NOTES / N NOTES SELECTED)를 노트를
+          고르는 바로 그 화면에서도 보이게(사용자 요청 2026-10-01). 클릭은 통과시킨다 — 아래 노트를 막으면 안 된다. */}
+      {analysis && notes.length > 0 &&
+        <div className={"pe-selbadge" + (selection.size ? " on" : "")} style={{ right: SB + 10 }}>
+          <span className="pe-selbadge-dot" />
+          {selection.size ? `${selection.size} note${selection.size > 1 ? "s" : ""} selected` : "All notes"}
+        </div>}
       <div className="pe-vbar" title="Drag to move up / down the keyboard">
         <div className="pe-thumb" onMouseDown={dragBar}
           style={{ top: (vPos * 100) + "%", height: "max(24px," + (vFrac * 100) + "%)" }} />
@@ -2687,13 +2694,17 @@ function PitchEditorApp() {
               <div className="pe-sechd">NOTES</div>
               <div className="pe-row">
                 <span className="pe-rowlbl">MIN</span>
-                <select className="pe-select" value={division} disabled={!grid.bpm}
-                  onChange={(e) => setDivision(+e.target.value)}
+                {/* 세 개 중 하나라 드롭다운 대신 세그먼트 — 고르기 전에 선택지가 다 보인다. */}
+                <div className={"pe-seg" + (grid.bpm ? "" : " disabled")} role="radiogroup" aria-label="Shortest note"
                   title={grid.bpm
                     ? "Shortest note the segmenter may produce, as a fraction of a bar"
                     : "This project has no BPM, so the shortest note is a fixed 120 ms — set a BPM in the studio to use a musical grid"}>
-                  {PE_DIVISIONS.map((d) => <option key={d} value={d}>{"1/" + d + " note"}</option>)}
-                </select>
+                  {PE_DIVISIONS.map((d) => (
+                    <button key={d} type="button" role="radio" aria-checked={division === d}
+                      className={division === d ? "on" : ""} disabled={!grid.bpm}
+                      onClick={() => setDivision(d)}>{"1/" + d}</button>
+                  ))}
+                </div>
               </div>
               <div className="pe-stat" style={{ marginTop: 8 }}>
                 {!analysis
@@ -2737,6 +2748,22 @@ function PitchEditorApp() {
                 Notes you split or merge keep their boundaries when the clip is analysed again.
                 <kbd>Reset</kbd> hands a note back to the detector.
               </div>
+              {/* STRENGTH / VIBRATO 가 다음에 쓸 대상(setCorrection) — 선택이 있으면 그 노트들, 없으면 전체.
+                  v2.12.0 — 상태 표시줄의 Reset 을 이 옆으로 옮겼다(사용자 요청 2026-10-01). 선택이 있는 동안은
+                  늘 자리를 지키고 되돌릴 것이 없으면 꺼진다 — 나타났다 사라지면 줄 높이가 흔들린다. */}
+              <div className="pe-selrow">
+                <div className="pe-sechd" style={{ marginBottom: 0 }}>
+                  {selection.size ? `${selection.size} NOTE${selection.size > 1 ? "S" : ""} SELECTED` : "ALL NOTES"}
+                </div>
+                {analysis && selection.size > 0 &&
+                  <button className="pe-btn pe-btn-sm" onClick={resetSelected}
+                    disabled={!(selectedEdited || selectedOwned)}
+                    title={selectedEdited || selectedOwned
+                      ? "Return the selected notes to the detected pitch. Ctrl+Z brings the edit back."
+                      : "The selected notes are already as detected"}>
+                    Reset
+                  </button>}
+              </div>
             </div>
 
             <div className="pe-sec" style={{ borderBottom: "none" }}>
@@ -2746,15 +2773,19 @@ function PitchEditorApp() {
                   same handling as MIN without a BPM (v1.46.0). */}
               <div className="pe-row">
                 <span className="pe-rowlbl">SNAP</span>
-                <select className="pe-select" value={scalePcs ? snapMode : "chromatic"}
-                  disabled={!analysis || !scalePcs}
-                  onChange={(e) => setSnapMode(e.target.value)}
+                <div className={"pe-seg" + (!analysis || !scalePcs ? " disabled" : "")} role="radiogroup" aria-label="Snap"
                   title={scalePcs
                     ? "What a dragged note lands on — every semitone, or only notes of the project key"
                     : "This project has no detected key, so notes can only snap to semitones"}>
-                  <option value="chromatic">Chromatic</option>
-                  <option value="key">Key{tempo && tempo.detectedKey ? " — " + tempo.detectedKey : ""}</option>
-                </select>
+                  {[["chromatic", "Chromatic"],
+                    ["key", "Key" + (tempo && tempo.detectedKey ? " · " + tempo.detectedKey : "")]].map(([v, label]) => {
+                    const on = (scalePcs ? snapMode : "chromatic") === v;
+                    return (
+                      <button key={v} type="button" role="radio" aria-checked={on} className={on ? "on" : ""}
+                        disabled={!analysis || !scalePcs} onClick={() => setSnapMode(v)}>{label}</button>
+                    );
+                  })}
+                </div>
               </div>
               {/* 설계 §10-4 — explicit, never automatic. */}
               <button className="pe-btn pe-wide" onClick={snapAllToKey}
@@ -2766,27 +2797,28 @@ function PitchEditorApp() {
                 Snap all to key
               </button>
 
-              {/* STRENGTH / VIBRATO. One pair, two targets — the label says which one the
-                  next move writes to (setCorrection). */}
-              <div className="pe-sechd" style={{ marginTop: 2 }}>
-                {selection.size ? `${selection.size} NOTE${selection.size > 1 ? "S" : ""} SELECTED` : "ALL NOTES"}
-              </div>
               {/* v2.9.0 — 프리셋(설계 §7). 아래 두 컨트롤과 **같은 대상**에 쓴다 —
-                  선택이 있으면 선택 노트에, 없으면 클립 기본값에. 그래서 위 라벨 바로
-                  아래에 둔다. 지금 값과 같은 프리셋은 켜진 것으로 보인다. */}
-              <div className="pe-row" style={{ gap: 5 }}>
-                {PE_PRESETS.map((p) => (
-                  <button key={p.id} className={"pe-preset" + (activePreset === p.id ? " on" : "")}
-                    disabled={!analysis || !notes.length}
-                    onClick={() => setCorrection({ strength: p.strength, keepVibrato: p.keepVibrato })}
-                    title={p.tip}>{p.label}</button>
-                ))}
+                  선택이 있으면 선택 노트에, 없으면 클립 기본값에. 지금 값과 같은 프리셋은
+                  켜진 것으로 보인다. 대상 표시(ALL NOTES / N NOTES SELECTED)는 v2.12.0 에
+                  NOTES 섹션 끝과 롤 위 플로팅 표시로 옮겼다(사용자 요청 2026-10-01). */}
+              <div className="pe-row">
+                <span className="pe-rowlbl">PRESET</span>
+                <div className={"pe-seg" + (!analysis || !notes.length ? " disabled" : "")} role="radiogroup" aria-label="Preset">
+                  {PE_PRESETS.map((p) => (
+                    <button key={p.id} type="button" role="radio" aria-checked={activePreset === p.id}
+                      className={activePreset === p.id ? "on" : ""}
+                      disabled={!analysis || !notes.length}
+                      onClick={() => setCorrection({ strength: p.strength, keepVibrato: p.keepVibrato })}
+                      title={p.tip}>{p.label}</button>
+                  ))}
+                </div>
               </div>
               <div className="pe-row" title={selection.size
                 ? "How far the selected notes move toward their target pitch"
                 : "How far notes move toward their target pitch, unless a note says otherwise"}>
                 <span className="pe-rowlbl">AMOUNT</span>
                 <input className="pe-range" type="range" min="0" max="100" step="5"
+                  style={{ "--p": peClamp(amtShown, 0, 1) }}
                   value={Math.round(peClamp(amtShown, 0, 1) * 100)}
                   disabled={!analysis || !notes.length}
                   onPointerDown={beginAmt}
@@ -2797,10 +2829,11 @@ function PitchEditorApp() {
               </div>
               <div className="pe-row">
                 <span className="pe-rowlbl">VIBRATO</span>
-                <button className={"pe-btn pe-wide" + (corrOf.keepVibrato ? " on" : "")}
+                <button type="button" className="pe-switch" role="switch" aria-checked={!!corrOf.keepVibrato}
                   disabled={!analysis || !notes.length}
                   onClick={() => setCorrection({ keepVibrato: !corrOf.keepVibrato })}
                   title="Keep the singer's vibrato and glides while moving the pitch. Off flattens them.">
+                  <span className="pe-switch-track"><span className="pe-switch-thumb" /></span>
                   {corrOf.keepVibrato ? "Keep vibrato" : "Flatten vibrato"}
                 </button>
               </div>
@@ -2858,13 +2891,6 @@ function PitchEditorApp() {
                 : selection.size > 1 ? ` · ${selection.size} notes selected`
                 : notes.length ? " · click a note to select it" : ""))}
         </span>
-        {analysis && (selectedEdited || selectedOwned) && (
-          <button className="pe-zbtn" onClick={resetSelected}
-            style={{ width: "auto", padding: "0 9px", flex: "0 0 auto" }}
-            title="Return the selected notes to the detected pitch. Ctrl+Z brings the edit back.">
-            Reset
-          </button>
-        )}
         {/* Middle: WHICH rule produced the notes on screen (설계 §12-1). Without it a user who
             sang twelve notes and sees forty has no way to tell whether the grid or the singing
             is responsible. */}

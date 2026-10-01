@@ -259,23 +259,12 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
    (사용자 2026-09-22). 폭이 34px 라 전체 이름이 안 들어가서 줄였던 것이므로,
    폭을 넓혀 `AMOUNT`·`VIBRATO` 를 그대로 쓴다. Stage F 에서 하기로 미뤄 둔 항목. */
 .pe-rowlbl{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--faint);width:52px;flex:0 0 52px}
-/* 프리셋 버튼 — 한 줄에 셋. 설계 §7 의 Natural / Tight / Hard. */
-.pe-preset{flex:1 1 0;min-width:0;padding:5px 4px;border-radius:7px;font-size:10px;font-weight:600;
-  color:var(--dim);background:rgba(255,255,255,.02);border:1px solid var(--line-strong);
-  transition:border-color .15s,color .15s,background .15s}
-.pe-preset:hover:not(:disabled){border-color:var(--amber);color:var(--cream);background:rgba(255,255,255,.04)}
-.pe-preset.on{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber)}
-.pe-preset:disabled{opacity:.38;cursor:default}
 .pe-stat{font-size:10.5px;color:var(--dim);line-height:1.6}
 .pe-stat b{color:var(--cream-2);font-weight:600}
 .pe-hint{font-size:9.5px;color:var(--faint);line-height:1.65}
 .pe-hint kbd{font-family:var(--mono);font-size:9px;color:var(--dim);background:rgba(255,255,255,.04);
   border:1px solid var(--line-strong);border-radius:3px;padding:0 3px}
 .pe-wide{width:100%;justify-content:center}
-/* v2.7.3 — a two-state button, for VIB. Same treatment the transport icons already use for
-   "this is on" (.pe-icbtn.on), so the window has one vocabulary for it rather than two. */
-.pe-btn.on{color:var(--mixer-bar-fg);background:var(--amber);border-color:var(--amber)}
-.pe-btn.on:hover:not(:disabled){color:var(--mixer-bar-fg);background:var(--amber)}
 /* v2.7.3 — correction amount. Styled from theme tokens only: a hardcoded hex here is exactly
    what v2.4.3 had to go and find, and there are ten themes to be wrong in.
    appearance:none is load-bearing — without it Chromium paints its own track and thumb and
@@ -291,31 +280,92 @@ button:focus,button:focus-visible{outline:none;box-shadow:none}
 /* Fixed width so the row does not reflow as the number goes 5% → 100% — a slider whose track
    grows and shrinks under the pointer is hard to aim. */
 .pe-rangeval{flex:0 0 34px;text-align:right;font-size:10px;color:var(--cream-2)}
-/* Stage C — the note-grid picker. A native <select> on purpose: it is one choice out of three,
-   the OS list is keyboard- and screen-reader-ready for free, and the app has no custom select
-   to reuse. Only the closed face is styled; the popup belongs to the platform.
-   color-scheme is what makes that popup follow the theme instead of always coming up light. */
-.pe-select{flex:1 1 auto;min-width:0;padding:5px 8px;border-radius:7px;font-family:inherit;font-size:10.5px;
-  font-weight:600;color:var(--cream);background:rgba(255,255,255,.03);border:1px solid var(--line-strong);
-  color-scheme:dark}
-/* ivory and sage are the only two light themes of the ten (measured --bg). */
-:root[data-theme="ivory"] .pe-select,:root[data-theme="sage"] .pe-select{color-scheme:light}
-.pe-select:hover:not(:disabled){border-color:var(--amber);color:var(--cream)}
-.pe-select:disabled{opacity:.4;cursor:default}
-/* The OPEN list needs its own colours. Options inherit the select's text colour, which on the
-   dark themes is a near-white cream — and the popup did not follow color-scheme, so the list
-   came up light and the entries were cream-on-white, i.e. unreadable (사용자 보고 2026-08-31).
-   Measured across all ten themes this pairing is 8.7:1 at worst.
-   option:checked is deliberately NOT styled: the platform's own highlight already draws the
-   selected row readably (it overrides the inherited colour — visible in the user's screenshot),
-   and every token pair measured for it was WORSE than leaving it alone (--surface3 fell to
-   2.3:1 on Deep Navy, the amber pair to 1.7:1 on Solar Flare). */
-.pe-select option{background:var(--bg);color:var(--cream)}
+/* v2.12.0 — MIN·SNAP 의 <select> 는 세그먼트(.pe-seg)로 바뀌어 .pe-select 스타일을 지웠다.
+   다시 <select> 를 쓰게 되면 git 이력의 .pe-select 주석부터 볼 것 — 열린 목록 색(color-scheme,
+   option 배경)을 10개 테마에서 맞춘 기록이 있다(사용자 보고 2026-08-31). */
+/* ── v2.12.0 사이드 패널 뉴모피즘 (사용자 참고 그림 2026-10-01, 샘플로 확인 후 적용) ──
+   빛은 위 왼쪽 하나. 솟은 것 = 아래 오른쪽 어둠 + 위 왼쪽 밝음의 그림자 한 쌍, 파인 것 = 같은 쌍을 inset.
+   색은 테마 토큰에서만 — 그림자 세기만 --nd/--nl/--ntop 으로 따로 두고, 밝은 테마 둘(ivory·sage)은
+   바탕이 밝아 값을 바꾼다. 범위는 .pe-side 한정: 툴바의 .pe-btn(Loop)은 그대로다. */
+/* 솟은 면은 --surface 를 살짝 밝힌 것. surface2·3 을 쓰면 안 된다 — navy 는 그 둘이 강조색과 같은
+   청록이라 선택된 칸의 글자가 1.0:1 로 사라졌다(사용자 스크린샷 2026-10-01). 10개 테마를 재서
+   선택 글자는 --cream(최저 4.7:1, solar), 강조색 글자는 버렸다(ivory·blue·arctic 2.8:1). */
+.pe-side{--nd:rgba(0,0,0,.45);--nl:rgba(255,255,255,.06);--ntop:rgba(255,255,255,.08);
+  --n-raise:linear-gradient(color-mix(in srgb,var(--surface) 91%,#fff),color-mix(in srgb,var(--surface) 97%,#fff))}
+:root[data-theme="ivory"] .pe-side,:root[data-theme="sage"] .pe-side{--nd:rgba(60,50,30,.2);--nl:rgba(255,255,255,.8);
+  --ntop:rgba(255,255,255,.7);--n-raise:linear-gradient(var(--surface),var(--surface2))}
+/* 세그먼트 — MIN · SNAP · 프리셋. 파인 홈 안에 선택된 칸만 솟는다. */
+.pe-seg{flex:1 1 auto;min-width:0;display:flex;gap:3px;padding:3px;border-radius:999px;background:var(--bg2);
+  box-shadow:inset 2px 2px 4px var(--nd),inset -2px -2px 4px var(--nl)}
+.pe-seg button{flex:1 1 0;min-width:0;padding:4px 0;border:0;border-radius:999px;background:transparent;
+  font-family:inherit;font-size:10.5px;font-weight:600;color:var(--dim);cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s,background .15s,box-shadow .15s}
+.pe-seg button:hover:not(:disabled):not(.on){color:var(--cream)}
+.pe-seg button.on{color:var(--cream);background:var(--n-raise);
+  box-shadow:2px 2px 4px var(--nd),-1px -1px 3px var(--nl),inset 0 1px 0 var(--ntop)}
+.pe-seg button:focus-visible{outline:1px solid var(--amber);outline-offset:1px}
+.pe-seg button:disabled{cursor:default}
+.pe-seg.disabled{opacity:.4}
+/* NOTES 끝의 대상 표시 줄 — 왼쪽 라벨, 오른쪽 Reset. 높이를 버튼 기준으로 고정해 버튼이 생겨도 안 흔들린다. */
+.pe-selrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:11px;min-height:24px}
+.pe-side .pe-btn.pe-btn-sm{padding:4px 14px;font-size:10px;flex:0 0 auto}
+/* 볼록 버튼 — 누르는 동안 패널 안으로 들어가고, 못 쓸 때는 평평하게 눕는다. */
+.pe-side .pe-btn{border:0;border-radius:999px;color:var(--cream-2);background:var(--n-raise);
+  box-shadow:2px 2px 5px var(--nd),-2px -2px 4px var(--nl),inset 0 1px 0 var(--ntop);transition:color .12s,box-shadow .12s}
+.pe-side .pe-btn:hover:not(:disabled){color:var(--cream);background:var(--n-raise)}
+.pe-side .pe-btn:active:not(:disabled){background:var(--bg2);box-shadow:inset 2px 2px 4px var(--nd),inset -2px -2px 4px var(--nl)}
+.pe-side .pe-btn:disabled{opacity:.55;color:var(--faint);background:var(--bg2);box-shadow:none}
+/* Apply — 면을 칠하지 않고 작은 강조색 램프로 구분한다(글자를 강조색으로 하면 테마 셋에서 2.8:1). */
+.pe-side .pe-btn.primary,.pe-side .pe-btn.primary:hover:not(:disabled){color:var(--cream);background:var(--n-raise)}
+.pe-side .pe-btn.primary::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:6px;
+  vertical-align:1px;background:var(--amber);box-shadow:0 0 5px var(--amber)}
+.pe-side .pe-btn.primary:disabled{color:var(--faint);background:var(--bg2)}
+.pe-side .pe-btn.primary:disabled::before{background:var(--faint);box-shadow:none}
+.pe-side .pe-btn:focus-visible{outline:1px solid var(--amber);outline-offset:2px}
+/* 홈 슬라이더 — AMOUNT. 네이티브 range 를 그대로 둔다(키보드 · 한 동작 한 Undo 처리가 그 위에 있다).
+   채워진 길이는 --p(0~1)로 받아 홈 안에 강조색 선으로 그린다. 손잡이 가운데 눈금은 배경 그라디언트. */
+.pe-side .pe-range{height:22px}
+.pe-side .pe-range::-webkit-slider-runnable-track{height:10px;border:0;border-radius:999px;
+  background:linear-gradient(var(--amber),var(--amber)) 3px 50%/calc(var(--p,0) * (100% - 6px)) 2px no-repeat,var(--bg2);
+  box-shadow:inset 2px 2px 3px var(--nd),inset -1px -1px 3px var(--nl)}
+.pe-side .pe-range::-webkit-slider-thumb{width:24px;height:16px;margin-top:-3px;border:0;border-radius:999px;
+  background:linear-gradient(90deg,transparent 11px,var(--amber) 11px 13px,transparent 13px) 0 50%/100% 8px no-repeat,var(--n-raise);
+  box-shadow:2px 2px 4px var(--nd),-1px -1px 3px var(--nl),inset 0 1px 0 var(--ntop)}
+.pe-side .pe-range:hover:not(:disabled)::-webkit-slider-thumb{
+  background:linear-gradient(90deg,transparent 11px,var(--amber) 11px 13px,transparent 13px) 0 50%/100% 8px no-repeat,var(--n-raise)}
+.pe-side .pe-range:focus-visible{outline:1px solid var(--amber);outline-offset:2px;border-radius:999px}
+/* 스위치 — VIBRATO. 상태를 글자 대신 손잡이 위치와 켜진 램프로 보인다. */
+.pe-switch{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:9px;padding:0;border:0;background:none;
+  font-family:inherit;font-size:10.5px;font-weight:600;color:var(--dim);text-align:left;cursor:pointer}
+.pe-switch:disabled{opacity:.4;cursor:default}
+.pe-switch-track{position:relative;flex:0 0 40px;height:20px;border-radius:999px;background:var(--bg2);
+  box-shadow:inset 2px 2px 4px var(--nd),inset -2px -2px 4px var(--nl)}
+.pe-switch-thumb{position:absolute;top:2px;left:2px;width:22px;height:16px;border-radius:999px;background:var(--n-raise);
+  box-shadow:2px 2px 4px var(--nd),-1px -1px 3px var(--nl),inset 0 1px 0 var(--ntop);transition:left .18s}
+.pe-switch-thumb::after{content:"";position:absolute;top:5px;left:8px;width:6px;height:6px;border-radius:50%;
+  background:var(--muted);transition:background .18s,box-shadow .18s}
+.pe-switch[aria-checked="true"]{color:var(--cream)}
+.pe-switch[aria-checked="true"] .pe-switch-thumb{left:16px}
+.pe-switch[aria-checked="true"] .pe-switch-thumb::after{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.pe-switch:focus-visible{outline:none}
+.pe-switch:focus-visible .pe-switch-track{outline:1px solid var(--amber);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){.pe-switch-thumb,.pe-switch-thumb::after{transition:none}}
 /* Status-bar segments. The left one carries variable-length text (a clip name, a selected
    note) and must give way rather than push the readout beside it off the bar. */
 .pe-fseg{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Playhead is a DOM overlay, not part of the canvas: it moves ~30x a second and repainting
    the whole roll to shift one line would be pure waste. */
+/* v2.12.0 — 롤 오른쪽 위의 선택 표시. 보정 컨트롤이 쓰는 대상(전체 / 선택한 노트)을 노트를 고르는
+   화면에서 바로 보인다. 노트 위에 떠 있으므로 반투명 + 블러, 클릭은 통과(pointer-events:none).
+   선택이 있으면 램프가 켜진다 — 사이드 패널의 Apply·VIBRATO 와 같은 어휘. */
+.pe-selbadge{position:absolute;top:10px;z-index:3;display:flex;align-items:center;gap:7px;padding:5px 11px 5px 9px;
+  border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+  background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(6px);
+  border:1px solid var(--line-strong);box-shadow:0 4px 14px -4px rgba(0,0,0,.45);pointer-events:none;
+  transition:color .15s}
+.pe-selbadge.on{color:var(--cream)}
+.pe-selbadge-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);transition:background .15s,box-shadow .15s}
+.pe-selbadge.on .pe-selbadge-dot{background:var(--amber);box-shadow:0 0 6px var(--amber)}
 .pe-playhead{position:absolute;top:0;bottom:0;width:1px;background:var(--amber);
   box-shadow:0 0 6px var(--amber-soft);pointer-events:none}
 .pe-playhead::before{content:"";position:absolute;top:0;left:-4px;border-left:4px solid transparent;
