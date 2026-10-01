@@ -3139,31 +3139,26 @@ function HelpDialog({ onClose, standalone = false }) {
 }
 
 const RELEASE_NOTES = {
-  range: "v1.40.0 - v2.5.2",
-  date: "2026-09-14",
+  range: "v2.6.1 - v2.12.1",
+  date: "2026-10-01",
   features: [
-    "Pitch Editor: open it from a vocal clip to analyse the take's pitch, see the sung curve over a piano roll, and read the detected notes as blocks with their names and cent deviation. It has its own transport, playhead, time and pitch zoom, and a click-to-hear keyboard. It reads your audio without changing it.",
-    "Copy to track: copy a clip from one track to another \u2014 handy for bringing a bounce onto an Audio In track to work on it.",
-    "Vocal channel strip: Audio In and Bounce tracks get an FX button that opens a dedicated strip \u2014 high-pass filter, noise gate, 9-band EQ, compressor, and de-esser \u2014 with vocal presets, an A/B bypass, live gain-reduction meters, and a before/after spectrum. It is applied before the track fader and is reflected in playback, Export, and saved projects.",
-    "Broadband de-noise: remove steady room tone or hiss from a vocal clip. Mark a silent stretch as the Repeat region, click Learn Noise, then apply \u2014 the cleaned audio is printed to a new file next to your project, leaving the original recording untouched and the whole thing undoable.",
-    "Loop takes and comping: drag a Repeat region and record to stack a take on every pass, then swipe across the take lanes to assemble a composite from your best passes. Flatten Comp commits the result.",
-    "Portable projects: Save As gathers the project's own recordings, bounces, and consolidated audio into a \"<Project> Audio\" folder next to the .focus and stores relative paths, so a saved project is self-contained and can be moved or copied.",
-    "Clean Up Unused Recordings: a Project menu command that finds audio files nothing references \u2014 including your undo history \u2014 and moves them to the Recycle Bin, so they can be restored.",
-    "In-app updates delivered through GitHub Releases, and a set of accent color themes to personalise the look.",
+    "Pitch correction: drag a note in the Pitch Editor up or down to put it on the right pitch. Select several notes with Ctrl+click, Shift+click or Ctrl+A and they move together. Moved notes turn red and leave a grey bar where they were.",
+    "Apply and Revert: Apply renders your corrections into the audio while the original take is kept untouched; Revert brings the original back, and a single Ctrl+Z undoes either.",
+    "Correction presets \u2014 Natural, Tight and Hard \u2014 plus an Amount slider and a Vibrato switch, for the selected notes or the whole clip.",
+    "Key snap: notes can be set to land only on notes of the song's key, the keyboard marks those keys with a dot, and Snap all to key fixes every note in one step.",
+    "Split and Merge for notes that were cut in the wrong place, and a MIN setting (1/8, 1/16, 1/32) for how finely a take is divided into notes. Boundaries you set by hand survive a new analysis.",
+    "A redesigned Pitch Editor panel with clearer controls, a badge showing how many notes are selected, Reset next to the selection, a clip loop button and a large time readout.",
   ],
   improvements: [
-    "Undo and Redo are effectively instant \u2014 a step that used to take about 0.6 s now takes about 1 ms.",
-    "Pitch analysis is far faster and no longer crawls when the editor window is covered by another window: a long clip that could take anywhere from 31 seconds to 5 minutes now finishes in under a second.",
-    "The mixer's master EQ spectrum now shows what you are actually hearing \u2014 mute, solo, and the track faders are reflected in the curve \u2014 and is drawn at a much higher resolution, so the low end is a real curve instead of a staircase.",
-    "The vocal strip's PRE spectrum now refreshes by itself right after a de-noise print, instead of waiting until you reopen the window.",
+    "Opening a project is much faster. Older pitch-corrected versions of a clip that nothing uses any more are no longer loaded or saved with the project, and Clean Up Unused Recordings now finds them so they can be removed.",
+    "The loading bar now covers both stages of opening a project and shows the name of the file being read.",
   ],
   fixes: [
-    "Fixed pitch detection dropping an octave in the middle of a held note, and phantom notes appearing where the singer was only breathing.",
-    "Fixed a clip copied to another track playing silently until the app was restarted.",
-    "Fixed deleted recording clips coming back the next time the project was opened.",
-    "Fixed tracks failing to load on reopen (\"File not found\") and Audio In tracks stuck showing NO SRC even though their audio was fine.",
-    "Fixed Pitch Editor, Analyze, and De-noise refusing to open on a freshly created bounce track.",
-    "Fixed Shift+Mute on the File Tracks group skipping bounce tracks.",
+    "Fixed an Audio In track occasionally going silent a few seconds after a project was opened.",
+    "Fixed tracks that finished loading late staying silent when playback was started right after opening a project.",
+    "Fixed merging clips on the timeline losing the volume set on each clip.",
+    "Fixed the Pitch Editor restarting the song from the beginning instead of stopping at the end of a clip placed at the end of the song.",
+    "Fixed Reset in the Pitch Editor's right-click menu not responding.",
   ],
 };
 

@@ -311,10 +311,12 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
   }
 
   const projectItems = [
-    { label: "New Project", icon: "plus", hint: "\u2318N", onClick: onNew },
+    // v2.12.1 \u2014 \ub2e8\ucd95\ud0a4 \ud45c\uc2dc\ub294 \uc2e4\uc81c\ub85c \ub3d9\uc791\ud558\ub294 \uac83\ub9cc, Windows \ud45c\uae30\ub85c(Ctrl+). \u2318N \u00b7 \u2318E \ub294
+    // \ud0a4 \ucc98\ub9ac\uac00 \uc5c6\ub294\ub370 \ud45c\uc2dc\ub9cc \uc788\uc5c8\ub2e4 \u2014 \ub9e4\ub274\uc5bc \ub300\uc870\uc5d0\uc11c \ubc1c\uacac(2026-10-01).
+    { label: "New Project", icon: "plus", onClick: onNew },
     { sep: true },
-    { label: "Open Project\u2026", icon: "folder", hint: "\u2318O", onClick: onOpenProject, submenu: recentSubmenu },
-    { label: "Save Project", icon: "download", hint: "\u2318S", onClick: onSave },
+    { label: "Open Project\u2026", icon: "folder", hint: "Ctrl+O", onClick: onOpenProject, submenu: recentSubmenu },
+    { label: "Save Project", icon: "download", hint: "Ctrl+S", onClick: onSave },
     { label: "Save As\u2026", icon: "download", onClick: onSaveAs },
     { sep: true },
     { label: "Import Stem Folder\u2026", icon: "folder", onClick: onImportFolder },
@@ -323,7 +325,7 @@ function MenuBar({ projectName, onRename, onNew, onImport, onImportFolder, onLoa
     { sep: true },
     { label: "Clean Up Unused Recordings\u2026", icon: "trash", onClick: onCleanUpUnused },
     { sep: true },
-    { label: "Export\u2026", icon: "download", hint: "\u2318E", onClick: onExport },
+    { label: "Export\u2026", icon: "download", onClick: onExport },
   ];
   const editItems = [
     { label: "Undo", icon: "undo", hint: "Ctrl+Z", onClick: onUndo, disabled: !canUndo },
