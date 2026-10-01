@@ -27,6 +27,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # v2.12.1 — electron-builder uploads the installer, its blockmap and latest.yml in
+      # parallel. When no release exists for the tag yet, each upload created its OWN draft,
+      # so the three files ended up split across two drafts (2026-10-01). Creating the one
+      # draft up front gives every upload the same release to find.
+      - name: Create draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists - reusing it."
+          else
+            NOTES=".github/RELEASE_NOTES.md"
+            if [ -f "$NOTES" ]; then
+              gh release create "$TAG" --draft --title "FocusDAW Studio $TAG" --notes-file "$NOTES"
+            else
+              gh release create "$TAG" --draft --title "FocusDAW Studio $TAG" --notes "FocusDAW Studio $TAG"
+            fi
+          fi
+
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
