@@ -487,7 +487,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
                   <div className="manual-figure">
                     <img src="manual/screens-v2/01-05-help-menu.png" alt="Help 메뉴" className="manual-img" />
-                    <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong>(이 문서), <strong>Release Notes</strong>(버전별 변경 사항), <strong>Check for Updates</strong>(새 버전 확인·설치), <strong>About</strong>.</div>
+                    <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong>(이 문서), <strong>Release Notes</strong>(버전별 변경 사항), <strong>Check for Updates</strong>(새 버전 확인·설치), <strong>Copy Audio Diagnostics</strong>(소리 문제를 알릴 때 쓰는 진단 정보 복사 — <strong>15장</strong>), <strong>About</strong>.</div>
                   </div>
                   <p className="manual-p"><strong>Settings</strong>는 펼쳐지는 메뉴가 아니라 누르면 바로 <strong>설정 창</strong>이 열리는 버튼입니다. 색상 테마, 믹서 창 초기화, 오디오 장치 설정이 여기에 있습니다(<strong>13장</strong>).</p>
 
@@ -598,7 +598,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
                   <div className="manual-figure">
                     <img src="manual/screens-v2/01-05-help-menu.png" alt="Help menu" className="manual-img" />
-                    <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong> (this document), <strong>Release Notes</strong>, <strong>Check for Updates</strong> (download and install a new version), <strong>About</strong>.</div>
+                    <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong> (this document), <strong>Release Notes</strong>, <strong>Check for Updates</strong> (download and install a new version), <strong>Copy Audio Diagnostics</strong> (copies diagnostic details for reporting a sound problem — <strong>ch. 15</strong>), <strong>About</strong>.</div>
                   </div>
                   <p className="manual-p"><strong>Settings</strong> is not a drop-down menu — clicking it opens the <strong>Settings window</strong> directly, with color themes, the mixer-window reset, and audio device setup (<strong>ch. 13</strong>).</p>
 
@@ -3087,6 +3087,10 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">화면이 너무 좁을 때</h3>
                   <p className="manual-p">FocusDAW Studio의 최소 창 크기는 1258x600입니다. 믹서나 Export 창이 좁게 보이면 창을 넓히거나 타임라인을 스크롤해 필요한 영역을 확인하세요.</p>
+
+                  <h3 className="manual-h3">위 방법으로도 소리 문제가 풀리지 않을 때 — 진단 정보 보내기</h3>
+                  <p className="manual-p">특정 트랙만 소리가 나지 않거나, 화면의 Mute·Solo 상태와 실제 소리가 다르게 느껴질 때는 <strong>문제가 생긴 직후</strong>에 <strong>Help ▸ Copy Audio Diagnostics</strong>를 누르세요. 각 트랙의 상태와 최근 오디오 엔진 통신 기록이 <strong>클립보드에 복사</strong>됩니다. 메모장이나 메일에 붙여 넣어 문제 설명과 함께 보내 주시면 원인을 찾는 데 큰 도움이 됩니다.</p>
+                  <div className="manual-note">이 정보는 <strong>메뉴를 누를 때만</strong> 만들어지며 어디로도 자동 전송되지 않습니다. 담기는 것은 트랙 이름·상태와 오디오 파일 <strong>이름</strong>(폴더 경로 제외) 정도이고, 평소에 앱을 느리게 만들지 않습니다.</div>
                 </>
               ) : (
                 <>
@@ -3122,6 +3126,10 @@ function HelpDialog({ onClose, standalone = false }) {
 
                   <h3 className="manual-h3">Elements cut off or window too small</h3>
                   <p className="manual-p">The minimum window resolution is 1258x600. Resize your window or scroll horizontally on the timeline to locate hidden elements.</p>
+
+                  <h3 className="manual-h3">Still no sound? Send diagnostic details</h3>
+                  <p className="manual-p">If one track stays silent, or what you hear does not match the Mute and Solo buttons on screen, choose <strong>Help ▸ Copy Audio Diagnostics</strong> <strong>right after the problem happens</strong>. The state of every track and the recent traffic with the audio engine are <strong>copied to the clipboard</strong>. Paste it into a note or an email together with a description of the problem — it makes the cause much easier to find.</p>
+                  <div className="manual-note">These details are produced <strong>only when you choose the menu item</strong> and are never sent anywhere automatically. They contain track names and states and audio file <strong>names</strong> (without folder paths), and collecting them does not slow the app down.</div>
                 </>
               )}
             </section>
