@@ -489,7 +489,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/screens-v2/01-05-help-menu.png" alt="Help 메뉴" className="manual-img" />
                     <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong>(이 문서), <strong>Release Notes</strong>(버전별 변경 사항), <strong>Check for Updates</strong>(새 버전 확인·설치), <strong>About</strong>.</div>
                   </div>
-                  <p className="manual-p"><strong>Settings</strong> 메뉴는 색상 테마, 믹서 창 초기화, 오디오 장치 설정을 담고 있습니다(<strong>13장</strong>).</p>
+                  <p className="manual-p"><strong>Settings</strong>는 펼쳐지는 메뉴가 아니라 누르면 바로 <strong>설정 창</strong>이 열리는 버튼입니다. 색상 테마, 믹서 창 초기화, 오디오 장치 설정이 여기에 있습니다(<strong>13장</strong>).</p>
 
                   <h3 className="manual-h3">트랙 크기 — S · M · L</h3>
                   <p className="manual-p">상단의 <strong>TRACK SIZE</strong>로 트랙 행 높이를 바꿉니다. 높이가 커질수록 헤더에 더 많은 컨트롤이 펼쳐지므로, <strong>오토메이션 Curve나 Audio In 트랙의 녹음 컨트롤을 다룰 때는 M 또는 L</strong>을 쓰는 것이 편합니다.</p>
@@ -600,7 +600,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <img src="manual/screens-v2/01-05-help-menu.png" alt="Help menu" className="manual-img" />
                     <div className="manual-figcaption"><strong>Help</strong> — <strong>Manual</strong> (this document), <strong>Release Notes</strong>, <strong>Check for Updates</strong> (download and install a new version), <strong>About</strong>.</div>
                   </div>
-                  <p className="manual-p">The <strong>Settings</strong> menu holds color themes, the mixer-window reset, and audio device setup (<strong>ch. 13</strong>).</p>
+                  <p className="manual-p"><strong>Settings</strong> is not a drop-down menu — clicking it opens the <strong>Settings window</strong> directly, with color themes, the mixer-window reset, and audio device setup (<strong>ch. 13</strong>).</p>
 
                   <h3 className="manual-h3">Track size — S · M · L</h3>
                   <p className="manual-p"><strong>TRACK SIZE</strong> at the top changes the row height. Taller rows expose more header controls, so use <strong>M or L</strong> when working with automation curves or the Audio In recording controls.</p>
@@ -795,7 +795,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h2 className="manual-h2">3. 오디오 가져오기</h2>
                   <p className="manual-p">오디오를 가져오는 방법은 세 가지입니다.</p>
                   <ol className="manual-ol">
-                    <li className="manual-li"><strong>Track 버튼</strong>을 눌러 파일 선택 창에서 오디오 파일을 고릅니다.</li>
+                    <li className="manual-li">타임라인 왼쪽 위 <strong>TRACK</strong> 옆의 <strong>+</strong> 버튼을 눌러 파일 선택 창에서 오디오 파일을 고릅니다.</li>
                     <li className="manual-li"><strong>Project &gt; Import Audio Files...</strong>로 여러 파일을 선택합니다.</li>
                     <li className="manual-li"><strong>Project &gt; Import Stem Folder...</strong>로 스템 폴더를 선택합니다.</li>
                   </ol>
@@ -826,7 +826,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <h2 className="manual-h2">3. Importing Audio</h2>
                   <p className="manual-p">There are three ways to import audio files into your session:</p>
                   <ol className="manual-ol">
-                    <li className="manual-li">Click the <strong>+ Track</strong> button to choose files via the file selector.</li>
+                    <li className="manual-li">Click the <strong>+</strong> button next to <strong>TRACK</strong> at the top left of the timeline to choose files via the file selector.</li>
                     <li className="manual-li">Select <strong>Project &gt; Import Audio Files...</strong> from the menu bar to import multiple files.</li>
                     <li className="manual-li">Select <strong>Project &gt; Import Stem Folder...</strong> to batch import all stems inside a folder.</li>
                   </ol>
@@ -863,7 +863,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio는 마이크·오디오 인터페이스로 들어오는 입력 신호를 <strong>Audio In 트랙</strong>에 실시간으로 녹음할 수 있습니다. 녹음 결과는 프로젝트 폴더에 <code className="manual-code">.wav</code> 파일(테이크)로 저장되고, 다른 스템 트랙과 똑같이 볼륨·팬·솔로·뮤트·오토메이션·마스터 이펙트를 적용할 수 있습니다. 기존 스템 위에 보컬이나 애드리브를 덧입히는 <strong>오버더빙</strong>이 이 앱의 핵심 작업입니다.</p>
                   <p className="manual-p">이 장은 <strong>녹음 → 여러 테이크 중 고르기 → 클립 다듬기 → 보컬 이펙트 걸기</strong>까지의 흐름을 순서대로 다룹니다.</p>
 
-                  <div className="manual-note">녹음을 시작하기 전에 먼저 <strong>Settings ▸ Audio Devices</strong>에서 입력 장치(모드·입력/출력 장치·샘플레이트·버퍼)를 지정해야 합니다. 장치 설정 방법은 <strong>12. 설정 · 오디오 장치 · 테마</strong>를 참고하세요.</div>
+                  <div className="manual-note">녹음을 시작하기 전에 먼저 <strong>Settings ▸ Audio Devices</strong>에서 입력 장치(모드·입력/출력 장치·샘플레이트·버퍼)를 지정해야 합니다. 장치 설정 방법은 <strong>13. 설정 · 오디오 장치 · 테마</strong>를 참고하세요.</div>
 
                   <h3 className="manual-h3">① Audio In 트랙 만들기</h3>
                   <p className="manual-p">타임라인 왼쪽 위 <strong>TRACK</strong> 영역에 추가 버튼이 두 개 있습니다. <strong>+</strong>(플러스)는 오디오 파일을 불러오는 일반 파일 트랙을, <strong>+ Audio In</strong> 버튼은 <strong>입력 녹음용 트랙</strong>을 만듭니다. Audio In 트랙은 파일 트랙과 구분되도록 헤더에 파란 틴트가 적용되며, 파일 트랙 그룹(FILE TRACKS) <strong>바깥</strong>에 놓입니다.</p>
@@ -986,9 +986,12 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Copy <kbd className="manual-kbd">Ctrl+C</kbd></th><td className="manual-td">선택한 클립을 복사합니다.</td></tr>
                       <tr><th className="manual-th">Paste at playhead <kbd className="manual-kbd">Ctrl+V</kbd></th><td className="manual-td">복사한 클립을 <strong>현재 재생 위치</strong>에 붙여 넣습니다.</td></tr>
                       <tr><th className="manual-th">Duplicate <kbd className="manual-kbd">Ctrl+D</kbd></th><td className="manual-td">클립을 바로 뒤에 복제합니다.</td></tr>
-                      <tr><th className="manual-th">Split <kbd className="manual-kbd">C</kbd></th><td className="manual-td">재생 위치를 기준으로 클립을 <strong>둘로 나눕니다</strong>.</td></tr>
-                      <tr><th className="manual-th">Merge Clips <kbd className="manual-kbd">J</kbd></th><td className="manual-td">이어진 클립들을 <strong>하나로 합칩니다</strong>.</td></tr>
+                      <tr><th className="manual-th">Split <kbd className="manual-kbd">C</kbd></th><td className="manual-td">마우스가 <strong>가위 도구</strong>로 바뀝니다. 자르고 싶은 지점을 <strong>클릭</strong>하면 그 자리에서 클립이 <strong>둘로 나뉩니다</strong>.</td></tr>
+                      <tr><th className="manual-th">Merge Clips <kbd className="manual-kbd">J</kbd></th><td className="manual-td">클립 여러 개를 <kbd className="manual-kbd">Ctrl</kbd>+클릭으로 골라 두었다면 <strong>바로 하나로 합칩니다</strong>(메뉴 이름이 <strong>Merge n clips</strong>로 바뀝니다). 하나만 골랐다면 마우스가 <strong>합치기 도구</strong>로 바뀌고, 클립을 클릭하면 옆 클립과 합쳐집니다.</td></tr>
                       <tr><th className="manual-th">Delete <kbd className="manual-kbd">Del</kbd></th><td className="manual-td">클립을 지웁니다.</td></tr>
+                      <tr><th className="manual-th">Pitch Editor...</th><td className="manual-td"><strong>Audio In 트랙</strong>의 클립에서만 보입니다. 이 클립의 음정을 한 음씩 다듬는 피치 에디터 창을 엽니다(<strong>11장</strong>).</td></tr>
+                      <tr><th className="manual-th">Copy to track</th><td className="manual-td">이 클립을 다른 Audio In · Bounce 트랙의 <strong>같은 시간 위치</strong>로 복사합니다. 아래에 나열된 트랙 이름을 누릅니다. 복사할 수 있는 트랙이 있을 때만 나타납니다.</td></tr>
+                      <tr><th className="manual-th">Recording Offset Cal.</th><td className="manual-td">녹음한 클립을 귀로 맞춰 <strong>옮긴 뒤에만</strong> 나타납니다. 옮긴 만큼을 녹음 위치 보정값에 반영합니다(<strong>13장</strong>).</td></tr>
                     </tbody>
                   </table>
                   <table className="manual-table">
@@ -1008,7 +1011,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
                   <div className="manual-figure">
                     <img src="manual/screens-v2/04-12-split-after.png" alt="Split 후" className="manual-img" />
-                    <div className="manual-figcaption">Split 후 — 재생 위치를 경계로 클립이 나뉘어 각각 따로 옮기거나 지울 수 있습니다.</div>
+                    <div className="manual-figcaption">Split 후 — 클릭한 위치를 경계로 클립이 나뉘어 각각 따로 옮기거나 지울 수 있습니다.</div>
                   </div>
 
                   <p className="manual-p"><strong>Merge Clips — 클립 합치기</strong></p>
@@ -1090,7 +1093,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <li className="manual-li">같은 트랙에서 <strong>다시 Record</strong>하면 새 테이크가 만들어집니다. Repeat나 Punch를 쓰지 않았다면 마지막 테이크가 재생 대상이 됩니다.</li>
                     <li className="manual-li">트랙 제목을 <strong>더블클릭</strong>하면 이름을 바로 편집할 수 있습니다(Enter 확정, Esc 취소). <strong>트랙 이름과 녹음 파일 이름은 따로 관리</strong>되므로, 트랙 이름을 바꿔도 이미 녹음된 파일 이름은 바뀌지 않습니다.</li>
                   </ul>
-                  <div className="manual-note">녹음 파일은 다른 오디오와 마찬가지로 마스터 EQ·리버브·에코 등 출력 이펙트와 트랙 볼륨 오토메이션의 영향을 받습니다. 완성된 테이크는 <strong>11. 믹스다운 내보내기</strong>에서 전체 믹스에 함께 렌더링됩니다.</div>
+                  <div className="manual-note">녹음 파일은 다른 오디오와 마찬가지로 마스터 EQ·리버브·에코 등 출력 이펙트와 트랙 볼륨 오토메이션의 영향을 받습니다. 완성된 테이크는 <strong>12. 믹스다운 내보내기</strong>에서 전체 믹스에 함께 렌더링됩니다.</div>
                 </>
               ) : (
                 <>
@@ -1098,7 +1101,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   <p className="manual-p">FocusDAW Studio can record a live input signal from a microphone or audio interface straight onto an <strong>Audio In track</strong>. Each recording is saved into the project folder as a <code className="manual-code">.wav</code> take and behaves exactly like any other stem — volume, pan, solo, mute, automation, and the master effects all apply. <strong>Overdubbing</strong> vocals or ad-libs on top of imported stems is what this app is built around.</p>
                   <p className="manual-p">This chapter follows the whole flow in order: <strong>record → choose among takes → tidy the clips → shape the voice</strong>.</p>
 
-                  <div className="manual-note">Before recording, set up your input under <strong>Settings ▸ Audio Devices</strong> (mode, input/output device, sample rate, buffer). See <strong>12. Settings, Audio Devices &amp; Themes</strong> for the full device setup.</div>
+                  <div className="manual-note">Before recording, set up your input under <strong>Settings ▸ Audio Devices</strong> (mode, input/output device, sample rate, buffer). See <strong>13. Settings, Audio Devices &amp; Themes</strong> for the full device setup.</div>
 
                   <h3 className="manual-h3">1. Create an Audio In track</h3>
                   <p className="manual-p">The <strong>TRACK</strong> area at the top left of the timeline has two add buttons. The <strong>+</strong> (plus) creates a normal file track for importing audio; the <strong>+ Audio In</strong> button creates an <strong>input-recording track</strong>. Audio In tracks are tinted blue in the header and sit <strong>outside</strong> the FILE TRACKS group.</p>
@@ -1221,9 +1224,12 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th">Copy <kbd className="manual-kbd">Ctrl+C</kbd></th><td className="manual-td">Copies the selected clip.</td></tr>
                       <tr><th className="manual-th">Paste at playhead <kbd className="manual-kbd">Ctrl+V</kbd></th><td className="manual-td">Pastes the copied clip at the <strong>current playhead position</strong>.</td></tr>
                       <tr><th className="manual-th">Duplicate <kbd className="manual-kbd">Ctrl+D</kbd></th><td className="manual-td">Duplicates the clip right after itself.</td></tr>
-                      <tr><th className="manual-th">Split <kbd className="manual-kbd">C</kbd></th><td className="manual-td"><strong>Cuts the clip in two</strong> at the playhead.</td></tr>
-                      <tr><th className="manual-th">Merge Clips <kbd className="manual-kbd">J</kbd></th><td className="manual-td"><strong>Joins</strong> adjacent clips into one.</td></tr>
+                      <tr><th className="manual-th">Split <kbd className="manual-kbd">C</kbd></th><td className="manual-td">Switches the pointer to the <strong>scissors tool</strong>. <strong>Click</strong> where you want the cut and the clip is <strong>split in two</strong> there.</td></tr>
+                      <tr><th className="manual-th">Merge Clips <kbd className="manual-kbd">J</kbd></th><td className="manual-td">With several clips selected (<kbd className="manual-kbd">Ctrl</kbd>+click), <strong>merges them at once</strong> — the item reads <strong>Merge n clips</strong>. With one clip, the pointer becomes the <strong>merge tool</strong>; click a clip to join it with its neighbour.</td></tr>
                       <tr><th className="manual-th">Delete <kbd className="manual-kbd">Del</kbd></th><td className="manual-td">Removes the clip.</td></tr>
+                      <tr><th className="manual-th">Pitch Editor...</th><td className="manual-td">Shown only on clips of an <strong>Audio In track</strong>. Opens the Pitch Editor to tune this clip one note at a time (<strong>ch. 11</strong>).</td></tr>
+                      <tr><th className="manual-th">Copy to track</th><td className="manual-td">Copies this clip to another Audio In or Bounce track at the <strong>same position in time</strong> — click a track name listed underneath. Appears only when there is such a track.</td></tr>
+                      <tr><th className="manual-th">Recording Offset Cal.</th><td className="manual-td">Appears only <strong>after you have moved</strong> a recorded clip into place by ear. Feeds that amount into the recording-offset correction (<strong>ch. 13</strong>).</td></tr>
                     </tbody>
                   </table>
                   <table className="manual-table">
@@ -1243,7 +1249,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
                   <div className="manual-figure">
                     <img src="manual/screens-v2/04-12-split-after.png" alt="After Split" className="manual-img" />
-                    <div className="manual-figcaption">After Split — the clip is divided at the playhead, and each part can be moved or deleted on its own.</div>
+                    <div className="manual-figcaption">After Split — the clip is divided where you clicked, and each part can be moved or deleted on its own.</div>
                   </div>
 
                   <p className="manual-p"><strong>Merge Clips — joining clips</strong></p>
@@ -1325,7 +1331,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <li className="manual-li"><strong>Recording again</strong> on the same track creates a new take. Without Repeat or Punch, the latest take is the one that plays.</li>
                     <li className="manual-li"><strong>Double-click</strong> a track title to rename it inline (Enter to confirm, Esc to cancel). <strong>Track names and recording file names are handled separately</strong>, so renaming a track does not rename its already-recorded files.</li>
                   </ul>
-                  <div className="manual-note">Like any other audio, recordings are shaped by the master EQ, reverb, echo, and other output effects, plus track volume automation. Finished takes are rendered into the full mix in <strong>11. Exporting Mixdown</strong>.</div>
+                  <div className="manual-note">Like any other audio, recordings are shaped by the master EQ, reverb, echo, and other output effects, plus track volume automation. Finished takes are rendered into the full mix in <strong>12. Exporting Mixdown</strong>.</div>
                 </>
               )}
             </section>
@@ -1442,6 +1448,9 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
                   <div className="manual-note">만들어진 <strong>Bounce 트랙</strong>은 Audio In 트랙과 마찬가지로 <strong>클립 편집</strong>과 <strong>보컬 채널 스트립(FX)</strong>을 쓸 수 있습니다. 원본을 <strong>Keep + Mute</strong>로 두면 나중에 다시 펼쳐 볼 수 있으므로 가장 안전합니다.</div>
                   <div className="manual-note"><strong>바운스는 언제나 원본 BPM · Key로 렌더링됩니다.</strong> Vari BPM이나 Vari Key를 켜 둔 채 병합해도 결과물의 길이와 음정이 달라지지 않아, 타임라인에서 원본 트랙과 정확히 겹칩니다. 템포·조성 변경은 <strong>실시간 재생과 Export</strong>에만 적용된다고 기억하세요(<strong>6장 · 7장 · 12장</strong>).</div>
+
+                  <h3 className="manual-h3">파일 트랙을 클립 편집 트랙으로 — Convert to Bounce Track</h3>
+                  <p className="manual-p">파일 트랙은 통째로만 다룰 수 있고 클립 편집이 되지 않습니다. 파일 트랙의 파형을 <strong>우클릭</strong>하고 <strong>Convert to Bounce Track</strong>을 고르면 그 트랙이 <strong>Bounce 트랙</strong>으로 바뀌어 클립 이동·트림·복사를 쓸 수 있습니다. 오디오 자체는 바뀌지 않고, <strong>Undo</strong>로 되돌릴 수 있습니다. 반주의 한 부분을 클립 메뉴의 <strong>Copy to track</strong>으로 Audio In 트랙에 가져와 작업할 때 씁니다(<strong>4장</strong>).</p>
 
                   <h3 className="manual-h3">Edit 메뉴 — 모든 트랙 삭제 (Delete all tracks) <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">상단 <strong>Edit</strong> 메뉴의 Undo / Redo 아래에 <strong>Delete all tracks</strong> 항목이 있습니다. 현재 불러온 <strong>오디오 트랙만 모두 비우고</strong>, 마스터(프로젝트 전체)에 걸어 둔 <strong>이펙트 설정은 그대로 유지</strong>합니다. 같은 이펙트 체인(마스터 EQ·리버브·에코·Ambience·페이드 등)을 유지한 채 다른 스템 세트로 교체할 때 유용합니다.</p>
@@ -1568,6 +1577,9 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
                   <div className="manual-note">A <strong>Bounce track</strong> supports <strong>clip editing</strong> and the <strong>Vocal Channel Strip (FX)</strong>, just like an Audio In track. Leaving the originals on <strong>Keep + Mute</strong> is the safest choice — you can always unfold them again later.</div>
                   <div className="manual-note"><strong>Bounces always render at the original BPM and key.</strong> Merging with Vari BPM or Vari Key switched on does not change the result's length or pitch, so it lines up exactly with the tracks it came from. Tempo and key changes apply to <strong>realtime playback and Export only</strong> (<strong>ch. 6 · 7 · 12</strong>).</div>
+
+                  <h3 className="manual-h3">Making a file track clip-editable — Convert to Bounce Track</h3>
+                  <p className="manual-p">A file track is handled as a whole and has no clip editing. <strong>Right-click</strong> its waveform and choose <strong>Convert to Bounce Track</strong> to turn it into a <strong>Bounce track</strong>, which you can move, trim, and copy as clips. The audio itself is not changed, and <strong>Undo</strong> reverts it. Use it when you want to bring part of the backing onto an Audio In track with the clip menu's <strong>Copy to track</strong> (<strong>ch. 4</strong>).</p>
 
                   <h3 className="manual-h3">Edit Menu — Delete all tracks <span className="appver-since">(v1.9.0)</span></h3>
                   <p className="manual-p">The top <strong>Edit</strong> menu offers <strong>Delete all tracks</strong> below Undo / Redo. It clears <strong>all loaded audio tracks at once while keeping the master (project-wide) effect settings intact</strong> — handy when you want to swap in a different set of stems but keep the same effect chain (master EQ, reverb, echo, Ambience, fades, etc.).</p>
@@ -1750,7 +1762,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <h3 className="manual-h3">③ Key 설정 적용</h3>
-                  <p className="manual-p">원하는 키 후보를 선택하거나, 패널 내의 <strong>+</strong> / <strong>-</strong> 버튼을 클릭해 원하는 반음(Semitones, 최대 ±6) 오프셋을 설정한 뒤 <strong>APPLY</strong> 버튼을 누르면 프로젝트의 기준 키가 세션에 등록됩니다.</p>
+                  <p className="manual-p">패널 내의 <strong>+</strong> / <strong>-</strong> 버튼을 클릭해 원하는 반음(Semitones, 최대 ±6) 오프셋을 설정한 뒤 <strong>APPLY</strong> 버튼을 누르면 프로젝트의 기준 키가 세션에 등록됩니다.</p>
 
                   <div className="manual-figure">
                     <img src="manual/screens-v2/07-04a-key-apply.png" alt="APPLY 적용 후의 Key 표시" className="manual-img" />
@@ -1812,7 +1824,7 @@ function HelpDialog({ onClose, standalone = false }) {
                   </div>
 
                   <h3 className="manual-h3">3. Applying Key Settings</h3>
-                  <p className="manual-p">Select your preferred candidate key, or use the <strong>+</strong> / <strong>-</strong> buttons to adjust the semitones offset (up to ±6 semitones), then click <strong>APPLY</strong> to write the reference key to the project.</p>
+                  <p className="manual-p">Use the <strong>+</strong> / <strong>-</strong> buttons to adjust the semitones offset (up to ±6 semitones), then click <strong>APPLY</strong> to write the reference key to the project.</p>
 
                   <div className="manual-figure">
                     <img src="manual/screens-v2/07-04a-key-apply.png" alt="Key indicator showing applied key" className="manual-img" />
@@ -1850,7 +1862,7 @@ function HelpDialog({ onClose, standalone = false }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">8. 볼륨 오토메이션</h2>
-                  <p className="manual-p">트랙 헤더의 <strong>VOL AUTO</strong>를 켜면 트랙 위에 볼륨 오토메이션 곡선이 표시됩니다. 곡선의 점은 시간에 따른 볼륨 변화를 의미합니다.</p>
+                  <p className="manual-p">트랙 헤더의 <strong>AUTO</strong>를 켜면 트랙 위에 볼륨 오토메이션 곡선이 표시됩니다. 곡선의 점은 시간에 따른 볼륨 변화를 의미합니다.</p>
 
                   <ul className="manual-ul">
                     <li className="manual-li">오토메이션 선을 클릭하면 새 포인트가 추가됩니다.</li>
@@ -1870,8 +1882,8 @@ function HelpDialog({ onClose, standalone = false }) {
                   </table>
 
                   <div className="manual-figure">
-                    <img src="manual/screens-v2/08-01-auto-on-off.png" alt="VOL AUTO를 켠 화면" className="manual-img" />
-                    <div className="manual-figcaption">VOL AUTO를 켜면 해당 트랙 위에 노란 볼륨 오토메이션 레인이 표시됩니다. 트랙 크기가 L일 때 Reset과 Curve 버튼도 함께 보입니다.</div>
+                    <img src="manual/screens-v2/08-01-auto-on-off.png" alt="AUTO를 켠 화면" className="manual-img" />
+                    <div className="manual-figcaption">AUTO를 켜면 해당 트랙 위에 노란 볼륨 오토메이션 레인이 표시됩니다. 트랙 크기가 L일 때 Reset과 Curve 버튼도 함께 보입니다.</div>
                   </div>
 
                   <h3 className="manual-h3">포인트 조정</h3>
@@ -1893,7 +1905,7 @@ function HelpDialog({ onClose, standalone = false }) {
               ) : (
                 <>
                   <h2 className="manual-h2">8. Volume Automation</h2>
-                  <p className="manual-p">Toggling <strong>VOL AUTO</strong> in the track header displays a yellow automation lane over the track lane. Points on this line represent volume changes over time.</p>
+                  <p className="manual-p">Toggling <strong>AUTO</strong> in the track header displays a yellow automation lane over the track lane. Points on this line represent volume changes over time.</p>
 
                   <ul className="manual-ul">
                     <li className="manual-li">Left-click the line to add a new automation point.</li>
@@ -2140,7 +2152,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">왼쪽 위 드롭다운으로 <strong>Spatial Field · Ambience · Equalizer</strong>를 바로 전환합니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">9.1 Ambience — 음향 공간(Sound Environment)</h3>
+                  <h3 className="manual-h3">10.1 Ambience — 음향 공간(Sound Environment)</h3>
                   <p className="manual-p">Ambience는 곡 전체가 어떤 <strong>공간에서 울리는지</strong>를 정하는 창입니다. 위쪽 <strong>SOUND ENVIRONMENT</strong>에서 공간 프리셋을 고른 뒤, 왼쪽 노브와 오른쪽 슬라이더로 잔향의 길이·거리감·밝기를 다듬습니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/32-ambience-main.png" alt="Ambience 기본 화면" className="manual-img" />
@@ -2180,7 +2192,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">Ambience 창 하단의 OUTPUT EFFECTS입니다. 믹서 MASTER 패널과 같은 다섯 효과를 제공합니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">9.2 Auto Panning — 스테레오 배치(Spatial Field)</h3>
+                  <h3 className="manual-h3">10.2 Auto Panning — 스테레오 배치(Spatial Field)</h3>
                   <p className="manual-p">Auto Panning은 각 악기(트랙)를 반원형 <strong>스테레오 무대</strong> 위에 배치하는 창입니다. 위쪽 무대에서 악기 노드를 드래그해 <strong>좌우(팬)와 앞뒤(거리)</strong> 위치를 정하고, 아래쪽 트랙별 노브로 값을 미세 조정합니다. 악기를 서로 다른 자리에 펼쳐 두면 겹침이 줄어 믹스가 더 또렷하고 입체적으로 들립니다. 리뉴얼된 Spatial Field 창의 우측에는 전체 믹스 볼륨을 조절할 수 있는 <strong>볼륨 슬라이더</strong>가 추가되었습니다. 게인을 과도하게 올려 사운드가 클리핑 임계값에 도달하면 슬라이더 배경이 붉은색으로 변하며 사운드 포화(Saturation) 경고가 표시됩니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/36-advanced-pan.png" alt="Advanced Pan(Spatial Field) 악기 배치 화면" className="manual-img" />
@@ -2191,13 +2203,13 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">우측 볼륨 슬라이더의 게인을 과도하게 올렸을 때 레벨 미터가 붉은색으로 바뀌며 사운드 Saturation 경고가 표시되는 모습입니다.</div>
                   </div>
 
-                  <h3 className="manual-h3">9.3 Equalizer — 정밀 EQ 편집</h3>
+                  <h3 className="manual-h3">10.3 Equalizer — 정밀 EQ 편집</h3>
                   <p className="manual-p">믹서 MASTER의 EQ를 큰 화면에서 다루는 전용 창입니다. 실시간 FFT 스펙트럼 위에 9개 밴드 포인트가 놓여 있고, 각 포인트를 위아래로 드래그하면 저역~고역의 양을 ±로 조절하며 그 값(dB)이 포인트 아래에 표시됩니다.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/37-advanced-eq-presets.png" alt="Equalizer 창과 프리셋" className="manual-img" />
                     <div className="manual-figcaption">Equalizer 창입니다. 하단 <strong>PRESET</strong> 줄에서 Reset · Pop · Classic · Hip Hop을 바로 적용합니다(그림은 Pop).</div>
                   </div>
-                  <p className="manual-p"><strong>사용자 EQ 프리셋 저장 · 불러오기 · 이름 변경</strong> — PRESET 아래 <strong>USER</strong> 줄에는 사용자 슬롯(내 EQ 1~5)이 있습니다. 슬롯을 누르면 작은 메뉴가 열립니다.</p>
+                  <p className="manual-p"><strong>사용자 EQ 프리셋 저장 · 불러오기 · 이름 변경</strong> — PRESET 아래 <strong>USER</strong> 줄에는 사용자 슬롯(User 1~5)이 있습니다. 슬롯을 누르면 작은 메뉴가 열립니다.</p>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th">Save here</th><td className="manual-td">현재 EQ 곡선을 그 슬롯에 <strong>저장</strong>합니다.</td></tr>
@@ -2233,7 +2245,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">Use the top-left dropdown to switch instantly between <strong>Spatial Field · Ambience · Equalizer</strong>.</div>
                   </div>
 
-                  <h3 className="manual-h3">9.1 Ambience — Sound Environment</h3>
+                  <h3 className="manual-h3">10.1 Ambience — Sound Environment</h3>
                   <p className="manual-p">Ambience defines <strong>what space the whole song echoes in</strong>. Pick a space preset under <strong>SOUND ENVIRONMENT</strong>, then refine the length, distance, and brightness of the reverb with the knobs on the left and sliders on the right.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/32-ambience-main.png" alt="Ambience main window" className="manual-img" />
@@ -2273,7 +2285,7 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">The OUTPUT EFFECTS at the bottom of the Ambience window — the same five effects as the mixer MASTER panel.</div>
                   </div>
 
-                  <h3 className="manual-h3">9.2 Auto Panning — Spatial Field</h3>
+                  <h3 className="manual-h3">10.2 Auto Panning — Spatial Field</h3>
                   <p className="manual-p">Auto Panning places each instrument (track) on a fan-shaped <strong>stereo stage</strong>. Drag the instrument nodes to set their <strong>left/right (pan) and front/back (distance)</strong>, and fine-tune with the per-track knobs below. Spreading instruments apart reduces overlap, making the mix clearer and more three-dimensional. In the renewed Spatial Field window, a <strong>master volume slider</strong> has been added to the right side. If you increase the gain excessively so that the signal level reaches clipping threshold, the level indicator turns red to warn about sound saturation.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/36-advanced-pan.png" alt="Advanced Pan (Spatial Field) instrument placement" className="manual-img" />
@@ -2284,13 +2296,13 @@ function HelpDialog({ onClose, standalone = false }) {
                     <div className="manual-figcaption">When gain is raised excessively, the right volume slider level meter changes to red, displaying a sound saturation warning.</div>
                   </div>
 
-                  <h3 className="manual-h3">9.3 Equalizer — Precise EQ Editing</h3>
+                  <h3 className="manual-h3">10.3 Equalizer — Precise EQ Editing</h3>
                   <p className="manual-p">A dedicated window for editing the mixer MASTER EQ on a large canvas. Nine band points sit over a real-time FFT spectrum; drag a point up or down to boost/cut from lows to highs, with its value (dB) shown beneath it.</p>
                   <div className="manual-figure">
                     <img src="manual/live-screens/37-advanced-eq-presets.png" alt="Equalizer window and presets" className="manual-img" />
                     <div className="manual-figcaption">The Equalizer window. The bottom <strong>PRESET</strong> row applies Reset · Pop · Classic · Hip Hop instantly (Pop is active here).</div>
                   </div>
-                  <p className="manual-p"><strong>Save, recall, and rename user EQ presets</strong> — below PRESET, the <strong>USER</strong> row holds user slots (My EQ 1–5). Clicking a slot opens a small menu.</p>
+                  <p className="manual-p"><strong>Save, recall, and rename user EQ presets</strong> — below PRESET, the <strong>USER</strong> row holds user slots (User 1–5). Clicking a slot opens a small menu.</p>
                   <table className="manual-table">
                     <tbody>
                       <tr><th className="manual-th">Save here</th><td className="manual-td"><strong>Saves</strong> the current EQ curve into that slot.</td></tr>
@@ -2312,128 +2324,392 @@ function HelpDialog({ onClose, standalone = false }) {
               {lang === "ko" ? (
                 <>
                   <h2 className="manual-h2">11. 피치 에디터(Pitch Editor)</h2>
-                  <p className="manual-p"><strong>피치 에디터</strong>는 녹음한 보컬의 음정을 음(note) 단위로 다듬는 창입니다. 클립의 음높이를 눈으로 보고, 어긋난 음을 끌어 옮긴 뒤, 그 결과를 오디오에 구워 넣습니다. <strong>원본 녹음 파일은 절대 변하지 않습니다</strong> — 보정한 결과는 언제나 새 오디오로 따로 만들어지고, 되돌릴 수 있습니다.</p>
-                  <p className="manual-p">상단 도구 막대의 <strong>Key / Vari Key</strong>가 <em>곡 전체</em>의 조성을 바꾸는 기능이라면, 피치 에디터는 <em>한 음씩</em> 고치는 기능입니다. 두 기능은 방식이 달라서, 피치 에디터는 목소리의 음색(포먼트)을 그대로 두고 음정만 옮깁니다.</p>
-                  <h3 className="manual-h3">① 열기</h3>
-                  <p className="manual-p"><strong>Audio In 트랙</strong>의 클립을 <strong>우클릭</strong>하고 <code className="manual-code">Pitch Editor...</code>를 고릅니다. 스템(파일) 트랙에는 이 메뉴가 나오지 않습니다 — 보컬 테이크를 위한 기능입니다.</p>
-                  <p className="manual-p">창 위쪽 가운데의 시간 표시는 <strong>현재 위치 / 클립 전체 길이</strong>이고, <strong>둘 다 이 클립 기준</strong>입니다. 곡의 한가운데에 놓인 10초짜리 클립이라면 왼쪽은 <code className="manual-code">0:00.00</code>부터 <code className="manual-code">0:10.00</code>까지 움직이고 오른쪽은 늘 <code className="manual-code">0:10.00</code>입니다 — 곡 전체의 시간이 아닙니다. <kbd className="manual-kbd">0</kbd>을 누르면 클립 맨 앞으로 돌아갑니다.</p>
-                  <h3 className="manual-h3">② Analyze — 음높이 분석</h3>
-                  <p className="manual-p">창이 열리면 우측 패널의 <strong>Analyze</strong>(또는 <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>)를 누릅니다. 부른 음높이가 <strong>빨간 곡선</strong>으로 그려지고, 그 위에 <strong>노트 블록</strong>이 얹힙니다. 블록 하나가 부른 음 하나입니다.</p>
+                  <p className="manual-p">노래를 녹음하다 보면 몇몇 음이 살짝 낮거나 높게 나올 때가 있습니다. <strong>피치 에디터</strong>는 그런 음을 화면에서 찾아 <strong>마우스로 끌어 맞는 음으로 옮겨 주는</strong> 도구입니다. 곡 전체를 다시 부르지 않고도 아쉬운 몇 음만 손볼 수 있습니다.</p>
+                  <div className="manual-note"><strong>원래 녹음은 절대 바뀌지 않습니다.</strong> 고친 소리는 새 오디오 파일로 따로 만들어지고, 언제든 원래 소리로 되돌릴 수 있습니다. 마음 놓고 이것저것 시험해 보세요.</div>
+                  <p className="manual-p">상단 도구 막대의 <strong>Key / Vari Key</strong>(7장)는 <em>곡 전체</em>의 높이를 한꺼번에 바꾸는 기능이고, 피치 에디터는 보컬의 음을 <em>하나씩</em> 고치는 기능입니다. 피치 에디터는 <strong>목소리의 음색은 그대로 두고</strong> 음 높이만 옮깁니다.</p>
+
+                  <h3 className="manual-h3">먼저 알아 두면 좋은 말</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">음높이(피치)</th><td className="manual-td">소리가 얼마나 높고 낮은지입니다. 피치 에디터 화면에서는 <strong>위로 갈수록 높은 음</strong>입니다.</td></tr>
+                      <tr><th className="manual-th">노트</th><td className="manual-td">한 번에 이어서 부른 음 하나입니다. 화면에는 <strong>가로로 긴 네모 블록</strong>으로 나타납니다.</td></tr>
+                      <tr><th className="manual-th">반음</th><td className="manual-td">피아노 건반 <strong>한 칸</strong>(흰 건반·검은 건반 모두 포함)의 높이 차이입니다. 화면의 가로줄 한 칸이 반음 하나입니다.</td></tr>
+                      <tr><th className="manual-th">센트(¢)</th><td className="manual-td">반음을 100으로 잘게 나눈 단위입니다. <code className="manual-code">+20¢</code>는 "반음의 5분의 1만큼 높게 불렀다"는 뜻입니다. <strong>0에 가까울수록 정확</strong>합니다.</td></tr>
+                      <tr><th className="manual-th">비브라토</th><td className="manual-td">긴 음을 부를 때 음이 위아래로 살짝 떨리는 것입니다. 노래의 표현이므로 보통은 살려 둡니다.</td></tr>
+                      <tr><th className="manual-th">Key(조성)</th><td className="manual-td">곡이 주로 쓰는 음들의 모음입니다(예: <code className="manual-code">F</code>). 곡의 Key를 알면 <strong>"이 곡에 어울리는 음"으로만</strong> 옮기도록 할 수 있습니다(7장에서 감지).</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">빠르게 따라 하기 — 다섯 단계</h3>
+                  <ol className="manual-ol">
+                    <li className="manual-li"><strong>Audio In 트랙</strong>의 클립을 <strong>우클릭</strong>하고 <strong>Pitch Editor...</strong>를 고릅니다.</li>
+                    <li className="manual-li">오른쪽 패널의 <strong>Analyze</strong>를 누르고 몇 초 기다립니다.</li>
+                    <li className="manual-li"><kbd className="manual-kbd">Space</kbd>로 들어 보면서, 블록에 적힌 <strong>센트 숫자가 큰 음</strong>이나 귀에 거슬리는 음을 찾습니다.</li>
+                    <li className="manual-li">그 블록을 <strong>위나 아래로 끌어</strong> 맞는 음 줄에 놓습니다.</li>
+                    <li className="manual-li"><strong>Apply</strong>를 눌러 소리에 반영하고 다시 들어 봅니다. 마음에 들지 않으면 <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 또는 <strong>Revert</strong>로 되돌립니다.</li>
+                  </ol>
+                  <p className="manual-p">아래는 각 단계를 자세히 설명합니다.</p>
+
+                  <h3 className="manual-h3">① 피치 에디터 열기</h3>
+                  <p className="manual-p">타임라인에서 <strong>Audio In 트랙</strong>의 클립을 <strong>우클릭</strong>하고 <strong>Pitch Editor...</strong>를 고르면 새 창이 열립니다. 파일 트랙과 Bounce 트랙에는 이 메뉴가 없습니다. Bounce 트랙의 보컬을 고치고 싶다면 클립 메뉴의 <strong>Copy to track</strong>으로 Audio In 트랙에 옮긴 뒤 여세요(4장).</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-01-open-menu.png" alt="클립 우클릭 메뉴의 Pitch Editor 항목" className="manual-img" />
+                    <div className="manual-figcaption">Audio In 트랙의 클립을 우클릭하면 메뉴에 <strong>Pitch Editor...</strong>가 보입니다.</div>
+                  </div>
+                  <p className="manual-p">창 위쪽 가운데의 시간 표시는 <strong>이 클립 안에서의 위치 / 클립 길이</strong>입니다. 곡 전체의 시간이 아니라 <strong>클립의 첫머리가 0초</strong>입니다. <kbd className="manual-kbd">0</kbd>을 누르면 클립 맨 앞으로 돌아갑니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-02-before-analyze.png" alt="분석하기 전의 피치 에디터 창" className="manual-img" />
+                    <div className="manual-figcaption">처음 연 피치 에디터 창입니다. 아직 분석 전이라 흐린 파형만 보이고, 오른쪽 <strong>Analyze</strong> 버튼을 눌러 시작합니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">② 화면 둘러보기</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-03-screen-layout.png" alt="피치 에디터 화면 구성 — 각 영역 번호" className="manual-img" />
+                    <div className="manual-figcaption">분석을 마친 피치 에디터 창에 각 영역의 번호를 표시한 그림입니다. 아래 표의 번호와 대응합니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">① 도구 막대</th><td className="manual-td">재생 / 정지, <strong>CLIP</strong>(이 클립만 반복 재생), 파일 이름과 길이, 시간 표시가 있습니다. 오른쪽 끝 버튼은 오른쪽 패널을 숨기거나 다시 보이게 합니다.</td></tr>
+                      <tr><th className="manual-th">② CLIP MAP</th><td className="manual-td">클립 전체를 한 줄로 줄여 보여 줍니다. 밝은 상자가 지금 보고 있는 부분이며, 클릭하거나 끌어서 이동합니다.</td></tr>
+                      <tr><th className="manual-th">③ 건반</th><td className="manual-td">높이의 기준입니다. 건반을 <strong>클릭하면 그 음이 소리로</strong> 들려서, 부른 음과 귀로 비교할 수 있습니다. 재생 중에는 지금 부르고 있는 음의 건반이 밝아집니다.</td></tr>
+                      <tr><th className="manual-th">④ 피아노 롤</th><td className="manual-td">가운데 큰 작업 영역입니다. <strong>선</strong>은 실제로 부른 높이, <strong>블록</strong>은 그것을 음 단위로 정리한 노트입니다. 뒤에는 흐린 파형이 깔립니다.</td></tr>
+                      <tr><th className="manual-th">⑤ 선택 표시</th><td className="manual-td">오른쪽 위에 떠 있는 표시입니다. 아무것도 고르지 않았으면 <code className="manual-code">ALL NOTES</code>, 노트를 고르면 <code className="manual-code">3 NOTES SELECTED</code>처럼 개수가 나옵니다.</td></tr>
+                      <tr><th className="manual-th">⑥ 오른쪽 패널</th><td className="manual-td">위에서부터 <strong>VIEW</strong>(확대·축소) · <strong>ANALYSIS</strong>(분석) · <strong>NOTES</strong>(노트 나누기) · <strong>CORRECTION</strong>(얼마나 고칠지, Apply)입니다.</td></tr>
+                      <tr><th className="manual-th">⑦ 상태 표시줄</th><td className="manual-td">맨 아래 줄입니다. 노트 하나를 고르면 그 노트의 음이름 · 시간 · 길이 · 센트 · 신뢰도가 나오고, 가운데에는 노트 최소 길이, 오른쪽에는 곡의 Key가 표시됩니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">③ 음높이 분석 — Analyze</h3>
+                  <p className="manual-p">오른쪽 패널의 <strong>Analyze</strong>(또는 <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>)를 누르면 앱이 녹음을 처음부터 끝까지 듣고 음높이를 찾아냅니다. 버튼에 진행률이 표시되고, 끝나면 <strong>선</strong>과 <strong>노트 블록</strong>이 그려집니다. 버튼 이름은 <strong>Re-analyze</strong>로 바뀝니다.</p>
+                  <p className="manual-p">버튼 아래의 <code className="manual-code">67% voiced</code>는 클립에서 <strong>음높이가 있는 소리(노래)가 차지하는 비율</strong>입니다. 쉬는 부분이나 숨소리에는 음높이가 없으므로 100%가 되지 않는 것이 정상입니다.</p>
+                  <div className="manual-note">분석 결과는 저장되지 않으므로 <strong>창을 열 때마다 Analyze를 한 번 눌러야</strong> 합니다. 걱정하지 마세요 — 옮겨 둔 노트와 설정은 저장되어 있다가 분석이 끝나면 그대로 다시 나타납니다.</div>
+
+                  <h3 className="manual-h3">④ 노트 블록 읽는 법</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-04-note-blocks.png" alt="노트 블록 확대 — 음이름, 센트, 흐린 블록, 점선 블록" className="manual-img" />
+                    <div className="manual-figcaption">노트 블록을 확대한 모습입니다. 넓은 블록에는 <code className="manual-code">A4 0¢</code>처럼 음이름과 센트가, 좁은 블록에는 <code className="manual-code">F4</code>처럼 음이름만 적혀 있고, 아주 좁은 블록은 글자 없이 보입니다. 붉은 블록은 옮긴 노트이며 원래 자리에 회색 막대가 남아 있습니다. <code className="manual-code">B4</code> 블록의 점선 테두리는 곡의 Key(F)에 없는 음이라는 뜻입니다.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">블록 안의 글자</th><td className="manual-td"><strong>음이름 + 옥타브 번호</strong>와 <strong>센트</strong>입니다. <code className="manual-code">G4 -2¢</code>는 "4번째 옥타브의 솔을 아주 조금(2센트) 낮게 불렀다"는 뜻입니다. <strong>±30¢를 넘으면</strong> 귀로도 틀린 음으로 들리기 쉽습니다. 블록이 짧아 좁으면 센트가 생략되고 음이름만 보이며, 더 좁으면 글자가 모두 생략됩니다. <kbd className="manual-kbd">Ctrl</kbd>+휠로 확대하거나, 노트를 클릭해 아래 상태 표시줄에서 확인하세요.</td></tr>
+                      <tr><th className="manual-th">흐린 블록</th><td className="manual-td">앱이 높이를 <strong>확신하지 못한</strong> 부분입니다(숨소리, 자음, 아주 작은 소리 등). 소리를 들어 보고 이상하지 않으면 그냥 두셔도 됩니다.</td></tr>
+                      <tr><th className="manual-th">점선 테두리</th><td className="manual-td">곡의 <strong>Key에 없는 음</strong>입니다. 틀렸을 가능성이 있다는 표시일 뿐, 일부러 낸 꾸밈음일 수도 있으니 들어 보고 판단하세요. Key가 감지되지 않은 프로젝트에서는 나타나지 않습니다.</td></tr>
+                      <tr><th className="manual-th">붉은 블록 + 회색 막대</th><td className="manual-td"><strong>이미 옮긴 노트</strong>입니다. 원래 있던 자리에는 회색 막대가 남아 얼마나 옮겼는지 보입니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">⑤ 노트 고르기</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">클릭</th><td className="manual-td">그 노트 하나만 고릅니다.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd>+클릭</th><td className="manual-td">노트를 하나씩 <strong>더하거나 뺍니다</strong>.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd>+클릭</th><td className="manual-td">먼저 고른 노트부터 지금 누른 노트까지 <strong>사이의 노트를 모두</strong> 고릅니다.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">A</kbd></th><td className="manual-td"><strong>모든 노트</strong>를 고릅니다.</td></tr>
+                      <tr><th className="manual-th">빈 곳 클릭</th><td className="manual-td">선택이 풀리고, 재생 위치가 클릭한 시간으로 옮겨 갑니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-05-selection.png" alt="여러 노트를 고른 모습과 선택 표시" className="manual-img" />
+                    <div className="manual-figcaption">노트 세 개를 고른 모습입니다. 고른 노트는 밝은 테두리로 표시되고, 오른쪽 위 표시가 <strong>3 NOTES SELECTED</strong>로 바뀝니다.</div>
+                  </div>
+
+                  <h3 className="manual-h3">⑥ 음 옮기기 — 끌기와 SNAP</h3>
+                  <p className="manual-p">노트를 <strong>위아래로 끌면</strong> 음 높이가 바뀝니다. 여러 노트를 골라 두었다면 함께 움직여 선율 모양이 그대로 유지됩니다. 옮긴 노트는 붉은색으로 바뀌고 원래 자리에 회색 막대가 남습니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-06-drag-note.png" alt="노트를 위로 끌어 옮긴 모습" className="manual-img" />
+                    <div className="manual-figcaption"><code className="manual-code">A4</code>로 부른 노트를 <code className="manual-code">B4</code>로 두 칸 올린 모습입니다. 옮긴 노트는 붉게 바뀌고, 원래 자리(A4)에 회색 막대가 남아 있습니다.</div>
+                  </div>
+                  <p className="manual-p">CORRECTION의 <strong>SNAP</strong>은 끌어 놓은 노트가 <strong>어느 음에 달라붙을지</strong> 정합니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Chromatic</th><td className="manual-td">건반 한 칸(반음)마다 달라붙습니다. 어떤 음으로든 옮길 수 있습니다.</td></tr>
+                      <tr><th className="manual-th">Key · F</th><td className="manual-td">곡의 Key에 속한 음에만 달라붙습니다. 곡에 어울리지 않는 음으로 잘못 옮기는 실수를 막아 줍니다. 이때 왼쪽 건반에 <strong>&bull;</strong> 점이 찍혀 갈 수 있는 음이 미리 보입니다. 곡의 Key가 감지되지 않았으면 고를 수 없습니다(7장).</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-07-snap-key.png" alt="SNAP을 Key로 고르면 건반에 점이 찍힌 모습" className="manual-img" />
+                    <div className="manual-figcaption">SNAP을 <strong>Key</strong>로 고르면 곡의 Key에 속한 건반마다 점(&bull;)이 찍힙니다. 노트는 점이 있는 줄로만 달라붙습니다.</div>
+                  </div>
+                  <p className="manual-p"><strong>Snap all to key</strong>는 <strong>모든 노트</strong>를 한 번에 가장 가까운 Key 음으로 옮깁니다. 편리하지만 일부러 낸 꾸밈음까지 옮겨질 수 있으니, 누른 뒤 꼭 들어 보세요. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 한 번이면 통째로 되돌아갑니다.</p>
+                  <div className="manual-note">한 노트는 <strong>처음 부른 높이에서 위아래로 6반음(건반 6칸)까지만</strong> 옮겨집니다. 그보다 많이 옮기면 목소리가 부자연스럽게 변하기 때문입니다. 한계에 닿으면 더 끌어도 움직이지 않고 패널에 빨간 안내가 나타납니다. 여러 노트를 함께 끌 때는 <strong>가장 먼저 한계에 닿은 노트에서 모두 함께</strong> 멈춥니다.</div>
+
+                  <h3 className="manual-h3">⑦ 옮긴 노트 되돌리기 — Reset</h3>
+                  <p className="manual-p">옮긴 노트를 원래 부른 높이로 돌리는 방법은 두 가지이며, 결과는 같습니다.</p>
                   <ul className="manual-ul">
-                      <li className="manual-li">블록 안의 글자는 검출된 <strong>음이름</strong>과 <strong>센트 편차</strong>입니다(예: <code className="manual-code">A3 +12¢</code>).</li>
-                      <li className="manual-li">블록이 <strong>흐릿하면</strong> 검출 신뢰도가 낮은 구간입니다.</li>
-                      <li className="manual-li">테두리가 <strong>점선</strong>이면 프로젝트 조성에서 벗어난 음입니다.</li>
-                      <li className="manual-li">⚠️ 분석 결과는 저장되지 않습니다. 프로젝트를 다시 열면 <strong>Analyze를 다시</strong> 눌러야 합니다. 편집한 내용은 그대로 남아 다시 붙습니다.</li>
+                    <li className="manual-li">노트를 <strong>우클릭</strong>하고 <strong>Reset to detected</strong>를 누릅니다. 여러 노트를 골라 둔 상태에서 그중 하나를 우클릭하면 <strong>고른 노트 전부</strong>가 되돌아갑니다.</li>
+                    <li className="manual-li">노트를 고른 뒤 오른쪽 패널 NOTES 섹션 맨 아래, 선택 표시 옆의 <strong>Reset</strong> 버튼을 누릅니다. 되돌릴 것이 없으면 버튼이 흐리게 꺼져 있습니다.</li>
                   </ul>
-                  <h3 className="manual-h3">③ 노트 고르기</h3>
+                  <p className="manual-p">이미 <strong>Apply</strong>한 클립이라면 Reset이 <strong>소리까지</strong> 함께 되돌립니다. Apply를 다시 누를 필요가 없습니다. 물론 <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd>로 Reset도 되돌릴 수 있습니다.</p>
+
+                  <h3 className="manual-h3">⑧ 노트가 잘게 쪼개지거나 붙어 있을 때 — NOTES</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-08-notes-panel.png" alt="오른쪽 패널의 NOTES 섹션" className="manual-img" />
+                    <div className="manual-figcaption">NOTES 섹션입니다. 위에서부터 <strong>MIN</strong>, 노트 개수와 가장 짧은 노트 길이, <strong>Split · Merge</strong>, 그리고 선택 표시와 <strong>Reset</strong>이 있습니다.</div>
+                  </div>
+                  <p className="manual-p"><strong>MIN</strong>은 앱이 하나의 노트로 인정할 <strong>가장 짧은 길이</strong>입니다. <code className="manual-code">1/8 · 1/16 · 1/32</code>는 한 마디를 8 · 16 · 32로 나눈 길이를 뜻합니다.</p>
                   <ul className="manual-ul">
-                      <li className="manual-li"><strong>클릭</strong> — 그 노트만 선택</li>
-                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<strong>클릭</strong> — 하나씩 더하거나 빼기</li>
-                      <li className="manual-li"><kbd className="manual-kbd">Shift</kbd>+<strong>클릭</strong> — 먼저 고른 노트부터 <strong>그 사이 전부</strong></li>
-                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">A</kbd> — <strong>전체 선택</strong></li>
-                      <li className="manual-li">빈 곳을 클릭하면 선택이 풀리고 재생 위치가 그리로 옮겨 갑니다.</li>
+                    <li className="manual-li"><strong>1/16</strong>(기본) — 대부분의 노래에 알맞습니다.</li>
+                    <li className="manual-li"><strong>1/32</strong> — 빠르게 지나가는 짧은 음까지 따로 나눕니다. 빠른 곡이나 꾸밈음이 많을 때 씁니다.</li>
+                    <li className="manual-li"><strong>1/8</strong> — 짧은 조각을 옆 노트에 합쳐 블록 수가 줄어듭니다. 블록이 너무 잘게 쪼개져 보일 때 씁니다.</li>
                   </ul>
-                  <h3 className="manual-h3">④ 음정 옮기기 — 드래그와 SNAP</h3>
-                  <p className="manual-p">노트를 위아래로 <strong>끌면</strong> 음정이 바뀝니다. 여러 개를 골라 두면 함께 움직입니다. 옮긴 노트는 <strong>붉은 계열</strong>로 바뀌어 한눈에 찾을 수 있습니다. 음정을 옮기면 <strong>원래 있던 자리에 회색 막대</strong>가 남아, 어디서 얼마나 옮겼는지 바로 보입니다.</p>
-                  <p className="manual-p">우측 <strong>SNAP</strong>이 "어디에 달라붙을지"를 정합니다.</p>
+                  <p className="manual-p">바꾸면 바로 아래의 <code className="manual-code">111 notes · shortest 106 ms</code>처럼 노트 개수와 가장 짧은 노트 길이가 함께 바뀝니다. 길이는 곡의 BPM으로 계산하므로, <strong>프로젝트 BPM이 없으면 MIN이 흐리게 꺼지고</strong> 120 ms로 고정됩니다(6장에서 BPM을 정하면 쓸 수 있습니다).</p>
+                  <p className="manual-p">MIN으로 해결되지 않는 몇 군데는 손으로 고칩니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Merge — 합치기</th><td className="manual-td">한 음이 여러 블록으로 쪼개졌을 때(깊은 비브라토에서 흔합니다). <strong>이웃한 블록들</strong>을 <kbd className="manual-kbd">Shift</kbd>+클릭으로 함께 고르고 <strong>Merge</strong>를 누르면 하나가 됩니다.</td></tr>
+                      <tr><th className="manual-th">Split — 나누기</th><td className="manual-td">두 음이 한 블록으로 붙어 있을 때. ① 나눌 시간 위치의 <strong>빈 곳을 클릭</strong>해 재생 위치(세로선)를 그 블록 안으로 옮기고, ② 그 블록을 <strong>클릭</strong>해 고른 뒤, ③ <strong>Split</strong>을 누릅니다. 순서가 중요합니다 — 빈 곳을 클릭하면 선택이 풀리기 때문입니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="manual-p">이렇게 손으로 정한 경계는 <strong>다시 분석하거나 MIN을 바꿔도 그대로 유지</strong>됩니다. 앱의 판단으로 되돌리려면 그 노트를 고르고 <strong>Reset</strong>을 누르세요.</p>
+
+                  <h3 className="manual-h3">⑨ 얼마나 고칠지 — PRESET · AMOUNT · VIBRATO</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-09-correction-panel.png" alt="오른쪽 패널의 CORRECTION 섹션" className="manual-img" />
+                    <div className="manual-figcaption">CORRECTION 섹션입니다. <strong>SNAP</strong>, <strong>Snap all to key</strong>, <strong>PRESET</strong>, <strong>AMOUNT</strong> 슬라이더, <strong>VIBRATO</strong> 스위치, 그리고 <strong>Apply · Revert</strong> 버튼이 있습니다.</div>
+                  </div>
+                  <p className="manual-p">노트를 옮겨 둔 "목표 음"까지 <strong>얼마나 확실하게 맞출지</strong>를 정합니다. 노트를 고른 상태라면 <strong>고른 노트에만</strong>, 아무것도 고르지 않았다면 <strong>클립 전체</strong>에 적용됩니다. 어느 쪽인지는 선택 표시(<code className="manual-code">ALL NOTES</code> / <code className="manual-code">N NOTES SELECTED</code>)를 보면 압니다.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">PRESET · Natural</th><td className="manual-td">목표 음 쪽으로 <strong>70%만</strong> 옮기고 비브라토는 살립니다. 사람이 부른 느낌이 가장 자연스럽게 남습니다. <strong>처음이라면 이것부터</strong> 써 보세요.</td></tr>
+                      <tr><th className="manual-th">PRESET · Tight</th><td className="manual-td">목표 음에 <strong>정확히</strong> 맞추되 비브라토는 살립니다.</td></tr>
+                      <tr><th className="manual-th">PRESET · Hard</th><td className="manual-td">목표 음에 정확히 맞추고 비브라토도 <strong>평평하게</strong> 누릅니다. 요즘 팝에서 듣는 기계적인 효과에 가깝습니다.</td></tr>
+                      <tr><th className="manual-th">AMOUNT</th><td className="manual-td">맞추는 정도를 직접 정합니다. <strong>0%</strong>는 부른 그대로, <strong>100%</strong>는 목표 음에 딱 맞춥니다.</td></tr>
+                      <tr><th className="manual-th">VIBRATO</th><td className="manual-td">스위치를 켜면(<strong>Keep vibrato</strong>) 떨림을 살리고, 끄면(<strong>Flatten vibrato</strong>) 평평하게 만듭니다.</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="manual-p">AMOUNT나 VIBRATO를 직접 바꿔 프리셋과 값이 달라지면 프리셋 선택 표시가 꺼집니다. 여기서 바꾼 값은 아직 소리에 반영되지 않고, 아래의 <strong>Apply</strong>를 누를 때 반영됩니다.</p>
+
+                  <h3 className="manual-h3">⑩ 소리에 반영하기 — Apply / Revert</h3>
+                  <p className="manual-p">노트를 옮기고 설정을 바꾸는 것까지는 <strong>화면 위의 계획</strong>일 뿐이고 소리는 그대로입니다. <strong>Apply</strong>를 눌러야 고친 소리가 만들어집니다. 긴 클립은 몇 초가 걸리고, 그동안 버튼에 진행률이 표시됩니다.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-10-applied.png" alt="Apply를 마친 뒤의 안내 문구" className="manual-img" />
+                    <div className="manual-figcaption">Apply를 마친 모습입니다. 소리가 화면과 같아졌으므로 <strong>Apply</strong>는 꺼지고 <strong>Revert</strong>가 켜집니다. 아래에는 "이 클립은 보정된 소리를 재생한다"는 안내와 걸린 시간(<code className="manual-code">applied in 1.4 s</code>)이 표시됩니다.</div>
+                  </div>
                   <ul className="manual-ul">
-                      <li className="manual-li"><strong>Chromatic</strong> — 반음 한 칸씩(검은 건반 포함)</li>
-                      <li className="manual-li"><strong>Key</strong> — 곡의 조성에 속한 음에만. 조성이 감지되지 않았으면 고를 수 없습니다.</li>
+                    <li className="manual-li"><strong>Apply</strong>는 화면과 소리가 다를 때만 켜집니다. 바꾼 것이 없으면 흐리게 꺼져 있습니다.</li>
+                    <li className="manual-li"><strong>Revert</strong>는 소리를 <strong>원래 녹음</strong>으로 되돌립니다. 옮겨 둔 노트는 그대로 남으므로, 다시 Apply하면 같은 보정이 돌아옵니다.</li>
+                    <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 한 번이면 Apply 전체가 되돌아갑니다. 피치 에디터의 되돌리기 기록은 스튜디오와 하나로 이어져 있습니다.</li>
+                    <li className="manual-li">보정은 언제나 <strong>원래 녹음에서 새로</strong> 만듭니다. 그래서 Apply를 여러 번 해도 소리가 점점 거칠어지지 않습니다.</li>
                   </ul>
-                  <p className="manual-p"><strong>Key</strong>를 고르면 왼쪽 건반의 조성에 속한 음마다 <strong>&bull;</strong>이 찍혀, 어느 칸으로 달라붙을지 끌기 전에 보입니다. <strong>Chromatic</strong>에서는 아무 음으로나 갈 수 있으므로 점이 사라집니다. 건반 행이 너무 얇으면(축소했을 때) 점은 생략됩니다.</p>
-                  <p className="manual-p"><strong>Snap all to key</strong>는 모든 노트를 한 번에 가장 가까운 조성 음으로 옮깁니다. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 한 번으로 통째로 되돌아갑니다.</p>
-                  <p className="manual-p">옮긴 노트를 되돌리려면 <strong>노트를 우클릭</strong>하고 <strong>Reset to detected</strong>를 누릅니다. 여러 개를 골라 둔 상태에서 <strong>그중 하나를</strong> 우클릭하면 <strong>고른 전부</strong>가 되돌아가고, 선택에 없는 노트를 우클릭하면 선택이 그 노트로 옮겨 가 그것만 되돌아갑니다. 오른쪽 패널 NOTES 섹션 맨 아래, 선택 표시(<code className="manual-code">N NOTES SELECTED</code>) 옆의 <strong>Reset</strong> 버튼도 쓸 수 있습니다 — 두 방법은 똑같이 동작합니다.</p>
-                  <p className="manual-p">🔴 <strong>이미 Apply 한 클립이라면 Reset 이 소리까지 되돌립니다.</strong> 손으로 Apply 를 다시 누를 필요가 없습니다. 남은 보정이 있으면 그것만 다시 구워지고, 되돌릴 것이 하나도 남지 않으면 원래 녹음 그대로 복원됩니다. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 로 되돌릴 수 있습니다.</p>
-                  <p className="manual-p">⚠️ 노트는 <strong>부른 음높이에서 6반음</strong>까지만 옮겨집니다. 한계에 닿으면 더 끌어도 움직이지 않고 경고가 나타납니다 — 그보다 크게 옮기면 목소리의 음색이 상하기 때문입니다. 한계는 화면의 칸이 아니라 실제로 부른 음높이에서 세므로, 조금 높거나 낮게 부른 노트는 한쪽으로 5칸에서 멈출 수 있습니다. 여러 노트를 함께 끌면 <strong>가장 먼저 한계에 닿는 노트에서 모두 함께</strong> 멈춰 선율 모양이 유지됩니다.</p>
-                  <h3 className="manual-h3">⑤ 한 음이 여러 조각으로 나뉘었을 때 — Split / Merge</h3>
-                  <p className="manual-p">비브라토를 깊게 준 긴 음은 여러 블록으로 쪼개져 보일 수 있습니다. 그 블록들을 <kbd className="manual-kbd">Shift</kbd>+클릭으로 함께 고르고 <strong>Merge</strong>를 누르면 하나가 됩니다. 반대로 두 음이 한 블록으로 뭉쳤다면, 그 블록을 고르고 재생 위치를 경계로 옮긴 뒤 <strong>Split</strong>을 누릅니다.</p>
-                  <p className="manual-p">🔴 <strong>이렇게 정한 경계는 사용자의 것이 됩니다</strong> — 다시 Analyze 하거나 <code className="manual-code">NOTES</code> 설정을 바꾸거나 프로젝트를 다시 열어도 그대로 유지됩니다. 자동 판정으로 되돌리려면 그 노트를 고르고 <strong>Reset</strong>을 누릅니다.</p>
-                  <h3 className="manual-h3">⑥ 얼마나 고칠지 — 프리셋 · AMOUNT · VIBRATO</h3>
-                  <p className="manual-p">선택한 노트가 있으면 <strong>그 노트들</strong>에, 없으면 <strong>클립 전체의 기본값</strong>에 적용됩니다. 어느 쪽인지는 NOTES 섹션 맨 아래와 피아노 롤 오른쪽 위의 표시(<code className="manual-code">ALL NOTES</code> 또는 <code className="manual-code">N NOTES SELECTED</code>)가 알려 줍니다.</p>
-                  <ul className="manual-ul">
-                      <li className="manual-li"><strong>Natural</strong> — 목표 음정 쪽으로 70%만 옮기고 비브라토는 살립니다. 가장 흔히 쓰는 값입니다.</li>
-                      <li className="manual-li"><strong>Tight</strong> — 음정에 정확히 맞추되 비브라토는 살립니다.</li>
-                      <li className="manual-li"><strong>Hard</strong> — 음정에 정확히 맞추고 비브라토도 눌러 평평하게 만듭니다.</li>
-                  </ul>
-                  <p className="manual-p"><strong>AMOUNT</strong>는 그 비율을 직접 정합니다(0% = 부른 그대로, 100% = 목표에 딱 맞춤). <strong>VIBRATO</strong>는 떨림을 살릴지 누를지를 정합니다.</p>
-                  <h3 className="manual-h3">⑦ Apply / Revert — 소리에 반영하기</h3>
-                  <p className="manual-p">여기까지는 <strong>화면 위의 계획</strong>일 뿐 소리는 그대로입니다. <strong>Apply</strong>를 눌러야 보정이 오디오에 구워집니다. 긴 클립은 몇 초가 걸리며 진행률이 버튼에 표시되고, 끝나면 걸린 시간이 함께 나타납니다.</p>
-                  <ul className="manual-ul">
-                      <li className="manual-li"><strong>Apply</strong>는 <strong>화면과 소리가 다를 때만</strong> 켜집니다. 눌러도 달라질 것이 없으면 꺼져 있습니다.</li>
-                      <li className="manual-li"><strong>Revert</strong>는 오디오를 원래 노래로 되돌립니다. <strong>노트 편집은 그대로 남으므로</strong> 바로 다시 Apply 할 수 있습니다.</li>
-                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> 한 번으로 Apply 전체가 되돌아갑니다.</li>
-                      <li className="manual-li">🔴 <strong>보정은 언제나 원본 테이크에서 다시 그립니다.</strong> 그래서 여러 번 Apply 해도 잡음이 쌓이지 않습니다.</li>
-                  </ul>
-                  <p className="manual-p">만들어진 오디오는 프로젝트 폴더의 <code className="manual-code">Audio/Consolidated/</code>에 <code className="manual-code">...Pitched...</code>라는 이름으로 남습니다.</p>
-                  <h3 className="manual-h3">⑧ 알아 두실 한계</h3>
-                  <ul className="manual-ul">
-                      <li className="manual-li"><strong>한 사람이 부른 단성 테이크</strong>가 대상입니다. 두세 사람이 겹쳐 부른 하모니는 음높이 검출의 원리적 한계를 벗어납니다.</li>
-                      <li className="manual-li">이동은 <strong>±6반음</strong>까지가 실용 범위입니다.</li>
-                      <li className="manual-li">보정한 클립을 나누거나 합치거나 Flatten 하면 편집 내용은 없어지고 <strong>보정된 소리만</strong> 남습니다.</li>
-                  </ul>
+                  <p className="manual-p">Apply한 클립은 스튜디오에서도 고친 소리로 재생되고, Export에도 그대로 들어갑니다. 만들어진 오디오 파일은 프로젝트를 저장하면 <code className="manual-code">&lt;프로젝트 이름&gt; Audio/Consolidated/</code> 폴더에 이름에 <code className="manual-code">Pitched</code>가 붙은 채 저장됩니다.</p>
+
+                  <h3 className="manual-h3">⑪ 화면 이동과 확대</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">VIEW · TIME</th><td className="manual-td"><strong>− / +</strong>로 시간축(가로)을 줄이고 늘립니다. <strong>⤢</strong>는 클립 전체가 한 화면에 보이게 맞춥니다.</td></tr>
+                      <tr><th className="manual-th">VIEW · KEY</th><td className="manual-td"><strong>− / +</strong>로 음높이 축(세로)을 줄이고 늘립니다. <strong>⤢</strong>는 실제로 부른 음 범위에 맞춥니다.</td></tr>
+                      <tr><th className="manual-th">마우스 휠</th><td className="manual-td">휠은 위아래, <kbd className="manual-kbd">Shift</kbd>+휠은 좌우로 이동합니다. <kbd className="manual-kbd">Ctrl</kbd>+휠은 시간축, <kbd className="manual-kbd">Alt</kbd>+휠은 음높이 축 확대·축소입니다. 휠 버튼을 누른 채 끌면 두 방향으로 한 번에 움직입니다.</td></tr>
+                      <tr><th className="manual-th">CLIP</th><td className="manual-td">도구 막대의 <strong>CLIP</strong>을 켜면 이 클립만 반복해서 재생합니다. 한 구절을 여러 번 들으며 고칠 때 편합니다. 끄거나 창을 닫으면 스튜디오의 원래 Repeat 구간이 돌아옵니다.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">⑫ 이럴 땐 이렇게</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Apply가 눌리지 않아요</th><td className="manual-td">아직 옮긴 노트가 없거나, 이미 소리가 화면과 같기 때문입니다. 버튼에 마우스를 올리면 이유가 표시됩니다.</td></tr>
+                      <tr><th className="manual-th">SNAP의 Key가 흐려요</th><td className="manual-td">곡의 Key가 감지되지 않았습니다. 스튜디오의 Key 표시기에서 <strong>Detect</strong> 후 <strong>APPLY</strong>하세요(7장).</td></tr>
+                      <tr><th className="manual-th">MIN이 흐려요</th><td className="manual-td">프로젝트 BPM이 없습니다. 스튜디오의 BPM 표시기에서 BPM을 정하세요(6장).</td></tr>
+                      <tr><th className="manual-th">노트가 더 이상 안 움직여요</th><td className="manual-td">6반음 한계에 닿았습니다(⑥ 참고). 그보다 크게 다른 음이라면 그 부분은 다시 녹음하는 편이 자연스럽습니다.</td></tr>
+                      <tr><th className="manual-th">음이 이상하게 잡혀요</th><td className="manual-td">피치 에디터는 <strong>한 사람이 한 음씩 부른 녹음</strong>을 위한 도구입니다. 여러 사람이 화음으로 함께 부른 녹음은 정확히 분석할 수 없습니다.</td></tr>
+                      <tr><th className="manual-th">음이름이 들리는 것과 달라요</th><td className="manual-td">스튜디오에서 <strong>Vari Key</strong>를 켜 두면 재생은 이조되지만, 피치 에디터는 <strong>원래 높이</strong>로 보여 줍니다. 이때 상태 표시줄에 <code className="manual-code">VARI KEY +2 — editing the original pitch</code> 같은 안내가 나옵니다.</td></tr>
+                      <tr><th className="manual-th">보정한 클립을 나누거나 합쳤더니 노트 편집이 사라졌어요</th><td className="manual-td">스튜디오에서 보정한 클립을 Split · Merge하거나 테이크를 Flatten하면 <strong>고친 소리만 남고</strong> 노트 편집 정보는 없어집니다. 클립 편집은 피치 보정을 시작하기 전에 마치는 것이 좋습니다.</td></tr>
+                    </tbody>
+                  </table>
                 </>
               ) : (
                 <>
                   <h2 className="manual-h2">11. Pitch Editor</h2>
-                  <p className="manual-p">The <strong>Pitch Editor</strong> tunes a recorded vocal one note at a time. You see the pitch you sang, drag the notes that went astray, and then print the result into the audio. <strong>Your original recording is never altered</strong> — the correction is always written as new audio, and it can be undone.</p>
-                  <p className="manual-p">Where <strong>Key / Vari Key</strong> in the top toolbar transposes the <em>whole song</em>, the Pitch Editor fixes <em>one note at a time</em>. The two use different methods: the Pitch Editor moves the pitch while leaving the voice's timbre (its formants) where they are.</p>
-                  <h3 className="manual-h3">① Opening it</h3>
-                  <p className="manual-p"><strong>Right-click a clip on an Audio In track</strong> and choose <code className="manual-code">Pitch Editor...</code>. The menu does not appear on stem (file) tracks — this is a tool for vocal takes.</p>
-                  <p className="manual-p">The readout at the top centre of the window is <strong>current position / clip length</strong>, and <strong>both are relative to this clip</strong>. For a 10-second clip sitting in the middle of the song, the left number runs from <code className="manual-code">0:00.00</code> to <code className="manual-code">0:10.00</code> and the right one always reads <code className="manual-code">0:10.00</code> — neither is a position in the song. Press <kbd className="manual-kbd">0</kbd> to jump back to the start of the clip.</p>
-                  <h3 className="manual-h3">② Analyze</h3>
-                  <p className="manual-p">Press <strong>Analyze</strong> in the side panel (or <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>). The pitch you sang is drawn as a <strong>red curve</strong>, with <strong>note blocks</strong> laid on top. One block is one sung note.</p>
+                  <p className="manual-p">When you record a vocal, a few notes often come out a little flat or sharp. The <strong>Pitch Editor</strong> shows you those notes and lets you <strong>drag them onto the right pitch with the mouse</strong>, so you can fix a handful of notes without singing the whole song again.</p>
+                  <div className="manual-note"><strong>Your original recording is never changed.</strong> The corrected sound is written as a separate new audio file, and you can always go back to the original. Feel free to experiment.</div>
+                  <p className="manual-p"><strong>Key / Vari Key</strong> in the top toolbar (ch. 7) shifts the <em>whole song</em> at once; the Pitch Editor fixes a vocal <em>one note at a time</em>. It moves only the pitch and <strong>keeps the character of the voice</strong>.</p>
+
+                  <h3 className="manual-h3">A few words first</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Pitch</th><td className="manual-td">How high or low a sound is. In the Pitch Editor, <strong>higher on screen means a higher note</strong>.</td></tr>
+                      <tr><th className="manual-th">Note</th><td className="manual-td">One note sung in a single breath. It appears as a <strong>long rectangular block</strong>.</td></tr>
+                      <tr><th className="manual-th">Semitone</th><td className="manual-td">The step from one piano key to the next (white and black keys alike). One row on screen is one semitone.</td></tr>
+                      <tr><th className="manual-th">Cent (¢)</th><td className="manual-td">A semitone divided into 100. <code className="manual-code">+20¢</code> means "sung a fifth of a semitone sharp". <strong>Closer to 0 is more in tune.</strong></td></tr>
+                      <tr><th className="manual-th">Vibrato</th><td className="manual-td">The gentle wobble in pitch on a held note. It is part of the singer's expression, so you usually keep it.</td></tr>
+                      <tr><th className="manual-th">Key</th><td className="manual-td">The set of notes a song is built from (for example <code className="manual-code">F</code>). Knowing the key lets the editor move notes <strong>only onto notes that fit the song</strong> (detected in ch. 7).</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">Quick start — five steps</h3>
+                  <ol className="manual-ol">
+                    <li className="manual-li"><strong>Right-click</strong> a clip on an <strong>Audio In track</strong> and choose <strong>Pitch Editor...</strong>.</li>
+                    <li className="manual-li">Press <strong>Analyze</strong> in the side panel and wait a few seconds.</li>
+                    <li className="manual-li">Listen with <kbd className="manual-kbd">Space</kbd> and look for notes with a <strong>large cent number</strong>, or ones that sound wrong.</li>
+                    <li className="manual-li"><strong>Drag</strong> that block <strong>up or down</strong> onto the right row.</li>
+                    <li className="manual-li">Press <strong>Apply</strong> to hear the result. Not happy? Press <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> or <strong>Revert</strong>.</li>
+                  </ol>
+                  <p className="manual-p">Each step is explained in detail below.</p>
+
+                  <h3 className="manual-h3">① Opening the Pitch Editor</h3>
+                  <p className="manual-p"><strong>Right-click</strong> a clip on an <strong>Audio In track</strong> and choose <strong>Pitch Editor...</strong> to open it in its own window. File tracks and Bounce tracks do not have this item. To tune a vocal that lives on a Bounce track, copy it to an Audio In track first with the clip menu's <strong>Copy to track</strong> (ch. 4).</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-01-open-menu.png" alt="The Pitch Editor item in the clip context menu" className="manual-img" />
+                    <div className="manual-figcaption">Right-clicking a clip on an Audio In track shows <strong>Pitch Editor...</strong> in the menu.</div>
+                  </div>
+                  <p className="manual-p">The time readout at the top centre shows <strong>position inside this clip / clip length</strong>. It is not song time — <strong>the start of the clip is 0 s</strong>. Press <kbd className="manual-kbd">0</kbd> to jump back to the start of the clip.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-02-before-analyze.png" alt="The Pitch Editor before analysis" className="manual-img" />
+                    <div className="manual-figcaption">The Pitch Editor as it first opens. Only a faint waveform is shown until you press <strong>Analyze</strong> on the right.</div>
+                  </div>
+
+                  <h3 className="manual-h3">② Finding your way around</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-03-screen-layout.png" alt="Pitch Editor layout with numbered areas" className="manual-img" />
+                    <div className="manual-figcaption">The Pitch Editor after analysis, with each area numbered. The numbers match the table below.</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">① Toolbar</th><td className="manual-td">Play / stop, <strong>CLIP</strong> (loop this clip), the file name and length, and the time readout. The button at the far right hides or shows the side panel.</td></tr>
+                      <tr><th className="manual-th">② CLIP MAP</th><td className="manual-td">The whole clip in one strip. The bright box is the part you are looking at; click or drag it to move.</td></tr>
+                      <tr><th className="manual-th">③ Keyboard</th><td className="manual-td">The pitch reference. <strong>Click a key to hear that note</strong> and compare it with what was sung. During playback, the key being sung lights up.</td></tr>
+                      <tr><th className="manual-th">④ Piano roll</th><td className="manual-td">The large work area. The <strong>line</strong> is the pitch actually sung; the <strong>blocks</strong> are that line tidied into notes. A faint waveform sits behind them.</td></tr>
+                      <tr><th className="manual-th">⑤ Selection badge</th><td className="manual-td">Floats at the top right: <code className="manual-code">ALL NOTES</code> with nothing selected, or a count such as <code className="manual-code">3 NOTES SELECTED</code>.</td></tr>
+                      <tr><th className="manual-th">⑥ Side panel</th><td className="manual-td">From the top: <strong>VIEW</strong> (zoom), <strong>ANALYSIS</strong>, <strong>NOTES</strong> (how notes are cut), and <strong>CORRECTION</strong> (how much to correct, Apply).</td></tr>
+                      <tr><th className="manual-th">⑦ Status bar</th><td className="manual-td">The bottom line. With one note selected it shows that note's name, time, length, cents and confidence; the middle shows the minimum note length and the right shows the song's key.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">③ Analyze</h3>
+                  <p className="manual-p">Press <strong>Analyze</strong> in the side panel (or <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">R</kbd>) and the app listens through the recording to find its pitch. The button shows the progress; when it finishes, the <strong>line</strong> and <strong>note blocks</strong> appear and the button changes to <strong>Re-analyze</strong>.</p>
+                  <p className="manual-p"><code className="manual-code">67% voiced</code> under the button is <strong>how much of the clip has a pitch</strong> (singing). Rests and breaths have no pitch, so less than 100% is normal.</p>
+                  <div className="manual-note">The analysis is not saved, so <strong>press Analyze once each time you open the window</strong>. Your moved notes and settings are saved, and they reappear as soon as the analysis finishes.</div>
+
+                  <h3 className="manual-h3">④ Reading the note blocks</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-04-note-blocks.png" alt="Close-up of note blocks — names, cents, faint and dashed blocks" className="manual-img" />
+                    <div className="manual-figcaption">A close-up of the note blocks. Wide blocks show the name and cents, such as <code className="manual-code">A4 0¢</code>; narrow ones show the name only, such as <code className="manual-code">F4</code>; the narrowest show no text. Red blocks are notes that have been moved, with grey bars where they were. The dashed outline on <code className="manual-code">B4</code> means that note is not in the song's key (F).</div>
+                  </div>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Text in a block</th><td className="manual-td">The <strong>note name with its octave number</strong> and the <strong>cents</strong>. <code className="manual-code">G4 -2¢</code> means "the G in octave 4, sung 2 cents flat". <strong>Beyond about ±30¢</strong> a note usually sounds off. On a short, narrow block the cents are left out and only the name is shown; narrower still, the text is dropped altogether. Zoom in with <kbd className="manual-kbd">Ctrl</kbd>+wheel, or click the note and read it in the status bar.</td></tr>
+                      <tr><th className="manual-th">Faint block</th><td className="manual-td">The app was <strong>not sure</strong> of the pitch there (breaths, consonants, very quiet sounds). If it sounds fine, leave it.</td></tr>
+                      <tr><th className="manual-th">Dashed outline</th><td className="manual-td">The note is <strong>not in the song's key</strong>. It is a hint, not a verdict — it may be a deliberate passing note, so listen before changing it. It does not appear when no key has been detected.</td></tr>
+                      <tr><th className="manual-th">Red block + grey bar</th><td className="manual-td">A note <strong>you have moved</strong>. A grey bar stays where it used to be, so you can see how far it went.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">⑤ Selecting notes</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Click</th><td className="manual-td">Selects that note only.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd>+click</th><td className="manual-td"><strong>Adds or removes</strong> one note.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd>+click</th><td className="manual-td">Selects <strong>every note between</strong> the last one you picked and this one.</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">A</kbd></th><td className="manual-td">Selects <strong>all notes</strong>.</td></tr>
+                      <tr><th className="manual-th">Click empty space</th><td className="manual-td">Clears the selection and moves the playhead to that time.</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-05-selection.png" alt="Several notes selected, with the selection badge" className="manual-img" />
+                    <div className="manual-figcaption">Three notes selected. Selected notes get a bright outline and the badge at the top right reads <strong>3 NOTES SELECTED</strong>.</div>
+                  </div>
+
+                  <h3 className="manual-h3">⑥ Moving notes — dragging and SNAP</h3>
+                  <p className="manual-p"><strong>Drag a note up or down</strong> to change its pitch. If several notes are selected they move together, keeping the shape of the melody. Moved notes turn red, and a grey bar marks where they were.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-06-drag-note.png" alt="A note dragged up one row" className="manual-img" />
+                    <div className="manual-figcaption">A note sung as <code className="manual-code">A4</code> moved up two rows to <code className="manual-code">B4</code>. It has turned red, and a grey bar stays at its original position (A4).</div>
+                  </div>
+                  <p className="manual-p"><strong>SNAP</strong> in CORRECTION decides <strong>which notes a dragged block lands on</strong>.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Chromatic</th><td className="manual-td">Lands on every key (semitone). You can move a note anywhere.</td></tr>
+                      <tr><th className="manual-th">Key · F</th><td className="manual-td">Lands only on notes of the song's key, so you cannot accidentally move a note somewhere that clashes. The keyboard shows a <strong>&bull;</strong> on every key you can land on. Unavailable when the song's key has not been detected (ch. 7).</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-07-snap-key.png" alt="Dots on the keyboard with SNAP set to Key" className="manual-img" />
+                    <div className="manual-figcaption">With SNAP set to <strong>Key</strong>, every key that belongs to the song's key gets a dot (&bull;). Notes land only on dotted rows.</div>
+                  </div>
+                  <p className="manual-p"><strong>Snap all to key</strong> moves <strong>every note</strong> to its nearest note of the key in one go. It is handy, but it also moves deliberate passing notes, so always listen afterwards. A single <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> undoes the whole thing.</p>
+                  <div className="manual-note">A note can move <strong>at most 6 semitones (6 keys) up or down from where it was sung</strong> — further than that, the voice starts to sound unnatural. At the limit the note stops following the mouse and a red message appears in the panel. When several notes are dragged together, <strong>they all stop as soon as the first one reaches its limit</strong>.</div>
+
+                  <h3 className="manual-h3">⑦ Putting a note back — Reset</h3>
+                  <p className="manual-p">There are two ways to return moved notes to the pitch you sang. Both do the same thing.</p>
                   <ul className="manual-ul">
-                      <li className="manual-li">The text inside a block is the detected <strong>note name</strong> and its <strong>offset in cents</strong> (for example <code className="manual-code">A3 +12¢</code>).</li>
-                      <li className="manual-li">A <strong>faint</strong> block means the detection was less certain there.</li>
-                      <li className="manual-li">A <strong>dashed</strong> outline means the note sits outside the project key.</li>
-                      <li className="manual-li">⚠️ The analysis is not saved. Reopen the project and you must press <strong>Analyze</strong> again — your edits survive and re-attach themselves.</li>
+                    <li className="manual-li"><strong>Right-click</strong> the note and choose <strong>Reset to detected</strong>. With several notes selected, right-clicking one of them resets <strong>all of the selected notes</strong>.</li>
+                    <li className="manual-li">Select the notes and press <strong>Reset</strong> next to the selection label at the bottom of the NOTES section. It is greyed out when there is nothing to reset.</li>
                   </ul>
-                  <h3 className="manual-h3">③ Selecting notes</h3>
+                  <p className="manual-p">On a clip you have already <strong>applied</strong>, Reset puts the <strong>sound</strong> back as well — no need to press Apply again. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> undoes a Reset, too.</p>
+
+                  <h3 className="manual-h3">⑧ When notes are cut too finely or run together — NOTES</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-08-notes-panel.png" alt="The NOTES section of the side panel" className="manual-img" />
+                    <div className="manual-figcaption">The NOTES section. From the top: <strong>MIN</strong>, the note count and shortest note length, <strong>Split · Merge</strong>, and the selection label with <strong>Reset</strong>.</div>
+                  </div>
+                  <p className="manual-p"><strong>MIN</strong> is the <strong>shortest length</strong> the app will accept as a note of its own. <code className="manual-code">1/8 · 1/16 · 1/32</code> are one bar divided into 8, 16 or 32.</p>
                   <ul className="manual-ul">
-                      <li className="manual-li"><strong>Click</strong> — that note only</li>
-                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<strong>click</strong> — add or remove one</li>
-                      <li className="manual-li"><kbd className="manual-kbd">Shift</kbd>+<strong>click</strong> — <strong>everything between</strong> the last note you picked and this one</li>
-                      <li className="manual-li"><kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">A</kbd> — <strong>select all</strong></li>
-                      <li className="manual-li">Clicking empty space clears the selection and moves the playhead there.</li>
+                    <li className="manual-li"><strong>1/16</strong> (default) — right for most songs.</li>
+                    <li className="manual-li"><strong>1/32</strong> — keeps even quick, short notes separate. Use it for fast songs or lots of ornaments.</li>
+                    <li className="manual-li"><strong>1/8</strong> — folds short fragments into their neighbours, so there are fewer blocks. Use it when the blocks look chopped up.</li>
                   </ul>
-                  <h3 className="manual-h3">④ Moving pitch — dragging and SNAP</h3>
-                  <p className="manual-p"><strong>Drag</strong> a note up or down to change its pitch; a whole selection moves together. Notes you have moved turn <strong>red</strong> so you can find them again. A <strong>grey bar</strong> stays where a moved note used to be, so you can see at a glance how far it went.</p>
-                  <p className="manual-p"><strong>SNAP</strong> decides what a dragged note lands on.</p>
+                  <p className="manual-p">The line underneath, such as <code className="manual-code">111 notes · shortest 106 ms</code>, updates as you change it. The length comes from the song's BPM, so <strong>without a project BPM, MIN is greyed out</strong> and fixed at 120 ms (set a BPM in ch. 6 to use it).</p>
+                  <p className="manual-p">For the few places MIN does not sort out, fix them by hand.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Merge</th><td className="manual-td">One sung note broken into several blocks (common with deep vibrato). Select the <strong>neighbouring blocks</strong> with <kbd className="manual-kbd">Shift</kbd>+click and press <strong>Merge</strong>.</td></tr>
+                      <tr><th className="manual-th">Split</th><td className="manual-td">Two sung notes stuck in one block. ① <strong>Click empty space</strong> at the time you want to cut, so the playhead (vertical line) sits inside that block; ② <strong>click the block</strong> to select it; ③ press <strong>Split</strong>. The order matters — clicking empty space clears the selection.</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="manual-p">Boundaries you set by hand <strong>stay put when you re-analyze or change MIN</strong>. To hand a note back to the app's judgement, select it and press <strong>Reset</strong>.</p>
+
+                  <h3 className="manual-h3">⑨ How much to correct — PRESET · AMOUNT · VIBRATO</h3>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-09-correction-panel.png" alt="The CORRECTION section of the side panel" className="manual-img" />
+                    <div className="manual-figcaption">The CORRECTION section: <strong>SNAP</strong>, <strong>Snap all to key</strong>, <strong>PRESET</strong>, the <strong>AMOUNT</strong> slider, the <strong>VIBRATO</strong> switch, and the <strong>Apply · Revert</strong> buttons.</div>
+                  </div>
+                  <p className="manual-p">These decide <strong>how firmly</strong> a note is pulled onto the note you moved it to. With notes selected they apply to <strong>those notes only</strong>; with nothing selected they apply to <strong>the whole clip</strong>. The selection label (<code className="manual-code">ALL NOTES</code> / <code className="manual-code">N NOTES SELECTED</code>) tells you which.</p>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">PRESET · Natural</th><td className="manual-td">Moves <strong>70% of the way</strong> and keeps the vibrato. It sounds the most like a real singer. <strong>Start here.</strong></td></tr>
+                      <tr><th className="manual-th">PRESET · Tight</th><td className="manual-td">Lands <strong>exactly</strong> on the note but keeps the vibrato.</td></tr>
+                      <tr><th className="manual-th">PRESET · Hard</th><td className="manual-td">Lands exactly on the note and <strong>flattens</strong> the vibrato — close to the robotic effect heard in modern pop.</td></tr>
+                      <tr><th className="manual-th">AMOUNT</th><td className="manual-td">Sets the amount directly. <strong>0%</strong> is exactly as sung; <strong>100%</strong> is exactly on the target.</td></tr>
+                      <tr><th className="manual-th">VIBRATO</th><td className="manual-td">Switch on (<strong>Keep vibrato</strong>) to keep the wobble, off (<strong>Flatten vibrato</strong>) to flatten it.</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="manual-p">If you change AMOUNT or VIBRATO so they no longer match a preset, the preset turns off. These values do not change the sound yet — they take effect when you press <strong>Apply</strong>.</p>
+
+                  <h3 className="manual-h3">⑩ Hearing the result — Apply / Revert</h3>
+                  <p className="manual-p">Moving notes and changing settings is only a <strong>plan on screen</strong>; the sound has not changed. Press <strong>Apply</strong> to create the corrected sound. A long clip takes a few seconds, and the button shows the progress.</p>
+                  <div className="manual-figure">
+                    <img src="manual/screens-v2/pe-10-applied.png" alt="The message shown after Apply" className="manual-img" />
+                    <div className="manual-figcaption">After Apply. The sound now matches the screen, so <strong>Apply</strong> is off and <strong>Revert</strong> is on. Underneath, a message says the clip plays the corrected audio, with how long it took (<code className="manual-code">applied in 1.4 s</code>).</div>
+                  </div>
                   <ul className="manual-ul">
-                      <li className="manual-li"><strong>Chromatic</strong> — every semitone, black keys included</li>
-                      <li className="manual-li"><strong>Key</strong> — only notes of the project key. Unavailable when no key has been detected.</li>
+                    <li className="manual-li"><strong>Apply</strong> is enabled only when the sound differs from the screen. With nothing changed it is greyed out.</li>
+                    <li className="manual-li"><strong>Revert</strong> puts the <strong>original recording</strong> back. Your moved notes stay, so pressing Apply again brings the same correction back.</li>
+                    <li className="manual-li">A single <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> undoes the whole Apply. The Pitch Editor shares one undo history with the studio.</li>
+                    <li className="manual-li">Every correction is made <strong>fresh from the original recording</strong>, so applying many times does not make the sound rougher.</li>
                   </ul>
-                  <p className="manual-p">With <strong>Key</strong> selected, a <strong>&bull;</strong> appears on every key of the keyboard gutter that belongs to the project key, so you can see where a note will land before you drag it. In <strong>Chromatic</strong> the dots disappear, because a note may go anywhere. They are omitted when the rows are too thin to show them.</p>
-                  <p className="manual-p"><strong>Snap all to key</strong> moves every note to its nearest note of the key in one step, undone by a single <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd>.</p>
-                  <p className="manual-p">To put a moved note back, <strong>right-click it</strong> and choose <strong>Reset to detected</strong>. Right-clicking <strong>one note of a selection</strong> resets the <strong>whole selection</strong>; right-clicking a note outside it moves the selection there and resets that one note. The <strong>Reset</strong> button next to the selection label (<code className="manual-code">N NOTES SELECTED</code>) at the bottom of the NOTES section in the side panel does exactly the same thing.</p>
-                  <p className="manual-p">🔴 <strong>On a clip you have already applied, Reset also puts the sound back</strong> — you do not have to press Apply again. Whatever correction is left is re-rendered, and if nothing is left the original recording is restored. <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> undoes it.</p>
-                  <p className="manual-p">⚠️ A note moves at most <strong>6 semitones from the pitch you sang</strong>. At that limit it stops following the mouse and a warning appears — a larger move would spoil the timbre of the voice. The limit is counted from the sung pitch, not the grid row, so a note sung slightly sharp or flat may stop at 5 rows in one direction. When several notes are dragged together, <strong>they all stop as soon as the first one reaches its limit</strong>, so the shape of the melody is kept.</p>
-                  <h3 className="manual-h3">⑤ When one note arrives in pieces — Split / Merge</h3>
-                  <p className="manual-p">A long note with deep vibrato can appear as several blocks. Select them together with <kbd className="manual-kbd">Shift</kbd>+click and press <strong>Merge</strong> to make them one. If two sung notes ended up in a single block, select it, put the playhead on the boundary, and press <strong>Split</strong>.</p>
-                  <p className="manual-p">🔴 <strong>Boundaries you set this way become yours</strong> — they survive a new Analyze, a change of the <code className="manual-code">NOTES</code> setting, and reopening the project. To hand a note back to the detector, select it and press <strong>Reset</strong>.</p>
-                  <h3 className="manual-h3">⑥ How much to correct — presets, AMOUNT, VIBRATO</h3>
-                  <p className="manual-p">These apply to <strong>the selected notes</strong> if there is a selection, and to <strong>the whole clip's default</strong> if there is not. The label at the bottom of the NOTES section and the badge at the top right of the piano roll (<code className="manual-code">ALL NOTES</code> or <code className="manual-code">N NOTES SELECTED</code>) say which.</p>
-                  <ul className="manual-ul">
-                      <li className="manual-li"><strong>Natural</strong> — move 70% of the way and keep the vibrato. The usual choice.</li>
-                      <li className="manual-li"><strong>Tight</strong> — land exactly on the note, vibrato kept.</li>
-                      <li className="manual-li"><strong>Hard</strong> — land exactly on the note and flatten the vibrato.</li>
-                  </ul>
-                  <p className="manual-p"><strong>AMOUNT</strong> sets that proportion directly (0% = exactly as sung, 100% = exactly on the target). <strong>VIBRATO</strong> chooses whether the wobble is carried along or pressed flat.</p>
-                  <h3 className="manual-h3">⑦ Apply / Revert</h3>
-                  <p className="manual-p">Up to here nothing you hear has changed — the edits are a <strong>plan on screen</strong>. <strong>Apply</strong> renders them into the audio. A long clip takes a few seconds; the button shows the progress and, when it finishes, how long it took.</p>
-                  <ul className="manual-ul">
-                      <li className="manual-li"><strong>Apply</strong> is enabled <strong>only when the audio differs from what you see</strong>. If pressing it would change nothing, it stays off.</li>
-                      <li className="manual-li"><strong>Revert</strong> puts the original take back. <strong>Your note edits remain</strong>, so you can apply again straight away.</li>
-                      <li className="manual-li">A single <kbd className="manual-kbd">Ctrl</kbd>+<kbd className="manual-kbd">Z</kbd> undoes the whole Apply.</li>
-                      <li className="manual-li">🔴 <strong>Every correction is drawn from the original take.</strong> Applying repeatedly therefore does not pile up artefacts.</li>
-                  </ul>
-                  <p className="manual-p">The rendered audio is kept in the project folder under <code className="manual-code">Audio/Consolidated/</code> with <code className="manual-code">...Pitched...</code> in its name.</p>
-                  <h3 className="manual-h3">⑧ Limits worth knowing</h3>
-                  <ul className="manual-ul">
-                      <li className="manual-li">It is meant for a <strong>single voice</strong>. Two or three voices singing harmony are beyond what pitch detection can separate.</li>
-                      <li className="manual-li"><strong>±6 semitones</strong> is the practical range for a move.</li>
-                      <li className="manual-li">Splitting, merging or flattening a corrected clip discards the edits and keeps <strong>only the corrected sound</strong>.</li>
-                  </ul>
+                  <p className="manual-p">An applied clip also plays the corrected sound in the studio and is exported that way. When you save the project, the new audio file is kept in the <code className="manual-code">&lt;Project name&gt; Audio/Consolidated/</code> folder with <code className="manual-code">Pitched</code> in its name.</p>
+
+                  <h3 className="manual-h3">⑪ Moving around and zooming</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">VIEW · TIME</th><td className="manual-td"><strong>− / +</strong> shrink and stretch the time axis (horizontal). <strong>⤢</strong> fits the whole clip on screen.</td></tr>
+                      <tr><th className="manual-th">VIEW · KEY</th><td className="manual-td"><strong>− / +</strong> shrink and stretch the pitch axis (vertical). <strong>⤢</strong> fits the range that was actually sung.</td></tr>
+                      <tr><th className="manual-th">Mouse wheel</th><td className="manual-td">Wheel scrolls up and down, <kbd className="manual-kbd">Shift</kbd>+wheel left and right. <kbd className="manual-kbd">Ctrl</kbd>+wheel zooms time, <kbd className="manual-kbd">Alt</kbd>+wheel zooms pitch. Drag with the middle button held to move both ways at once.</td></tr>
+                      <tr><th className="manual-th">CLIP</th><td className="manual-td">Turn on <strong>CLIP</strong> in the toolbar to loop just this clip — handy for hearing a phrase again and again while you fix it. Turning it off, or closing the window, restores the studio's own Repeat region.</td></tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="manual-h3">⑫ Common questions</h3>
+                  <table className="manual-table">
+                    <tbody>
+                      <tr><th className="manual-th">Apply won't press</th><td className="manual-td">No note has been moved yet, or the sound already matches the screen. Hover over the button to see why.</td></tr>
+                      <tr><th className="manual-th">Key in SNAP is greyed out</th><td className="manual-td">The song's key has not been detected. Use <strong>Detect</strong> and <strong>APPLY</strong> on the studio's Key indicator (ch. 7).</td></tr>
+                      <tr><th className="manual-th">MIN is greyed out</th><td className="manual-td">The project has no BPM. Set one on the studio's BPM indicator (ch. 6).</td></tr>
+                      <tr><th className="manual-th">A note won't move any further</th><td className="manual-td">It has reached the 6-semitone limit (see ⑥). If it is that far off, re-recording that part will sound more natural.</td></tr>
+                      <tr><th className="manual-th">The notes look wrong</th><td className="manual-td">The Pitch Editor is made for <strong>one person singing one note at a time</strong>. A recording of several people singing in harmony cannot be analysed accurately.</td></tr>
+                      <tr><th className="manual-th">The note names don't match what I hear</th><td className="manual-td">With <strong>Vari Key</strong> on in the studio, playback is transposed but the Pitch Editor shows the <strong>original pitch</strong>. The status bar then says something like <code className="manual-code">VARI KEY +2 — editing the original pitch</code>.</td></tr>
+                      <tr><th className="manual-th">My note edits disappeared after splitting or merging the clip</th><td className="manual-td">Splitting or merging a corrected clip in the studio, or flattening its takes, <strong>keeps only the corrected sound</strong> and drops the note edits. Finish clip editing before you start tuning.</td></tr>
+                    </tbody>
+                  </table>
                 </>
               )}
             </section>
@@ -2672,6 +2948,12 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + 클릭</th><td className="manual-td">먼저 고른 노트부터 구간 전체 선택</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + 휠</th><td className="manual-td">시간축 확대 / 축소</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Alt</kbd> + 휠</th><td className="manual-td">음높이 축 확대 / 축소</td></tr>
+                      <tr><th className="manual-th">휠</th><td className="manual-td">위 / 아래(음높이 방향)로 이동</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + 휠</th><td className="manual-td">왼쪽 / 오른쪽(시간 방향)으로 이동</td></tr>
+                      <tr><th className="manual-th">휠 버튼 누른 채 드래그</th><td className="manual-td">두 방향으로 한 번에 이동</td></tr>
+                      <tr><th className="manual-th">왼쪽 건반 클릭</th><td className="manual-td">그 음을 소리로 들려줌</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd> / <kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Y</kbd></th><td className="manual-td">실행 취소 / 다시 실행 — 스튜디오와 <strong>같은 기록</strong>을 씁니다</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Esc</kbd></th><td className="manual-td">피치 에디터 창 닫기</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">재생 / 일시정지 (스튜디오와 같음)</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">0</kbd> (숫자패드 <kbd className="manual-kbd">0</kbd>/<kbd className="manual-kbd">Ins</kbd> 포함)</th><td className="manual-td">플레이헤드를 <strong>클립 맨 앞</strong>으로 (스튜디오는 곡의 0초, 여기는 이 클립의 시작)</td></tr>
                       <tr><th className="manual-th">노트 <strong>우클릭</strong></th><td className="manual-td">메뉴에서 <strong>Reset to detected</strong> — 고른 노트를 검출된 음높이로 되돌림</td></tr>
@@ -2728,6 +3010,12 @@ function HelpDialog({ onClose, standalone = false }) {
                       <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + click</th><td className="manual-td">Select everything between the last note and this one</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + wheel</th><td className="manual-td">Zoom the time axis</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Alt</kbd> + wheel</th><td className="manual-td">Zoom the pitch axis</td></tr>
+                      <tr><th className="manual-th">Wheel</th><td className="manual-td">Scroll up / down (pitch)</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Shift</kbd> + wheel</th><td className="manual-td">Scroll left / right (time)</td></tr>
+                      <tr><th className="manual-th">Middle-button drag</th><td className="manual-td">Pan in both directions at once</td></tr>
+                      <tr><th className="manual-th">Click a key on the left</th><td className="manual-td">Play that note so you can hear it</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Z</kbd> / <kbd className="manual-kbd">Ctrl</kbd> + <kbd className="manual-kbd">Y</kbd></th><td className="manual-td">Undo / Redo — the <strong>same history</strong> as the studio</td></tr>
+                      <tr><th className="manual-th"><kbd className="manual-kbd">Esc</kbd></th><td className="manual-td">Close the Pitch Editor window</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">Space</kbd></th><td className="manual-td">Play / pause (same as the studio)</td></tr>
                       <tr><th className="manual-th"><kbd className="manual-kbd">0</kbd> (incl. numpad <kbd className="manual-kbd">0</kbd>/<kbd className="manual-kbd">Ins</kbd>)</th><td className="manual-td">Move the playhead to the <strong>start of the clip</strong> (the studio goes to 0 s of the song; here it is this clip's start)</td></tr>
                       <tr><th className="manual-th"><strong>Right-click</strong> a note</th><td className="manual-td"><strong>Reset to detected</strong> from the menu — put the chosen notes back to the detected pitch</td></tr>
