@@ -1,9 +1,7 @@
 # FocusDAW Studio 
-ver v1.x.x
+ver v2.x.x
 
-## 🚧 개발 진행 중 (v2)
-
-현재 **feature/v2** 브랜치에서 다음 기능을 개발하고 있습니다:
+## Second Release (v2)
 
 ### 주요 개발 사항
 1. **BPM 자동 detection**  
@@ -14,7 +12,7 @@ ver v1.x.x
    - 감지된 BPM 수동 조정
    - 전체 트랙 BPM 리매핑 (Time-stretching)
 
-3. **Pitch 조정 기능**  
+3. **Pitch 조정 기능 >> 완료**  
    - 전체 프로젝트 또는 개별 트랙 Pitch (Key) 변경
    - BPM과 연동된 Pitch 보정 옵션
 
